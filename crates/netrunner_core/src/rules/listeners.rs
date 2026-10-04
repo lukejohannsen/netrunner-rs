@@ -563,6 +563,14 @@ pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility
 /// other.
 fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener: &Listener, as_of: &AsOf) -> bool {
     let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
+    // Installs into a root are counted on the copies in it, the listener
+    // among them (`turn_log::record`), as of this install.
+    if first_time.clone().any(|triggered| triggered.when == Some(EventFilter::InRootOfThisServer)) {
+        return listener
+            .install
+            .and_then(|install| state.find_corp_install(install))
+            .is_some_and(|installed| installed.this_turn.count(state.turn, Trigger::OnInstall) == 1);
+    }
     if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)) {
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
@@ -628,6 +636,14 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     // install but a piece of ice (CR 3.4.2).
     if let EventFilter::InRoot = filter {
         return moment.of == Some(Side::Corp)
+            && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
+    }
+    // "You install a card in the root of **this server**": the same, into
+    // the listener's own server.
+    if let EventFilter::InRootOfThisServer = filter {
+        return moment.of == Some(Side::Corp)
+            && here.is_some()
+            && moment.installed_in == here
             && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
     }
     if let EventFilter::Ice(required) = filter {

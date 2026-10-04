@@ -316,7 +316,11 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 }
 
 /// Every card `side` could activate a paid ability from: their rezzed
-/// installs (Corp) or rig (Runner).
+/// installs and scored agendas (Corp) or rig (Runner). A scored agenda is
+/// active (CR 1.8.3a) and its ability is used from the score area, as
+/// `legal_actions` offers it: False Lead's "Forfeit this agenda:" is used
+/// between the Runner's actions, so its window has to open for it; a card
+/// there "as an agenda" has lost its abilities (CR 10.1.3).
 ///
 /// **Not the identity.** `ActivateAbility` names an `InstallId`, and an
 /// identity has none — `activate_ability_candidates` never offers one and
@@ -327,7 +331,14 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 /// grows with it.
 pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
     match side {
-        Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| (c.install_id, c.card.clone())).collect(),
+        Side::Corp => state
+            .corp
+            .installed
+            .iter()
+            .filter(|c| c.rezzed)
+            .map(|c| (c.install_id, c.card.clone()))
+            .chain(state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| (scored.install_id, scored.card.clone())))
+            .collect(),
         Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, c.card.clone())).collect(),
     }
 }

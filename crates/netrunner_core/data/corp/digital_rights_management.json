@@ -1,0 +1,77 @@
+{
+  "id": "digital_rights_management",
+  "title": "Digital Rights Management",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesLastTurnWhen": {
+            "trigger": "OnSuccessfulRun",
+            "when": {
+              "Server": [
+                "Hq"
+              ]
+            }
+          }
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "CardType": "Agenda"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnHq"
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardTypeOneOf": [
+                "Agenda",
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "remote_only": true
+              }
+            }
+          }
+        },
+        {
+          "Prohibit": {
+            "what": "ScoreAgendas",
+            "until": "Turn"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 26117,
+  "is_playable": true
+}

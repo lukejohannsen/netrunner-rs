@@ -1,0 +1,98 @@
+{
+  "id": "cayambe_grid",
+  "title": "Cayambe Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "InThisServer"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, place 1 advancement counter on a piece of ice protecting this server."
+    },
+    {
+      "trigger": "OnApproachServer",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "CorpInstalls": {
+                    "All": [
+                      "Ice",
+                      "InThisServer",
+                      "Advanced"
+                    ]
+                  }
+                },
+                1
+              ]
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": {
+                  "CreditsAmount": {
+                    "Increased": {
+                      "amount": {
+                        "CorpInstalls": {
+                          "All": [
+                            "Ice",
+                            "InThisServer",
+                            "Advanced"
+                          ]
+                        }
+                      },
+                      "by": {
+                        "CorpInstalls": {
+                          "All": [
+                            "Ice",
+                            "InThisServer",
+                            "Advanced"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "if_paid": {
+                  "Sequence": []
+                },
+                "if_declined": "EndTheRun",
+                "text": "end the run unless they pay 2[credit] for each advanced piece of ice protecting this server"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner approaches this server, end the run unless they pay 2[credit] for each advanced piece of ice protecting this server."
+    }
+  ],
+  "built_from": 26127,
+  "is_playable": true
+}

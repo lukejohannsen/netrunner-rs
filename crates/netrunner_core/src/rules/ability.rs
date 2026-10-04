@@ -201,6 +201,18 @@ fn acting_server(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<Serve
     acting_corp_install(state, ctx).map(|installed| installed.server).or_else(|| remembered(state, ctx).and_then(|known| known.server))
 }
 
+/// `acting_server`, or — for a card heard as it is trashed off the table —
+/// the server it was trashed out of, which the trash states: a card text's
+/// trash on the event, an access trash on the run that accessed it.
+/// Vaporframe Fabricator's "the root of this server", read as it is trashed.
+fn this_server_even_if_gone(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<ServerId> {
+    acting_server(state, ctx).or_else(|| match ctx.triggering_event {
+        Some(GameEvent::CardTrashed { card, install: Some(trashed), .. }) if Some(card) == ctx.acting_card => Some(trashed.server),
+        Some(GameEvent::CardTrashedFromAccess { card, install: Some(_), .. }) if Some(card) == ctx.acting_card => state.active_run.as_ref().map(|run| run.server),
+        _ => None,
+    })
+}
+
 /// Whether `ctx`'s install was named and is no longer on the table — the
 /// one case `last_known` is read in.
 fn acting_install_has_left(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
@@ -1297,6 +1309,15 @@ pub fn evaluate_effect(
 
         Effect::AddToHand => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // A Corp install goes to HQ as `Cost::AddSelfToHq` takes it
+            // (Wall to Wall's "Add this asset to HQ").
+            if let Some(installed) = acting_corp_install(state, ctx).filter(|installed| installed.card == card_id) {
+                let install = installed.install_id;
+                let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
+                state.corp.hq.push(removed.card.clone());
+                events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install, faceup: removed.rezzed });
+                return Ok(events);
+            }
             let Some(install) = ctx.acting_install.filter(|install| state.runner.rig.iter().any(|c| c.install_id == *install && c.card == card_id)) else {
                 return Ok(Vec::new());
             };
@@ -1601,6 +1622,13 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::TurnArchivesFacedown => {
+            for archived in &mut state.corp.archives {
+                archived.facedown = true;
+            }
+            Ok(Vec::new())
+        }
+
         // Rewritten into the `PresentChoice` it is shorthand for: each option
         // followed by the same offer over the rest, one fewer to resolve.
         Effect::ResolveSomeOf { chooser, count, options, texts } => {
@@ -1789,6 +1817,12 @@ pub fn evaluate_effect(
                 }
                 return Ok(Vec::new());
             }
+            // "This server" in the continuation is written in now: the
+            // continuation keeps no triggering event to read it from.
+            let then = match (then, this_server_even_if_gone(state, ctx)) {
+                (Some(then), Some(server)) => Some(Box::new((**then).clone().with_this_server(server))),
+                (then, _) => then.clone(),
+            };
             state.pending_decision = Some(PendingDecision::ChooseCards {
                 side: *side,
                 source: source.clone(),
@@ -1798,7 +1832,7 @@ pub fn evaluate_effect(
                 reveal: *reveal,
                 shuffle_after: *shuffle_after,
                 destination: destination.clone(),
-                then: then.clone(),
+                then,
                 selected: Vec::new(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -1941,7 +1975,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -1980,6 +2014,20 @@ pub fn evaluate_effect(
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
                 allowed.retain(|server| Some(*server) != own);
+            }
+            // Not in that root, while it is a server: a remote nothing is
+            // left in has ceased to exist (CR 4.6.8e) and its number may be
+            // the new remote's. Ice is never in a root.
+            let barred = match not_in_root_of {
+                Some(crate::dsl::ThisServer::Server(server)) => Some(*server),
+                Some(crate::dsl::ThisServer::This) => this_server_even_if_gone(state, ctx),
+                None => None,
+            };
+            if let Some(barred) = barred
+                && !matches!(card_def.card_type, crate::dsl::CardType::Ice(_))
+                && (!matches!(barred, ServerId::Remote(_)) || state.corp.installed.iter().any(|installed| installed.server == barred))
+            {
+                allowed.retain(|server| *server != barred);
             }
             // The destinations hold the fresh remote only while the Corp
             // may create one (`corp_install_destinations`).
@@ -3120,6 +3168,32 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
         .collect()
 }
 
+/// Where the agenda whose ability is being paid for sits in the Corp's
+/// score area, if it may be forfeited — `Cost::ForfeitSelf`'s
+/// affordability and its payment.
+fn forfeitable_self(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
+    let install = ctx.acting_install?;
+    forfeitable(state).into_iter().find(|&position| state.corp.scored_agendas[position].install_id == install)
+}
+
+/// Forfeits the agenda at `position` in the Corp's score area: out of the
+/// game with its points and counters. The events are returned, not
+/// dispatched: the payer dispatches (`dispatch_cost_events`), which is how
+/// Greenmail hears its own forfeit.
+fn forfeit_at(state: &mut GameState, registry: &CardRegistry, position: usize) -> Vec<GameEvent> {
+    let forfeited = state.corp.scored_agendas.remove(position);
+    // "The sum of all agenda points on agendas in a player's score area is
+    // that player's score" (CR 1.17.1), so a forfeited agenda takes its
+    // points with it. The win check recounts the score area and was right;
+    // this is the number the view, the HUD and the bots read, which kept
+    // the forfeited points.
+    let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
+    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
+    // Out of the game rather than to Archives (it was never on the table).
+    state.corp.removed_from_game.push(forfeited.card.clone());
+    vec![GameEvent::AgendaForfeited { card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
+}
+
 /// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
 /// (Spin Doctor, Malandragem) and `Effect::RemoveFromGame(ThisCard)`
 /// (Malandragem's "when it is empty", and Nanuq's from the heap its trash
@@ -3279,6 +3353,7 @@ pub(crate) fn cost_is_affordable(
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
         Cost::Forfeit(count) => side == Side::Corp && forfeitable(state).len() >= *count as usize,
+        Cost::ForfeitSelf => side == Side::Corp && forfeitable_self(state, ctx).is_some(),
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
@@ -3539,24 +3614,16 @@ pub(crate) fn pay_cost_ctx(
             let mut events = Vec::new();
             for install in installs {
                 let Some(position) = state.corp.scored_agendas.iter().position(|s| s.install_id == install) else { continue };
-                let forfeited = state.corp.scored_agendas.remove(position);
-                // "The sum of all agenda points on agendas in a player's
-                // score area is that player's score" (CR 1.17.1), so a
-                // forfeited agenda takes its points with it. The win check
-                // recounts the score area and was right; this is the
-                // number the view, the HUD and the bots read, which kept
-                // the forfeited points.
-                let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
-                state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
-                // Out of the game rather than to Archives (it was never on
-                // the table), taking its counters with it. Returned, not
-                // dispatched: the payer dispatches (`dispatch_cost_events`),
-                // which is how Greenmail hears its own forfeit.
-                state.corp.removed_from_game.push(forfeited.card.clone());
-                events.push(GameEvent::AgendaForfeited { card: forfeited.card.clone() });
-                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card });
+                events.extend(forfeit_at(state, registry, position));
             }
             Ok(events)
+        }
+
+        Cost::ForfeitSelf => {
+            let card = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            let position = forfeitable_self(state, ctx).filter(|_| side == Side::Corp).ok_or(RulesError::NotEnoughAgendasToForfeit { required: 1, available: 0 })?;
+            debug_assert_eq!(&state.corp.scored_agendas[position].card, card);
+            Ok(forfeit_at(state, registry, position))
         }
 
         Cost::Trash { from, filter, count, reveal } => {
@@ -4523,7 +4590,11 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::IceProtecting(server) => {
             state.corp.installed.iter().filter(|c| c.server == *server && c.slot == InstallSlot::Ice).count() as u32
         }
+        // "This server" is the counting card's, as a selection's is
+        // (Cayambe Grid's "for each advanced piece of ice protecting this
+        // server").
         Amount::CorpInstalls(filter) => {
+            let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
         Amount::RunnerInstalls(filter) => {

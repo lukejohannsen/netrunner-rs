@@ -49,13 +49,15 @@ cards each stage takes.
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
-| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 31 + 3 | 34 + 4 | Stages 1–3 built (4 October 2026) |
+| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 40 + 6 | 25 + 1 | Stages 1–4 built (4 October 2026) |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 98
-`Effect` variants single-use, 1 unused (`Trace`), over 539 card files** (4
-October 2026, with Uprising Stage 3, which added none; Stage 2 took Madani's
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 99
+`Effect` variants single-use, 1 unused (`Trace`), over 548 card files** (4
+October 2026, with Uprising Stage 4, which added `TurnArchivesFacedown` and
+gave `AddToHand` its second card; Stage 3 added none, at 16 of 98 over 539;
+Stage 2 took Madani's
 single-use `InstallRunnerCardFromHost` into the zone install, at 16 of 98
 over 529; Stage 1 added none, at 17
 of 99 over 518; Midnight Sun closed at
@@ -407,6 +409,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Buffer Drive** (UR 3): "1 or more cards are trashed" is one instruction's batch (`CardsTrashedFromGripOrStack`): damage, a mill, a card's trash, a selection to the heap and a trash cost each make one; a card paying its own [trash] cost from the grip makes none.
 - **The Back** (UR 3): "the first time each turn you use a piece of hardware during a run" is a use limit spent as the trigger resolves during a run (`And(RunInProgress, OncePerTurn)`), because the turn log has no "during a run" to narrow a first time by — the second card deferred on it, after Ryō "Phoenix" Ōno — so a Back installed after the turn's first such use hears the next one. Using a piece of hardware is a paid ability of it (`OnAbilityUsed`) or credits spent off it first in a payment; a hardware's "may" trigger resolved (Devil Charm's) is not heard.
 - **Simulchip** (UR 3): "an installed program has already been trashed this turn" counts the trashes a player carried out, either player's (`EventFilter::Anyone`); one the rules made (a trojan leaving with its ice) is not counted.
+- **Wall to Wall** (UR 4): "resolve up to 3 in any order" is 3 of the 4, the counter's piece of ice optional, so a Corp that wants neither the draw nor the asset back in HQ must take one of them.
 
 ### Bot debts — cards the heuristic never plays (Phase 5 §25's list)
 
@@ -438,6 +441,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Identities' text, on both chairs** — owed first, in four stages (Phase 5 Open, 3 October 2026). **The run is paid** (Phase 5 §34): what both identities print about a run's success, breach, accesses, a trash and its end is read at the leaf and in the Corp's run term — Gabriel Santiago, Zahya Sadeghi, Dewi Subrotoputri, René "Loup" Arcemont, Mercury Chrome, BANGUN's punishment of a faceup agenda. **The turn's end is paid** (§35): a decision the seat's own discard step parks on it is planned — PT Untaian's advance, Magdalene Keino-Chemutai's install, Méliès U.'s number; Nebula Talent Management's and Jinteki: Restoring Humanity's credits were already in the line. **Steals, scores and tags are paid** (§36): Jinteki: Personal Evolution's and Thule Subsea's steal costs and NBN: Reality Plus's first tag read at the leaf, core damage a hand size on both chairs, Synapse Global's and Poétrï's installs planned, BANGUN's faceup agenda worth its punishment. **Standing effects and hosted counters are paid** (§37): Issuaq Adaptics' counters as points and its agenda held for one, AU Co.'s, Epiphany Analytica's and the scored agendas' counters at half of what spending them buys, AU Co.'s turn-start search planned, Kate "Mac" McCaffrey's discount in a held card's price; Precision Design's hand size was already the engine's. **Tāo Salonga's swap is paid** (§38): the Runner reads the doors the Corp's rezzed ICE shuts, off a run, and the swap is planned as whole pairs. **Still owed:** the "may" ahead of five identities' selections of their own cards (Precision Design, Méliès U., Barry "Baz" Wong, Magdalene Keino-Chemutai, Sebastião Souza Pessoa), one ply — planned, it cost the Runner on Startup, untraced.
 - **An identity's ability** — paid, Phase 5 §33 (2 October 2026): samples carried no identity, so no identity's ability was a step of any plan. **Still owed:** LEO Construction's end-the-run is used, and trades a bioroid too cheaply — 9 of 14 uses before the run met any ice, 2 on Archives, 10 of them Mercia B4LL4RD, whose turn-by-turn barrier install the evaluator does not read — because ending a run returns the Corp's active-run term and the run's stakes whatever the run would have reached (Phase 5 Open).
 - **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
+- **Uprising Stage 4's cards it barely plays** (each edited Corp deck against Safety Net, seed 2, 48 planner games): Kakurenbo and Digital Rights Management never played (random seats 11 and 73 times in 96 games) — a turn spent setting up a fast advance is priced as the turn it costs; False Lead scored 10 times and forfeited once, since a forfeit's two clicks are a term no line reads; Cayambe Grid rezzed 2 of 44 installs and La Costa Grid 5 of 37; Cyberdex Sandbox never scored by either seat.
 - **Uprising Stage 3's cards it barely plays** (Hit List, Safety Net and Burn Rate against Hostile Bid, seed 2, 48 planner games): Bravado never played (random seats 13 times in 96 games) — its credits come when the run ends, which no line prices before it; The Back installed once and never charged; Cordyceps installed once, its swap never offered; Buffer Drive never installed.
 - **Uprising Stage 2's cards it barely plays** (Dead Reckoning and Mixtape against Hostile Bid, seed 2, 48 planner games): Cybertrooper Talut never installed (random seats 24 times in 96 games) — a link and a strength for the turn are terms no line reads at the install; DreamNet never installed on Nova (twice on Hoshiko), a draw on a run the evaluator does not price before the run.
 - **Uprising Stage 1's cards it barely plays** (Retirement Package and A Thousand Cuts against Safety Net, seed 2, 48 planner games): Bass CH1R180G4 used 3 times (random seats 47 times in 96 games) — a click and the card for two clicks is a click ahead, which no term reads as worth the card; Flower Sermon scored once (stolen 25 times), its counters used once.
@@ -864,9 +868,10 @@ The stage order below stands.
 3. **Runner triggers and zones** (built, 4 October 2026): Swift, Aniccam,
    Buffer Drive, The Back, Prognostic Q-Loop, Simulchip, Harmony AR Therapy,
    Devil Charm, Bravado, Cordyceps. Stage 3 is complete.
-4. **Corp server and advancement words:** La Costa Grid, Cayambe Grid,
-   Tranquility Home Grid, Digital Rights Management, Vaporframe Fabricator,
-   Wall to Wall, Kakurenbo, False Lead, Cyberdex Sandbox.
+4. **Corp server and advancement words** (built, 4 October 2026): La Costa
+   Grid, Cayambe Grid, Tranquility Home Grid, Digital Rights Management,
+   Vaporframe Fabricator, Wall to Wall, Kakurenbo, False Lead, Cyberdex
+   Sandbox. Stage 4 is complete.
 5. **Break triggers, and the first card to start a trace:** Gold Farmer,
    Makler, Týr, F2P, GameNET: Where Dreams are Real, Scapenet (`Effect::Trace` and `rules/trace.rs`,
    reached by no card until now), Transport Monopoly.
@@ -895,6 +900,7 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 - **Stage 1** — ten cards, composed, with no new `Effect` and no change to the engine (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 2** — eleven Runner cards and Hoshiko Shiro's Sweep deck, Side Quest, with no new `Effect` and one fewer: hosted credits for using a card and for playing one, a companion column in the turn log, a spend about the card it came off, a discount that is an amount, and a rig card's own install counted (`claude/serene-einstein-6bhlig`, 4 October 2026).
 - **Stage 3** — ten Runner cards with no new `Effect`: a played event is trashed as it finishes resolving, a trash can be heard as anyone's, the Runner's grip and stack trash in batches a card can choose from, using any paid ability is a moment, a completed run remembers the ice it passed, run events have a turn-log column, and a selection can be "up to" an amount (`claude/serene-einstein-6bhlig`, 4 October 2026).
+- **Stage 4** — nine Corp cards and one new `Effect` (`TurnArchivesFacedown`): the first install each turn into the root of this server, counted on the copies in that root; a cost that forfeits its own agenda, and a window for a scored agenda's ability; "this server" in a count of installs; an install barred from the root of the server a trashed card was in; and a Corp install added to HQ by its own text (`claude/serene-einstein-6bhlig`, 4 October 2026).
 
 ### 7. Downfall — 65 cards (C 19 / V 28 / M 18)
 

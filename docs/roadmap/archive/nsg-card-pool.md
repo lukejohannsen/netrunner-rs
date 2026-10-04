@@ -6980,3 +6980,140 @@ booster pack 3 of 7 (Swift is reprinted there); `UR_UNIMPLEMENTED` 44 →
   a `CardTrashed` (2,028 → 2,506, each event's `trashed` count with it) and
   270 `CardsTrashedFromGripOrStack` — view and index alike; the planner
   seatings drift by the larger prior with every end reason unchanged.
+
+#### Stage 4 — Corp server and advancement words (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: La Costa Grid, Cayambe Grid, Tranquility
+Home Grid, Digital Rights Management, Vaporframe Fabricator, Wall to Wall,
+Kakurenbo, False Lead and Cyberdex Sandbox — nine Corp cards. **One new
+`Effect`** (`TurnArchivesFacedown`, Kakurenbo's), and one fewer
+single-use (`AddToHand`, now Wall to Wall's too). Uprising 40 of 65, its
+booster pack 6 of 7 (La Costa Grid, Digital Rights Management and Cayambe
+Grid are reprinted there); `UR_UNIMPLEMENTED` 34 → 25,
+`URBP_UNIMPLEMENTED` 4 → 1.
+
+- **The words.**
+  - **"The first time each turn you install a card in the root of this
+    server"** (`EventFilter::InRootOfThisServer`, Tranquility Home Grid),
+    **counted on the copies in that root**: `turn_log::record` bumps
+    `OnInstall` on every card in the root a Corp card went into, the one
+    installed included (`CopyTurn`), and the listener scan reads the
+    listener's own copy. Exact, because a card in the root all turn saw
+    every install into it, and one installed this turn saw its own, which
+    already makes any later install the second. The turn log counts kinds
+    of card and never a server, so `first_each_turn` could not narrow to
+    one; a board read (`installed_this_turn` in the root) would have made a
+    fast-advanced agenda's replacement the "first" again once the agenda
+    left for the score area.
+  - **A cost that forfeits its own agenda** (`Cost::ForfeitSelf`, False
+    Lead): paid as `Forfeit` pays — out of the game with its points
+    (CR 8.2.5, 4.9.3) — and its effect resolves with the agenda gone.
+  - **A scored agenda's ability opens a window** (`paid_ability::
+    active_cards_of` now lists the Corp's scored agendas, CR 1.8.3a,
+    4.5.4): `legal_actions` already offered their abilities, but the
+    window between the Runner's actions opened only for a rezzed install's,
+    so False Lead could be forfeited during a run and never between the
+    Runner's actions, where it is played.
+  - **"This server" in a count of installs** (`Amount::CorpInstalls` writes
+    the counting card's server in, as a selection already did): Cayambe
+    Grid's "2[credit] for each advanced piece of ice protecting this
+    server" is `CreditsAmount(Increased { n, n })` over `All([Ice,
+    InThisServer, Advanced])`.
+  - **"You cannot install that card in the root of this server"**
+    (`PromptInstallCorpCard::not_in_root_of`, `dsl::ThisServer`,
+    Vaporframe Fabricator): bars that root alone — ice may still protect
+    the server — and only while the server exists (CR 4.6.8e: a remote
+    nothing is left in has ceased to exist, and its number may be the new
+    remote's). Heard as the asset is trashed, so "this server" is the one
+    the trash names (on `CardTrashed`, or the run for an access), written
+    into the install (`Effect::with_this_server`) as the selection ahead of
+    it parks: a continuation keeps no triggering event. `another_server`
+    would have barred the ice too and reads an install already gone.
+  - **"Add this asset to HQ"** is `AddToHand` on a Corp install (Wall to
+    Wall's fourth option), which moves the card as `Cost::AddSelfToHq`
+    does.
+  - **"Turn all cards in Archives facedown"** (`Effect::
+    TurnArchivesFacedown`, Kakurenbo): nothing turned a card in Archives
+    facedown — a card goes there faceup or facedown as it is trashed (CR
+    4.4.6b), and the breach and `TurnFaceupInArchives` turn them the other
+    way. No event: no card hears it, and the view is the record.
+- **Two bugs the stage reached, fixed.** Tranquility Home Grid is the
+  first card to hear a Corp install beside Engineering the Future, so the
+  first to park a trigger order on one, and both bugs were in that order:
+  - **An order parked inside an encounter finished nothing after a trigger
+    that asked** (`pending_choice::resolve_choose_trigger_to_resolve`):
+    Ansel 1.0's install into the grid's root parked the order, the grid's
+    own "gain 2[credit] or draw 1 card" parked behind it with no word of
+    the subroutines still to fire, and the encounter stood with its last
+    subroutine pending and no player able to act — a planner game of
+    Retirement Package against Safety Net, seed 2, the one stall in 48.
+    The order now carries the intent onto what its trigger parks, as a
+    resolved choice already did (`mark_parked_resume_subroutines`).
+    Neither sweep had found it at 256 seeds; the real-play pass below did.
+  - **A trigger order named a facedown card to the Runner and a
+    spectator** (`masking::mask_pending_decision`): each queued entry
+    carries the event it heard, and the install's event named the card.
+    The entries' events are now masked as the log masks them. Found by
+    the session sweep's fog gate at 256 seeds (seed 89, Retirement Package
+    against Planning Ahead).
+- **What each is made of.** La Costa Grid is a turn-start selection
+  `InRootOfThisServer`; Cayambe Grid one over its ice and an approach
+  offer asked only when some ice protecting it is advanced (paying 0 is
+  always taken); Digital Rights Management is `TimesLastTurnWhen(
+  OnSuccessfulRun, Server[Hq])` as its play requirement, Pivot's search
+  for an agenda, Peer Review's remote-root install and `Prohibit(
+  ScoreAgendas, Turn)`; Vaporframe Fabricator a once-per-turn [click]
+  install from HQ ignoring all costs and the same install on its trash,
+  heard both from an access (`OnTrashedFromAccess`) and from a Runner
+  card's text (`OnCardTrashed`, `Whose(Runner)`); Wall to Wall is two
+  `ResolveSomeOf`s on complementary conditions — at least two rezzed
+  assets, itself among them, or not — the "otherwise" first, because
+  adding itself to HQ is one of the options and would otherwise flip the
+  condition between the two; Kakurenbo is Longevity Serum's trash from HQ,
+  the facedown turn and a selection from Archives into a remote root with
+  two counters (`if_installed`), removed from the game; Cyberdex Sandbox
+  is `OnVirusCountersPurged` with `first_each_turn` and Mavirus's "you may
+  purge" on its score.
+- **Fidelity limits:** under Known limits. Wall to Wall's "up to 3" is 3 of
+  the 4, the counter's ice optional.
+- **Client.** Nothing added to the view or a decision. False Lead is used
+  from the score area's sheet, where scored agendas' abilities already
+  were; the server prompt for Vaporframe's trash leaves out its old root.
+  `prose` reads the new words.
+- **Decks.** Retirement Package takes two Tranquility Home Grid for its
+  two Brasília Government Grid and two Vaporframe Fabricator for its two
+  Active Policing; Hostile Bid two Cayambe Grid for its two Flagship, two
+  Wall to Wall for its two Cybersand Harvester and two False Lead for two
+  of its three Greenmail; A Thousand Cuts two La Costa Grid for its two
+  The Red Room, two Kakurenbo for its two Bring Them Home and two Cyberdex
+  Sandbox for its two Lotus Haze; Paid Content two Digital Rights
+  Management for its two Sudden Commandment. Every card given up is still
+  in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 99 `Effect` variants single-use,
+  1 unused (`Trace`), over 548 card files — one variant more, the same
+  single-use count.
+- **Real play** (`--headless`, each edited Corp deck against Safety Net,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Tranquility Home Grid installed 104 / 50, its first install
+  heard 44 / 70 times; Vaporframe Fabricator installed 104 / 50, its
+  [click] used 96 / 69, its trash heard 10 / 0 times; Cayambe Grid
+  installed 94 / 44 and rezzed 51 / 2, its approach asked 59 / 0 times;
+  Wall to Wall installed 160 / 60, resolved 121 / 130 times; La Costa Grid
+  installed 52 / 37 and rezzed 26 / 5; Kakurenbo played 11 / 0; Digital
+  Rights Management played 73 / 0; False Lead scored 1 / 10 and forfeited
+  1 / 1; Cyberdex Sandbox installed 53 / 10 and never scored (stolen
+  41 / 33). Kakurenbo, Digital Rights Management, False Lead's forfeit and
+  Cayambe Grid's rez go on the bot debts. Before the subroutine fix one of
+  the 48 planner games of Retirement Package stalled; none does now.
+- **Measured.** `cargo test --workspace` green (2,690) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate and the fog gate
+  included. `coverage_identical.py` against Stage 3 (b22bf2b, 192 games a
+  report): every seating differs, and the random seatings by one thing —
+  the scored-agenda window, which Proprionegation's "use this ability only
+  during a run" now gets before the jack-out decision (6.9.4b): paid
+  ability windows 20,312 → 20,344, its uses unchanged at 2, view and index
+  alike; one game's end moved (Runner agenda wins 114 → 113, deck-outs
+  4 → 5). The planner seatings 32,500 → 33,112 windows, Proprionegation
+  used 6 → 7, and the end reasons drift by the larger sample (Corp agenda
+  wins 65 → 63, Runner 96 → 102). The subroutine fix moved no report: the
+  four hashes before and after it are the same.

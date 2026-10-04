@@ -1,0 +1,104 @@
+{
+  "id": "vaporframe_fabricator",
+  "title": "Vaporframe Fabricator",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "Not": {
+                "CardType": "Operation"
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true,
+                "not_in_root_of": "This"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may install 1 card from HQ, ignoring all costs. You cannot install that card in the root of this server."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "Not": {
+                "CardType": "Operation"
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true,
+                "not_in_root_of": "This"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may install 1 card from HQ, ignoring all costs. You cannot install that card in the root of this server."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptInstallCorpCard": {
+              "origin_zone": "OwnHq",
+              "ignore_costs": true
+            }
+          }
+        }
+      },
+      "text": "Once per turn → [click]: Install 1 card from HQ, ignoring all costs."
+    }
+  ],
+  "built_from": 26100,
+  "is_playable": true
+}

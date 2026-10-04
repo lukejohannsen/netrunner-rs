@@ -1,0 +1,165 @@
+{
+  "id": "wall_to_wall",
+  "title": "Wall to Wall",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "unique": true,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "CorpInstalls": {
+                      "All": [
+                        {
+                          "CardType": "Asset"
+                        },
+                        "Rezzed"
+                      ]
+                    }
+                  },
+                  2
+                ]
+              }
+            },
+            "effect": {
+              "ResolveSomeOf": {
+                "chooser": "Corp",
+                "count": 3,
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Ice",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "PlaceAdvancementCounters": {
+                              "Fixed": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "AddToHand"
+                ],
+                "texts": [
+                  "Draw 1 card.",
+                  "Gain 1[credit].",
+                  "Place 1 advancement counter on an installed piece of ice.",
+                  "Add this asset to HQ."
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "CorpInstalls": {
+                    "All": [
+                      {
+                        "CardType": "Asset"
+                      },
+                      "Rezzed"
+                    ]
+                  }
+                },
+                2
+              ]
+            },
+            "effect": {
+              "ResolveSomeOf": {
+                "chooser": "Corp",
+                "count": 1,
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Ice",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "PlaceAdvancementCounters": {
+                              "Fixed": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "AddToHand"
+                ],
+                "texts": [
+                  "Draw 1 card.",
+                  "Gain 1[credit].",
+                  "Place 1 advancement counter on an installed piece of ice.",
+                  "Add this asset to HQ."
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, if you have any other rezzed assets, resolve 1 of the following; otherwise, resolve up to 3 in any order:"
+    }
+  ],
+  "built_from": 26122,
+  "is_playable": true
+}

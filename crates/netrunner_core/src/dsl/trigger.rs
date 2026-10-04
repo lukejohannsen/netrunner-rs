@@ -709,6 +709,21 @@ pub enum EventFilter {
     /// trigger about its controller hears the controller's installs, which
     /// for a Runner card are the Runner's.
     InRoot,
+    /// The Corp installed the card in the root of the server this card is
+    /// in — Tranquility Home Grid's "The first time each turn **you install
+    /// a card in the root of this server**". Read off the moment (the card
+    /// is not ice, and `GameEvent::CardInstalled::server` is the listener's
+    /// server), and only on the Corp's `OnInstall`. **Its first time is
+    /// counted on the copies in that root** (`turn_log::record` bumps every
+    /// card in the root, the one installed included, `CopyTurn`), not on
+    /// the turn, whose log counts kinds of card and never which server: a
+    /// card that was in the root all turn saw every install into it, and
+    /// one installed this turn saw its own, which already makes any later
+    /// install the second. Composition didn't work: `InRoot` is any
+    /// server's root, `InstalledIn` a kind of server, and a `Card` filter
+    /// naming this server is finer than any column the turn keeps, so
+    /// `first_each_turn` could not have counted it.
+    InRootOfThisServer,
     /// The card was trashed from one of these places — Strike Fund's
     /// "When this event is trashed **from your grip or stack**". Read off
     /// the moment, which the event states (`GameEvent::CardTrashed::from`),
@@ -769,7 +784,12 @@ impl EventFilter {
 
     pub(crate) fn names_whose(&self) -> bool {
         match self {
-            EventFilter::Whose(_) | EventFilter::Anyone | EventFilter::OwnedBy { .. } | EventFilter::InRoot | EventFilter::TrashedFromThisServer => true,
+            EventFilter::Whose(_)
+            | EventFilter::Anyone
+            | EventFilter::OwnedBy { .. }
+            | EventFilter::InRoot
+            | EventFilter::InRootOfThisServer
+            | EventFilter::TrashedFromThisServer => true,
             EventFilter::All(parts) => parts.iter().any(EventFilter::names_whose),
             _ => false,
         }

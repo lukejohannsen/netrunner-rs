@@ -1164,7 +1164,20 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
             *source_card = conceal(source_card);
             *prompting_card = conceal(prompting_card);
         }
-        PendingDecision::ChooseTriggerOrder { .. } => {}
+        // Who orders and how many are public; what each heard is masked as
+        // the log masks it. A Corp install heard by two of the Corp's cards
+        // (Engineering the Future and Tranquility Home Grid) parks an order
+        // whose entries both carry the install's event, card and all —
+        // found by the session sweep's masking invariant at Uprising Stage
+        // 4, seed 89. The event a trigger heard names what the queued card
+        // reacts to, so it is masked exactly as that event is in the log.
+        PendingDecision::ChooseTriggerOrder { pending, .. } => {
+            for trigger in pending.iter_mut() {
+                trigger.event = trigger.event.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
+                trigger.announce = trigger.announce.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
+                trigger.target = conceal(&trigger.target);
+            }
+        }
         // The Corp's bid is the Corp's until the Runner has bid, which
         // resolves the game (CR 10.14.2); that one has been made is public.
         PendingDecision::PsiGame { corp_bid, source_card, prompting_card, .. } => {
@@ -1606,6 +1619,42 @@ mod tests {
         let accessed = GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: crate::dsl::Trigger::OnAccessed };
         assert_eq!(mask_event_for_player(&accessed, &state, Side::Runner), Some(accessed.clone()));
         assert_eq!(mask_event_for_player(&accessed, &state, Viewer::Spectator), None, "a spectator never learns what fired face down");
+    }
+
+    /// A trigger-order prompt is the Corp's, and each entry carries the
+    /// event its card heard: a facedown install heard by two Corp cards
+    /// named the card to the Runner and a spectator until the entries were
+    /// masked as the log masks the event (Uprising Stage 4, seed 89).
+    #[test]
+    fn a_trigger_order_prompt_names_no_card_its_events_conceal() {
+        let mut state = game_state(corp_state_with_cards());
+        let install = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1069), card: Some(CardId("ice_wall".to_string())), server: ServerId::Hq, from_hq: true };
+        let heard = |card: &str| crate::rules::state::DeferredTrigger {
+            card: CardId(card.to_string()),
+            trigger: crate::dsl::Trigger::OnInstall,
+            target: None,
+            install: None,
+            target_install: None,
+            event: Some(install.clone()),
+            continuation: None,
+            heard: Default::default(),
+            not_the_first_this_turn: false,
+            fired: 0,
+            announce: None,
+        };
+        state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![heard("haas_bioroid_engineering_the_future"), heard("tranquility_home_grid")],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let events = |viewer: Viewer| match mask_state_for_player(&state, viewer).pending_decision {
+            Some(PendingDecision::ChooseTriggerOrder { pending, .. }) => pending.into_iter().map(|trigger| trigger.event).collect::<Vec<_>>(),
+            other => panic!("still the order: {other:?}"),
+        };
+        let struck = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1069), card: None, server: ServerId::Hq, from_hq: true };
+        assert_eq!(events(Viewer::Player(Side::Runner)), vec![Some(struck.clone()), Some(struck.clone())]);
+        assert_eq!(events(Viewer::Spectator), vec![Some(struck.clone()), Some(struck)]);
+        assert_eq!(events(Viewer::Player(Side::Corp)), vec![Some(install.clone()), Some(install)], "the Corp orders its own");
     }
 
     #[test]

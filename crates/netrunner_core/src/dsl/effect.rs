@@ -793,6 +793,18 @@ pub enum Effect {
         /// discount of everything, so the rez's alternatives are still met.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignore_credit_costs: bool,
+        /// "You cannot install that card **in the root of this server**" —
+        /// Vaporframe Fabricator's, heard as it is trashed. A card that is
+        /// not ice is not offered that root while the server still exists;
+        /// ice may still protect it, and once the server is gone a new
+        /// remote is another server. `This` is written as the server
+        /// (`Effect::with_this_server`) when a selection ahead of the
+        /// install parks, while the resolution still knows where the card
+        /// was: a continuation keeps no triggering event. A field for the
+        /// reason `another_server` is one, which excludes ice too and reads
+        /// the acting install, gone by the time a trash is heard.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        not_in_root_of: Option<ThisServer>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -943,6 +955,13 @@ pub enum Effect {
     /// facedown any more. Composition didn't work: nothing turned a card in
     /// Archives over but the breach (CR 7.3.2), which turns them all.
     TurnFaceupInArchives,
+    /// Every card in Archives is turned facedown — Kakurenbo's "Turn all
+    /// cards in Archives facedown". Composition didn't work: nothing turned
+    /// a card in Archives facedown at all — a card goes there faceup or
+    /// facedown as it is trashed (CR 4.4.6b), and `TurnFaceupInArchives` and
+    /// the breach only turn them over the other way. Announced by nothing:
+    /// no card hears a card turned facedown, and the view is the record.
+    TurnArchivesFacedown,
     /// "Resolve `count` of the following in any order" — Key Performance
     /// Indicators. `chooser` picks one of `options`; it resolves, then the
     /// remaining options are offered again with `count - 1`, until the
@@ -1046,8 +1065,10 @@ pub enum Effect {
     /// Adds the acting install to its owner's grip — Pichação's "add this
     /// program to your grip". The install is the "if", as it is for
     /// `AddToDeck`: gone, or reinstalled under another handle, nothing
-    /// moves. The Runner's alone: the one Corp card that adds itself to HQ
-    /// does so as a cost (`Cost::AddSelfToHq`). Composition didn't work:
+    /// moves. A Corp install goes to HQ — Wall to Wall's "Add this asset to
+    /// HQ", one option of several, where Descent and Janaína add themselves
+    /// as a cost (`Cost::AddSelfToHq`), which moves the card the same way.
+    /// Composition didn't work:
     /// `PromptChooseCards` cannot say "this install", and `AddToDeck` moves
     /// only into a deck.
     AddToHand,
@@ -1909,7 +1930,10 @@ pub enum Amount {
     /// (`Rezzed`) is asked of each copy and a type of the definition.
     /// Composition didn't work: every count of installs was one sentence's
     /// (`OtherUnrezzedIce`, `IceProtectingThisServer`), and a filter is
-    /// what an `Amount` could not hold while it was `Copy`.
+    /// what an `Amount` could not hold while it was `Copy`. "This server"
+    /// (`InThisServer`, `InRootOfThisServer`) is the counting card's, as in
+    /// a selection — Cayambe Grid's "2[credit] for each **advanced piece of
+    /// ice protecting this server**".
     CorpInstalls(crate::dsl::CardFilter),
     /// The Runner's installed cards the filter admits — Tremolo's "for each
     /// installed piece of **cybernetic** hardware", `All([CardType(Hardware),
@@ -2330,6 +2354,40 @@ impl Effect {
         }
     }
 
+    /// This effect with "this server" in an install's `not_in_root_of`
+    /// written as `server`, through what a selection's continuation can
+    /// hold — the server the card that prints it is in, or was, written in
+    /// while the resolution still knows it (`ability`'s `PromptChooseCards`).
+    pub fn with_this_server(self, server: ServerId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
+        match self {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+                Effect::PromptInstallCorpCard {
+                    not_in_root_of: Some(ThisServer::Server(server)),
+                    origin_zone,
+                    ignore_costs,
+                    discount,
+                    then,
+                    remote_only,
+                    another_server,
+                    new_remote,
+                    rez,
+                    if_rezzed,
+                    if_installed,
+                    ignore_credit_costs,
+                }
+            }
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            other => other,
+        }
+    }
+
     /// Calls `f` on this effect and then on every effect nested inside it,
     /// depth-first in authoring order.
     ///
@@ -2428,6 +2486,7 @@ impl Effect {
             | Effect::BypassEncounteredIce
             | Effect::PurgeVirusCounters
             | Effect::TurnFaceupInArchives
+            | Effect::TurnArchivesFacedown
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
@@ -2703,4 +2762,14 @@ mod tests {
             ]
         );
     }
+}
+
+/// The server a card names as "this server" — the one the card that prints
+/// it is in — as a card file writes it (`This`), and as it is written in
+/// once a resolution knows which (`Server`). `PromptInstallCorpCard::
+/// not_in_root_of`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThisServer {
+    This,
+    Server(ServerId),
 }

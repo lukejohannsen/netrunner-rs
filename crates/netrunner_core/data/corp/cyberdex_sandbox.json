@@ -1,0 +1,48 @@
+{
+  "id": "cyberdex_sandbox",
+  "title": "Cyberdex Sandbox",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnVirusCountersPurged",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            4
+          ]
+        }
+      ],
+      "text": "The first time each turn you purge virus counters, gain 4[credit]."
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "PurgeVirusCounters",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may purge virus counters",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may purge virus counters."
+    }
+  ],
+  "built_from": 26128,
+  "is_playable": true
+}

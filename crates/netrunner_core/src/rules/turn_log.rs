@@ -478,6 +478,9 @@ impl Occurrences {
             Some(EventFilter::Host) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }
+            Some(EventFilter::InRootOfThisServer) => {
+                return Err(format!("the turn counts a {trigger:?} without which server it went into; the copies in a root count those"));
+            }
             Some(EventFilter::ByThis) => {
                 return Err(format!("the turn counts a {trigger:?} without which object did it, so \"the first\" cannot be narrowed to this card's"));
             }
@@ -645,7 +648,10 @@ impl CopyTurn {
     /// asks of one copy, which is advancing it (Sacrifice Zone Expansion's
     /// "the first time each turn") and rezzing it (Cloud Eater's "if it was
     /// rezzed this turn", `Amount::TimesThisTurnOnThisCopy`) and, so far,
-    /// nothing else. A card leaves the table when it is scored, stolen or
+    /// nothing else. A Corp install's `OnInstall` is counted apart, and
+    /// means the installs into the root it is in (`record`, for
+    /// `EventFilter::InRootOfThisServer`), never its own alone. A card
+    /// leaves the table when it is scored, stolen or
     /// trashed, so its copy could never count those; `validate` refuses the
     /// rest until a card prints one.
     pub(crate) fn counts(trigger: Trigger) -> bool {
@@ -1000,6 +1006,23 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             if let Some(installed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install) {
                 installed.this_turn.bump(turn, moment.trigger);
                 copy = Some((install, installed.this_turn));
+            }
+        }
+        // And on every card in the root a Corp card went into, the card
+        // itself included: the installs into a root this turn, which
+        // Tranquility Home Grid's first time reads off its own copy
+        // (`EventFilter::InRootOfThisServer`). The copies in the root are
+        // the ones that can hear it, and a card installed later saw its
+        // own install, which is all "the first" needs of the ones before.
+        if moment.trigger == Trigger::OnInstall
+            && moment.of == Some(crate::rules::Side::Corp)
+            && let Some(server) = moment.installed_in
+            && let About::Card { card, .. } = &moment.about
+            && registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_)))
+        {
+            let turn = state.turn;
+            for installed in state.corp.installed.iter_mut().filter(|installed| installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root) {
+                installed.this_turn.bump(turn, Trigger::OnInstall);
             }
         }
         // And on the rig install it is about, for what a rig copy is

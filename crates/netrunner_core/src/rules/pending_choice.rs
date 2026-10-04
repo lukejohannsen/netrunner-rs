@@ -1148,8 +1148,20 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
         state.deferred_triggers.splice(0..0, remaining);
     }
 
-    if resume == PendingChoiceResume::ResumeSubroutines && !state.resolution_halted() {
-        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    if resume == PendingChoiceResume::ResumeSubroutines {
+        // The chosen trigger may have parked a decision of its own —
+        // Tranquility Home Grid's "gain 2[credit] or draw 1 card", heard
+        // beside Engineering the Future as Ansel 1.0's subroutine installs
+        // into the grid's root — and the rest of the encounter's
+        // subroutines wait behind it, as `resolve_choice` carries the
+        // intent onto what its effect parks. Without this the order was
+        // the last thing that knew, and the encounter stood with a
+        // subroutine pending and no player able to act (Uprising Stage 4,
+        // Retirement Package against Safety Net, planner seats).
+        mark_parked_resume_subroutines(state);
+        if !state.resolution_halted() {
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
     }
     Ok(events)
 }
