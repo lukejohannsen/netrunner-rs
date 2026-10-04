@@ -642,8 +642,10 @@ impl CopyTurn {
     }
 
     /// 0, 1, or 2 for "more than once": `turn`'s moments of `trigger`
-    /// about this copy.
-    pub(crate) fn count(&self, turn: u32, trigger: Trigger) -> u32 {
+    /// about this copy. Public for the bots, which ask whether a ready
+    /// agenda was advanced this turn as Issuaq Adaptics' scoring trigger
+    /// will (Phase 5 §37).
+    pub fn count(&self, turn: u32, trigger: Trigger) -> u32 {
         if self.turn != turn {
             return 0;
         }

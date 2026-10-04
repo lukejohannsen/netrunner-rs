@@ -562,8 +562,10 @@ pub fn ice_types(state: &GameState, registry: &CardRegistry, ice: &crate::rules:
 /// There was a `pay_install_cost_of` beside this — a second scan at the
 /// real install that spent each discount's `OncePerTurn` — and a discount
 /// that was a use of the card is what let a DZMZ Optimizer installed after
-/// the turn's first program lower the second.
-pub(crate) fn install_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
+/// the turn's first program lower the second. Public for the bots, whose
+/// reading of a held card's price is this one (Kate "Mac" McCaffrey's
+/// discount, Phase 5 §37).
+pub fn install_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
     install_cost_onto(state, registry, card, None)
 }
 

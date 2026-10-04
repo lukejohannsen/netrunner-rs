@@ -79,11 +79,14 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
         // all on an agenda that pays none. Valuing the promise rather
         // than adding a second constant keeps the two halves of one
         // mechanic on one weight: the same token is counted here while
-        // the agenda is installed and by `scored_agenda_counters` after.
+        // the agenda is installed and by `scored_agenda_counters` after,
+        // each at what the agenda's own use of it buys (`agenda_counter`).
         let dividends = def.and_then(|d| d.dividends).unwrap_or(0);
-        if dividends > 0 {
+        if dividends > 0
+            && let Some(def) = def
+        {
             let excess = installed.advancement_tokens.saturating_sub(required);
-            value += f64::from(excess * dividends) * w.agenda_counter_weight;
+            value += f64::from(excess * dividends) * agenda_counter(state, registry, def, w);
         }
     }
     if let Some(def) = def {
@@ -112,15 +115,112 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
 }
 
 /// Agenda counters sitting on the Corp's scored agendas — Dividends,
-/// spent by the agendas' own discard-phase triggers.
+/// spent by the agendas' own discard-phase triggers — each at what its
+/// agenda's use of it buys (`agenda_counter`).
 ///
 /// Without this the term above would evaporate at the moment it paid
 /// off: a search comparing "score now" with "advance once more, then
 /// score" sees the installed agenda gone in both branches, so unless the
 /// counters survive into the score area the two branches are worth the
 /// same and the extra click is pure cost.
-pub(super) fn scored_agenda_counters(state: &GameState) -> u32 {
-    state.corp.scored_agendas.iter().map(|scored| scored.agenda_counters).sum()
+pub(super) fn scored_agenda_counters(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    state
+        .corp
+        .scored_agendas
+        .iter()
+        .filter(|scored| scored.agenda_counters > 0)
+        .map(|scored| f64::from(scored.agenda_counters) * registry.get(&scored.card).map_or(w.agenda_counter_weight, |def| agenda_counter(state, registry, def, w)))
+        .sum()
+}
+
+/// What one agenda counter on `def` is worth: what the agenda's own use of
+/// it buys, at `identities::counter_worth`'s share (Phase 5 §37) — Off the
+/// Books' search installed free, Sericulture Expansion's two advancement
+/// counters, Project Ingatan's install from Archives — or
+/// `agenda_counter_weight` for an agenda whose use no reading prices
+/// (Embedded Reporting's operation set on R&D, Proprionegation's moved run).
+/// At the flat weight Off the Books held its counter for good once the
+/// planner judged the offer (§35): 2.0 against a search worth less.
+fn agenda_counter(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights) -> f64 {
+    identities::counter_worth(state, registry, def, w).unwrap_or(w.agenda_counter_weight)
+}
+
+/// What the counters on the Corp's identity are worth to it held: AU Co.'s
+/// and Epiphany Analytica's at what spending them buys (`identities::
+/// counter_worth`), and nothing for an identity whose counters no use
+/// reads — Issuaq Adaptics' are points, and counted as points
+/// (`evaluate_state_with`), NBN: Making News' are recurring credits for a
+/// trace.
+fn identity_counters(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    if state.corp.identity_counters == 0 {
+        return 0.0;
+    }
+    let Some(identity) = state.corp.identity.as_ref().and_then(|id| registry.get(id)) else { return 0.0 };
+    f64::from(state.corp.identity_counters) * identities::counter_worth(state, registry, identity, w).unwrap_or(0.0)
+}
+
+/// What the Corp's ready agendas are worth held for a later score that
+/// places counters on its identity a score now would not (Phase 5 §37):
+/// Issuaq Adaptics places a power counter, a point, for an agenda "that you
+/// did not install or advance this turn", so an agenda advanced to its
+/// requirement this turn is worth its points and the counters' a turn
+/// later, where the server it sits in would hold the Runner's next turn
+/// out (`holds_a_turn`), at `LATER_SCORE_SHARE`. Read in every state the
+/// agenda is ready in where a score now would place fewer — none outside
+/// the Corp's action phase, where it cannot score at all: in the Corp's
+/// turn it is the line that keeps the agenda against the one that scores
+/// it (a line ends past the action phase, in the Runner's start of turn),
+/// and in the Runner's it is what the Corp defends. Nothing in the Corp's
+/// next action phase, where a score now places the counters and is the
+/// line to take.
+fn held_for_a_later_score(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    let per = identities::points_per_identity_counter(state, registry);
+    if per <= 0 {
+        return 0.0;
+    }
+    let corps_turn = state.phase == GamePhase::Action(Side::Corp);
+    let mut value = 0.0;
+    for installed in state.corp.installed.iter().filter(|card| card.slot == netrunner_core::rules::InstallSlot::Root) {
+        let Some(def) = registry.get(&installed.card).filter(|def| def.card_type == CardType::Agenda) else { continue };
+        let Some(required) = continuous::advancement_requirement(state, registry, installed.install_id) else { continue };
+        if (installed.advancement_tokens as i32) < required.max(0) {
+            continue;
+        }
+        let later = identities::counters_on_score(state, registry, installed, def, true);
+        let now = if corps_turn { identities::counters_on_score(state, registry, installed, def, false) } else { 0 };
+        if later > now && holds_a_turn(state, installed.server, registry) {
+            value += f64::from(def.agenda_points.unwrap_or(0) as i32 + later as i32 * per) * w.agenda_point_weight * LATER_SCORE_SHARE;
+        }
+    }
+    value
+}
+
+/// The share of a later score a ready agenda held for it is worth. Any
+/// share in (3/4, 1) makes the same choices over the pool's agendas: below
+/// 1, so a held agenda never ties the score that would place the counter
+/// now; above `P / (P + 1)` for the three-pointers, so holding one for a
+/// counter's point beats scoring it bare. The middle of that range, the
+/// tenth off standing for what `holds_a_turn` cannot see — a run event, a
+/// breaker drawn and installed.
+const LATER_SCORE_SHARE: f64 = 0.9;
+
+/// Whether `server` would keep the Runner out for a turn: some piece of
+/// its ICE the rig cannot break, or a break it cannot pay for out of what
+/// it holds and a turn's clicks taken as credits (`taxing_cost`, the
+/// Corp's own reading, with the rezzes its credits cover). A server with
+/// no ICE holds nothing.
+fn holds_a_turn(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> bool {
+    let next_turn = state.runner.resources.credits.0 + RUNNER_TURN_CLICKS;
+    taxing_cost(state, server, registry).is_none_or(|cost| cost > next_turn)
+}
+
+/// The clicks a Runner's turn holds, each a credit at the guide's rate.
+const RUNNER_TURN_CLICKS: u32 = 4;
+
+/// The agenda points in Archives, faceup or not — what
+/// `archived_agenda_weight` charges the Corp.
+pub(super) fn archived_agenda_points(state: &GameState, registry: &CardRegistry) -> u32 {
+    state.corp.archives.iter().filter_map(|card| registry.get(&card.card)).filter_map(|def| def.agenda_points).sum()
 }
 
 /// Installed, unscored agendas — what `installed_agenda_weight` counts.
@@ -327,7 +427,10 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score += corp_install_value(state, installed, registry, w, rig, horizon);
         *score -= revealed_trap_cost(state, installed, registry, w, rig, horizon);
     }
-    *score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
+    *score += scored_agenda_counters(state, registry, w);
+    *score += identity_counters(state, registry, w);
+    *score += held_for_a_later_score(state, registry, w);
+    *score -= f64::from(archived_agenda_points(state, registry)) * w.archived_agenda_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
     if w.installed_agenda_weight != 0.0 {
         *score += installed_agendas(state, registry) as f64 * w.installed_agenda_weight;
@@ -429,6 +532,76 @@ mod tests {
     use crate::plans::{Plan, Style};
     use netrunner_core::dsl::{CardId, DamageType, Trigger, TriggeredEffect};
     use netrunner_core::rules::{Credits, GameState, InstallId, InstalledRunnerCard};
+
+    /// An agenda advanced to its requirement this turn under Issuaq
+    /// Adaptics is worth its points and the counter's a turn later, held
+    /// behind ICE the rig cannot break (§37) — and nothing more where the
+    /// wall would not hold, or where a score now places the counter.
+    #[test]
+    fn a_ready_agenda_is_held_for_issuaqs_counter_behind_a_wall_that_holds() {
+        use netrunner_core::rules::{GameEvent, GamePhase, InstallSlot, ServerId};
+        let pool = pool();
+        let w = every_corp();
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(CardId("issuaq_adaptics_sustaining_diversity".to_string()));
+        let agenda = printed(&pool, "offworld_office");
+        let required = agenda.advancement_requirement.expect("an agenda");
+        state.corp.installed = vec![
+            InstalledCard { card: agenda.id.clone(), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: required, ..Default::default() },
+            InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        let later = f64::from(agenda.agenda_points.unwrap() + 1) * w.agenda_point_weight * LATER_SCORE_SHARE;
+        assert_eq!(held_for_a_later_score(&state, &pool, &w), 0.0, "advanced on an earlier turn: a score now places the counter");
+        let advance = GameEvent::CardAdvanced { install: InstallId(1), card: Some(agenda.id.clone()), advancement_tokens: required };
+        netrunner_core::rules::dispatch_event(&mut state, &pool, &advance).expect("the agenda is advanced");
+        assert_eq!(held_for_a_later_score(&state, &pool, &w), later, "advanced this turn: held for the counter");
+        assert!(later > f64::from(agenda.agenda_points.unwrap()) * w.agenda_point_weight, "and worth more than the score now");
+        state.phase = GamePhase::Action(Side::Runner);
+        assert_eq!(held_for_a_later_score(&state, &pool, &w), later, "in the Runner's turn, what the Corp defends");
+        state.runner.rig = vec![rig_card("corroder")];
+        state.runner.resources.credits = Credits(10);
+        assert_eq!(held_for_a_later_score(&state, &pool, &w), 0.0, "a wall the Runner breaks holds nothing");
+        state.runner.rig.clear();
+        state.corp.identity = None;
+        assert_eq!(held_for_a_later_score(&state, &pool, &w), 0.0, "no identity counts a later score");
+    }
+
+    /// Issuaq Adaptics' counters are points, on both chairs (§37), and the
+    /// stage reads them in what the Corp needs to win.
+    #[test]
+    fn issuaqs_counters_are_points_on_both_chairs() {
+        use crate::eval::stage::{stage, Stage};
+        let pool = pool();
+        let w = every_corp();
+        let mut state = GameState::new(0);
+        state.corp.identity = Some(CardId("issuaq_adaptics_sustaining_diversity".to_string()));
+        let before = (evaluate_state_with(&state, Side::Corp, &pool, &w), evaluate_state_with(&state, Side::Runner, &pool, &w));
+        state.corp.identity_counters = 2;
+        let after = (evaluate_state_with(&state, Side::Corp, &pool, &w), evaluate_state_with(&state, Side::Runner, &pool, &w));
+        assert!((after.0 - before.0 - 2.0 * w.agenda_point_weight).abs() < 1e-9, "{before:?} → {after:?}");
+        assert!((after.1 - before.1 + 2.0 * w.agenda_point_weight).abs() < 1e-9, "{before:?} → {after:?}");
+        state.corp.resources.agenda_points = netrunner_core::rules::AgendaPoints(3);
+        assert_eq!(stage(&state, &pool), Stage::Late, "three points and two counters is two from seven");
+        state.corp.identity_counters = 0;
+        assert_eq!(stage(&state, &pool), Stage::Early);
+    }
+
+    /// An agenda in Archives is half its points to the Corp (§37): one it
+    /// cannot score, and one an Archives run steals.
+    #[test]
+    fn an_agenda_in_archives_costs_the_corp_half_its_points() {
+        use netrunner_core::rules::ArchivedCard;
+        let pool = pool();
+        let w = every_corp();
+        let mut state = GameState::new(0);
+        state.corp.archives = vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))];
+        let kept = evaluate_state_with(&state, Side::Corp, &pool, &w);
+        state.corp.archives.push(ArchivedCard { card: CardId("offworld_office".to_string()), facedown: true });
+        let lost = evaluate_state_with(&state, Side::Corp, &pool, &w);
+        assert!((kept - lost - 2.0 * w.archived_agenda_weight).abs() < 1e-9, "{kept} against {lost}");
+        assert!(w.archived_agenda_weight < w.agenda_point_weight);
+    }
 
     /// A faceup agenda under BANGUN: When Disaster Strikes is an install
     /// worth what its access does to the Runner (§36), not a rezzed
