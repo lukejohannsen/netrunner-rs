@@ -150,7 +150,7 @@ use rand::{Rng, SeedableRng};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::PaymentAsk as Ask;
-use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, InstallId, PendingDecision, PlayerAction, Side};
+use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, InstallId, PendingDecision, PendingPaidChoice, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
 use crate::agent::{is_regressive, BotAgent};
@@ -314,7 +314,7 @@ impl PlanningAgent {
     /// it (`its_identitys_selection`), wherever it stands. Everything else
     /// is played one ply.
     fn plannable(&self, view: &ClientView) -> bool {
-        if its_identitys_selection(view.pending_decision.as_ref(), self.identity(view), self.side) {
+        if its_identitys_decision(view, self.identity(view), self.side) {
             return true;
         }
         // When no standing plan reached it: a plan is dropped at a turn the
@@ -369,7 +369,7 @@ impl PlanningAgent {
     /// no line could be made, which is a root with no progressive action
     /// — not a state a seat is asked to act on.
     fn plan(&mut self, root: GameState, view: &ClientView, registry: &CardRegistry) -> Option<PlayerAction> {
-        let deciding = its_identitys_selection(view.pending_decision.as_ref(), self.identity(view), self.side);
+        let deciding = its_identitys_decision(view, self.identity(view), self.side);
         let mut search = Search {
             side: self.side,
             registry,
@@ -449,8 +449,8 @@ struct Search<'a> {
     /// The view's own legal actions, which the root expands and nothing
     /// else — see `expand`.
     root_legal: &'a [PlayerAction],
-    /// Whether the root is a selection the seat's own identity parked on
-    /// it (`its_identitys_selection`): the line goes on while the seat
+    /// Whether the root is a decision the seat's own identity parked on it
+    /// (`its_identitys_decision`): the line goes on while the seat
     /// still owes a decision — the selection, and the install its `then`
     /// asks where to put — in a run or the other side's turn, and stands
     /// where the decision leaves it.
@@ -797,6 +797,27 @@ fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<
             | CardZoneRef::TopOfOwnStack
     );
     *chooser == side && own && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+}
+
+/// Whether `choice` is a paid choice the seat's own identity offers it
+/// (Phase 5 §37): AU Co.'s "when your turn begins, you may remove 2 hosted
+/// power counters to look at the top 3 cards of R&D. Trash 1 of those
+/// cards and add the rest to HQ". It comes in the seat's own start of
+/// turn, ahead of the action phase a plan starts from, so the one-ply
+/// chooser answered it, and the accepted side was a selection
+/// `pending_decision_upside` prices at its worst: AU Co. declined it 530
+/// times in 48 games and took it 46. Planned, the search is steps of the
+/// turn's line, and the cards it brings are cards the line can play. PT
+/// Untaian's offer at its turn's end is the other one an identity makes
+/// its own side, and already a step of the line (§35).
+fn its_identitys_offer(choice: Option<&PendingPaidChoice>, identity: Option<&CardId>, side: Side) -> bool {
+    choice.is_some_and(|choice| choice.side == side && identity.is_some_and(|id| choice.prompting_card.as_ref().or(choice.source_card.as_ref()) == Some(id)))
+}
+
+/// A decision the seat's own identity parked on it, of either kind, which
+/// the seat plans from: `its_identitys_selection` or `its_identitys_offer`.
+fn its_identitys_decision(view: &ClientView, identity: Option<&CardId>, side: Side) -> bool {
+    its_identitys_selection(view.pending_decision.as_ref(), identity, side) || its_identitys_offer(view.pending_paid_choice.as_ref(), identity, side)
 }
 
 /// The one-ply choice: every legal action applied to `sample`, the result
@@ -2221,6 +2242,115 @@ mod positions {
             state.corp.installed
         );
         assert_eq!(state.corp.resources.credits.0, 0, "ignoring all costs");
+    }
+
+    /// Issuaq Adaptics places a counter, a point, for an agenda "that you
+    /// did not install or advance this turn" (§37): the planner advances an
+    /// agenda to its requirement and keeps it behind a wall the Runner cannot
+    /// break, and scores one that has been ready since an earlier turn.
+    #[test]
+    fn holds_an_agenda_it_advanced_for_issuaqs_counter_and_scores_one_ready_since() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let board = |tokens: u32| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.identity = Some(CardId("issuaq_adaptics_sustaining_diversity".to_string()));
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+            state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+            state.corp.installed = vec![
+                InstalledCard { card: CardId("offworld_office".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), slot: netrunner_core::rules::InstallSlot::Root, advancement_tokens: tokens, ..Default::default() },
+                InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), slot: netrunner_core::rules::InstallSlot::Ice, rezzed: true, ..Default::default() },
+            ];
+            state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+            state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+            state
+        };
+        let play_turn = |mut state: GameState| {
+            let mut agent = PlanningAgent::new(Side::Corp, 3);
+            for _ in 0..20 {
+                if current_actor(&state) != Some(Side::Corp) || state.phase != GamePhase::Action(Side::Corp) {
+                    break;
+                }
+                let view = build_client_view(&state, &registry, Side::Corp);
+                agent.observe(&view);
+                let action = agent.select_action(&view, &registry);
+                state = apply_action(&state, &registry, action).expect("the agent's action applies").0;
+            }
+            state
+        };
+        let required = registry.get(&CardId("offworld_office".to_string())).and_then(|def| def.advancement_requirement).expect("an agenda");
+        let held = play_turn(board(required - 1));
+        assert_eq!(held.corp.resources.agenda_points, AgendaPoints(0), "not scored the turn it was advanced");
+        assert!(
+            held.corp.installed.iter().any(|card| card.install_id == InstallId(1) && card.advancement_tokens >= required),
+            "advanced to its requirement and kept: {:?}",
+            held.corp.installed
+        );
+        let scored = play_turn(board(required));
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(2), "ready since an earlier turn: scored");
+        assert_eq!(scored.corp.identity_counters, 1, "and the counter placed");
+    }
+
+    /// AU Co.'s "when your turn begins, you may remove 2 hosted power
+    /// counters to look at the top 3 cards of R&D. Trash 1 of those cards
+    /// and add the rest to HQ" comes in the Corp's own start of turn, ahead
+    /// of the action phase a plan starts from (§37): it is planned, and the
+    /// card trashed is not the agenda. With HQ under its floor, where the
+    /// evaluator prices the cards it brings; above it a card in HQ is worth
+    /// nothing to it (`zone_size_value`), and the search is a tie the line
+    /// breaks by what it would play.
+    #[test]
+    fn takes_au_cos_search_at_its_turn_start_and_keeps_the_agenda() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut taken = 0;
+        for seed in 0..4 {
+            let mut state = GameState::new(seed);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+            state.corp.identity_counters = 2;
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+            state.corp.hq = vec![CardId("hedge_fund".to_string())];
+            // R&D's top is its last card, and the turn's draw takes it first.
+            let top = ["offworld_office", "pad_campaign", "hedge_fund", "hedge_fund"].map(|card| CardId(card.to_string()));
+            state.corp.r_and_d = [vec![CardId("hedge_fund".to_string()); 10], top.to_vec()].concat();
+            state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+            state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+            state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+            // The Runner ends its turn, and both pass until the Corp's begins.
+            for _ in 0..10 {
+                if state.pending_paid_choice.is_some() {
+                    break;
+                }
+                let Some(actor) = current_actor(&state) else { break };
+                let legal = netrunner_core::rules::legal_actions_for(&state, &registry, actor);
+                let action = legal.iter().find(|action| matches!(action, PlayerAction::EndTurn | PlayerAction::PassPriority { .. })).cloned().expect("a pass");
+                state = apply_action(&state, &registry, action).expect("the turn moves on").0;
+            }
+            assert!(state.pending_paid_choice.is_some(), "the premise: AU Co. offers its search");
+            // The Corp knows its own deck, so its sample of R&D is this one.
+            let deck = netrunner_core::rules::Deck {
+                identity: CardId("au_co_the_gold_standard_in_clones".to_string()),
+                cards: vec![(CardId("hedge_fund".to_string()), 13), (CardId("offworld_office".to_string()), 1), (CardId("pad_campaign".to_string()), 1)],
+            };
+            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck)));
+            for _ in 0..10 {
+                if state.pending_paid_choice.is_none() && state.pending_decision.is_none() {
+                    break;
+                }
+                let view = build_client_view(&state, &registry, Side::Corp);
+                agent.observe(&view);
+                let action = agent.select_action(&view, &registry);
+                state = apply_action(&state, &registry, action).expect("the agent's action applies").0;
+            }
+            if state.corp.identity_counters == 0 {
+                taken += 1;
+                assert!(state.corp.hq.iter().any(|card| card.0 == "offworld_office"), "seed {seed}: the agenda is kept: {:?}", state.corp.archives);
+            }
+        }
+        assert_eq!(taken, 4, "the search is taken");
     }
 
     /// Poétrï Luxury Brands' "whenever an agenda is stolen, you may install

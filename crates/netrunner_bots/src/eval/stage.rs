@@ -17,10 +17,15 @@
 //! each side's economy on the table — is deliberately not folded in yet:
 //! it would move the baseline's stage columns without a term needing it,
 //! and it goes in with the first term that reads it, measured. Points are
-//! read against `MatchRules::winning_agenda_points`, so a starter game to
-//! six points is late at four.
+//! read against what each side needs to win (`continuous::points_to_win`):
+//! the match's threshold, so a starter game to six points is late at four,
+//! less what a side's cards spare it — Issuaq Adaptics' hosted counters
+//! (Phase 5 §37), which read against the match rule alone left an Issuaq
+//! Corp one counter from winning in the middle of the game.
 
-use netrunner_core::rules::{GameState, InstallSlot, ServerId};
+use netrunner_core::cards::CardRegistry;
+use netrunner_core::rules::continuous::points_to_win;
+use netrunner_core::rules::{GameState, InstallSlot, ServerId, Side};
 
 /// The strategy guide's three stages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -60,12 +65,12 @@ pub fn horizon(stage: Stage) -> u32 {
     }
 }
 
-/// The stage `state` is in — see the module docs. Reads ICE positions and
-/// public points only, so a sample and the real state agree on it.
-pub fn stage(state: &GameState) -> Stage {
-    let target = state.rules.winning_agenda_points as i32;
-    let best = state.corp.resources.agenda_points.0.max(state.runner.resources.agenda_points.0);
-    if best >= target - 2 {
+/// The stage `state` is in — see the module docs. Reads ICE positions,
+/// public points and the public cards that change a side's target, so a
+/// sample and the real state agree on it.
+pub fn stage(state: &GameState, registry: &CardRegistry) -> Stage {
+    let close = |side: Side| state.resources(side).agenda_points.0 >= points_to_win(state, registry, side) - 2;
+    if close(Side::Corp) || close(Side::Runner) {
         return Stage::Late;
     }
     let iced = |server: ServerId| state.corp.installed.iter().any(|card| card.slot == InstallSlot::Ice && card.server == server);
@@ -93,6 +98,8 @@ mod tests {
     /// two points of the target makes it late whatever is built.
     #[test]
     fn the_stage_is_read_off_the_board_and_the_clock() {
+        let registry = CardRegistry::default();
+        let stage = |state: &GameState| stage(state, &registry);
         let mut state = GameState::new(0);
         assert_eq!(stage(&state), Stage::Early, "an empty board");
         state.corp.installed = vec![ice(ServerId::Hq), ice(ServerId::RnD)];

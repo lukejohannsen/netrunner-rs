@@ -40,9 +40,25 @@
 //! question). Tāo Salonga's swap is read as nothing: what two pieces of
 //! ICE are worth in each other's places is a reading of where each one
 //! stands against the rig, which no term makes off a run.
+//!
+//! **A hosted counter is worth what spending it buys** (Phase 5 §37).
+//! AU Co.'s "remove 2 hosted power counters to look at the top 3 cards of
+//! R&D", Epiphany Analytica's "[click], hosted power counter: … you may
+//! install 1 of those cards" and the scored agendas whose counters search
+//! or install (Off the Books, Project Ingatan) or advance (Sericulture
+//! Expansion) are read off the use that spends them — the same reading a
+//! trigger's pays are, at the evaluator's own rates — and a held counter is
+//! worth half of it (`COUNTER_USE_SHARE`). Issuaq Adaptics' counters are
+//! not spent: they are points, which the evaluator reads through the
+//! engine's `continuous::points_to_win`, and what a score places on the
+//! identity is read here (`counters_on_score`). Haas-Bioroid: Precision
+//! Design's "+1 maximum hand size" needed no reader: the discard it spares
+//! is the engine's, asked of `continuous::hand_size` at the turn's end, a
+//! step of the planned line since §35. Kate "Mac" McCaffrey's discount is
+//! the engine's price of a held card (`runner::held_price`).
 
 use super::*;
-use netrunner_core::dsl::{Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
+use netrunner_core::dsl::{ContinuousKind, Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
 use netrunner_core::rules::turn_log::{Class, ServerClass};
 use netrunner_core::rules::{check_requirement, eligible_positions, ResolutionContext, ServerId};
 
@@ -60,6 +76,10 @@ pub(super) struct Pays {
     /// non-agenda card from HQ", Synapse Global's "install 1 card from HQ,
     /// ignoring all costs").
     pub corp_installs: i32,
+    /// Advancement counters the Corp's text places on a card of its choice
+    /// (Sericulture Expansion's "place 2 advancement counters on 1
+    /// installed card").
+    pub corp_advancements: u32,
     /// Cards the breach accesses beyond the ones the run already makes
     /// (Mercury Chrome's "access 1 additional card").
     pub accesses: u32,
@@ -81,6 +101,7 @@ impl Pays {
             corp_credits: self.corp_credits + other.corp_credits,
             corp_cards: self.corp_cards + other.corp_cards,
             corp_installs: self.corp_installs + other.corp_installs,
+            corp_advancements: self.corp_advancements + other.corp_advancements,
             accesses: self.accesses + other.accesses,
             damage: self.damage + other.damage,
             core_damage: self.core_damage + other.core_damage,
@@ -101,7 +122,7 @@ impl Pays {
             - f64::from(self.damage)
             - f64::from(self.tags) * tag
             - f64::from(self.core_damage) * core;
-        let corp = f64::from(self.corp_credits + self.corp_cards + self.corp_installs);
+        let corp = f64::from(self.corp_credits + self.corp_cards + self.corp_installs) + f64::from(self.corp_advancements);
         match side {
             Side::Runner => runner - corp,
             Side::Corp => corp - runner,
@@ -317,14 +338,27 @@ fn paid(state: &GameState, registry: &CardRegistry, side: Side, ctx: &Resolution
                 None => declined,
             }
         }
-        // "You may install 1 card from HQ": an install, when the zone
-        // holds a card the selection would offer. Which card, and where
-        // it goes, is the Corp's to choose when the moment comes.
-        Effect::PromptChooseCards { side: Side::Corp, source, filter, then: Some(then), .. }
-            if installs_a_corp_card(then)
-                && !eligible_positions(state, registry, Side::Corp, source, filter, None, None).is_empty() =>
-        {
-            Pays { corp_installs: 1, ..Pays::default() }
+        // A selection of the Corp's, when its zone holds a card it would
+        // offer: "you may install 1 card from HQ" is an install, "place 2
+        // advancement counters on 1 installed card" those counters, and
+        // cards it takes into HQ from R&D or Archives are cards, with
+        // whatever its `then` does after (AU Co.'s "trash 1 of those cards
+        // and add the rest to HQ"). Which cards, and where an install goes,
+        // is the Corp's to choose when the moment comes.
+        Effect::PromptChooseCards { side: Side::Corp, source, filter, max, destination, then, .. } => {
+            let offered = eligible_positions(state, registry, Side::Corp, source, filter, None, None).len() as u32;
+            let chosen = (*max).min(offered);
+            if chosen == 0 {
+                return Pays::default();
+            }
+            let taken = matches!(source, CardZoneRef::OwnRAndD | CardZoneRef::OwnArchives) && *destination == Some(CardZoneRef::OwnHq);
+            let cards = Pays { corp_cards: if taken { chosen as i32 } else { 0 }, ..Pays::default() };
+            match then.as_deref() {
+                Some(then) if installs_a_corp_card(then) => Pays { corp_installs: 1, ..Pays::default() },
+                Some(Effect::PlaceAdvancementCounters(Amount::Fixed(n))) => Pays { corp_advancements: *n, ..Pays::default() },
+                Some(then) => cards.add(paid(state, registry, side, ctx, then, at)),
+                None => cards,
+            }
         }
         _ => Pays::default(),
     }
@@ -359,6 +393,148 @@ fn installs_a_corp_card(then: &Effect) -> bool {
         }
     });
     found
+}
+
+/// The share of what spending a counter buys that a held counter is worth.
+/// A half, because a counter held is a use deferred at least to the next
+/// moment that offers it, and because the use itself scores whole where it
+/// is made: a counter worth all of its use was a tie between spending and
+/// holding, and a counter priced above its use was never spent — Off the
+/// Books' at `AGENDA_COUNTER_WEIGHT`, kept rather than spent on the search
+/// it buys once the planner judged its offer (§35).
+const COUNTER_USE_SHARE: f64 = 0.5;
+
+/// What one counter hosted on the Corp card `def` is worth to the Corp
+/// held, at `w`'s rates: `COUNTER_USE_SHARE` of the best use that spends
+/// counters — a `Paid` ability or an offer its triggers make the Corp,
+/// costing `RemoveCounters(n)` — read as a trigger's pays are, less the
+/// clicks and credits the use costs besides, over the `n` it spends. A
+/// card in HQ is worth what the evaluator prices it at (`zone_size_value`,
+/// the shortfall below the floor), an install `unrezzed_install_weight`,
+/// an advancement counter `advancement_weight`, a credit `own_credit_
+/// weight`. `None` when no use is one this reading prices — a card whose
+/// counters nothing spends (Issuaq Adaptics', NBN: Making News'
+/// recurring credits) or spends on what no pays say (Proprionegation's
+/// "the Runner moves to the outermost position of Archives"), which the
+/// caller prices as it did before.
+pub(super) fn counter_worth(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights) -> Option<f64> {
+    if def.side != Side::Corp {
+        return None;
+    }
+    let ctx = ResolutionContext::for_card(Some(&def.id));
+    let at = At { server: ServerId::Hq, accesses: 0, accessing: None, runner_credits: state.runner.resources.credits.0 };
+    let mut uses: Vec<(&Cost, &Effect)> =
+        def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid).filter_map(|ability| Some((ability.cost.as_ref()?, &ability.effect))).collect();
+    // An offer is one of a trigger's effects in every card that makes one.
+    for effect in def.triggers.iter().flat_map(|trigger| &trigger.effects) {
+        if let Effect::OfferPaidChoice { side: Side::Corp, cost, if_paid, .. } = effect {
+            uses.push((cost, if_paid));
+        }
+    }
+    let mut best: Option<f64> = None;
+    for (cost, effect) in uses {
+        let Some((counters, clicks, credits)) = spends_counters(cost) else { continue };
+        if !priced(effect) {
+            continue;
+        }
+        let pays = paid(state, registry, Side::Corp, &ctx, effect, &at);
+        let bought = f64::from(pays.corp_credits) * w.own_credit_weight
+            + f64::from(pays.corp_installs) * w.unrezzed_install_weight
+            + f64::from(pays.corp_advancements) * w.advancement_weight
+            + super::fundamentals::zone_size_value(state, Side::Corp, w, &CardZoneRef::OwnHq, i64::from(pays.corp_cards), 0)
+            - f64::from(clicks) * w.click_weight
+            - f64::from(credits) * w.own_credit_weight;
+        let each = bought / f64::from(counters);
+        best = Some(best.map_or(each, |best: f64| best.max(each)));
+    }
+    best.map(|each| each.max(0.0) * COUNTER_USE_SHARE)
+}
+
+/// `(counters, clicks, credits)` a cost spends, when it removes hosted
+/// counters: `RemoveCounters(n)`, alone or beside clicks and credits.
+fn spends_counters(cost: &Cost) -> Option<(u32, u32, u32)> {
+    fn parts(cost: &Cost) -> Option<(u32, u32, u32)> {
+        match cost {
+            Cost::RemoveCounters(n) => Some((*n, 0, 0)),
+            Cost::Clicks(n) => Some((0, *n, 0)),
+            Cost::Credits(n) => Some((0, 0, *n)),
+            Cost::AllOf(all) => all.iter().try_fold((0, 0, 0), |(a, b, c), part| parts(part).map(|(x, y, z)| (a + x, b + y, c + z))),
+            _ => None,
+        }
+    }
+    parts(cost).filter(|(counters, _, _)| *counters > 0)
+}
+
+/// Whether a use's effect says something `paid` prices for the Corp:
+/// credits or cards for it, an install, advancement counters, or cards
+/// taken into HQ. An effect that says none of them is not read as
+/// worthless — it is not read.
+fn priced(effect: &Effect) -> bool {
+    let mut found = false;
+    effect.for_each_effect(&mut |effect| {
+        found |= matches!(
+            effect,
+            Effect::GainCredits(Side::Corp, _)
+                | Effect::DrawCards(Side::Corp, _)
+                | Effect::PromptInstallCorpCard { .. }
+                | Effect::PlaceAdvancementCounters(_)
+                | Effect::PromptChooseCards { destination: Some(CardZoneRef::OwnHq), .. }
+        );
+    });
+    found
+}
+
+/// The counters the Corp's identity places on itself when `installed`, a
+/// `def` agenda, is scored — now (`later` false), or on a later turn it is
+/// neither installed nor advanced in (`later` true). Issuaq Adaptics'
+/// "whenever you score an agenda that you did not install or advance this
+/// turn, place 1 power counter on this identity", read off its `when`: the
+/// words about what happened to the agenda this turn are answered off the
+/// install (`installed_this_turn`, its own count of advances), and the
+/// words about the card off the card. A trigger with an intervening "if"
+/// or a "first time each turn" is not read.
+pub(super) fn counters_on_score(state: &GameState, registry: &CardRegistry, installed: &InstalledCard, def: &CardDefinition, later: bool) -> u32 {
+    let Some(identity) = state.corp.identity.as_ref().and_then(|id| registry.get(id)) else { return 0 };
+    identity
+        .triggers
+        .iter()
+        .filter(|trigger| trigger.trigger == Trigger::OnAgendaScored && trigger.subject != Some(Subject::This))
+        .filter(|trigger| trigger.requirement.is_none() && !trigger.first_each_turn)
+        .filter(|trigger| match &trigger.when {
+            None => true,
+            Some(EventFilter::Card(filter)) => scored_card_matches(state, filter, def, installed, later),
+            Some(_) => false,
+        })
+        .flat_map(|trigger| &trigger.effects)
+        .map(|effect| if let Effect::AddCounters(n) = effect { *n } else { 0 })
+        .sum()
+}
+
+fn scored_card_matches(state: &GameState, filter: &CardFilter, def: &CardDefinition, installed: &InstalledCard, later: bool) -> bool {
+    match filter {
+        CardFilter::All(filters) => filters.iter().all(|filter| scored_card_matches(state, filter, def, installed, later)),
+        CardFilter::AnyOf(filters) => filters.iter().any(|filter| scored_card_matches(state, filter, def, installed, later)),
+        CardFilter::NotInstalledThisTurn => later || !installed.installed_this_turn,
+        CardFilter::InstalledThisTurn => !later && installed.installed_this_turn,
+        CardFilter::NotAdvancedThisTurn => later || installed.this_turn.count(state.turn, Trigger::OnAdvance) == 0,
+        other => card_matches_filter(def, other),
+    }
+}
+
+/// The agenda points one counter on the Corp's identity spares it — Issuaq
+/// Adaptics' "for each hosted power counter, you need 1 less agenda point
+/// to win the game", read off the identity's `AgendaPointsToWin` of its
+/// hosted counters.
+pub(super) fn points_per_identity_counter(state: &GameState, registry: &CardRegistry) -> i32 {
+    let Some(identity) = state.corp.identity.as_ref().and_then(|id| registry.get(id)) else { return 0 };
+    identity
+        .continuous
+        .iter()
+        .filter_map(|effect| match &effect.kind {
+            ContinuousKind::AgendaPointsToWin(number) if number.of == Amount::HostedCounters => Some(-number.per),
+            _ => None,
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -539,6 +715,61 @@ mod tests {
         state.runner.grip = corp_cards("grip", 3);
         let held = prospect(&state);
         assert!(held < blank && held > blank - 1.0, "with cards to lose, the damage at its chance: {held} against {blank}");
+    }
+
+    /// A hosted counter is half of what spending it buys, at the
+    /// evaluator's rates (§37): Off the Books' search installed free,
+    /// Sericulture Expansion's two advancement counters, Epiphany
+    /// Analytica's install less the click it costs, AU Co.'s two cards
+    /// where HQ is short of them — and nothing read for a counter no use
+    /// prices (Embedded Reporting's operation set on R&D) or none spends
+    /// (Issuaq Adaptics', which are points).
+    #[test]
+    fn a_hosted_counter_is_worth_half_of_what_spending_it_buys() {
+        let pool = pool();
+        let w = every_corp();
+        let mut state = table();
+        state.corp.r_and_d = ["hedge_fund", "hedge_fund", "pad_campaign", "hedge_fund", "hedge_fund", "hedge_fund", "pad_campaign"].map(|card| CardId(card.to_string())).to_vec();
+        let worth = |state: &GameState, card: &str| counter_worth(state, &pool, &printed(&pool, card), &w);
+        assert_eq!(worth(&state, "off_the_books"), Some(0.5 * w.unrezzed_install_weight), "\"search R&D for 1 card … install that card\"");
+        assert_eq!(worth(&state, "sericulture_expansion"), Some(0.0), "nothing installed to advance");
+        state.corp.installed.push(InstalledCard { card: CardId("pad_campaign".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() });
+        assert_eq!(worth(&state, "sericulture_expansion"), Some(0.5 * 2.0 * w.advancement_weight));
+        assert_eq!(worth(&state, "epiphany_analytica_nations_undivided"), Some(0.5 * (w.unrezzed_install_weight - w.click_weight)), "an asset in the top 3, for a click");
+        assert_eq!(worth(&state, "embedded_reporting"), None, "an operation set on R&D is not priced");
+        assert_eq!(worth(&state, "issuaq_adaptics_sustaining_diversity"), None, "counters nothing spends");
+        assert_eq!(worth(&state, "nbn_making_news"), None, "recurring credits");
+        // AU Co.: the two cards it takes are worth what HQ is short of them.
+        state.corp.hq = corp_cards("hq", 1);
+        let short = worth(&state, "au_co_the_gold_standard_in_clones").expect("a search");
+        assert!((short - 0.5 * 2.0 * w.hq_shortfall_weight / 2.0).abs() < 1e-9, "{short}");
+        state.corp.hq = corp_cards("hq", 5);
+        assert_eq!(worth(&state, "au_co_the_gold_standard_in_clones"), Some(0.0), "a card above the floor is worth nothing here");
+    }
+
+    /// Issuaq Adaptics places a counter for an agenda "that you did not
+    /// install or advance this turn": none for one advanced now, one for the
+    /// same agenda scored on a later turn untouched.
+    #[test]
+    fn issuaq_counts_a_score_now_and_a_score_later() {
+        let pool = pool();
+        let mut state = table();
+        state.corp.identity = id("issuaq_adaptics_sustaining_diversity");
+        let agenda = printed(&pool, "offworld_office");
+        let mut installed = InstalledCard { card: agenda.id.clone(), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() };
+        assert_eq!((counters_on_score(&state, &pool, &installed, &agenda, false), counters_on_score(&state, &pool, &installed, &agenda, true)), (1, 1));
+        installed.installed_this_turn = true;
+        assert_eq!((counters_on_score(&state, &pool, &installed, &agenda, false), counters_on_score(&state, &pool, &installed, &agenda, true)), (0, 1), "installed this turn");
+        installed.installed_this_turn = false;
+        state.corp.installed.push(installed.clone());
+        let advance = GameEvent::CardAdvanced { install: installed.install_id, card: Some(agenda.id.clone()), advancement_tokens: 1 };
+        netrunner_core::rules::dispatch_event(&mut state, &pool, &advance).expect("the agenda is advanced");
+        let advanced = state.corp.installed[0].clone();
+        assert_eq!((counters_on_score(&state, &pool, &advanced, &agenda, false), counters_on_score(&state, &pool, &advanced, &agenda, true)), (0, 1), "advanced this turn");
+        assert_eq!(points_per_identity_counter(&state, &pool), 1);
+        state.corp.identity = None;
+        assert_eq!(counters_on_score(&state, &pool, &advanced, &agenda, true), 0);
+        assert_eq!(points_per_identity_counter(&state, &pool), 0);
     }
 
     /// The Corp reads the same run: what Gabriel Santiago's success would

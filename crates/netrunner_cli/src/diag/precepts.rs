@@ -268,7 +268,7 @@ impl<'a> Watcher<'a> {
         self.last_turn_opened = state.turn;
         // Odd turns are the Corp's, even the Runner's (`GameState::turn`).
         let side = if state.turn % 2 == 1 { Side::Corp } else { Side::Runner };
-        self.turn_stage = stage(state);
+        self.turn_stage = stage(state, self.registry);
         let credits = f64::from(state.resources(side).credits.0);
         match side {
             Side::Corp => {

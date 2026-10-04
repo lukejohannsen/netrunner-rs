@@ -323,8 +323,20 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .grip
         .iter()
         .filter_map(|card| registry.get(card))
-        .map(|def| install_delta(def, rig, shown, w, horizon).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon).max(0.0))
         .sum()
+}
+
+/// What installing a held card would cost the Runner, as the engine asks
+/// it (`continuous::install_cost_of`): the printed cost and every
+/// discount on the table, the identity's among them — Kate "Mac"
+/// McCaffrey's "lower the install cost of the first program or piece of
+/// hardware you install each turn by 1" (Phase 5 §37). Read as the table
+/// stands: once the turn's first such install is made, the rest are at
+/// their printed cost until the turn ends, and at the leaf the next one is
+/// the turn after's.
+pub(super) fn held_price(state: &GameState, registry: &CardRegistry, def: &CardDefinition) -> u32 {
+    netrunner_core::rules::continuous::install_cost_of(state, registry, def)
 }
 
 /// What an installer on the table is worth (Phase 5 §30): `(hosted,
@@ -364,7 +376,7 @@ pub(super) fn hosted_installs_value(state: &GameState, registry: &CardRegistry, 
     // Programs: what the installer installs. A grip hardware is not a
     // click it will ever save.
     let delta = |def: &CardDefinition| {
-        if def.card_type == CardType::Program { install_delta(def, rig, shown, w, horizon).max(0.0) } else { 0.0 }
+        if def.card_type == CardType::Program { install_delta(def, held_price(state, registry, def), rig, shown, w, horizon).max(0.0) } else { 0.0 }
     };
     let mut hosted = 0.0;
     let mut promised = 0.0;
@@ -416,7 +428,8 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// What this evaluator would credit the Runner for installing `def` from
 /// its grip, credits and memory spent included: presence, plus coverage
 /// for each ICE subtype the card breaks that the rig (`rig`) cannot,
-/// minus the printed cost and the memory it takes. The same arithmetic
+/// minus its price (`held_price`, the printed cost less what the table
+/// takes off it) and the memory it takes. The same arithmetic
 /// the install itself scores (the grip term aside), so a card is "live"
 /// in hand exactly when the Runner would install it — leaving the memory
 /// out made a held Cleaver worth more than the installed one and the
@@ -425,7 +438,7 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// shown (`shown`, from `shown_for`) is worth its coverage less
 /// `unshown_breaker_weight`, and an R&D access the card promises is
 /// worth `rd_access_weight` (Stage 7; both zero at the reference).
-pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32) -> f64 {
+pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32) -> f64 {
     if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
         return 0.0;
     }
@@ -442,15 +455,17 @@ pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], shown: [bool; 
     };
     w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised
         - unshown as f64 * w.unshown_breaker_weight
-        - f64::from(def.cost) * w.own_credit_weight
+        - f64::from(price) * w.own_credit_weight
         - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
 }
 
 /// Credits the Runner is short of the cheapest grip breaker worth
 /// installing: one that covers a subtype the rig cannot break and fits in
-/// free memory. Zero with no such card, or once it is affordable. Printed
-/// cost, ignoring install discounts — over-estimating the target only
-/// makes the Runner save one click longer. Only a breaker for ICE the
+/// free memory. Zero with no such card, or once it is affordable. Its
+/// price is `held_price`'s: it was the printed cost, on the ground that
+/// over-estimating the target only made the Runner save one click longer,
+/// and under Kate "Mac" McCaffrey that click is every breaker's (§37).
+/// Only a breaker for ICE the
 /// Corp has shown is saved for when `shown` says which (Stage 7); the
 /// reference passes every subtype.
 pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegistry, shown: [bool; 3]) -> u32 {
@@ -462,7 +477,7 @@ pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegist
         .filter_map(|card| registry.get(card))
         .filter(|def| def.memory_cost.unwrap_or(0) <= state.runner.memory_units.0)
         .filter(|def| covers(def).iter().zip(rig).zip(shown).any(|((grip, rig), shown)| *grip && !rig && shown))
-        .map(|def| def.cost)
+        .map(|def| held_price(state, registry, def))
         .min();
     target.map_or(0, |cost| cost.saturating_sub(state.runner.resources.credits.0))
 }
@@ -775,6 +790,36 @@ mod tests {
         );
     }
 
+    /// Kate "Mac" McCaffrey's "lower the install cost of the first program
+    /// or piece of hardware you install each turn by 1" is in a held card's
+    /// price (§37): the grip is worth a credit more and the breaker saved
+    /// for is a credit nearer, until the turn's first such install is made.
+    #[test]
+    fn kates_discount_is_in_a_held_cards_price() {
+        use netrunner_core::rules::MemoryUnits;
+        let pool = pool();
+        let corroder = printed(&pool, "corroder");
+        let mut state = GameState::new(0);
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![corroder.id.clone()];
+        assert_eq!(held_price(&state, &pool, &corroder), corroder.cost);
+        let printed_shortfall = breaker_savings_shortfall(&state, &pool, [true; 3]);
+        state.runner.identity = Some(CardId("kate_mac_mccaffrey_digital_tinker".to_string()));
+        assert_eq!(held_price(&state, &pool, &corroder), corroder.cost - 1);
+        assert_eq!(breaker_savings_shortfall(&state, &pool, [true; 3]), printed_shortfall - 1);
+        // The turn's first program is installed: the next is at its printed cost.
+        state.phase = netrunner_core::rules::GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = netrunner_core::rules::Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip.push(CardId("gordian_blade".to_string()));
+        let install = netrunner_core::rules::legal_actions_for(&state, &pool, Side::Runner)
+            .into_iter()
+            .find(|action| matches!(action, netrunner_core::rules::PlayerAction::InstallProgram { card_id, .. } if card_id.0 == "gordian_blade"))
+            .expect("Gordian Blade can be installed");
+        state = netrunner_core::rules::apply_action(&state, &pool, install).expect("it is").0;
+        assert_eq!(held_price(&state, &pool, &corroder), corroder.cost, "\"the first … each turn\"");
+    }
+
     /// Nothing to save for: a grip breaker for a subtype the rig already
     /// covers, or one that does not fit in free memory.
     #[test]
@@ -840,7 +885,10 @@ mod tests {
             state.runner.grip = grip.iter().map(|c| CardId(c.to_string())).collect();
             state
         };
-        let delta = |id: &str| install_delta(&printed(&registry, id), [false; 3], [true; 3], &w, 9);
+        let delta = |id: &str| {
+            let def = printed(&registry, id);
+            install_delta(&def, def.cost, [false; 3], [true; 3], &w, 9)
+        };
         assert!(delta("cleaver") > w.click_weight && delta("carmen") > w.click_weight);
         assert!(delta("dear_corroder") < 0.0, "9[c] for one subtype is not worth installing");
 
@@ -1255,7 +1303,7 @@ mod tests {
         let w = guide();
         let rig = [false; 3];
         let telework = printed(&pool, "telework_contract");
-        assert!(install_delta(&telework, rig, [true; 3], &w, horizon(Stage::Early)) > install_delta(&telework, rig, [true; 3], &Weights::default(), 9) + 1.0);
+        assert!(install_delta(&telework, telework.cost, rig, [true; 3], &w, horizon(Stage::Early)) > install_delta(&telework, telework.cost, rig, [true; 3], &Weights::default(), 9) + 1.0);
         let mut held = GameState::new(0);
         held.runner.resources.credits = Credits(5);
         held.runner.memory_units = MemoryUnits(4);
@@ -1293,7 +1341,7 @@ mod tests {
             state.runner.resources.agenda_points = netrunner_core::rules::AgendaPoints(stage_points);
             state.corp.installed = vec![InstalledCard { card: CardId("pad_campaign".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
             let run = RunState { server: ServerId::Remote(0), ..Default::default() };
-            access_prospect(&state, &run, &pool, &w, 5, horizon(stage(&state)))
+            access_prospect(&state, &run, &pool, &w, 5, horizon(stage(&state, &pool)))
         };
         assert!(pad(0) > 0.0, "early: the run that trashes it is worth starting, {}", pad(0));
         assert_eq!(pad(6), 0.0, "late: 4[c] to trash two turns of income is not");

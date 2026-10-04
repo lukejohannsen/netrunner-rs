@@ -272,7 +272,7 @@ pub(super) fn advancement_upside(
     // to cancel today. The horizon likewise: a token changes no card's
     // income.
     let rig = rig_coverage(state, registry);
-    let horizon = horizon(stage(state));
+    let horizon = horizon(stage(state, registry));
     for installed in &state.corp.installed {
         let Some(def) = registry.get(&installed.card) else { return 0.0 };
         if !card_matches_filter(def, filter) {

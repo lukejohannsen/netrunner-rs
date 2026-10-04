@@ -26,28 +26,10 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 
 ## Open
 
-- **The evaluators read both identities' text, not just the Corp's faction** (owed since §33, flagged by
-  the person 3 October 2026 as a huge miss). §33 put the identities into every sample, so what an
-  identity pays inside the planner's own line lands in the state it scores (Topan's install, Built to
-  Last's 2[credit] on an advance, Synapse Global's click); what it pays at a moment the line does not
-  reach had no reader on either chair. Four stages, read off the DSL through one module
-  (`eval::identities`, the engine's own `check_requirement`), each measured per the §26 recipe:
-  1. **The run** — done, §34: what both identities print about a run's success, breach, accesses,
-     a trash and its end, at the leaf, on both chairs.
-  2. **The turn's end** — done, §35: the decisions the seat's own turn's end parks on it (PT
-     Untaian's advance, Magdalene Keino-Chemutai's install, Méliès U.'s number) are steps of the
-     planned line; the automatic credits (Nebula Talent Management, Jinteki: Restoring Humanity)
-     were already in it.
-  3. **Steals, scores and tags across the table** — done, §36: what both identities print about a
-     steal and a tag is read at the leaf (Jinteki: Personal Evolution's damage toward the flatline,
-     Thule Subsea's tax, Poétrï's install, NBN: Reality Plus's credits), core damage is a hand size
-     on both chairs, a selection the seat's own identity parks on it is planned (Synapse Global's
-     and Poétrï's installs), and a faceup BANGUN agenda is worth its punishment. Tāo Salonga's swap
-     is the one left, below.
-  4. **Standing effects and hosted counters** — Issuaq Adaptics' counters as agenda points, AU Co.'s
-     and Epiphany Analytica's counters as the searches they buy, Haas-Bioroid: Precision Design's
-     hand size, Kate "Mac" McCaffrey's discount in a held card's price.
-- **Tāo Salonga's swap is priced by where each piece of ICE stands against the rig** (§36): "you may
+- **Tāo Salonga's swap is priced by where each piece of ICE stands against the rig** (§36) — the last
+  of the identities' text, which §34–§37 read on both chairs in four stages (the run, the turn's
+  end, steals and tags, standing effects and counters; flagged by the person 3 October 2026 as a
+  huge miss): "you may
   swap 2 installed pieces of ice" whenever an agenda is scored or stolen is taken 13 times in
   183 offers at most (26 Runner selections, two a swap), and no term would tell a good swap from a bad one — the Runner reads the ICE only on
   a run, as a leaf's break cost, so planned the swap and the decline would tie. Needs a Runner
@@ -94,6 +76,7 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 - **§34** — A run is priced with what both identities print about it: Gabriel Santiago's, Zahya Sadeghi's, Dewi Subrotoputri's and René "Loup" Arcemont's pay at the run leaf and is denied by the Corp's run term, Mercury Chrome's access joins the breach, BANGUN's punishment and a faceup agenda's steal are priced at the access; the self-pairing inside the band, the identities' triggers fired more in six of seven identity pairings (`feat/a-run-reads-both-identities`, 3 October 2026).
 - **§35** — The seat's own turn's end is planned: the engine enters the other side's start of turn before a decision the discard step's triggers parked is answered, so every line ended there and the one-ply chooser declined PT Untaian's advance 5 times in 16 with a card to put it on; PT Untaian's advance taken 5–7× as often, Magdalene Keino-Chemutai's install from 0 to 85 uses in 48 games and the Sabbatical Runner's wins 12 → 17 and 10 → 21 of 32; the self-pairing moved toward the Runner, past the band on seed 2, most of it the Runner seat's (`feat/turn-end-identities`, 3 October 2026).
 - **§36** — Steals, scores and tags across the table: core damage is a hand size on both chairs and Thule Subsea's tax is paid (6 → 79 and 14 → 77 times in 48 games); a steal under Jinteki: Personal Evolution is read toward the flatline; a selection the seat's own identity parks on it is planned, so Synapse Global's free install and Poétrï's install from HQ are taken (selections 4 → 61 and 5 → 54, 9 → 96 and 4 → 81); a faceup BANGUN agenda is worth its punishment, not an asset's weight; the self-pairing within the band (`feat/identities-steals-scores-tags`, 3 October 2026).
+- **§37** — Standing effects and hosted counters: Issuaq Adaptics' counters are points and an agenda advanced to its requirement is held behind a wall for one; a hosted counter is half of what spending it buys, not a flat 2.0 (within the band, +0.008 on both seeds); AU Co.'s turn-start search is planned (taken 46 → 161 and 63 → 161 times in 48 games); Kate "Mac" McCaffrey's discount is in a held card's price; and an agenda in Archives is half its points to the Corp, which had trashed 68 agendas in a planner pass of the pool and now trashes 10 — the self-pairing +0.078 toward the Corp on both seeds for that alone, past the band (`feat/identity-standing-effects`, 4 October 2026).
 - **§31** — A run a card's text began is priced with what the text put on it: the run's own credits break ICE and are worth the breaks they cover (Overclock), the rider pays on success (Clean Getaway, Red Team's run, Jailbreak's draw and access), the breach is of the server the run approaches (Maintenance Access), an armed prevention passes the first unbreakable piece (Shred) and a rez tax is what the forced rez costs (Tread Lightly) — Overclock 0 → 58, Clean Getaway 0 → 46, Shred 0 → 25, Maintenance Access 0 → 7 plays over a planner pass of the pool, the four off the blind list; the self-pairing moved within the band in opposite directions on two seeds (`feat/run-riders-at-the-leaf`, 2 October 2026).
 - **§30** — A program hosted on Madani is one turn from the table (its install delta less a click) and the grip promises its installer half a click: the planner installs Madani beside programs that wait, hosts on it and installs from it — 1 → 37 installs and 0 → 24 hosts-or-free-installs over 192 games, Madani off the blind list; three readings measured and rejected first, one of them with a beam change that moved every game (`feat/madani-hosts-the-rig`, 2 October 2026).
 - **§29** — The cards the planner never plays are the difference between seatings, measured: `scripts/blind_cards.py` over a random pass and a planner pass of `diag precepts` lists every card random seats use at least five times that the planner never does — 26 on `main` at #341, Madani first at 115–163 uses a pass — where "no seat used it" could not see a card the planner installs and never uses (`diag/blind-cards`, 2 October 2026).

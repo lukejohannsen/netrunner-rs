@@ -559,6 +559,20 @@ const ADVANCEMENT_WEIGHT: f64 = 1.5;
 /// `ADVANCEMENT_WEIGHT`), *Off the Books* for a searched card installed
 /// free.
 const AGENDA_COUNTER_WEIGHT: f64 = 2.0;
+/// Each agenda point in Archives, to the Corp: an agenda it trashed or
+/// discarded is one it can never score and one a single Archives run
+/// steals. Nothing read it before Phase 5 §37, so a choice of which card
+/// to trash or discard was the jitter's whenever one was an agenda: once
+/// the planner took AU Co.'s "look at the top 3 cards of R&D. Trash 1 of
+/// those cards and add the rest to HQ", the Corp trashed agendas 58 → 80
+/// and 22 → 58 times in 48 games and scored 65 → 38. It was the Corp's
+/// everywhere, not AU Co.'s: over a planner pass of the pool (192 games,
+/// seed 1) the Corp trashed 68 agendas with no weight and 10 with this
+/// one, and the planner's self-pairing moved +0.078 toward the Corp on
+/// both seeds (z +2.65, +2.76) for it alone. Half a point: the Runner
+/// still has to run Archives for it, and any weight at all decides those
+/// choices; it is not meant to decide anything a point would.
+const ARCHIVED_AGENDA_WEIGHT: f64 = 10.0;
 /// One advancement token on an *ambush* — a card that is not an agenda
 /// but whose own text reads its advancement tokens to deal damage
 /// (*Clearinghouse*, *Urtica Cipher*).
@@ -1189,6 +1203,7 @@ pub struct Weights {
     pub unrezzed_install_weight: f64,
     pub advancement_weight: f64,
     pub agenda_counter_weight: f64,
+    pub archived_agenda_weight: f64,
     pub ambush_advancement_weight: f64,
     pub ambush_advancement_cap: u32,
     pub ambush_weight: f64,
@@ -1461,6 +1476,7 @@ impl Default for Weights {
             unrezzed_install_weight: UNREZZED_INSTALL_WEIGHT,
             advancement_weight: ADVANCEMENT_WEIGHT,
             agenda_counter_weight: AGENDA_COUNTER_WEIGHT,
+            archived_agenda_weight: ARCHIVED_AGENDA_WEIGHT,
             ambush_advancement_weight: AMBUSH_ADVANCEMENT_WEIGHT,
             ambush_advancement_cap: AMBUSH_ADVANCEMENT_CAP,
             ambush_weight: AMBUSH_WEIGHT,
@@ -1554,6 +1570,12 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
     let own = state.resources(side);
     let opponent = state.resources(side.other());
     let mut score = (own.agenda_points.0 as f64 - opponent.agenda_points.0 as f64) * w.agenda_point_weight;
+    // A point a side's cards spare it of the target is a point it has —
+    // Issuaq Adaptics' "for each hosted power counter, you need 1 less
+    // agenda point to win the game" (Phase 5 §37) — read off the engine's
+    // own target (`continuous::points_to_win`), which the win check asks.
+    let spared = |side: Side| f64::from(state.rules.winning_agenda_points as i32 - continuous::points_to_win(state, registry, side));
+    score += (spared(side) - spared(side.other())) * w.agenda_point_weight;
     if state.is_resolution_blocked() && current_actor(state) == Some(side) {
         score -= w.unresolved_decision_weight;
         let upside = pending_decision_upside(state, side, registry, w);
@@ -1566,7 +1588,7 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
     // The guide's-rate terms are added after the whole of the old sum,
     // on both arms, so at zero weight the sum's order — and its rounding
     // — is the one `coverage_identical.py` pinned.
-    let horizon = horizon(stage(state));
+    let horizon = horizon(stage(state, registry));
     match side {
         Side::Corp => corp::score(state, registry, w, horizon, &mut score),
         Side::Runner => runner::score(state, registry, w, horizon, &mut score),
