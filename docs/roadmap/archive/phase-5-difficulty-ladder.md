@@ -3225,6 +3225,7 @@ Tests: `tao_salonga_swaps_the_piece_the_rig_cannot_break_off_rnd_and_never_onto_
   | Gimbatul vs Professional Opportunities, Sabbatical, Grassroots | Barry, Magdalene, Sebastião | — | 28 → 28, 19 → 19, 37 → 38 |
 
   The Tāo Corp's wins 70 → 60 of 192; each pairing is inside 48 games' noise.
+- **Rechecked after the rebase onto `6aa5389`** (#354, Uprising Stages 1–3, merged while this was measured; its new cards change what every sample draws): both random shapes identical (`9389f8b1…`), planner shapes `8fe528ef…` → `50c72ac6…`; paired bench **0.451 → 0.435** (z −0.72, 70 discordant) and **0.445 → 0.443** (z −0.11, 77); Tāo's swaps 0 → 134, 159, 130, 117 in the same four pairings, and the Tāo Corp's wins 69 → 69 — the 70 → 60 above was noise, and the swap's worth to the Tāo Runner is not shown at 48 games a pairing.
 
 **Not done, and why.**
 - **A swap with nothing to gain is the jitter's.** A swap within one server, or between two servers shut alike, moves nothing the reading sees and ties with the decline; in the probe above that was 53 of 146 choices, and the jitter takes one of the many tied swaps over the one decline. Recorded, not fixed: nothing measured says such a swap costs either side.
