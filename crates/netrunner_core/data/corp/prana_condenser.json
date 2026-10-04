@@ -1,0 +1,77 @@
+{
+  "id": "prana_condenser",
+  "title": "Prāna Condenser",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 4,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Net"
+      },
+      "text": "[interrupt] → Whenever you would do 1 or more net damage, you may prevent 1 net damage. If you do, place 1 power counter on this asset and gain 3[credit].",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "Prevent": {
+                      "Damage": {
+                        "kind": "Net",
+                        "up_to": 1
+                      }
+                    }
+                  },
+                  {
+                    "AddCounters": 1
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may prevent 1 net damage. If you do, place 1 power counter on this asset and gain 3[credit]",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "DealDamageAmount": [
+          "Net",
+          "HostedCounters"
+        ]
+      },
+      "text": "[click][click], [trash]: Do 1 net damage for each hosted power counter."
+    }
+  ],
+  "built_from": 26107,
+  "is_playable": true
+}

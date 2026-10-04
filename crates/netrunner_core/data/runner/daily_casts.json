@@ -1,0 +1,47 @@
+{
+  "id": "daily_casts",
+  "title": "Daily Casts",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 8
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 2
+          }
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 26094,
+  "is_playable": true
+}

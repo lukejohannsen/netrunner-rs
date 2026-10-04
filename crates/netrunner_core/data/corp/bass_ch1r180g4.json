@@ -1,0 +1,31 @@
+{
+  "id": "bass_ch1r180g4",
+  "title": "Bass CH1R180G4",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainClicks": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "[click], [trash]: Gain [click][click]."
+    }
+  ],
+  "built_from": 26098,
+  "is_playable": true
+}

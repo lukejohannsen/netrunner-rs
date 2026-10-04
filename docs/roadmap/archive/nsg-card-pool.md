@@ -6675,3 +6675,103 @@ complete, and Midnight Sun with it.**
   the rotation, the card gate included. `coverage_identical.py` against
   Stage 8b (dceab7e, 192 games a report): **identical in all four shapes**,
   random and planner, view and index.
+
+### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
+
+#### Stage 1 — ten cards, composed (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Moshing, Self-modifying Code, Daily
+Casts, Bass CH1R180G4, Cerebral Overwriter, Drafter, Flower Sermon, Prāna
+Condenser, Bellona and Colossus. **No new `Effect`, and no change to the
+engine:** card files, decks and tests, with one line each in a client test
+and a planner test. Uprising 10 of 65, its booster pack 0 of 7;
+`UR_UNIMPLEMENTED` 65 → 55. The survey's "composes" held for all ten.
+Moshing and Bellona are Standard-banned and built anyway, as Svyatogor
+Excavator was.
+
+- **The survey re-read first.** Most of what it called vocabulary has been
+  built since it was written: the turn's end heard, stealth credits, set
+  aside, psi, a forced encounter, a remembered choice and additional costs
+  to steal, score or trash. Still new: lockdown (CR 3.5.1c), the first card
+  to start a trace (`Effect::Trace`), an encounter nested in an encounter
+  (Konjin, CR 6.1.3c), a replacement as an agenda enters the Runner's score
+  area (Project Vacheron), and a cost to run that changes when the identity
+  flips (Earth Station, CR 6.3.2b). The stage order stands.
+- **What each is made of.** Moshing is Sell Out's additional cost over
+  the grip (`Cost::Trash { from: OwnGrip, count: 3 }`): the event has left
+  the grip before its cost is paid, so it needs three *other* cards, and a
+  grip of two refuses it. Self-modifying Code is Arruaceiras Crew's
+  `AllOf[Credits 2, TrashSelf]` on Into the Depths' stack search, its
+  install guarded by `EffectIf(AmountAtLeast(CardsSelected, 1))` so a
+  search that finds nothing declines; trashing itself first frees its
+  memory. Daily Casts is Open Market's eight credit counters, two a turn,
+  trashed when empty. Bass CH1R180G4 is Humanoid Resources' cost with
+  Nanomanagement's click gain. Cerebral Overwriter is Mr. Hendrik's access
+  offer paid in credits into Urtica Cipher's damage per advancement counter.
+  Drafter is The Basalt Spire's Archives-to-HQ prompt and The Powers That
+  Be's choice of zone into an install ignoring all costs. Flower Sermon is
+  five agenda counters on scoring and a once-per-turn counter ability:
+  Balanced Coverage's revealed top card of R&D, two cards drawn and
+  Mindscaping's card from HQ to the top of R&D. Prāna Condenser hears net
+  damage about to resolve (`OnDamageAboutToResolve`, `when: Damage(Net)`,
+  Net Shield's word, settled in `prevention::settle`) and offers the Corp
+  the prevention, a counter and 3[credit]; it is a trigger and not an
+  interrupt, because a cost-free interrupt could be used once per point.
+  Its trash ability reads the counters its own cost removed
+  (`last_known`, as Fermenter's). Bellona is Méliès U.'s `steal_cost` and
+  a gain on scoring. Colossus is advanceable ice with strength per counter
+  and Mindscaping's "instead": each subroutine is two `EffectIf`s either
+  side of three counters.
+- **Fidelity limits:** two, under Known limits. Prāna Condenser hears net
+  damage whoever does it, since `EventFilter::Damage` reads only the kind;
+  Self-modifying Code's search offers only a program that could be
+  installed, as Into the Depths' does.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. Cerebral Overwriter is an ambush that
+  works face down, so `board::rez::gains_nothing` now names it among the
+  traps (`exactly_the_traps_gain_nothing_by_a_rez`): its rez stays legal
+  and on its menu, and earns no glow. The deck builder's set test offers
+  Uprising to both sides and names Downfall as the set with nothing built.
+- **Decks.** Burn Rate takes two Moshing for its two Chastushka; Safety Net
+  two Self-modifying Code for its two Lobisomem; Spare Parts two Daily
+  Casts for its two Smartware Distributor; Retirement Package two Bass
+  CH1R180G4 for its two Warm Reception, two Cerebral Overwriter for its two
+  Perfect Recall and two Drafter for its two Ansel 2.0; A Thousand Cuts two
+  Flower Sermon for its two See How They Run, point for point, and two
+  Prāna Condenser for its two Dr. Vientiane Keeling, so the deck's own net
+  damage is what Prāna prevents; Paid Content two Bellona for two Send a
+  Message; Hostile Bid two Colossus for its two Maskirovka. Every card
+  given up is still in another deck.
+- **A planner test moved again.**
+  `a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced`
+  counted the balanced Corp over twenty seeds since Midnight Sun Stage 1,
+  asserting fewer than half tag. The planner stages since had moved it to
+  9 of 20 on `main`, one under the bar, and ten more cards in the prior
+  moved it to 11. Over sixty seeds it is 25 before the stage and 26 after,
+  about two in five, so the balanced Corp is now counted over sixty. The
+  kill Corp's two claims stay on the first twenty, where both hold exactly:
+  over sixty, the kill Corp tags against three cards every time, and
+  against the full grip once after the stage (seed 35, Hedge Fund first)
+  and never before.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 518 card files, as on `main` over
+  508.
+- **Real play** (`--headless`, each edited deck against Safety Net or
+  Hostile Bid — Colossus's planner seats against Spare Parts — seed 2; random seats 96 games, planner seats 48; each pair
+  random / planner). Moshing played 31 / 43 times. Self-modifying Code used
+  27 / 9 times. Daily Casts installed 24 / 22 times and paid at 87 / 71
+  turn starts. Bass CH1R180G4 used 47 / 3 times. Cerebral Overwriter's
+  access offer fired 55 / 51 times. Drafter rezzed 39 / 37 times, its
+  subroutines firing 189 / 171 times. Flower Sermon scored 0 / 1 times and
+  stolen 40 / 25, its ability used once. Prāna Condenser's prevention fired
+  29 / 99 times and its trash ability 11 / 14. Bellona scored 0 / 28 times
+  and stolen 10 / 8. Colossus rezzed 4 / 20 times, its subroutines firing
+  22 / 77 times. Bass and Flower Sermon go on the bot debts.
+- **Measured.** `cargo test --workspace` green and clippy silent. Both
+  sweeps are green at 256 seeds, the card gate included, so every new card
+  was seen in play. `coverage_identical.py` against `origin/main`
+  (95a6097, 192 games a report): random identical, view and index alike,
+  because the sample matchups hold no Sweep deck. The planner seatings
+  move by `determinize`'s larger prior (view and index alike, of 192):
+  Corp agenda wins 60 → 58, Corp flatlines 26 → 25, Runner deck-outs 1 →
+  4.
