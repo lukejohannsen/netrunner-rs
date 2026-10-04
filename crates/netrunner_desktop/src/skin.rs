@@ -314,13 +314,19 @@ impl Dressing {
     /// corner radius stays the caller's, because `border_radius` is a
     /// field of `Node` rather than a component of its own. A picture
     /// rounds its own corners.
+    ///
+    /// `try_insert`, because the node may be gone by the time the command
+    /// lands: a button's press is dressed in the frame its screen may
+    /// answer the press by rebuilding the row it sat in, in whichever
+    /// order the two systems happen to run. The first launch's question
+    /// did, and a plain `insert` on the despawned button was a panic.
     pub fn apply(self, entity: &mut EntityCommands) {
         match self {
             Dressing::Drawn(drawn) => {
-                entity.insert((BackgroundColor(drawn.bg), BorderColor::all(drawn.border)));
+                entity.try_insert((BackgroundColor(drawn.bg), BorderColor::all(drawn.border)));
             }
             Dressing::Art { image, mode, tint } => {
-                entity.insert((
+                entity.try_insert((
                     ImageNode { image_mode: mode, color: tint, ..ImageNode::new(image) },
                     BackgroundColor(Color::NONE),
                     BorderColor::all(Color::NONE),

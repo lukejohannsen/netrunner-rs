@@ -155,6 +155,11 @@
 //!   `NETRUNNER_AUTOPLAY` decisions between them, then watches it from the
 //!   Runner's side (`spectate-corp` from the Corp's), and the screenshot
 //!   is of the spectator's board.
+//! - `NETRUNNER_WELCOME=declined|downloading` — with
+//!   `NETRUNNER_SCREEN=welcome`, the first launch's question is opened on
+//!   that step, changing no setting and starting no download. A
+//!   screenshot run is never asked the question by the splash: it waits
+//!   for the menu, and scratch settings are a first launch every time.
 //! - `NETRUNNER_DROPDOWN=<n>` — before the screenshot, the `n`th
 //!   drop-down on the screen (1 is the first, counted top to bottom and
 //!   left to right) is opened, so an open list can be looked at: where it

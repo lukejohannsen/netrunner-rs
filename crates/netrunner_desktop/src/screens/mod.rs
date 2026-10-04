@@ -12,6 +12,7 @@ pub mod about;
 pub mod boot;
 pub mod card_browser;
 pub mod deck_editor;
+pub mod first_launch;
 pub mod decks;
 pub mod game;
 pub mod guide;
@@ -36,6 +37,9 @@ pub enum AppScreen {
     /// The title card while the fonts load: a moment, skipped by any key
     /// or click, and never shown to a window nobody can see.
     Splash,
+    /// The question a first launch asks after the splash: whether to
+    /// fetch the card images. Never entered once it has been answered.
+    FirstLaunch,
     MainMenu,
     Profile,
     Settings,
@@ -57,9 +61,10 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    pub const ALL: [AppScreen; 16] = [
+    pub const ALL: [AppScreen; 17] = [
         AppScreen::Boot,
         AppScreen::Splash,
+        AppScreen::FirstLaunch,
         AppScreen::MainMenu,
         AppScreen::Profile,
         AppScreen::Settings,
@@ -96,6 +101,7 @@ impl AppScreen {
         match self {
             AppScreen::Boot | AppScreen::Game => None,
             AppScreen::Splash => Some("splash"),
+            AppScreen::FirstLaunch => Some("first-launch"),
             AppScreen::MainMenu => Some("main-menu"),
             AppScreen::Profile => Some("profile"),
             AppScreen::Settings => Some("settings"),
@@ -116,6 +122,7 @@ impl AppScreen {
     pub fn title(self) -> &'static str {
         match self {
             AppScreen::Boot | AppScreen::Splash => "",
+            AppScreen::FirstLaunch => "Welcome",
             AppScreen::MainMenu => "Netrunner",
             AppScreen::Profile => "Profile",
             AppScreen::Settings => "Settings",

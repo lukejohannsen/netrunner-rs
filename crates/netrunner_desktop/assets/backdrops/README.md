@@ -62,6 +62,7 @@ own picture improves on it rather than being needed before it.
 |---|---|---|
 | `menu` | every screen below without its own picture | the shared default |
 | `splash` | the title card at startup | shown for a moment and skipped by any key; see below |
+| `first-launch` | the first launch's question: download the card images? | one small panel over it; borrows the splash's picture |
 | `main-menu` | the main menu | |
 | `new-game` | Play vs Computer: the new-game form | |
 | `online` | Play Online | |
@@ -139,6 +140,11 @@ The splash holds for 1.5 seconds and until the fonts have loaded, never
 longer than 5 seconds, and any key or click skips it. It is never shown
 when a dev hook (`NETRUNNER_SCREEN`, `NETRUNNER_GAME`) names a screen, or
 when there is no window.
+
+On a first launch the splash leads to the `first-launch` slot — one
+question, whether to download the card images — and that to the menu.
+It borrows the splash's picture (`same_as`), dimmed further for the
+panel over it.
 
 ## Basic graphics
 

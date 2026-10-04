@@ -163,6 +163,12 @@ pub struct DesktopPrefs {
     /// the cache. Off until the player turns it on: it is a network call
     /// on their behalf.
     pub download_images: bool,
+    /// Whether the graphical client has asked, on its first launch,
+    /// whether to fetch the card images — set when the person answers,
+    /// either way, so the question is asked once. A flag rather than
+    /// "the settings file is missing": the terminal client writes the
+    /// same file, and neither writes it before something is changed.
+    pub images_offered: bool,
     /// The window size last saved, if the player resized it.
     pub window_size: Option<(u32, u32)>,
     /// Whether the board lists every legal action on a flat panel — the
@@ -342,7 +348,7 @@ impl Table {
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Random, skin: Skin::Auto, basic_graphics: false, card_backs: CardBacks::Nsg }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, images_offered: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Random, skin: Skin::Auto, basic_graphics: false, card_backs: CardBacks::Nsg }
     }
 }
 

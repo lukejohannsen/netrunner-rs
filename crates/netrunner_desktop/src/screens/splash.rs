@@ -13,6 +13,12 @@
 //! headless tests and a `NETRUNNER_SCREEN` screenshot land where they
 //! always did.
 //!
+//! **The first launch goes by the question.** Until the person has
+//! answered whether to fetch the card images
+//! (`models::first_launch::owed`), the splash leads to
+//! `AppScreen::FirstLaunch` and that leads to the menu. A dev screenshot
+//! is never asked: it waits for the menu and would never be taken.
+//!
 //! **Three tiers, like everything else.** The picture behind it is the
 //! `splash` backdrop slot (`crate::backdrop`), and the mark over it is
 //! the wordmark the main menu wears too (`widgets::logo`,
@@ -67,7 +73,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
     });
 }
 
-/// Moves on to the menu on any key or click, or once the splash has been
+/// Moves on — to the menu, or on a first launch to the question — on any key or click, or once the splash has been
 /// up long enough and the fonts are in.
 fn advance(
     time: Res<Time>,
@@ -76,6 +82,8 @@ fn advance(
     mouse: Option<Res<ButtonInput<MouseButton>>>,
     theme: Res<Theme>,
     server: Option<Res<AssetServer>>,
+    core: Res<ClientCore>,
+    dev: Option<Res<crate::dev::Dev>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
     shown.0 += time.delta();
@@ -85,6 +93,8 @@ fn advance(
         _ => true,
     };
     if skipped || (shown.0 >= SPLASH_MIN && fonts_in) || shown.0 >= SPLASH_MAX {
-        navigate.write(Navigate(AppScreen::MainMenu));
+        let unattended = dev.is_some_and(|dev| dev.screenshot.is_some());
+        let ask = !unattended && crate::models::first_launch::owed(&core.settings.desktop);
+        navigate.write(Navigate(if ask { AppScreen::FirstLaunch } else { AppScreen::MainMenu }));
     }
 }
