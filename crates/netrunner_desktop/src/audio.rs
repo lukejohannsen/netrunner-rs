@@ -262,7 +262,7 @@ fn navigation_sounds(mut navigate: MessageReader<Navigate>, screen: Option<Res<S
     let last = navigate.read().last().copied();
     let (Some(Navigate(to)), Some(screen)) = (last, screen) else { return };
     let here = *screen.get();
-    if to == here || matches!(here, AppScreen::Boot | AppScreen::Splash) {
+    if to == here || matches!(here, AppScreen::Boot | AppScreen::Splash | AppScreen::FirstLaunch) {
         return;
     }
     out.write(PlaySfx::now(if nav::back_from(here) == Some(to) { Sfx::Back } else { Sfx::Switch }));

@@ -5853,3 +5853,77 @@ This closes §9's download half; the search half stays there.
   with the pop-up open on a pasted link, the link wrapped in its field,
   Paste beside it, Cancel and Fetch under it; the toolbar's two rows.
 - No engine change, so no coverage run or sweeps.
+
+## 12. The first launch offers the card images — DONE (4 October 2026)
+
+`feat/first-launch-card-images`, at the person's request: "the first time
+the GUI is launched … offer to download the card images automatically
+first after the splash screen. If they decline note where and how to
+download card images."
+
+**What was wrong.** Card scans are off until `DesktopPrefs::download_images`
+is turned on in Settings, and the download itself is a button on the Cards
+screen — two screens a new player has no reason to open, so the client was
+played on text faces by people who never learned the scans existed.
+
+**What is built.** `AppScreen::FirstLaunch` ("Welcome", backdrop slot
+`first-launch`, which borrows the splash's picture), entered from the
+splash and from nowhere else. Its state is `models::first_launch::Offer`
+— `Asking`, `Downloading`, `Declined`:
+
+- **Download** turns `download_images` on, saves, and starts the download
+  the Cards screen starts (`downloads::Downloads`, every printing —
+  `downloads::every_printing`, which the browser and the profile had each
+  written out). The page follows it with one line and a Continue; the
+  download is not tied to a screen and goes on behind the menu.
+- **Not now** (or Escape) leaves the images off and answers with where
+  the download lives (`first_launch::LATER`: Settings → Download card
+  images, then Cards → Download images), then Continue.
+
+**Decisions.**
+
+- **"Never used the GUI" is a flag, `DesktopPrefs::images_offered`, not a
+  missing settings file.** The terminal client writes the same file and
+  neither writes it before a setting changes, so the file's existence
+  says nothing about the desktop. The flag is written when the person
+  *answers*: a window closed on the question is asked again.
+- **Somebody with the images already on is not asked**
+  (`first_launch::owed`). Somebody who used the client before this and
+  left them off is asked once — which is the person the question is for.
+- **Escape is an answer.** `nav::back_from` gives the screen no way back,
+  because the generic Escape would have reached the menu with nothing
+  recorded and asked again at every launch.
+- **A dev screenshot is never asked.** `NETRUNNER_SCREENSHOT` waits for
+  `Dev::first_screen()`, and the documented recipe runs on scratch
+  settings — a first launch — so the splash would have parked every
+  plain screenshot run on the question for good. Headless boot and a
+  named screen skip the splash and so the question.
+  `NETRUNNER_SCREEN=welcome` opens it; `NETRUNNER_WELCOME=declined` or
+  `downloading` opens it on that step, changing no setting and fetching
+  nothing.
+
+**Found on the way: a press dressed a button its screen had just
+despawned.** `widgets::button_feedback` and `widgets::dress` queue an
+`insert` on the buttons they saw, and a screen that answers a press by
+rebuilding the row in the same frame despawns them first, in whichever
+order the unordered systems happen to run. This screen's two tests
+panicked on it; ordering the screen ahead of the two only moved the panic
+to the deck viewer's test, which says the order was luck everywhere.
+`skin::Dressing::apply` is now `try_insert`.
+
+**Verification.** `cargo test --workspace` green, `cargo clippy
+--workspace --all-targets` silent. Model tests for both answers and for
+the question refusing anything but an answer; `tests/navigation.rs`
+drives splash → question → Not now → the note → Continue → menu, reads
+the answer back from the settings file, and takes the next splash
+straight to the menu; Escape on the question is the same no. Screenshots
+of all three steps on the virtual compositor at 1600×1000, and a plain
+scratch-settings screenshot run still reaches the menu and exits. The
+accept path's network download is the person's to try by hand:
+
+```bash
+D=$(mktemp -d)
+NETRUNNER_SETTINGS_FILE=$D/settings.toml XDG_CACHE_HOME=$D/cache cargo run -p netrunner_desktop
+```
+
+No engine change, so no coverage run or sweeps.

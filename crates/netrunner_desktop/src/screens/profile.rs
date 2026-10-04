@@ -94,9 +94,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
         Some(path) => netrunner_client::record::standing_lines(path, &player).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]),
         None => vec!["No record file: the OS has no data directory".to_string()],
     };
-    // Every printing, as the browser's download counts them: a choice of
-    // art draws any of them.
-    let codes: Vec<_> = netrunner_core::cards::catalog::printings().map(|printing| printing.id).collect();
+    let codes = crate::downloads::every_printing();
     let cached = core.images.cached_count(&codes);
     let path = |p: &Option<std::path::PathBuf>| p.as_ref().map_or_else(|| "unavailable".to_string(), |p| p.display().to_string());
     let paths = [

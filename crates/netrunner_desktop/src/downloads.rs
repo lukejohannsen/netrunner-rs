@@ -31,6 +31,13 @@ impl Plugin for DownloadsPlugin {
 /// CDN; four is polite and fills a grid in seconds.
 const CONCURRENCY: usize = 4;
 
+/// Every embedded printing's code: the download fetches every picture, not
+/// only the one each card is drawn as, so a choice of art never waits on
+/// the network.
+pub fn every_printing() -> Vec<PrintingId> {
+    netrunner_core::cards::catalog::printings().map(|printing| printing.id).collect()
+}
+
 #[derive(Resource, Default)]
 pub struct Downloads {
     state: State,

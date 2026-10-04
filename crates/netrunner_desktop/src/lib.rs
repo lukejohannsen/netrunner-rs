@@ -160,6 +160,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(netrunnerdb::plugin)
             .add(screens::boot::BootPlugin)
             .add(screens::splash::SplashPlugin)
+            .add(screens::first_launch::FirstLaunchPlugin)
             .add(screens::main_menu::MainMenuPlugin)
             .add(screens::profile::ProfilePlugin)
             .add(screens::about::AboutPlugin)

@@ -578,6 +578,8 @@ fn the_splash_moves_on_by_itself_or_on_a_key() {
     app.update();
     app.update();
     assert_eq!(screen(&app), AppScreen::MainMenu, "no window, no splash");
+    // Somebody who has answered the first launch's question.
+    app.world_mut().resource_mut::<ClientCore>().settings.desktop.images_offered = true;
 
     app.world_mut().write_message(Navigate(AppScreen::Splash));
     app.update();
@@ -599,6 +601,71 @@ fn the_splash_moves_on_by_itself_or_on_a_key() {
         app.update();
     }
     assert_eq!(screen(&app), AppScreen::MainMenu, "and then goes on without a key");
+}
+
+/// A first launch goes from the splash to the question, a no is answered
+/// with where the download lives and written to the settings file, and
+/// the next splash goes straight to the menu.
+#[test]
+fn a_first_launch_is_asked_about_the_card_images_once() {
+    use netrunner_client::settings::Settings;
+    use netrunner_desktop::models::first_launch::{Intent, LATER};
+    use netrunner_desktop::screens::first_launch::Answer;
+
+    let (mut app, dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Splash));
+    app.update();
+    app.update();
+    press(&mut app, KeyCode::Space, Key::Space);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::FirstLaunch, "nobody has answered yet");
+    app.update();
+    assert!(find::<Answer>(&mut app, |a| a.0 == Intent::Accept).is_some(), "the question offers a yes");
+
+    let no = find::<Answer>(&mut app, |a| a.0 == Intent::Decline).expect("and a no");
+    tap(&mut app, no);
+    assert_eq!(screen(&app), AppScreen::FirstLaunch, "a no is answered before the menu");
+    assert!(app.world_mut().query::<&Text>().iter(app.world()).any(|text| text.0 == LATER), "with where the download lives");
+    let saved = Settings::load(&dir.join(netrunner_client::settings::SETTINGS_FILE)).expect("the answer was saved");
+    assert!(saved.desktop.images_offered && !saved.desktop.download_images);
+
+    let on = find::<Answer>(&mut app, |a| a.0 == Intent::Continue).expect("a way on");
+    tap(&mut app, on);
+    assert_eq!(screen(&app), AppScreen::MainMenu);
+    assert_eq!(roots(&mut app, AppScreen::FirstLaunch), 0);
+
+    app.world_mut().write_message(Navigate(AppScreen::Splash));
+    app.update();
+    app.update();
+    press(&mut app, KeyCode::Space, Key::Space);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu, "asked once");
+}
+
+/// Escape on the question is "Not now", recorded like the button — not a
+/// way round the answer — and Escape again goes on to the menu.
+#[test]
+fn escape_on_the_first_launch_question_is_a_no() {
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::FirstLaunch));
+    app.update();
+    app.update();
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::FirstLaunch);
+    let prefs = app.world().resource::<ClientCore>().settings.desktop.clone();
+    assert!(prefs.images_offered && !prefs.download_images);
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu);
 }
 
 /// Presses an entity the way a pointer would, and lets the press land.

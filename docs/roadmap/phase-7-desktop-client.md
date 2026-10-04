@@ -167,6 +167,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, 
   - **§6d** — The coach says where on the board each move is made (`feat/lesson-where`, 25 September 2026).
 - **§7** — Online (25 September 2026).
   - **§7a** — The spectator's board looked at, and the relay in Settings (26 September 2026).
+- **§12** — The first launch asks, once, whether to download the card images, and a no is told where the download lives (`feat/first-launch-card-images`, 4 October 2026).
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 

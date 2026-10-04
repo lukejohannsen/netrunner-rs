@@ -103,6 +103,9 @@ pub fn drawn_backdrop(theme: &Theme) -> BackgroundGradient {
 pub fn back_from(screen: AppScreen) -> Option<AppScreen> {
     match screen {
         AppScreen::Boot | AppScreen::Splash | AppScreen::MainMenu => None,
+        // Escape there is an answer ("Not now"), which the screen takes
+        // itself so that it is recorded.
+        AppScreen::FirstLaunch => None,
         AppScreen::DeckEditor => Some(AppScreen::Decks),
         AppScreen::Opponents => Some(AppScreen::Settings),
         AppScreen::Guide => Some(AppScreen::Learn),

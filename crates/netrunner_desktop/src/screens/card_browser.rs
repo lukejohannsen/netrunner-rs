@@ -49,7 +49,6 @@ use netrunner_client::prose;
 use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_card_sync::ImageStatus;
 use netrunner_client::art::Picture;
-use netrunner_core::card::PrintingId;
 use netrunner_core::cards::catalog;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::Side;
@@ -375,16 +374,10 @@ fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Bro
     parent.spawn(widgets::button(theme, "Clear", Val::Auto, Control::Clear));
 }
 
-/// Every embedded printing's code: the download fetches every picture, not
-/// only the one each card is drawn as, so a choice of art never waits on
-/// the network.
-fn every_printing() -> Vec<PrintingId> {
-    catalog::printings().map(|printing| printing.id).collect()
-}
 
 /// The download button: what it would fetch, or why it will not.
 fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore) {
-    let codes = every_printing();
+    let codes = crate::downloads::every_printing();
     let cached = core.images.cached_count(&codes);
     let label = if !core.settings.desktop.download_images {
         "Card images are off in Settings".to_string()
@@ -548,7 +541,7 @@ fn controls(
                 if !core.settings.desktop.download_images {
                     notices.push("Turn on card images in Settings to download them");
                 } else if let Some(runtime) = &runtime {
-                    if !downloads.start(runtime, core.images.clone(), every_printing()) {
+                    if !downloads.start(runtime, core.images.clone(), crate::downloads::every_printing()) {
                         notices.push("A download is already running");
                     }
                 } else {
