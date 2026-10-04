@@ -215,7 +215,7 @@ fn holds_a_turn(state: &GameState, server: netrunner_core::rules::ServerId, regi
 }
 
 /// The clicks a Runner's turn holds, each a credit at the guide's rate.
-const RUNNER_TURN_CLICKS: u32 = 4;
+pub(super) const RUNNER_TURN_CLICKS: u32 = 4;
 
 /// The agenda points in Archives, faceup or not — what
 /// `archived_agenda_weight` charges the Corp.

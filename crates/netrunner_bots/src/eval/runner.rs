@@ -41,13 +41,20 @@ use super::*;
 /// adds (`rider_accesses`, Jailbreak) are counted with the ones the run
 /// already carries.
 pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32) -> f64 {
+    let server = run.redirect_on_approach.unwrap_or(run.server);
+    breach_worth(state, run, registry, w, credits, horizon, runs_earlier_this_turn(state, server))
+}
+
+/// `access_prospect` with the runs already made on the server this turn
+/// given rather than read: `shut_doors` reads a server for a run to come,
+/// on a turn when nothing it shows has been seen.
+fn breach_worth(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32, earlier: usize) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.redirect_on_approach.unwrap_or(run.server);
     // What the rig adds at the breach (Docklands Pass, `rig_breach_accesses`)
     // beside what the run's own rider adds (Phase 5 §32), and what the
     // identities print about the breach (Mercury Chrome, §34).
     let promised = rider_accesses(run, server) + rig_breach_accesses(state, registry, server) + identities::run_success(state, registry, run).accesses;
-    let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
     let mut hidden = 0.0_f64;
     let mut tokens = 0u32;
@@ -483,6 +490,53 @@ pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegist
     target.map_or(0, |cost| cost.saturating_sub(state.runner.resources.credits.0))
 }
 
+/// What the Corp's ICE keeps from the Runner, read off a run (Phase 5
+/// §38): for every server behind rezzed ICE, what a breach of it is worth
+/// (`breach_worth`, read as a run to come would find it, nothing there
+/// seen yet) at the share its ICE shuts it — all of it when a piece is one
+/// no rig card breaks, and `cost / (cost + RUNNER_TURN_CLICKS)` when the
+/// rig breaks the lot for `cost` (`server_break_cost`), so a door that
+/// costs a turn's clicks in credits is half shut. Subtracted at
+/// `shut_door_weight`.
+///
+/// Before it the Runner read the ICE only on a run, as the leaf's break
+/// cost, and where a piece stood was nothing to it until it ran there: Tāo
+/// Salonga's "you may swap 2 installed pieces of ice" whenever an agenda is
+/// scored or stolen, which is a reading of where each piece stands against
+/// the rig and nothing else, was taken 0 times in 306 offers (48 games a
+/// pairing, both Tāo decks).
+///
+/// **The Runner's credits are not read.** With them, a credit click that
+/// crossed a door's price would open it, and every economy decision would
+/// carry a share of every server's stakes; the reading is the ICE against
+/// the rig. **Rezzed ICE only**, as `server_break_cost` reads it and for
+/// its reason: a face-down piece is a card the Runner has not seen, and a
+/// rez is the Corp's to make — so a face-down piece swapped in front of a
+/// server costs nothing here, the same optimism a run's gate has. A swap
+/// within one server moves nothing here, and is a tie with the decline.
+pub(super) fn shut_doors(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::rules::ServerId;
+    let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+    for card in &state.corp.installed {
+        if matches!(card.server, ServerId::Remote(_)) && !servers.contains(&card.server) {
+            servers.push(card.server);
+        }
+    }
+    let credits = state.runner.resources.credits.0;
+    servers
+        .into_iter()
+        .map(|server| {
+            let shut = match server_break_cost(state, server, registry) {
+                None => 1.0,
+                Some(0) => return 0.0,
+                Some(cost) => f64::from(cost) / f64::from(cost + RUNNER_TURN_CLICKS),
+            };
+            let run = RunState { server, ..RunState::default() };
+            shut * breach_worth(state, &run, registry, w, credits, horizon, 0).max(0.0)
+        })
+        .sum()
+}
+
 /// The Runner's terms, added to `score` in the order `evaluate_state_with`
 /// always added them — see `corp::score`.
 pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32, score: &mut f64) {
@@ -545,6 +599,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // `access_prospect`, on its gate.
     if w.unshown_breaker_weight != 0.0 {
         *score -= unshown_coverage(state, registry) as f64 * w.unshown_breaker_weight;
+    }
+    if w.shut_door_weight != 0.0 {
+        *score -= shut_doors(state, registry, w, horizon) * w.shut_door_weight;
     }
     if w.last_click_run_weight != 0.0
         && last_click_run(state)
@@ -1733,5 +1790,40 @@ mod tests {
         taxed.lingering = vec![LingeringEffect { what: Lingering::RezCost(3), on: On::EachIce, until: Until::EndOfRun, source: CardId("tread_lightly".to_string()) }];
         let run = with_run(&taxed, hq(unrezzed()));
         assert_eq!(forced_rez_credits(&run, run.active_run.as_ref().unwrap()), 2 * (TYPICAL_REZ_COST + 3));
+    }
+
+    /// The Runner reads where the Corp's ICE stands off a run (§38): a
+    /// server behind a piece no rig card breaks is shut, its breach
+    /// subtracted whole; behind a piece the rig breaks it is shut by the
+    /// share the break's price is of itself and a turn's clicks; and a
+    /// remote with nothing in it shuts nothing worth having. So moving the
+    /// code gate off R&D onto the empty remote, and the Ice Wall onto R&D,
+    /// is worth the share of R&D's access it opens — and the Runner's
+    /// credits move none of it.
+    #[test]
+    fn a_server_behind_ice_the_rig_cannot_break_is_a_shut_door() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, ServerId};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 2];
+        let ice = |card: &str, id: u32, server| InstalledCard { card: CardId(card.to_string()), install_id: InstallId(id), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() };
+        state.corp.installed = vec![ice("enigma", 2, ServerId::RnD), ice("ice_wall", 3, ServerId::Remote(1))];
+        state.runner.resources.credits = Credits(8);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(4), base_strength: 2, ..Default::default() }];
+        let w = Weights::default().at_the_guides_rate().with_plans(Side::Runner, &crate::plans::Style::BALANCED);
+        let access = w.active_run_weight;
+        assert!((shut_doors(&state, &registry, &w, 3) - access).abs() < 1e-9, "R&D is shut, the empty remote is worth nothing");
+        let mut swapped = state.clone();
+        swapped.corp.installed[0].server = ServerId::Remote(1);
+        swapped.corp.installed[1].server = ServerId::RnD;
+        // Corroder breaks Ice Wall's one subroutine for 1[c]: a fifth shut.
+        assert!((shut_doors(&swapped, &registry, &w, 3) - access / 5.0).abs() < 1e-9);
+        let gain = evaluate_state_with(&swapped, Side::Runner, &registry, &w) - evaluate_state_with(&state, Side::Runner, &registry, &w);
+        assert!((gain - access * 0.8 * w.shut_door_weight).abs() < 1e-9, "{gain}: the swap is worth the share of the access it opens");
+        let mut rich = state.clone();
+        rich.runner.resources.credits = Credits(30);
+        assert_eq!(shut_doors(&rich, &registry, &w, 3), shut_doors(&state, &registry, &w, 3), "credits open no door");
     }
 }

@@ -442,6 +442,23 @@ const RUNNER_STAKES_WEIGHT: f64 = 0.0;
 /// +1.2), which is "economy first, then breakers"; the same Cleaver once
 /// a Barrier is rezzed anywhere is +2.3, as it was. Precept 11.
 const UNSHOWN_BREAKER_WEIGHT: f64 = 1.5;
+/// Runner only, every plan: what each server's breach is worth at the
+/// share its rezzed ICE shuts the rig out of it (`runner::shut_doors`),
+/// subtracted — the Runner's reading of where the Corp's ICE stands, off
+/// a run (Phase 5 §38), which is what orders Tāo Salonga's swaps.
+///
+/// **A tenth of the breach's own rate, and that is the measurement.** At
+/// one the reading also pulled every Runner toward installs (+0.3 install
+/// clicks a game, +0.1 breakers, 3 to 5 fewer credits summed over its
+/// turn starts), and the Startup pass moved toward the Corp: +50 games to
+/// −32 over three seeds of 90 (z +1.99; 0.544 / 0.578 / 0.511 → 0.656 /
+/// 0.622 / 0.556). At a tenth it is +30 to −29 (z +0.13), and Tāo swaps as
+/// often (135, 157, 120, 117 swaps in four pairings of 48 games at one;
+/// 137, 146, 133, 104 at a tenth): a swap is taken on the sign of the
+/// reading, and the median gain a swap was taken on, 0.44 at one, is still
+/// forty times the planner's jitter at a tenth. A quarter measured as
+/// close (0.567 / 0.544 / 0.544).
+const SHUT_DOOR_WEIGHT: f64 = 0.1;
 /// Runner only, `Plan::Pressure`: each fresh HQ access a breakable run
 /// would make, on top of the hidden access — "they punish an exposed
 /// HQ". A credit's worth, so a Criminal runs HQ (1.0 an access, plus the
@@ -1360,6 +1377,9 @@ pub struct Weights {
     /// Runner only: each covered subtype the Corp has never shown,
     /// subtracted from its coverage. See `UNSHOWN_BREAKER_WEIGHT`.
     pub unshown_breaker_weight: f64,
+    /// Runner only: each server's breach at the share its rezzed ICE
+    /// shuts the rig out, subtracted. See `SHUT_DOOR_WEIGHT`.
+    pub shut_door_weight: f64,
     /// Runner only, the pressure plan: each fresh HQ access. See
     /// `HQ_PRESSURE_WEIGHT`.
     pub hq_pressure_weight: f64,
@@ -1377,9 +1397,10 @@ impl Weights {
     /// stakes, the rez held, the ICE order, the never-advance line) for
     /// any Corp seat, balanced included; the kill plan's lethal check and
     /// tag leverage, the traps plan's bluff, and the fort's yielding when
-    /// glacier is followed by fast advance; and every Runner's four (the
+    /// glacier is followed by fast advance; and every Runner's five (the
     /// last click, the feared flatline, the stakes as the Runner counts
-    /// them, the unshown breaker) for any Runner seat, with the pressure
+    /// them, the unshown breaker, the doors the Corp's ICE shuts — §38)
+    /// for any Runner seat, with the pressure
     /// plan's HQ, the dismantle plan's trash and the rig plan's R&D
     /// (Stage 7). **A plan after the first adds its own levers** — the
     /// terms that are zero in the default and exist for it: `Traps`'
@@ -1403,6 +1424,7 @@ impl Weights {
                 w.feared_flatline_weight = FEARED_FLATLINE_WEIGHT;
                 w.runner_stakes_weight = RUNNER_STAKES_WEIGHT;
                 w.unshown_breaker_weight = UNSHOWN_BREAKER_WEIGHT;
+                w.shut_door_weight = SHUT_DOOR_WEIGHT;
             }
         }
         for plan in style.plans().skip(1) {
@@ -1535,6 +1557,7 @@ impl Default for Weights {
             feared_flatline_weight: 0.0,
             runner_stakes_weight: 0.0,
             unshown_breaker_weight: 0.0,
+            shut_door_weight: 0.0,
             hq_pressure_weight: 0.0,
             dismantle_weight: 0.0,
             rd_access_weight: 0.0,
@@ -1716,22 +1739,22 @@ mod tests {
     }
 
     /// The same pin for the Runner's plan terms (Stage 7): zero in the
-    /// default and in every profile; every Runner seat carries the four
+    /// default and in every profile; every Runner seat carries the five
     /// general terms, balanced included, and each plan its own; a Corp
     /// seat carries none of them.
     #[test]
     fn the_runners_plan_terms_are_off_in_every_profile_and_on_for_a_planner_runner() {
         use crate::plans::{Plan, Style};
-        let off = |w: &Weights| [w.last_click_run_weight, w.feared_flatline_weight, w.runner_stakes_weight, w.unshown_breaker_weight, w.hq_pressure_weight, w.dismantle_weight, w.rd_access_weight];
-        assert_eq!(off(&Weights::default()), [0.0; 7]);
+        let off = |w: &Weights| [w.last_click_run_weight, w.feared_flatline_weight, w.runner_stakes_weight, w.unshown_breaker_weight, w.shut_door_weight, w.hq_pressure_weight, w.dismantle_weight, w.rd_access_weight];
+        assert_eq!(off(&Weights::default()), [0.0; 8]);
         for plan in Plan::ALL {
-            assert_eq!(off(&plan.weights()), [0.0; 7], "{plan:?}");
+            assert_eq!(off(&plan.weights()), [0.0; 8], "{plan:?}");
         }
         let balanced = Weights::default().with_plans(Side::Runner, &Style::BALANCED);
-        assert!(balanced.feared_flatline_weight > 0.0 && balanced.unshown_breaker_weight > 0.0, "every Runner plays the Runner's chapter");
+        assert!(balanced.feared_flatline_weight > 0.0 && balanced.unshown_breaker_weight > 0.0 && balanced.shut_door_weight > 0.0, "every Runner plays the Runner's chapter");
         assert_eq!((balanced.last_click_run_weight, balanced.runner_stakes_weight), (LAST_CLICK_RUN_WEIGHT, RUNNER_STAKES_WEIGHT), "measured, and shipped at what they measured");
         assert_eq!((balanced.hq_pressure_weight, balanced.dismantle_weight, balanced.rd_access_weight), (0.0, 0.0, 0.0));
-        assert_eq!(off(&Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier))), [0.0; 7], "a Corp seat switches on no Runner term");
+        assert_eq!(off(&Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier))), [0.0; 8], "a Corp seat switches on no Runner term");
         let pressure = Style::of(Plan::Pressure).planned_weights(Side::Runner);
         assert!(pressure.hq_pressure_weight > 0.0 && pressure.dismantle_weight == 0.0 && pressure.rd_access_weight == 0.0);
         assert_eq!(pressure.active_run_weight, Weights::default().active_run_weight, "no Runner plan has a profile");
