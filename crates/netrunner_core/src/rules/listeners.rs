@@ -285,13 +285,15 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // only during a run, and spending off an installed card (The
         // Twinning) in a run or out of one. The Corp's spending is an
         // occurrence of nothing until a card listens for it.
-        GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, run_against, from_installed, .. } => {
+        GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, run_against, first_host, .. } => {
             let mut heard = Vec::new();
             if let Some(server) = run_against {
                 heard.push(moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner)));
             }
-            if *from_installed > 0 {
-                heard.push(moment(Trigger::OnCreditsSpentFromInstalledCard, &About::Nothing, Some(Side::Runner)));
+            // About the card the credits came off (Keiko's "an installed
+            // companion card"), one per payment however many gave.
+            if let Some((host, install)) = first_host {
+                heard.push(moment(Trigger::OnCreditsSpentFromInstalledCard, &card(host, Some(*install)), Some(Side::Runner)));
             }
             heard
         }

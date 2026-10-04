@@ -389,7 +389,9 @@ fn instance_matches_filter(
             };
             from.is_some_and(|from| {
                 zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| {
-                    can_install_runner_card_from_zone_with_discount(state, registry, card, from, discount.credits())
+                    let ctx = crate::rules::ability::ResolutionContext::for_parked(source, Some(card));
+                    let discount = crate::rules::ability::discount_credits(discount, &ctx, state, registry);
+                    can_install_runner_card_from_zone_with_discount(state, registry, card, from, discount)
                 })
             })
         }
@@ -534,7 +536,17 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     let installed = state.find_corp_install(install);
     let scored = state.corp.find_scored(install);
     if installed.is_none() && scored.is_none() {
-        return true;
+        // A rig copy answers the install words off its own turn
+        // (`CopyTurn::counts_on_rig`) — Euler's "if this program was
+        // installed this turn" — and lets every other word pass.
+        let Some(rig) = state.find_rig_install(install) else { return true };
+        let installed_now = rig.this_turn.count(state.turn, crate::dsl::Trigger::OnInstall) > 0;
+        return match filter {
+            CardFilter::All(parts) => parts.iter().all(|part| copy_matches(state, part, Some(install))),
+            CardFilter::InstalledThisTurn => installed_now,
+            CardFilter::NotInstalledThisTurn => !installed_now,
+            _ => true,
+        };
     }
     match filter {
         CardFilter::All(parts) => parts.iter().all(|part| copy_matches(state, part, Some(install))),
@@ -1054,16 +1066,24 @@ pub(crate) fn finish_psi_game(
     };
     events.push(GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid });
     let active = crate::rules::listeners::active_side(state);
+    let mut cost_events = Vec::new();
     for side in [active, active.other()] {
         let bid = if side == Side::Corp { corp_bid } else { runner_bid };
         if bid > 0 {
-            events.extend(ability::pay_cost(state, registry, side, &Cost::Credits(bid), Purpose::Other, source_card.as_ref())?);
+            cost_events.extend(ability::pay_cost(state, registry, side, &Cost::Credits(bid), Purpose::Other, source_card.as_ref())?);
         }
     }
+    events.extend(cost_events.clone());
     let outcome = if corp_bid == runner_bid { on_match } else { on_differ };
     let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
     ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &outcome, &mut ctx, registry)?);
+    // The bids' events after the outcome, as every payer dispatches its
+    // cost's (`ability::dispatch_cost_events`): a bid paid off a card's
+    // hosted credits (Methuselah's, during a run) is credits spent from an
+    // installed card, which The Twinning and Keiko hear. Never dispatched
+    // until the sweep paired a hosted pool with a psi game (UR Stage 2).
+    events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
     if resume == PendingChoiceResume::ResumeSubroutines {
         mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

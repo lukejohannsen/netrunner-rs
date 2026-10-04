@@ -121,10 +121,19 @@ pub enum Kind {
     /// virus program" — the Runner installs faceup, so as public as any
     /// program. A virus is always a program, so a card has one column.
     VirusProgram,
+    /// A **companion** resource, the fourth subtype given a column, for
+    /// Keiko's "the first time each turn you install a companion card or
+    /// spend credits from an installed companion card" — faceup on the
+    /// table, so as public as any resource. The pool's one companion that
+    /// is not a resource is Keiko itself, which its own clause does not
+    /// count (`docs/roadmap/nsg-card-pool.md`, Known limits). The sixteenth
+    /// kind is the last a `u32` of columns holds (`Occurrences::columns`):
+    /// a seventeenth widens that mask first.
+    CompanionResource,
 }
 
 impl Kind {
-    const COUNT: usize = 15;
+    const COUNT: usize = 16;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -141,19 +150,22 @@ impl Kind {
         Kind::DoubleEvent,
         Kind::MandateOperation,
         Kind::VirusProgram,
+        Kind::CompanionResource,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
-    /// mandate or virus.
+    /// mandate, virus or companion.
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
         let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
         let virus = definition.subtypes.contains(&CardSubtype::Virus);
+        let companion = definition.subtypes.contains(&CardSubtype::Companion);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
             Kind::Event if double => Kind::DoubleEvent,
             Kind::Program if virus => Kind::VirusProgram,
+            Kind::Resource if companion => Kind::CompanionResource,
             kind => kind,
         }
     }
@@ -164,6 +176,7 @@ impl Kind {
             Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent],
             Kind::Program => vec![Kind::Program, Kind::VirusProgram],
+            Kind::Resource => vec![Kind::Resource, Kind::CompanionResource],
             kind => vec![kind],
         }
     }
@@ -171,7 +184,7 @@ impl Kind {
     /// A Runner card's type: every Runner card trashed goes faceup to the
     /// heap, from wherever it was, so both players see what it was.
     fn is_runners(self) -> bool {
-        matches!(self, Kind::Hardware | Kind::Resource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent)
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent)
     }
 
     fn of(card_type: &CardType) -> Kind {
@@ -518,7 +531,8 @@ pub(crate) fn first_time_on(definition: &CardDefinition, state: &crate::rules::G
 
 /// The `Kind`s a card filter admits, where it is no finer than one.
 fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
-    // "A double operation", "a mandate", "a virus program": the subtypes
+    // "A double operation", "a mandate", "a virus program", "a companion
+    // card" (a resource but for Keiko itself): the subtypes
     // the log counts apart.
     if let CardFilter::All(parts) = filter
         && let [first, second] = parts.as_slice()
@@ -533,6 +547,7 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
             Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent]),
             Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
             Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram]),
+            Some((CardType::Resource, CardSubtype::Companion)) => return Ok(vec![Kind::CompanionResource]),
             _ => {}
         }
     }
@@ -628,6 +643,17 @@ impl CopyTurn {
     /// piece of ice", CR 6.5.7b), and nothing else a card asks yet.
     pub(crate) fn counts_by(trigger: Trigger) -> bool {
         matches!(trigger, Trigger::OnIceFullyBroken)
+    }
+
+    /// Whether moments of `trigger` about a rig copy are counted on it:
+    /// installing it, for Euler's "Use this ability only if this program
+    /// was installed this turn" (`CardFilter::InstalledThisTurn` on the
+    /// acting card, `pending_choice::copy_matches`). The Corp's installs
+    /// keep `InstalledCard::installed_this_turn` instead, which a view
+    /// carries; a rig copy's count is dated like the rest, and a card
+    /// installed again is a new copy with a fresh one.
+    pub(crate) fn counts_on_rig(trigger: Trigger) -> bool {
+        matches!(trigger, Trigger::OnInstall)
     }
 
     fn bump(&mut self, turn: u32, trigger: Trigger) {
@@ -959,6 +985,16 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             if let Some(installed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install) {
                 installed.this_turn.bump(turn, moment.trigger);
                 copy = Some((install, installed.this_turn));
+            }
+        }
+        // And on the rig install it is about, for what a rig copy is
+        // asked about itself.
+        if let About::Card { install: Some(install), installed: true, .. } = moment.about
+            && CopyTurn::counts_on_rig(moment.trigger)
+        {
+            let turn = state.turn;
+            if let Some(installed) = state.runner.rig.iter_mut().find(|installed| installed.install_id == install) {
+                installed.this_turn.bump(turn, moment.trigger);
             }
         }
         // And on the rig install that did it.

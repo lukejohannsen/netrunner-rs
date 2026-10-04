@@ -46,9 +46,7 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
 pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mystic_maemi", "Mystic Maemi"),
     ("swift", "Swift"),
-    ("cybertrooper_talut", "Cybertrooper Talut"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("la_costa_grid", "La Costa Grid"),
     ("digital_rights_management", "Digital Rights Management"),
@@ -57,13 +55,8 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Uprising* (`uprising`): tranche 6 of the NSG plan.
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("hoshiko_shiro_untold_protagonist", "Hoshiko Shiro: Untold Protagonist"),
     ("devil_charm", "Devil Charm"),
     ("gachapon", "Gachapon"),
-    ("keiko", "Keiko"),
-    ("odore", "Odore"),
-    ("mystic_maemi", "Mystic Maemi"),
-    ("paladin_poemu", "Paladin Poemu"),
     ("bravado", "Bravado"),
     ("boomerang", "Boomerang"),
     ("mu_safecracker", "Mu Safecracker"),
@@ -71,19 +64,13 @@ pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("swift", "Swift"),
     ("afterimage", "Afterimage"),
     ("makler", "Makler"),
-    ("penumbral_toolkit", "Penumbral Toolkit"),
     ("the_back", "The Back"),
     ("harmony_ar_therapy", "Harmony AR Therapy"),
     ("aniccam", "Aniccam"),
     ("simulchip", "Simulchip"),
     ("cordyceps", "Cordyceps"),
-    ("euler", "Euler"),
-    ("mantle", "Mantle"),
     ("penrose", "Penrose"),
-    ("cybertrooper_talut", "Cybertrooper Talut"),
-    ("paules_cafe", "Pauleʼs Café"),
     ("buffer_drive", "Buffer Drive"),
-    ("dreamnet", "DreamNet"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
     ("vaporframe_fabricator", "Vaporframe Fabricator"),

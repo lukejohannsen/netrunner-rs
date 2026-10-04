@@ -343,7 +343,8 @@ pub(super) fn held_price(state: &GameState, registry: &CardRegistry, def: &CardD
 /// promised)` — what the programs it hosts are worth where they are, and
 /// the clicks the programs still in the grip promise. An installer is a
 /// rig card whose text installs from the cards it hosts — a `Paid`
-/// ability with `Effect::InstallRunnerCardFromHost` in it (Madani's
+/// ability with `Effect::InstallRunnerCardFromZone { from: HostedOnSource }`
+/// in it (Madani's
 /// "once per turn → 0[credit]: install 1 hosted program"), read off the
 /// DSL and never the name; a card hosted as a break's stock (Matryoshka's
 /// copies) is not read here, because nothing installs it.
@@ -397,7 +398,7 @@ pub(super) fn installs_from_host(def: &CardDefinition) -> bool {
     def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid).any(|ability| {
         let mut found = false;
         ability.effect.for_each_effect(&mut |effect| {
-            if matches!(effect, Effect::InstallRunnerCardFromHost) {
+            if matches!(effect, Effect::InstallRunnerCardFromZone { from: netrunner_core::dsl::CardZoneRef::HostedOnSource, .. }) {
                 found = true;
             }
         });
@@ -1672,7 +1673,7 @@ mod tests {
         assert!((gained - (w.active_run_weight + w.own_credit_weight)).abs() < 1e-9, "{gained}");
         let for_trashing = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::TrashCosts), ..hq(vec![wall.clone()]) });
         assert_eq!(score(&for_trashing), score(&broke), "credits that pay for trashing break nothing");
-        let for_breakers = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::UsingIcebreakers), ..hq(vec![wall.clone()]) });
+        let for_breakers = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::Using(netrunner_core::dsl::CardFilter::Icebreaker)), ..hq(vec![wall.clone()]) });
         assert_eq!(score(&for_breakers), score(&overclocked));
 
         // Clean Getaway and Red Team: the rider's credits on success.

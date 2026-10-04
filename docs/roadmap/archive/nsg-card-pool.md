@@ -6775,3 +6775,111 @@ Excavator was.
   move by `determinize`'s larger prior (view and index alike, of 192):
   Corp agenda wins 60 → 58, Corp flatlines 26 → 25, Runner deck-outs 1 →
   4.
+
+#### Stage 2 — the turn's end, `PaysFor` and subtype words (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Mystic Maemi, Paladin Poemu, Hoshiko
+Shiro: Untold Protagonist, Penumbral Toolkit, Mantle, Keiko, Cybertrooper
+Talut, Odore, DreamNet, Euler and Pauleʼs Café — eleven Runner cards, and
+Hoshiko's Sweep deck, Side Quest. **No new `Effect`, and one fewer:**
+Madani's single-use `InstallRunnerCardFromHost` became the zone install's
+`HostedOnSource`, which Pauleʼs Café needed with a discount. Uprising 21 of
+65, its booster pack 2 of 7 (Maemi and Talut are reprinted there);
+`UR_UNIMPLEMENTED` 55 → 44, `URBP_UNIMPLEMENTED` 7 → 5. Hoshiko Shiro is
+Standard-banned and built anyway.
+
+- **The words.** Each is a gap in a vocabulary, fixed there for every card:
+  - **Hosted credits for using a card, and for playing one.**
+    `PaysFor::UsingIcebreakers` became `Using(CardFilter)` (Cyberfeeder and
+    The Toolbox write `Using(Icebreaker)`, Mantle
+    `Using(CardTypeOneOf([Hardware, Program]))`; using a card is using its
+    abilities, CR 9.1.6, and spending its credits is using it, CR 1.10.4d),
+    and `Playing(CardFilter)` is Mystic Maemi's "to play events", matched
+    against a new `payment::Purpose::Play` that the event's and the
+    operation's plays state. Paladin Poemu's "to install non-connection
+    cards" was already `Installing(Not(..))`. A pool is spent before another
+    unasked when its words are *within* the other's, which was word-for-word
+    equality and is now a conservative filter implication
+    (`payment::filter_implies`), so The Toolbox's credit still goes before
+    Mantle's on a break.
+  - **A companion column in the turn log** (`Kind::CompanionResource`, the
+    sixteenth kind and the last a `u32` of columns holds), and **the spend
+    off an installed card is about the card** — the first a payment took
+    credits from (`CreditsSpentFromOutsidePool::first_host`), so Keiko's
+    "spend credits from an installed companion card" is a `when` and shares
+    its first time with "install a companion card". The Twinning's entry
+    now names `subject: Any`.
+  - **A discount that is an amount** (`Discount::Amount`, read by
+    `ability::discount_credits` at the offer and the install alike): Pauleʼs
+    Café's "1[credit] less for each unique connection resource". Its "the
+    first card you install this way during each of your turns" is two
+    abilities on one use limit — the discounted one `And(DuringYourTurn,
+    OncePerTurn)`, the plain one its `Not` — and `validate` now counts only
+    the abilities that *spend* a `OncePerTurn` (`spends_once_per_turn`).
+  - **A rig card's own install is counted on its copy**
+    (`CopyTurn::counts_on_rig`), and `ActingCardMatches` asks the copy too,
+    so Euler's "only if this program was installed this turn" is
+    `ActingCardMatches(InstalledThisTurn)`.
+  - **Who the Runner is:** `EffectRequirement::IdentityMatches` (DreamNet's
+    "if your identity is digital") and `Amount::Link` ("at least 2[link]"),
+    with the "or" written `Not(And(Not, Not))`.
+  - **A random card from either hand:** `CardTarget::RandomFromHq` became
+    `RandomFromHand(Side)` (Heliamphora writes `Corp`), for Mystic Maemi's
+    "trash 1 card from your grip at random".
+- **What each is made of.** Maemi and Poemu bank a credit at turn start and
+  on a steal and answer "when your turn ends" with `OnDiscardPhaseEnd` (CR
+  5.7.2d); Maemi asks the random grip card or itself, and takes itself
+  unasked from an empty grip. Penumbral Toolkit is Carmen's self-discount
+  on Deep Dive's "a successful run on HQ this turn" and Open Market's load,
+  trashed when empty, paying during runs. Odore and Euler are breakers whose
+  free break is gated: three virtual resources (`RunnerInstalls`), the
+  turn of the install. Cybertrooper Talut is The Toolbox's link and
+  Cookbook's "it" (`acts_on_subject`) with Living Mural's turn-long
+  strength. Hoshiko is Dewi's flip with `TimesThisTurn(OnAccessed)` on each
+  side's turn end.
+- **Two engine gaps the stage found.** An event's and an operation's play
+  price was paid and never dispatched, so credits spent on a play off a
+  card reached no listener; and a psi bid paid off Methuselah's hosted
+  credits during a run (the debug audit, on a seed the new deck re-paired)
+  had the same gap. Both now dispatch their cost's events after the
+  effect, as every payer does.
+- **Fidelity limits:** under Known limits. Hoshiko's back has the front's
+  subtypes and link (the catalog keeps the flip side's text alone); Keiko
+  counts companion resources, and a payment's companion only when it gave
+  first; Pauleʼs Café's discount is spent by a discounted use that installs
+  nothing; Maemi's empty grip takes the resource unasked.
+- **Client.** Nothing added to the view or a decision: the spend event's
+  new field is drawn nowhere, as the event never was. `prose` reads the new
+  words (`describe_pays_for`, the link, the grip's random card, an amount
+  discount).
+- **Decks.** Side Quest is Pay As You Go's frame on Hoshiko: two Mystic
+  Maemi, two Paladin Poemu, two Keiko, two Odore and a DreamNet for its Take
+  a Dive, Time Bomb, Friend of a Friend, Chastushka and a Valentina Ferreira
+  Carvalho. Safety Net takes two Euler and two Mantle for its Coalescence
+  and Flux Capacitor; Dead Reckoning two Cybertrooper Talut and two Pauleʼs
+  Café for its Burner and Environmental Testing; Hit List two Penumbral
+  Toolkit for two Underdome Irregulars; Mixtape, a singleton deck on Nova (a
+  digital identity), a DreamNet for its Side Hustle. Borrowed Time, Vic's,
+  was the first choice for DreamNet and is pinned Startup-legal, which an
+  Uprising card is not. Every card given up is still in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 98 `Effect` variants single-use,
+  1 unused (`Trace`), over 529 card files — from 17 of 99 over 518.
+- **Real play** (`--headless`, each edited Runner deck against Hostile Bid,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Mystic Maemi installed 33 / 20 times, its turn-end clause
+  37 / 25; Paladin Poemu 40 / 11, its turn-end trash 25 / 5; Keiko 23 / 17,
+  its credit for an install 5 / 29 and for a spend 16 / 74; Odore 7 / 16
+  installs, 2 / 16 uses; DreamNet on Hoshiko 12 / 2, on Nova 18 / 0, its
+  draw 68 / 5 and 87 / 0; Hoshiko's turn-end abilities 377 / 230 and the
+  flipped turn start 592 / 392; Euler 40 / 28 installs, 13 / 77 uses;
+  Mantle 48 / 24 installs; Cybertrooper Talut 24 / 0, its strength 9 / 0;
+  Pauleʼs Café 26 / 24 installs, 220 / 124 uses; Penumbral Toolkit 22 / 16.
+  Talut and DreamNet go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,652) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate included.
+  `coverage_identical.py` against Stage 1 (7b76d22, 192 games a report):
+  random seatings differ only by the rename — Madani's 94 hosted installs
+  are `InstallRunnerCardFromZone` (202 → 296), `InstallRunnerCardFromHost`
+  94 → 0 — view and index alike. The planner seatings move by
+  `determinize`'s larger prior, with every end reason unchanged (Corp agenda
+  wins 58, flatlines 25; Runner agenda wins 105, deck-outs 4).

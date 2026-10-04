@@ -36,7 +36,7 @@ pub(super) fn run_pool(state: &GameState, run: &RunState) -> u32 {
 pub(super) fn run_credits_for_breaking(run: &RunState) -> u32 {
     use netrunner_core::dsl::PaysFor;
     match &run.run_credits_pay_for {
-        None | Some(PaysFor::UsingIcebreakers) => run.bonus_run_credits,
+        None | Some(PaysFor::Using(netrunner_core::dsl::CardFilter::Icebreaker)) => run.bonus_run_credits,
         Some(_) => 0,
     }
 }

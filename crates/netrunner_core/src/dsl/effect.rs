@@ -24,23 +24,23 @@ pub enum StackZone {
 
 /// How much less a card's text installs a card for — `Effect::
 /// InstallRunnerCardFromGripWithDiscount` and the offer that goes with it,
-/// `CardFilter::InstallableRunnerCardWithDiscount`, so the two agree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `CardFilter::InstallableRunnerCardWithDiscount`, so the two agree. Read
+/// as credits by `ability::discount_credits`, at the offer and the install
+/// alike.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Discount {
     /// "Paying 1[credit] less" (Illumination, Topan).
     Credits(u32),
     /// "Ignoring all costs" (Beta Build).
     AllCosts,
-}
-
-impl Discount {
-    /// The credits it takes off an install cost; all of any cost.
-    pub fn credits(self) -> u32 {
-        match self {
-            Discount::Credits(credits) => credits,
-            Discount::AllCosts => u32::MAX,
-        }
-    }
+    /// As many credits less as the amount — Pauleʼs Café's "costs 1[credit]
+    /// less to install for each unique (♦) connection resource you have
+    /// installed", `Amount(RunnerInstalls(..))`, read as the install is
+    /// offered and again as it is made. Composition didn't work: a
+    /// discount was a fixed number, and a standing install cost
+    /// (`ContinuousKind::InstallCost`) is about every install of a kind,
+    /// never the one card a card's own text installs.
+    Amount(Box<Amount>),
 }
 
 /// Which end of a deck `Effect::AddToDeck` puts a card on. The top is the
@@ -89,12 +89,16 @@ pub enum CardTarget {
     /// outside one. `ModifyStrength` needed no target, because it only
     /// ever meant this ice.
     EncounteredIce,
-    /// A random card from HQ, trashed facedown as the Corp's other unseen
-    /// trashes are — Heliamphora's "they trash 2 cards from HQ at random",
-    /// one per `TrashCard`. Nothing when HQ is empty. The trash is the
-    /// resolving card's controller's (`CardTrashed::by`), as every "the
-    /// Corp trashes" a Runner card prints is (conformance ledger, 1.14).
-    RandomFromHq,
+    /// A random card from that side's hand, one per `TrashCard`: from HQ
+    /// facedown, as the Corp's other unseen trashes are — Heliamphora's
+    /// "they trash 2 cards from HQ at random" — and from the grip to the
+    /// heap faceup, as every Runner card goes — Mystic Maemi's "you must
+    /// trash 1 card from your grip at random". Nothing when the hand is
+    /// empty. The trash is the resolving card's controller's
+    /// (`CardTrashed::by`), as every "the Corp trashes" a Runner card
+    /// prints is (conformance ledger, 1.14). It was `RandomFromHq`;
+    /// Maemi's is the same instruction about the other hand.
+    RandomFromHand(crate::rules::Side),
     /// Every card in the root of the attacked server — Light the Fire!'s
     /// "When that run is successful, trash all cards in the root of the
     /// attacked server". Only meaningful for `Effect::TrashCard`; each card
@@ -812,8 +816,12 @@ pub enum Effect {
     /// when The Wizard's Chest's "You may install 1 of those 2 cards,
     /// ignoring all costs" installed out of the set-aside zone: it was
     /// `InstallRunnerCardFromHeap(Discount)`. `from` is `OwnHeap`,
-    /// `OwnSetAside` or `OwnStack` (World Tree's found card); anything else
-    /// is `RulesError::UnresolvedCardTarget`.
+    /// `OwnSetAside`, `OwnStack` (World Tree's found card) or
+    /// `HostedOnSource` — the cards hosted on the acting install, the
+    /// parking card's own (Madani's "Install 1 hosted program", Pauleʼs
+    /// Café's "Install 1 hosted card"), which was `InstallRunnerCardFromHost`
+    /// until the Café's discount wanted the zone install's; anything else is
+    /// `RulesError::UnresolvedCardTarget`.
     InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef, discount: Discount },
     /// Sets cards aside faceup from the top of the Runner's stack, one at a
     /// time, until `count` of them match `filter` or the stack is empty —
@@ -844,12 +852,6 @@ pub enum Effect {
     /// costs" (`Discount::AllCosts`). The memory limit still applies: it
     /// is not a cost (CR 1.16).
     InstallRunnerCardFromGripWithDiscount(Discount),
-    /// Installs the resolving card from the cards **hosted on the acting
-    /// install** (`InstalledRunnerCard::hosted_cards`, the parking card's
-    /// own — `ResolutionContext::acting_install`), paying its cost —
-    /// Madani's "Install 1 hosted program". Same eligibility as the grip
-    /// variant, over `CardZoneRef::HostedOnSource`.
-    InstallRunnerCardFromHost,
     /// Marks the active run so that, when it would approach its server
     /// after passing every piece of ice, it approaches `ServerId` instead
     /// (`RunState::redirect_on_approach`) — Maintenance Access's "instead
@@ -1328,7 +1330,7 @@ pub enum Effect {
     /// bottom of R&D" reveals with no `each` and selects over
     /// `CardFilter::Revealed`. `each` must not park
     /// (`CardDefinition::validate`): the cards after it would be dropped.
-    /// Composition didn't work: `TrashCard(RandomFromHq)` trashes what it
+    /// Composition didn't work: `TrashCard(RandomFromHand(Corp))` trashes what it
     /// draws and nothing else, and every other card an effect acts on is
     /// one a player chose or the acting card.
     RevealAtRandom {
@@ -1898,6 +1900,11 @@ pub enum Amount {
     /// same way (a selection over the Runner's installed cards). Composition
     /// didn't work: `InstalledIcebreakerCount` is one sentence's count.
     RunnerInstalls(crate::dsl::CardFilter),
+    /// The Runner's link (`continuous::link`, the identity's printed link
+    /// plus what the rig declares) — DreamNet's "or you have at least
+    /// 2[link]", `AmountAtLeast(Link, 2)`. Composition didn't work: link
+    /// was asked only by a trace and the view.
+    Link,
     /// `amount` less `by`, never below 0 — Tremolo's "3[credit]: … This
     /// ability costs 1[credit] less to use for each installed piece of
     /// cybernetic hardware", `Cost::CreditsAmount(Reduced { amount: Fixed(3),
@@ -2395,7 +2402,6 @@ impl Effect {
             | Effect::InstallRunnerCardFromZone { .. }
             | Effect::SetAsideFromTopUntil { .. }
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
-            | Effect::InstallRunnerCardFromHost
             | Effect::RedirectRunOnApproach(..)
             | Effect::ArmRunEndPrevention(..)
             | Effect::Sabotage(..)

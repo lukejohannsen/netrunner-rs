@@ -716,15 +716,18 @@ pub fn evaluate_effect(
                 // you found, paying 3[credit] less"; one it cannot afford
                 // stays in the stack (CR 1.16.4b).
                 crate::dsl::CardZoneRef::OwnStack => RunnerCardSource::Stack,
+                // The cards hosted on the install that parked the choice.
+                crate::dsl::CardZoneRef::HostedOnSource => RunnerCardSource::Hosted(ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?),
                 _ => return Err(RulesError::UnresolvedCardTarget),
             };
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            let discount = discount_credits(discount, ctx, state, registry);
             // Same leniency as the grip variant: an uninstallable pick stays
             // where it is.
-            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, source, discount.credits()) {
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, source, discount) {
                 return Ok(Vec::new());
             }
-            install_runner_card_from_zone_with_discount(state, registry, card_id, source, discount.credits())
+            install_runner_card_from_zone_with_discount(state, registry, card_id, source, discount)
         }
 
         // Read down the stack from its top (the end of the `Vec`) until
@@ -756,10 +759,11 @@ pub fn evaluate_effect(
         Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
             use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Grip, discount.credits()) {
+            let discount = discount_credits(discount, ctx, state, registry);
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Grip, discount) {
                 return Ok(Vec::new());
             }
-            let events = install_runner_card_from_zone_with_discount(state, registry, card_id.clone(), RunnerCardSource::Grip, discount.credits())?;
+            let events = install_runner_card_from_zone_with_discount(state, registry, card_id.clone(), RunnerCardSource::Grip, discount)?;
             // The card resolving is installed now, and the rest of this
             // resolution means that install: Beta Build's "when that run
             // ends, if that program has not been uninstalled" reads the
@@ -767,16 +771,6 @@ pub fn evaluate_effect(
             // ChooseServer::source_install`, `Effect::AddToDeck`).
             ctx.acting_install = state.runner.rig.iter().rev().find(|c| c.card == card_id).map(|c| c.install_id).or(ctx.acting_install);
             Ok(events)
-        }
-
-        Effect::InstallRunnerCardFromHost => {
-            use crate::rules::engine::{can_install_runner_card_from_zone, install_runner_card_from_zone_paying_cost, RunnerCardSource};
-            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            let host = ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?;
-            if !can_install_runner_card_from_zone(state, registry, &card_id, RunnerCardSource::Hosted(host)) {
-                return Ok(Vec::new());
-            }
-            install_runner_card_from_zone_paying_cost(state, registry, card_id, RunnerCardSource::Hosted(host))
         }
 
         Effect::RedirectRunOnApproach(target) => {
@@ -2620,7 +2614,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
         CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
         // Many cards, trashed one after another by `trash_card`: no Corp
         // card in the pool prevents a trash, so nobody would be asked.
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq | CardTarget::AttackedServerRoot => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot => None,
     }
 }
 
@@ -2704,7 +2698,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(install).ok_or(RulesError::UnresolvedCardTarget)?;
             Ok((install, installed.card.clone(), installed.server))
         }
-        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq | CardTarget::AttackedServerRoot => {
+        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -2920,7 +2914,7 @@ pub(crate) fn trash_card(
 
         // Drawn with the state's own PRNG, as `Cost::TrashRandomFromHq` is,
         // and facedown: nobody chose it and the Runner has not seen it.
-        CardTarget::RandomFromHq => {
+        CardTarget::RandomFromHand(Side::Corp) => {
             if state.corp.hq.is_empty() {
                 return Ok(Vec::new());
             }
@@ -2928,6 +2922,15 @@ pub(crate) fn trash_card(
             let card = state.corp.hq.remove(index);
             crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card.clone()));
             Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by, install: None }])
+        }
+        CardTarget::RandomFromHand(Side::Runner) => {
+            if state.runner.grip.is_empty() {
+                return Ok(Vec::new());
+            }
+            let index = (state.next_u64() % state.runner.grip.len() as u64) as usize;
+            let card = state.runner.grip.remove(index);
+            state.runner.heap.push(card.clone());
+            Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Hand, by, install: None }])
         }
     }
 }
@@ -3816,6 +3819,14 @@ pub fn check_requirement(
             };
             if flipped { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::IdentityMatches(filter) => {
+            let identity = match side {
+                Side::Corp => state.corp.identity.as_ref(),
+                Side::Runner => state.runner.identity.as_ref(),
+            };
+            let matches = identity.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter));
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::IdentityCopy(copy) => {
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4111,7 +4122,8 @@ pub fn check_requirement(
             if state.this_turn.actions_finished() == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ActingCardMatches(filter) => {
-            let matches = ctx.acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter));
+            let matches = ctx.acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter))
+                && crate::rules::pending_choice::copy_matches(state, filter, ctx.acting_install);
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::Scorable => {
@@ -4334,6 +4346,18 @@ pub fn amount_on_table(amount: &Amount, state: &GameState, registry: &CardRegist
     resolve_amount(amount, &ResolutionContext::default(), state, registry)
 }
 
+/// The credits a `Discount` takes off an install cost — all of any cost
+/// for `AllCosts`. One reading for the offer
+/// (`CardFilter::InstallableRunnerCardWithDiscount`) and the install, so
+/// the two agree.
+pub(crate) fn discount_credits(discount: &crate::dsl::Discount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
+    match discount {
+        crate::dsl::Discount::Credits(credits) => *credits,
+        crate::dsl::Discount::AllCosts => u32::MAX,
+        crate::dsl::Discount::Amount(amount) => resolve_amount(amount, ctx, state, registry),
+    }
+}
+
 pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
     match amount {
         Amount::ClicksRemaining => match state.phase {
@@ -4449,6 +4473,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::RunnerInstalls(filter) => {
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
+        Amount::Link => crate::rules::continuous::link(state, registry),
         Amount::Reduced { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_sub(resolve_amount(by, ctx, state, registry)),
         Amount::Increased { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_add(resolve_amount(by, ctx, state, registry)),
         Amount::OtherUnrezzedIce => state
@@ -4545,6 +4570,7 @@ pub(crate) fn consume_requirement(
         EffectRequirement::RunnerCreditsAtMost(_)
         | EffectRequirement::DuringYourTurn
         | EffectRequirement::IdentityFlipped
+        | EffectRequirement::IdentityMatches(_)
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::Breaching(_)
@@ -5367,7 +5393,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, amount: 3, run_against: Some(state.active_run.as_ref().unwrap().server), from_installed: 0 },
+                GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, amount: 3, run_against: Some(state.active_run.as_ref().unwrap().server), from_installed: 0, first_host: None },
                 GameEvent::BadPublicityCreditsSpent { amount: 3 },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
             ]

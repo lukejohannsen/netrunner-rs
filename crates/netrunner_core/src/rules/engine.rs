@@ -1500,7 +1500,11 @@ fn play_event(
     // own discount is read here and by nothing else.
     let price = continuous::play_cost_of(&next, registry, card_def);
     let additional = continuous::additional_play_cost_of(&next, registry, card_def);
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(price), Purpose::Other, Some(&card_id))?);
+    // The price's events too are dispatched after the effect, as every
+    // payer's are: Mystic Maemi's credits spent on the play are credits
+    // spent from an installed card (Keiko, The Twinning).
+    let price_events = ability::pay_cost(&mut next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
+    events.extend(price_events.clone());
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands here with the credits — before
     // `OnPlay` — and an unaffordable one fails the play before anything
@@ -1512,7 +1516,8 @@ fn play_event(
     }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
-    // As `play_operation_card` does: the additional cost's events after.
+    // As `play_operation_card` does: the cost's events after.
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &price_events)?);
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // A played Event is trashed once it resolves — it goes to the Heap,
     // faceup, exactly as `play_operation` archives an Operation. This used
@@ -1571,7 +1576,7 @@ pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, car
     let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
     present
         && card_def.card_type == CardType::Operation
-        && payment::available(state, registry, Side::Corp, Purpose::Other) >= continuous::play_cost_of(state, registry, card_def)
+        && payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def)
         // Touch-ups' additional click, which the Corp must still have
         // after the one this play costs — `Effect::PlayOperationFromHq`
         // spends no click, so what is checked is simply that the cost is
@@ -1613,7 +1618,8 @@ pub(crate) fn play_operation_card(
     // double operation you play each turn" reads a turn with none yet.
     let price = continuous::play_cost_of(next, registry, card_def);
     let additional = continuous::additional_play_cost_of(next, registry, card_def);
-    let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Other, Some(&card_id))?;
+    let price_events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
+    let mut events = price_events.clone();
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands with the credits and before
     // `OnPlay` — the same placement `play_event` gives it. Touch-ups is
@@ -1646,6 +1652,7 @@ pub(crate) fn play_operation_card(
     // The additional cost's own events, after the effect as every payer
     // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
     // 1 tag" is a tag removed, which Synapse Global hears.
+    events.extend(ability::dispatch_cost_events(next, registry, &price_events)?);
     events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
     // "Whenever you finish resolving an operation" (Nuvem SA).
     dispatcher::finished_resolving(next, registry, &mut events, side, card_id)?;
@@ -5094,8 +5101,11 @@ mod tests {
             next.runner.rig,
             // The engine allocates the id; the fixture helper derives its
             // own from the card name, so the expectation names it directly.
-            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("clone_chip", 0) }]
+            // The copy's turn has its install counted (Euler's "if this
+            // program was installed this turn").
+            vec![InstalledRunnerCard { install_id: InstallId(1), this_turn: next.runner.rig[0].this_turn, ..installed_runner_card("clone_chip", 0) }]
         );
+        assert_eq!(next.runner.rig[0].this_turn.count(next.turn, crate::dsl::Trigger::OnInstall), 1);
         assert_eq!(
             events,
             vec![
@@ -5157,7 +5167,9 @@ mod tests {
             next.runner.rig,
             // The engine allocates the id; the fixture helper derives its
             // own from the card name, so the expectation names it directly.
-            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("gordian_blade", 0) }]
+            // The copy's turn has its install counted (Euler's "if this
+            // program was installed this turn").
+            vec![InstalledRunnerCard { install_id: InstallId(1), this_turn: next.runner.rig[0].this_turn, ..installed_runner_card("gordian_blade", 0) }]
         );
         assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(1));
         assert_eq!(
@@ -5257,7 +5269,9 @@ mod tests {
             next.runner.rig,
             // The engine allocates the id; the fixture helper derives its
             // own from the card name, so the expectation names it directly.
-            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("corroder", 2) }]
+            // The copy's turn has its install counted (Euler's "if this
+            // program was installed this turn").
+            vec![InstalledRunnerCard { install_id: InstallId(1), this_turn: next.runner.rig[0].this_turn, ..installed_runner_card("corroder", 2) }]
         );
     }
 
@@ -5299,7 +5313,9 @@ mod tests {
             next.runner.rig,
             // The engine allocates the id; the fixture helper derives its
             // own from the card name, so the expectation names it directly.
-            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("clone_chip", 0) }]
+            // The copy's turn has its install counted (Euler's "if this
+            // program was installed this turn").
+            vec![InstalledRunnerCard { install_id: InstallId(1), this_turn: next.runner.rig[0].this_turn, ..installed_runner_card("clone_chip", 0) }]
         );
     }
 

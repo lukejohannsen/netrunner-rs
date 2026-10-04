@@ -1,0 +1,81 @@
+{
+  "id": "hoshiko_shiro_untold_protagonist",
+  "title": "Hoshiko Shiro: Untold Protagonist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "And": [
+          {
+            "Not": "IdentityFlipped"
+          },
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurn": "OnAccessed"
+              },
+              1
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        "FlipIdentity"
+      ],
+      "text": "When your turn ends, if you accessed a card this turn, gain 2[credit] and flip this identity."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": "IdentityFlipped",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, draw 1 card and lose 1[credit]."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "Not": {
+              "AmountAtLeast": [
+                {
+                  "TimesThisTurn": "OnAccessed"
+                },
+                1
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        "FlipIdentity"
+      ],
+      "text": "When your turn ends, if you did not access any cards this turn, flip this identity."
+    }
+  ],
+  "built_from": 26066,
+  "is_playable": true
+}

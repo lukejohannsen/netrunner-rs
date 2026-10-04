@@ -51,10 +51,14 @@
       "trigger": "OnVirusCountersPurged",
       "effects": [
         {
-          "TrashCard": "RandomFromHq"
+          "TrashCard": {
+            "RandomFromHand": "Corp"
+          }
         },
         {
-          "TrashCard": "RandomFromHq"
+          "TrashCard": {
+            "RandomFromHand": "Corp"
+          }
         },
         {
           "TrashCard": "ThisCard"

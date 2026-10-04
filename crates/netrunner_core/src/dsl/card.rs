@@ -959,11 +959,24 @@ pub enum PaysFor {
     /// while a trace was active, which was exact only because nothing else
     /// can be paid for then.
     TraceAttempts,
-    /// The cost of a paid ability on an icebreaker — Cyberfeeder's and The
-    /// Toolbox's "Use these credits to pay for using icebreakers". Pumps as
-    /// well as breaks: "using" an icebreaker is using any of its abilities.
-    /// An icebreaker is what `CardFilter::Icebreaker` says one is.
-    UsingIcebreakers,
+    /// The cost of a paid ability on a card the filter admits — Cyberfeeder's
+    /// and The Toolbox's "Use these credits to pay for using icebreakers"
+    /// (`Icebreaker`), Mantle's "You can spend hosted credits to use
+    /// hardware and programs" (`CardTypeOneOf([Hardware, Program])`).
+    /// Pumps as well as breaks: "using" a card is using any of its
+    /// abilities (CR 9.1.6), never installing it, which is `Installing`.
+    /// It was `UsingIcebreakers`, a word for one filter, and Mantle would
+    /// have been a second; one pool is spent before another unasked when
+    /// its filter implies the other's (`payment::Breadth::within`), so The
+    /// Toolbox's credits still go before Mantle's on a break.
+    Using(crate::dsl::CardFilter),
+    /// The play cost of a card the filter admits — Mystic Maemi's "You can
+    /// spend hosted credits to play events" (`CardType(Event)`). The
+    /// play's own price (`payment::Purpose::Play`), never its additional
+    /// cost, which no pool's credits are reserved for. Composition didn't
+    /// work: every other word is about an install, an ability or a run, and
+    /// a play is none of them.
+    Playing(crate::dsl::CardFilter),
     /// The credit cost of the basic action that removes a tag — Crash
     /// Space's "You can spend hosted credits to take the basic action to
     /// remove 1 tag". Not a card's text removing tags, which costs nothing
@@ -1387,11 +1400,13 @@ impl CardDefinition {
         // standing effect does, so a `OncePerTurn` there would never be
         // spent. And the key is the card and which copy, so two once-per-
         // turn abilities on one card would share a use — no card prints two.
+        // An ability that only reads the use (`Not`) spends nothing, and
+        // is the other half of one printed limit (Pauleʼs Café).
         if self.continuous.iter().any(|effect| effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn)) {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerTurn`"));
         }
         let once_per_turn = self.triggers.iter().filter_map(|triggered| triggered.requirement.as_ref()).chain(self.abilities.iter().filter_map(|ability| ability.requirement.as_ref()));
-        if once_per_turn.clone().filter(|requirement| requirement.mentions_once_per_turn()).count() > 1 {
+        if once_per_turn.clone().filter(|requirement| requirement.spends_once_per_turn()).count() > 1 {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
         // The same two rules hold for the run's use limit, which is keyed

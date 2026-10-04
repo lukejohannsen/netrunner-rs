@@ -1,0 +1,49 @@
+{
+  "id": "cybertrooper_talut",
+  "title": "Cybertrooper Talut",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Icebreaker",
+            {
+              "Not": {
+                "HasSubtype": "AI"
+              }
+            }
+          ]
+        }
+      },
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "BoostStrength": {
+            "amount": 2,
+            "duration": "Turn"
+          }
+        }
+      ],
+      "text": "Whenever you install a non-AI icebreaker, that icebreaker gets +2 strength for the remainder of the turn."
+    }
+  ],
+  "built_from": 26091,
+  "is_playable": true
+}

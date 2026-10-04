@@ -516,6 +516,10 @@ mod tests {
             // Midnight Sun Stage 8c: Ob Superheavy Logistics' deck, of
             // Weyland and neutral cards; pinned as the test reads it.
             ("supply_chain", &neither),
+            // Uprising Stage 2: Hoshiko Shiro's deck, on Pay As You Go's
+            // frame, whose Core Set cards keep it out of Standard (where
+            // Hoshiko is banned besides).
+            ("side_quest", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
             // (Net Shield among them), as Safety Net does.
             ("spare_parts", &neither),

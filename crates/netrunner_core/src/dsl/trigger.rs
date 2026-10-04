@@ -395,7 +395,9 @@ pub enum Trigger {
     /// "The first time each turn you spend credits from an installed card"
     /// (The Twinning) — `GameEvent::CreditsSpentFromOutsidePool` with some
     /// of its credits off a card's hosted pool (`from_installed`), heard by
-    /// the spender, once per payment however many cards paid. Composition
+    /// the spender, once per payment however many cards paid, and about
+    /// the first card they came off (`first_host`), which Keiko's "an
+    /// installed companion card" narrows with a `when`. Composition
     /// didn't work: `OnCreditsSpentOutsidePool` is about the server of the
     /// run, for Shackleton Grid, and counts bad publicity's and a run
     /// event's credits, which come off no card.
@@ -870,7 +872,8 @@ impl Trigger {
             | Trigger::OnCardMoved
             | Trigger::OnFinishedResolving
             | Trigger::OnDerez
-            | Trigger::OnActionTaken => TriggerAbout::Card,
+            | Trigger::OnActionTaken
+            | Trigger::OnCreditsSpentFromInstalledCard => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
             | Trigger::OnApproachServer
@@ -892,7 +895,6 @@ impl Trigger {
             | Trigger::OnIdentityFlipped
             | Trigger::OnVirusCountersPurged
             | Trigger::OnActionFinished
-            | Trigger::OnCreditsSpentFromInstalledCard
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
             // "whenever you do **meat** damage"; none does.
