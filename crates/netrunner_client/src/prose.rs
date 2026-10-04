@@ -501,6 +501,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::StealOrTrashAgendas, _) => "the Runner cannot steal or trash agendas",
                 (Prohibition::Rez, _) => "the Corp cannot rez that card",
                 (Prohibition::BreakSubroutinesOnIce, _) => "Runner card abilities cannot break subroutines on that ice",
+                (Prohibition::DeclaredSuccessful, _) => "this run cannot be declared successful",
             };
             format!("{what} {}", duration(until))
         }
@@ -610,6 +611,8 @@ fn describe_when(filter: &EventFilter) -> String {
                 (facts.outermost, "the outermost ice"),
                 (facts.after_fully_breaking, "after fully breaking it"),
                 (facts.at_most_zero_strength, "on ice with 0 or less strength"),
+                (facts.rezzed_code_gate_or_sentry, "a rezzed code gate or sentry"),
+                (facts.printed_subroutine, "a printed subroutine"),
             ]
             .into_iter()
             .filter_map(|(holds, word)| holds.then_some(word))
@@ -802,6 +805,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::BioroidIceAbilities => "cannot use paid abilities printed on bioroid ice",
             Prohibition::Rez => "cannot rez this card",
             Prohibition::BreakSubroutinesOnIce => "cannot break subroutines on this ice with Runner card abilities",
+            Prohibition::DeclaredSuccessful => "cannot be declared successful",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

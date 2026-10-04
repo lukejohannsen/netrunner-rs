@@ -2196,12 +2196,23 @@ pub enum Prohibition {
     /// Corp card abilities. Not `BreakSubroutines`, which is about the
     /// breaking install, never the broken one.
     BreakSubroutinesOnIce,
+    /// The run cannot be declared successful — Transport Monopoly's
+    /// "Hosted agenda counter: This run cannot be declared successful",
+    /// for the run it is used in (`EffectDuration::Run`). Asked where the
+    /// declaration is made (CR 6.9.5a, `continuous::
+    /// may_be_declared_successful`), beside the standing word Flagship
+    /// prints about its server (`ContinuousKind::
+    /// CannotBeDeclaredSuccessful`), so the run is withheld its success and
+    /// nothing else: it is not unsuccessful (CR 6.8.4a), and the breach
+    /// follows. Not that kind with a duration: a standing effect is
+    /// scanned off an active card and cannot outlive the use that made it.
+    DeclaredSuccessful,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 14] = [
+    pub const ALL: [Prohibition; 15] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2216,13 +2227,14 @@ impl Prohibition {
         Prohibition::BioroidIceAbilities,
         Prohibition::Rez,
         Prohibition::BreakSubroutinesOnIce,
+        Prohibition::DeclaredSuccessful,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful => Side::Runner,
         }
     }
 
@@ -2233,7 +2245,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful => None,
         }
     }
 }

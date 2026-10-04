@@ -1,0 +1,63 @@
+{
+  "id": "f2p",
+  "title": "F2P",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "Credits": 2
+      },
+      "requirement": {
+        "And": [
+          "EncounteringThisIce",
+          {
+            "Not": "IsTagged"
+          }
+        ]
+      },
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "2[credit]: Break 1 subroutine on this ice. Only the Runner can use this ability, and only if they are not tagged."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Add 1 installed Runner card to the grip.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": false,
+          "destination": "OpponentHand"
+        }
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "built_from": 26115,
+  "is_playable": true
+}

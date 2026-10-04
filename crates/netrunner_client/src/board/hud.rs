@@ -294,6 +294,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::BioroidIceAbilities => "the Runner cannot use paid abilities printed on bioroid ice",
         Prohibition::Rez => "the Corp cannot rez that card",
         Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
+        Prohibition::DeclaredSuccessful => "this run cannot be declared successful",
     }
 }
 

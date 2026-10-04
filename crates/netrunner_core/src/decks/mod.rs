@@ -520,6 +520,9 @@ mod tests {
             // frame, whose Core Set cards keep it out of Standard (where
             // Hoshiko is banned besides).
             ("side_quest", &neither),
+            // Uprising Stage 5: GameNET's deck, on Paid Content's frame,
+            // whose Drago Ivanov and Gold Farmer keep it out of Standard.
+            ("pay_to_win", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
             // (Net Shield among them), as Safety Net does.
             ("spare_parts", &neither),

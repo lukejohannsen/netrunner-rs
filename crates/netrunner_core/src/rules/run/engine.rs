@@ -1131,7 +1131,15 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .and_then(|run| run.ice.get(run.position))
         .map_or(0, |ice| continuous::ice_strength(state, registry, ice));
     let (card_id, _) = transition_subroutine(state, registry, index, SubroutineStatus::Broken)?;
-    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
+    // Printed on the ice, not gained (Gold Farmer's "a **printed**
+    // subroutine on this ice"), carried for what is heard of the break.
+    let printed = state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.ice.get(run.position))
+        .and_then(|ice| ice.subroutines.get(index))
+        .is_some_and(|subroutine| !subroutine.gained);
+    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength, printed }];
     // What kind of icebreaker broke it, when it was printed (Virtual
     // Service Agent's "its printed subroutine with a decoder"): the
     // subtypes of the card whose ability it was, read before the run is
@@ -1145,7 +1153,6 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
     run.subroutine_broken = true;
     run.this_encounter.subroutines_broken += 1;
     run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
-    let printed = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(index)).is_some_and(|subroutine| !subroutine.gained);
     if printed {
         run.this_encounter.printed_broken_with = run.this_encounter.printed_broken_with.with(&breaker_subtypes);
     }
@@ -1718,7 +1725,7 @@ mod tests {
         );
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }]
         );
     }
 

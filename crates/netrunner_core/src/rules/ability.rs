@@ -1595,7 +1595,13 @@ pub fn evaluate_effect(
             let lost = if locked { 0 } else { (*amount).min(before) };
             state.resources_mut(*side).credits = Credits(before - lost);
             ctx.credits_lost = lost;
-            Ok(vec![GameEvent::CreditsLost { side: *side, amount: lost }])
+            let mut events = vec![GameEvent::CreditsLost { side: *side, amount: lost }];
+            // The card whose text it is, as for a gain (Gold Farmer's "they
+            // lose 1[credit]", which GameNET hears).
+            if let Some(took) = took_credits(&events, *side, ctx.prompting_card.or(acting_card)) {
+                dispatcher::emit(state, registry, &mut events, took)?;
+            }
+            Ok(events)
         }
 
         Effect::LoseCreditsAmount(side, amount) => {
@@ -2803,6 +2809,30 @@ pub(crate) fn dispatch_damage_taken(
         dispatcher::emit(state, registry, &mut fired, batch)?;
     }
     Ok(fired)
+}
+
+/// `GameEvent::AbilityTookCredits` for what `paid` took from `side`, when
+/// it took at least 1[credit] and a card asked for it: the one test of
+/// whether a card's ability made a player spend or lose credits, for every
+/// site that announces one — a cost of a card's ability (`engine::
+/// activate_ability`), a paid choice a card offered (`pending_choice::
+/// resolve_accept`), a bid in a card's trace (`trace::submit_runner_bid`)
+/// and a loss a card's text resolved (`Effect::LoseCredits`). A payment
+/// site pushes it among the cost events it dispatches after the effect,
+/// so it is heard where the Payment Rule hears every cost.
+///
+/// "At least 1": a payment reports its credit pool's share even at 0, and
+/// a loss from an empty pool is a loss of 0 (CR 9.12.2b), so any share
+/// above 0 from any pool is the test, never the event's presence.
+pub(crate) fn took_credits(paid: &[GameEvent], side: Side, card: Option<&CardId>) -> Option<GameEvent> {
+    let card = card?;
+    let took = paid.iter().any(|event| match event {
+        GameEvent::CreditsSpent { side: spender, amount } | GameEvent::CreditsLost { side: spender, amount } => *spender == side && *amount > 0,
+        GameEvent::CreditsSpentFromOutsidePool { side: spender, amount, .. } => *spender == side && *amount > 0,
+        GameEvent::BadPublicityCreditsSpent { amount } | GameEvent::BonusRunCreditsSpent { amount } => side == Side::Runner && *amount > 0,
+        _ => false,
+    });
+    took.then(|| GameEvent::AbilityTookCredits { side, card: card.clone() })
 }
 
 /// Credits gained by a resolving card, as opposed to by a click or a
@@ -5955,8 +5985,8 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true },
             ]
         );
     }
@@ -6067,7 +6097,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -6085,7 +6115,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
     }
 
     fn ice_encounter_state_of_type(
@@ -6121,7 +6151,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
     }
 
@@ -6164,7 +6194,7 @@ mod tests {
 
             assert_eq!(
                 events,
-                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
             );
         }
     }

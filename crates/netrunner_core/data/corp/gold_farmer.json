@@ -1,0 +1,66 @@
+{
+  "id": "gold_farmer",
+  "title": "Gold Farmer",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "This",
+      "when": {
+        "Ice": {
+          "printed_subroutine": true
+        }
+      },
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner breaks a printed subroutine on this ice, they lose 1[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 3[credit]"
+        }
+      }
+    },
+    {
+      "text": "End the run unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 3[credit]"
+        }
+      }
+    }
+  ],
+  "built_from": 26116,
+  "is_playable": true
+}

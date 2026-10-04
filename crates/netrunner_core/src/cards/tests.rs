@@ -23818,4 +23818,248 @@ mod uprising {
         let acting = crate::rules::legal_actions_for(&firing, &registry, Side::Runner).len() + crate::rules::legal_actions_for(&firing, &registry, Side::Corp).len();
         assert!(acting > 0, "somebody can act: {:?}", firing.active_run.as_ref().map(|run| run.phase));
     }
+
+    // ---- Stage 5: break triggers, and the first card to start a trace ----
+
+    fn breaker(card: &str, install: u32, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { base_strength: strength, ..rig(card, install) }
+    }
+
+    fn ability_of(target: InstallId, ability_index: usize) -> PlayerAction {
+        PlayerAction::ActivateAbility { target, ability_index }
+    }
+
+    fn pending_subroutines(state: &GameState) -> usize {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().filter(|subroutine| subroutine.status == crate::rules::SubroutineStatus::Pending).count()
+    }
+
+    #[test]
+    fn gold_farmer_takes_a_credit_for_each_printed_subroutine_broken_and_asks_three_for_each_it_fires() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("gold_farmer", 0)];
+        state.runner.rig = vec![breaker("makler", 3001, 2)];
+        let encountering = to_the_encounter(&state, &registry);
+        let (broken, events) = apply_action(&encountering, &registry, ability_of(InstallId(3001), 0)).expect("2[credit]: break up to 2 barrier subroutines");
+        assert_eq!(pending_subroutines(&broken), 0);
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::CreditsLost { side: Side::Runner, amount: 1 })).count(), 2, "they lose 1[credit] for each");
+        assert_eq!(broken.runner.resources.credits, Credits(10 - 2 - 2 + 1), "Makler's 2, Gold Farmer's 2, Makler's 1 for fully breaking it");
+
+        // A subroutine the ice gained is not printed on it.
+        let mut gained = encountering.clone();
+        let run = gained.active_run.as_mut().expect("encountering");
+        run.ice[run.position].subroutines[0].gained = true;
+        let (broken, _) = apply_action(&gained, &registry, ability_of(InstallId(3001), 0)).expect("break both");
+        assert_eq!(broken.runner.resources.credits, Credits(10 - 2 - 1 + 1), "only the printed one costs a credit");
+
+        // Unbroken, each subroutine ends the run unless the Runner pays 3.
+        let (asked, _) = pass_until_settled(encountering, &registry);
+        assert!(asked.pending_paid_choice.is_some(), "end the run unless the Runner pays 3[credit]");
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("pay 3");
+        let (asked_again, _) = pass_until_settled(paid, &registry);
+        assert!(asked_again.pending_paid_choice.is_some(), "and the second");
+        let (declined, _) = apply_action(&asked_again, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(declined.runner.resources.credits, Credits(7));
+        assert!(declined.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Ended), "end the run");
+    }
+
+    #[test]
+    fn makler_breaks_two_barrier_subroutines_and_gains_a_credit_the_first_time_each_turn_it_fully_breaks_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("ice_wall", 0)];
+        state.runner.rig = vec![breaker("makler", 3001, 2)];
+        let encountering = to_the_encounter(&state, &registry);
+        let (pumped, _) = apply_action(&encountering, &registry, ability_of(InstallId(3001), 1)).expect("2[credit]: +2 strength");
+        assert_eq!(pumped.runner.resources.credits, Credits(8));
+        assert_eq!(crate::rules::continuous::breaker_strength(&pumped, &registry, &pumped.runner.rig[0]), 4);
+        let (broken, _) = apply_action(&encountering, &registry, ability_of(InstallId(3001), 0)).expect("break");
+        assert_eq!(broken.runner.resources.credits, Credits(10 - 2 + 1), "fully broke Ice Wall: gain 1[credit]");
+
+        // A second full break the same turn pays nothing.
+        let (after, _) = pass_until_settled(broken, &registry);
+        let mut again = after;
+        if again.active_run.is_some() {
+            again = apply_action(&again, &registry, PlayerAction::CompleteRun).map(|(state, _)| state).unwrap_or(again);
+            again = close_all_windows(again, &registry).0;
+        }
+        let credits = again.runner.resources.credits;
+        let second = to_the_encounter(&again, &registry);
+        let (broken_again, _) = apply_action(&second, &registry, ability_of(InstallId(3001), 0)).expect("break again");
+        assert_eq!(broken_again.runner.resources.credits, Credits(credits.0 - 2), "only the first time each turn");
+
+        // Only barrier subroutines.
+        let mut gate = state;
+        gate.corp.installed = vec![ice_at_hq("enigma", 0)];
+        let gate = to_the_encounter(&gate, &registry);
+        assert!(apply_action(&gate, &registry, ability_of(InstallId(3001), 0)).is_err(), "a code gate is not a barrier");
+    }
+
+    #[test]
+    fn tyr_lets_only_the_runner_lose_a_click_to_break_and_gives_the_corp_a_click_next_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("tyr", 0)];
+        state.runner.rig = vec![rig("cyberfeeder", 3002)];
+        let encountering = to_the_encounter(&state, &registry);
+        let break_one = ability_of(fixture_install_id("tyr"), 0);
+        assert!(crate::rules::legal_actions_for(&encountering, &registry, Side::Runner).contains(&break_one), "only the Runner can use this ability");
+        assert!(!crate::rules::legal_actions_for(&encountering, &registry, Side::Corp).contains(&break_one));
+        let clicks = encountering.runner.resources.clicks;
+        let (broken, _) = apply_action(&encountering, &registry, break_one).expect("lose [click]");
+        assert_eq!(broken.runner.resources.clicks.0, clicks.0 - 1);
+        assert_eq!(pending_subroutines(&broken), 2, "break 1 subroutine");
+        assert!(
+            broken.lingering.iter().any(|effect| effect.what == crate::rules::lingering::Lingering::AllottedClicks(1) && effect.on == crate::rules::lingering::On::Player(Side::Corp)),
+            "the Corp gets +1 allotted [click] for their next turn"
+        );
+
+        // The rest fire: 2 core damage, a trash and 3[credit], end the run.
+        let (firing, _) = pass_until_settled(broken, &registry);
+        let firing = if choosing_cards(&firing) { pick(&firing, &registry, 0) } else { firing };
+        let (ended, _) = pass_until_settled(firing, &registry);
+        assert!(ended.runner.heap.contains(&id("cyberfeeder")), "trash 1 installed Runner card");
+        assert_eq!(ended.corp.resources.credits, Credits(13), "gain 3[credit]");
+        assert!(ended.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Ended), "end the run");
+    }
+
+    #[test]
+    fn f2p_sells_a_break_for_two_to_an_untagged_runner_and_bounces_an_install_or_tags() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("gamenet_where_dreams_are_real"));
+        state.corp.installed = vec![ice_at_hq("f2p", 0)];
+        state.runner.rig = vec![rig("cyberfeeder", 3002)];
+        let encountering = to_the_encounter(&state, &registry);
+        let break_one = ability_of(fixture_install_id("f2p"), 0);
+        assert!(crate::rules::legal_actions_for(&encountering, &registry, Side::Runner).contains(&break_one));
+        let (broken, events) = apply_action(&encountering, &registry, break_one.clone()).expect("2[credit]: break 1");
+        assert_eq!(broken.runner.resources.credits, Credits(8));
+        assert!(events.contains(&GameEvent::AbilityTookCredits { side: Side::Runner, card: id("f2p") }));
+        assert_eq!(broken.corp.resources.credits, Credits(11), "GameNET: a Corp card ability made the Runner spend during a run");
+
+        let mut tagged = encountering.clone();
+        tagged.runner.tags = 1;
+        assert!(!crate::rules::legal_actions_for(&tagged, &registry, Side::Runner).contains(&break_one), "only if they are not tagged");
+
+        let (asked, _) = pass_until_settled(encountering, &registry);
+        assert!(choosing_cards(&asked), "add 1 installed Runner card to the grip");
+        let bounced = pick(&asked, &registry, 0);
+        assert!(bounced.runner.grip.contains(&id("cyberfeeder")));
+        let (tagged, _) = pass_until_settled(bounced, &registry);
+        assert_eq!(tagged.runner.tags, 1, "give the Runner 1 tag");
+    }
+
+    #[test]
+    fn gamenet_gains_a_credit_when_a_corp_card_makes_the_runner_spend_or_lose_during_a_run_and_not_for_the_runners_own() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("gamenet_where_dreams_are_real"));
+        state.corp.installed = vec![ice_at_hq("gold_farmer", 0)];
+        state.runner.rig = vec![breaker("makler", 3001, 2)];
+        let encountering = to_the_encounter(&state, &registry);
+        let corp = encountering.corp.resources.credits.0;
+        // Makler's 2[credit] is the Runner's own card; each credit Gold
+        // Farmer takes is a Corp card's ability.
+        let (broken, _) = apply_action(&encountering, &registry, ability_of(InstallId(3001), 0)).expect("break both");
+        assert_eq!(broken.corp.resources.credits.0, corp + 2, "one for each loss, none for Makler's cost");
+
+        // An "unless the Runner pays" is the card making them spend.
+        let (asked, _) = pass_until_settled(encountering.clone(), &registry);
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("pay 3");
+        assert_eq!(paid.corp.resources.credits.0, corp + 1);
+        // Declining spends nothing.
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(declined.corp.resources.credits.0, corp);
+
+        // A loss of nothing is no loss.
+        let mut broke = encountering;
+        broke.runner.resources.credits = Credits(2);
+        let (broken, _) = apply_action(&broke, &registry, ability_of(InstallId(3001), 0)).expect("break both with the last 2");
+        assert_eq!(broken.corp.resources.credits.0, corp, "the Runner had nothing left to lose");
+    }
+
+    #[test]
+    fn scapenet_traces_seven_after_a_successful_run_to_remove_a_chip_or_virtual_card_from_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("gamenet_where_dreams_are_real"));
+        state.corp.hq = vec![id("scapenet")];
+        state.runner.rig = vec![rig("cyberfeeder", 3002), rig("cookbook", 3003), rig("corroder", 3004)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("scapenet") }).is_err(), "play only if the Runner made a successful run during their last turn");
+
+        state.last_turn = {
+            let mut runner = runner_turn();
+            runner.corp.installed.clear();
+            let mut ended = run_to_completion(runner, &registry, ServerId::Hq).0;
+            crate::rules::turn_log::rotate(&mut ended);
+            ended.last_turn
+        };
+        let (tracing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("scapenet") }).expect("play");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(7), "trace[7]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+
+        // Avoided: 7 matches 7.
+        let (avoided, events) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 7 }).expect("the Runner matches it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::TraceAvoided { .. })));
+        assert_eq!(avoided.runner.rig.len(), 3);
+        assert!(events.contains(&GameEvent::AbilityTookCredits { side: Side::Runner, card: id("scapenet") }), "the trace made the Runner spend");
+        assert_eq!(avoided.corp.resources.credits, Credits(9), "but not during a run: GameNET pays nothing");
+        assert!(avoided.corp.archives.iter().any(|card| card.card == id("scapenet")), "the operation finished resolving");
+
+        // Successful: remove 1 installed chip or virtual card.
+        let (succeeded, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        assert_eq!(toggles(&succeeded, &registry, Side::Corp), vec![0, 1], "Cyberfeeder (chip) or Cookbook (virtual), not Corroder");
+        let removed = pick(&succeeded, &registry, 1);
+        assert!(removed.runner.removed_from_game.contains(&id("cookbook")), "removed from the game");
+        assert!(!removed.runner.heap.contains(&id("cookbook")));
+        assert!(removed.corp.archives.iter().any(|card| card.card == id("scapenet")));
+    }
+
+    #[test]
+    fn transport_monopoly_spends_a_counter_once_a_turn_so_a_run_is_not_declared_successful() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("transport_monopoly", 0)];
+        state.corp.installed[0].advancement_tokens = 4;
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "transport_monopoly") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2, "place 2 agenda counters on it");
+        let use_it = ability_of(scored.corp.scored_agendas[0].install_id, 0);
+        let (idle, _) = close_all_windows(scored.clone(), &registry);
+        assert!(!crate::rules::legal_actions(&idle, &registry).contains(&use_it), "only during a run");
+
+        let mut running = idle;
+        running.phase = GamePhase::Action(Side::Runner);
+        // Unrezzed, so it is passed without an encounter.
+        running.corp.installed = vec![ice_at("ice_wall", ServerId::Hq, 0)];
+        let (running, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (running, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach Ice Wall");
+        let (running, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes first");
+        let (used, _) = apply_action(&running, &registry, use_it.clone()).expect("hosted agenda counter");
+        assert_eq!(used.corp.scored_agendas[0].agenda_counters, 1);
+        assert!(!crate::rules::legal_actions(&used, &registry).contains(&use_it), "once per turn");
+
+        // Past Ice Wall to the server: the breach happens, the success does not.
+        let mut moving = used;
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            if moving.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Ended) {
+                break;
+            }
+            if moving.pending_paid_choice.is_some() || moving.pending_decision.is_some() {
+                break;
+            }
+            let action = match &moving.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if moving.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success) => PlayerAction::CompleteRun,
+                None => PlayerAction::ContinueRun,
+            };
+            let Ok((next, e)) = apply_action(&moving, &registry, action) else { break };
+            moving = next;
+            events.extend(e);
+        }
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunNotDeclaredSuccessful { server: ServerId::Hq })), "the run reached the server: {events:?}");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::RunSucceeded { .. })), "this run cannot be declared successful");
+    }
 }

@@ -6767,7 +6767,7 @@ Excavator was.
   29 / 99 times and its trash ability 11 / 14. Bellona scored 0 / 28 times
   and stolen 10 / 8. Colossus rezzed 4 / 20 times, its subroutines firing
   22 / 77 times. Bass and Flower Sermon go on the bot debts.
-- **Measured.** `cargo test --workspace` green and clippy silent. Both
+- **Measured.** `cargo test --workspace` green (2,698) and clippy silent. Both
   sweeps are green at 256 seeds, the card gate included, so every new card
   was seen in play. `coverage_identical.py` against `origin/main`
   (95a6097, 192 games a report): random identical, view and index alike,
@@ -7117,3 +7117,116 @@ Grid are reprinted there); `UR_UNIMPLEMENTED` 34 → 25,
   used 6 → 7, and the end reasons drift by the larger sample (Corp agenda
   wins 65 → 63, Runner 96 → 102). The subroutine fix moved no report: the
   four hashes before and after it are the same.
+
+#### Stage 5 — break triggers, and the first card to start a trace (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Gold Farmer, Makler, Týr, F2P, GameNET:
+Where Dreams are Real, Scapenet and Transport Monopoly — six Corp cards
+and one Runner card — and GameNET's Sweep deck, Pay to Win. **No new
+`Effect`, and none left unused:** Scapenet's trace is `Trace`'s first
+card. Uprising 47 of 65, its booster pack 6 of 7; `UR_UNIMPLEMENTED`
+25 → 18.
+
+- **The words.**
+  - **A card's ability making a player spend or lose credits is a moment**
+    (`Trigger::OnAbilityTookCredits`, `GameEvent::AbilityTookCredits`,
+    GameNET's "whenever a Corp card ability causes the Runner to spend or
+    lose at least 1[credit] during a run"): `AbilityGainedCredits`'s mirror,
+    announced by one test (`ability::took_credits`, "at least 1" from any
+    pool) at the four places a card asks: the cost of its ability
+    (`engine::activate_ability` — F2P's 2[credit], paid by the Runner), a
+    paid choice it offers (`pending_choice::resolve_accept` — "end the run
+    unless the Runner pays 3[credit]"), a bid in the trace it began
+    (`trace::submit_runner_bid`, CR 10.8.6d) and a loss its text resolves
+    (`Effect::LoseCredits` — Gold Farmer's). Pushed among the cost events,
+    so it is heard after what it paid for, where the Payment Rule hears
+    every cost. GameNET names whose card and whose credits with
+    `EventFilter::OwnedBy { owner: Corp, whose: Runner }`, and "during a
+    run" is `RunInProgress`. The moment is generic, so every breaker's
+    paid use now records one.
+  - **A break says whether the subroutine was printed** (`GameEvent::
+    SubroutineBroken::printed`, `IceFacts::printed_subroutine`, Gold
+    Farmer's "whenever the Runner breaks a printed subroutine on this
+    ice"): read off the event, as the strength is, because a parked
+    trigger is asked again after the run has moved on. A fifth fact
+    doubles the ice facts to 32 columns, which the turn log's 36 hold.
+  - **A run can be kept from being declared successful by a card used
+    during it** (`Prohibition::DeclaredSuccessful` for `Run`, Transport
+    Monopoly's "This run cannot be declared successful"), asked by
+    `continuous::may_be_declared_successful` beside Flagship's standing
+    word, so the breach still follows (CR 6.9.5b) and the run is not
+    unsuccessful (6.8.4a). A standing kind with a duration would have had
+    to outlive the agenda's use that made it.
+- **The first trace in play.** Scapenet is the pool's first card to start
+  one, so `rules/trace.rs` was read against CR 10.8 (conformance row):
+  10.8.1–10.8.4 and 10.8.6 match; 10.8.5's "if unsuccessful" and
+  10.8.6a's "when a trace is initiated" are unbuilt and no built card
+  prints them. The trace bids left `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS`,
+  which is now empty, for `ACTIONS_RARE_WITH_SAMPLE_DECKS` at 512 games;
+  the index-path sweep, which plays System Gateway alone, names them among
+  what its decks cannot produce. The gate's stale-exclusion check is a
+  function of the list now (`Coverage::stale_exclusions`), tested on a
+  list of its own.
+- **One leak the stage reached, fixed.** The fog gate at the default seed
+  count named a facedown ambush to a spectator through the new moment —
+  Cerebral Overwriter paid from its root (seed 26) and Esca accessed in HQ
+  (seed 28) — because an ambush asks for credits face down. The event is
+  withheld from whoever the card is concealed from, and from a spectator
+  when the card is in HQ or R&D, as an access's `TriggerFired` is; the
+  turn log counts the moment `Unseen` unless the card is the Runner's.
+- **What each is made of.** Gold Farmer is two "end the run unless the
+  Runner pays 3[credit]" and the break trigger; Makler a fracter with
+  `OnIceFullyBroken`, `ByThis` and `first_each_turn` (Lobisomem's words);
+  Týr Hákarl 1.0's Runner-only "Lose [click]" break with Aggressive
+  Trendsetting's `AllottedClicksNextTurn` after it, and Ansel 1.0's trash
+  with 3[credit]; F2P N-Pot's Runner-only paid break with `Not(IsTagged)`
+  and Lethe's bounce; Scapenet `TimesLastTurn(OnSuccessfulRun)` as its
+  play requirement and a selection of an installed chip or virtual card
+  into the Runner's removed-from-game pile as `on_success`; Transport
+  Monopoly Proprionegation's counters and window with `OncePerTurn`.
+- **Fidelity limits:** under Known limits — GameNET's reading of
+  "causes", and Transport Monopoly's `DuringRun`.
+- **Client.** Nothing added to the view or a decision: F2P's and Týr's
+  breaks are on the encountered ice as N-Pot's and Hákarl's are, a trace's
+  bids were already actions, and Transport Monopoly is used from the score
+  area's sheet. `prose` reads the new prohibition (in both its lists and
+  the board's In effect line) and the printed-subroutine fact.
+- **Decks.** Pay to Win is Paid Content's frame on GameNET: three Gold
+  Farmer for its two Grubber and a Hype Machine, three F2P for its two
+  Magistrate Revontulet and the other Hype Machine, two Scapenet for its
+  two The Powers That Be (4 of 17 influence, 20 points). Retirement
+  Package takes Týr for its Sleipnir; Hostile Bid and Tag You're It each a
+  Transport Monopoly for their Orbital Superiority; Encore two Makler for
+  its two Marjanah. Every card given up is still in another deck.
+- **A planner test re-stated.** Five more Corp cards in the prior re-drew
+  every R&D sample, and the kill Corp tagged a full grip with Public Trail
+  on seed 2 of the twenty `a_kill_corp_plays_public_trail…` counts. Over
+  sixty seeds it is 0 before the stage and 2 after (seeds 2 and 35), so
+  that claim is now counted over sixty, as the balanced Corp's was at
+  Stage 1; against three cards it is still twenty of twenty.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, none unused, over 555 card files — `Trace` moved from unused
+  to single-use.
+- **Real play** (`--headless`, seed 2; random seats 96 games, planner
+  seats 48; each pair random / planner). Pay to Win against Safety Net:
+  GameNET paid 40 / 44 times; Gold Farmer installed 174 / 64 and rezzed
+  26 / 50, its subroutines fired 87 / 110 and none broken, so its break
+  trigger was never heard; F2P rezzed 19 / 34, its break bought 5 / 16
+  times; Scapenet played 44 / 0, its trace successful 43 times and avoided
+  once. Retirement Package against Safety Net: Týr rezzed 4 / 5 and its
+  click break used 4 / 5 times. Transport Monopoly (Hostile Bid and Tag
+  You're It against Safety Net) scored 0 / 4 and 1 / 12, used 0 / 1 and
+  2 / 1 times, and kept a run from being declared successful in three of
+  those games. Makler (Encore against Hostile Bid) installed 15 / 13, used
+  2 / 48 times, its credit for a full break 1 / 23. Scapenet, Gold
+  Farmer's trigger and Transport Monopoly's counters go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,698) and clippy silent. Both
+  sweeps are green at 256 seeds, the card gate and the fog gate included;
+  the view sweep's 768 games bid in 7 traces. `coverage_identical.py`
+  against Stage 4 (63dee5f, 192 games a report): the random seatings are
+  identical but for the new moment itself (`AbilityTookCredits` 382, view
+  and index alike) — no game moved, since the pool pass plays no Sweep
+  deck. The planner seatings move by the larger prior, as the Public Trail
+  test did: steps 111,460 → 110,565, paid ability windows 33,112 → 32,889,
+  Corp agenda wins 63 → 66 and flatlines 23 → 24, Runner agenda wins
+  102 → 98.

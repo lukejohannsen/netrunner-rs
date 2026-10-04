@@ -912,8 +912,14 @@ pub(crate) fn resolve_accept(
     // A tag paid as a cost (Funhouse's "end the run unless the Runner
     // takes 1 tag") is still the Runner taking a tag, and NBN: Reality
     // Plus hears it.
-    let paid = cost_events.clone();
+    let mut paid = cost_events.clone();
     let mut events = cost_events;
+    // "End the run unless the Runner pays 3[credit]" is the card's ability
+    // making them spend (GameNET), heard with the cost.
+    if let Some(took) = ability::took_credits(&paid, pending.side, pending.prompting_card.as_ref().or(pending.source_card.as_ref())) {
+        events.push(took.clone());
+        paid.push(took);
+    }
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
     // The cards the cost trashed, for "the card you trashed" in what it
     // paid for (`ResolutionContext::paid_with`).

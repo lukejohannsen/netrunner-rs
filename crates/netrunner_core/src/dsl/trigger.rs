@@ -422,6 +422,18 @@ pub enum Trigger {
     /// Composition didn't work: an action is never taken during a run
     /// (CR 5.2.2a), and "during a run" is The Back's.
     OnAbilityUsed,
+    /// "Whenever a Corp card ability causes the Runner to spend or lose at
+    /// least 1[credit]" (GameNET: Where Dreams are Real) —
+    /// `GameEvent::AbilityTookCredits`, heard by the player who spent or
+    /// lost, about the card whose ability made them: a loss a resolving
+    /// card's text causes (Gold Farmer's), the cost of that card's ability
+    /// (F2P's "2[credit]: Break 1 subroutine", which the Runner pays), a
+    /// paid choice it offers ("end the run unless the Runner pays") and a
+    /// bid in the trace it began (CR 10.8.6d). GameNET names the card's
+    /// side and the player with `EventFilter::OwnedBy`. Composition didn't
+    /// work: no moment was a loss, and the three spend events say which
+    /// pool paid, never whose ability asked.
+    OnAbilityTookCredits,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -434,7 +446,7 @@ pub enum Trigger {
 ///
 /// As a filter (`EventFilter::Ice`), a `true` is required and a `false` is
 /// "either"; as what a moment was (`listeners::Moment::ice`), each is what
-/// held. Three booleans rather than a number because "the first time each
+/// held. Booleans rather than a number because "the first time each
 /// turn" counts them in the turn log (`turn_log::Class::Ice`), which keys a
 /// fixed-size table and cannot hold a strength.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -452,6 +464,12 @@ pub struct IceFacts {
     /// are bits of a turn-log column and a type would multiply them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rezzed_code_gate_or_sentry: bool,
+    /// "Breaks a **printed** subroutine on this ice" — Gold Farmer: the
+    /// subroutine broken was printed on the ice, not gained (CR 6.5.7d's
+    /// "gains" — Echo's, Envelopment's). Read off the break
+    /// (`GameEvent::SubroutineBroken::printed`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub printed_subroutine: bool,
 }
 
 impl IceFacts {
@@ -461,6 +479,7 @@ impl IceFacts {
             && (!self.after_fully_breaking || moment.after_fully_breaking)
             && (!self.at_most_zero_strength || moment.at_most_zero_strength)
             && (!self.rezzed_code_gate_or_sentry || moment.rezzed_code_gate_or_sentry)
+            && (!self.printed_subroutine || moment.printed_subroutine)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
@@ -468,30 +487,32 @@ impl IceFacts {
     pub fn stated_by(trigger: Trigger) -> IceFacts {
         match trigger {
             Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, ..IceFacts::default() },
-            Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, ..IceFacts::default() },
+            Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }
 
-    /// The facts as a number, 0..16 — a column of the turn log.
+    /// The facts as a number, 0..32 — a column of the turn log.
     pub fn bits(self) -> usize {
         usize::from(self.outermost)
             | usize::from(self.after_fully_breaking) << 1
             | usize::from(self.at_most_zero_strength) << 2
             | usize::from(self.rezzed_code_gate_or_sentry) << 3
+            | usize::from(self.printed_subroutine) << 4
     }
 
-    /// Every combination of the four, in `bits` order.
-    pub const ALL: [IceFacts; 16] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false };
-        let mut all = [none; 16];
+    /// Every combination of the five, in `bits` order.
+    pub const ALL: [IceFacts; 32] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false };
+        let mut all = [none; 32];
         let mut bits = 0;
-        while bits < 16 {
+        while bits < 32 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
                 at_most_zero_strength: bits & 4 != 0,
                 rezzed_code_gate_or_sentry: bits & 8 != 0,
+                printed_subroutine: bits & 16 != 0,
             };
             bits += 1;
         }
@@ -837,7 +858,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 52] = [
+    pub const ALL: [Trigger; 53] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -890,6 +911,7 @@ impl Trigger {
         Trigger::OnCreditsSpentFromInstalledCard,
         Trigger::OnCardsTrashedFromGripOrStack,
         Trigger::OnAbilityUsed,
+        Trigger::OnAbilityTookCredits,
     ];
 
     /// This trigger's position in `ALL`.
@@ -934,6 +956,7 @@ impl Trigger {
             | Trigger::OnDerez
             | Trigger::OnActionTaken
             | Trigger::OnAbilityUsed
+            | Trigger::OnAbilityTookCredits
             | Trigger::OnCreditsSpentFromInstalledCard => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
@@ -1014,6 +1037,7 @@ impl Trigger {
             | Trigger::OnActionFinished
             | Trigger::OnDamageSuffered
             | Trigger::OnAbilityUsed
+            | Trigger::OnAbilityTookCredits
             | Trigger::OnCreditsSpentFromInstalledCard => Hears::OwnSide,
             // `OnPlay` and `OnForfeit` are only ever printed about the card
             // itself, so `Subject::This` already says whose they are.
@@ -1068,7 +1092,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

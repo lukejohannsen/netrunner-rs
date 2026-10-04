@@ -976,6 +976,18 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::TriggerFired { card, trigger } if concealed(card) => {
             (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
         }
+        // A facedown card can ask for credits — an ambush accessed in HQ
+        // (Esca) or in its root (Cerebral Overwriter) — and the credits are
+        // in the log beside this; which card asked is withheld from whoever
+        // its own view conceals it from, as its trigger is.
+        GameEvent::AbilityTookCredits { card, .. } if concealed(card) => None,
+        // Accessed in HQ or R&D, as `TriggerFired`'s access is: the Runner
+        // saw it, a spectator did not (Esca, seed 28).
+        GameEvent::AbilityTookCredits { card, .. }
+            if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
+        {
+            None
+        }
         // The one card-bearing field that can be struck out in place.
         GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
@@ -1090,6 +1102,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // An agenda out of HQ into the score area, where it is public.
         | GameEvent::AgendaAddedToScoreArea { .. }
         | GameEvent::AbilityGainedCredits { .. }
+        | GameEvent::AbilityTookCredits { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
@@ -1619,6 +1632,32 @@ mod tests {
         let accessed = GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: crate::dsl::Trigger::OnAccessed };
         assert_eq!(mask_event_for_player(&accessed, &state, Side::Runner), Some(accessed.clone()));
         assert_eq!(mask_event_for_player(&accessed, &state, Viewer::Spectator), None, "a spectator never learns what fired face down");
+    }
+
+    /// A facedown card can ask for credits — an ambush accessed in its
+    /// root — and which card asked is withheld from whoever its own view
+    /// conceals it from; the credits themselves are in the log beside it
+    /// (Uprising Stage 5, seeds 26 and 28); one accessed in HQ is named to
+    /// the Runner who accessed it and to no spectator.
+    #[test]
+    fn a_facedown_card_that_took_credits_is_not_named_to_whoever_it_is_concealed_from() {
+        let mut corp = corp_state_with_cards();
+        // The fixture's R&D holds an Enigma too, which a spectator would
+        // take this one for.
+        corp.r_and_d.retain(|card| card.0 != "enigma");
+        let state = game_state(corp);
+        let took = GameEvent::AbilityTookCredits { side: Side::Corp, card: CardId("ice_wall".to_string()) };
+        assert_eq!(mask_event_for_player(&took, &state, Side::Corp), Some(took.clone()));
+        assert_eq!(mask_event_for_player(&took, &state, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&took, &state, Side::Runner), None, "never accessed or rezzed");
+        let rezzed = GameEvent::AbilityTookCredits { side: Side::Runner, card: CardId("enigma".to_string()) };
+        assert_eq!(mask_event_for_player(&rezzed, &state, Viewer::Spectator), Some(rezzed.clone()), "a rezzed card is on the table");
+
+        let mut in_hq = state.clone();
+        in_hq.corp.hq.push(CardId("esca".to_string()));
+        let accessed = GameEvent::AbilityTookCredits { side: Side::Runner, card: CardId("esca".to_string()) };
+        assert_eq!(mask_event_for_player(&accessed, &in_hq, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&accessed, &in_hq, Side::Corp), Some(accessed.clone()));
     }
 
     /// A trigger-order prompt is the Corp's, and each entry carries the

@@ -292,9 +292,12 @@ pub(crate) fn any(state: &GameState, registry: &CardRegistry, target: Target<'_>
 
 /// Whether the run against `server` may be declared successful (CR 6.9.5a):
 /// no active card — and no persistent upgrade trashed this run — says runs
-/// there cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`).
+/// there cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`), and
+/// nothing used during it said this one cannot (`Prohibition::
+/// DeclaredSuccessful`, Transport Monopoly).
 pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
     !any(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
+        && !cannot(state, registry, Prohibition::DeclaredSuccessful)
 }
 
 /// The most remote servers the Corp may have (A Teia: IP Recovery), or

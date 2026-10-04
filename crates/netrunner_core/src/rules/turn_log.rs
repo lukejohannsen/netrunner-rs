@@ -293,6 +293,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // (Tocsin, from HQ).
         | Trigger::OnActionTaken
         | Trigger::OnAbilityUsed => false,
+        // An ambush asks for credits face down (Cerebral Overwriter, Esca),
+        // seen by the Runner who accessed it and by no spectator.
+        Trigger::OnAbilityTookCredits => true,
         // An unrezzed piece of ice is passed without being seen. The log
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.
@@ -345,8 +348,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 /// a trashed card of a kind only the Runner has (`Kind::is_runners`) went
 /// faceup to the heap, whoever trashed it and from wherever — Boi-tatá's
 /// "if you trashed any of your installed cards this turn" is a count by
-/// type and place, and the Corp saw both. And a piece of ice the Corp
-/// installs is seen to be ice.
+/// type and place, and the Corp saw both. A piece of ice the Corp
+/// installs is seen to be ice, and a Runner card whose ability took
+/// credits was faceup.
 fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
     match trigger {
         Trigger::OnCardTrashed => kind.is_runners(),
@@ -355,6 +359,9 @@ fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
         // So the log can tell the Corp's root installs from its ice
         // (`EventFilter::InRoot`).
         Trigger::OnInstall => kind == Kind::Ice,
+        // Only a Corp card asks for credits face down; a Runner card that
+        // did was on the table faceup.
+        Trigger::OnAbilityTookCredits => kind.is_runners(),
         _ => false,
     }
 }

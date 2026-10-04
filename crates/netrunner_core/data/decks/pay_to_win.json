@@ -1,0 +1,101 @@
+{
+  "id": "pay_to_win",
+  "name": "Pay to Win",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach GameNET: Where Dreams are Real, Uprising's NBN identity, which gains a credit whenever a Corp card's ability makes the Runner spend or lose credits during a run, and the NBN cards of Uprising Stage 5 that feed it. On Paid Content's frame, its identity swapped: three Gold Farmer for its two Grubber and a Hype Machine, a barrier that takes a credit for each printed subroutine broken and asks three for each it fires; three F2P for its two Magistrate Revontulet and the other Hype Machine, a sentry that sells the Runner a break for two while they are untagged; and two Scapenet for its two The Powers That Be, the first card in the pool to start a trace, played after a successful run to remove a chip or virtual card from the game. Paid Content keeps every card given up here.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "gamenet_where_dreams_are_real",
+  "cards": [
+    {
+      "card": "gold_farmer",
+      "count": 3
+    },
+    {
+      "card": "f2p",
+      "count": 3
+    },
+    {
+      "card": "lethe",
+      "count": 2
+    },
+    {
+      "card": "capacitor",
+      "count": 2
+    },
+    {
+      "card": "scapenet",
+      "count": 2
+    },
+    {
+      "card": "kingmaking",
+      "count": 3
+    },
+    {
+      "card": "freedom_of_information",
+      "count": 2
+    },
+    {
+      "card": "the_holo_man",
+      "count": 1
+    },
+    {
+      "card": "janaina_jk_dumont_kindelan",
+      "count": 1
+    },
+    {
+      "card": "digital_rights_management",
+      "count": 2
+    },
+    {
+      "card": "your_digital_life",
+      "count": 2
+    },
+    {
+      "card": "b_1001",
+      "count": 2
+    },
+    {
+      "card": "virtual_service_agent",
+      "count": 2
+    },
+    {
+      "card": "oracle_thinktank",
+      "count": 2
+    },
+    {
+      "card": "nonequivalent_exchange",
+      "count": 2
+    },
+    {
+      "card": "post_truth_dividend",
+      "count": 2
+    },
+    {
+      "card": "klevetnik",
+      "count": 2
+    },
+    {
+      "card": "unsmiling_tsarevna",
+      "count": 2
+    },
+    {
+      "card": "drago_ivanov",
+      "count": 2
+    },
+    {
+      "card": "vladisibirsk_city_grid",
+      "count": 2
+    },
+    {
+      "card": "chekist_scion",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    }
+  ]
+}

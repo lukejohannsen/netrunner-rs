@@ -233,6 +233,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AbilityGainedCredits { side, card: source } => {
             vec![moment(Trigger::OnAbilityGainedCredits, &card(source, None), Some(*side))]
         }
+        GameEvent::AbilityTookCredits { side, card: source } => {
+            vec![moment(Trigger::OnAbilityTookCredits, &card(source, None), Some(*side))]
+        }
 
         GameEvent::TurnStarted { side, .. } => vec![moment(Trigger::OnTurnStart, &About::Nothing, Some(*side))],
         GameEvent::ActionPhaseEnded { side } => vec![moment(Trigger::OnActionPhaseEnd, &About::Nothing, Some(*side))],
@@ -264,9 +267,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
                 ..IceFacts::default()
             },
         )],
-        GameEvent::SubroutineBroken { strength, .. } => {
+        GameEvent::SubroutineBroken { strength, printed, .. } => {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
-            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, ..IceFacts::default() })]
+            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, printed_subroutine: *printed, ..IceFacts::default() })]
         }
         // Only an encountered piece of ice resolves a subroutine here: a
         // card that resolves one by its text (Nanisivik Grid) announces

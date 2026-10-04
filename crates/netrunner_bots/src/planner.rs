@@ -1416,6 +1416,14 @@ mod tests {
     /// first twenty, where both hold exactly: over sixty, the kill Corp
     /// tags every time against three cards, and against the full grip
     /// once after the stage (seed 35, Hedge Fund first) and never before.
+    /// **The full-grip claim is counted over sixty since Uprising Stage 5**
+    /// (4 October 2026): five more Corp cards in the prior re-drew every
+    /// R&D sample, and the kill Corp tagged against the full grip on seed
+    /// 2 of the first twenty — a Hedge Fund and a drawn card that made the
+    /// line pay — where on `main` before the stage it tagged on none of
+    /// sixty. After it, seeds 2 and 35 of sixty: a lucky sample, as the
+    /// balanced Corp's are, and far under the twenty of twenty against
+    /// three cards, which still holds exactly.
     /// (With the credits to play Scorched Earth in the same turn, every
     /// planner tags: the line kills inside the turn and scores the win.)
     /// Public Trail's shape without its "play only if" (a successful run
@@ -1479,7 +1487,14 @@ mod tests {
         let mut safe = state.clone();
         safe.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
         let view = build_client_view(&safe, &registry, Side::Corp);
-        assert_eq!(tagging(Some(Plan::Kill), &view), 0, "no threat against a full grip, and a tag alone is under the price");
+        const FULL_GRIP_SEEDS: u64 = 60;
+        let against_a_full_grip = (1..=FULL_GRIP_SEEDS)
+            .filter(|&seed| plans_to_tag(&mut PlanningAgent::with_style(Side::Corp, seed, Style::of(Plan::Kill)), &view))
+            .count() as u64;
+        assert!(
+            against_a_full_grip * 10 < FULL_GRIP_SEEDS,
+            "no threat against a full grip, and a tag alone is under the price but for a lucky sample: {against_a_full_grip} of {FULL_GRIP_SEEDS}"
+        );
     }
 
     #[test]
