@@ -398,6 +398,13 @@ pub enum GameEvent {
     /// as on `CardTrashed`: Nuvem SA hears the Corp's own, never the
     /// Runner's trash of a card accessed there.
     CardsTrashedFromRnD { count: u32, by: Option<Side> },
+    /// One instruction trashed `cards` from the Runner's grip or stack —
+    /// damage, a mill, a cost, a selection — after their own
+    /// `CardTrashed`s, as the Corp's batches follow theirs. Named because
+    /// Buffer Drive chooses among "those cards"; all of them went faceup
+    /// to the heap, so public. `by` is who carried it out, `None` for the
+    /// rules (`Trigger::OnCardsTrashedFromGripOrStack`, which is passive).
+    CardsTrashedFromGripOrStack { cards: Vec<CardId>, by: Option<Side> },
     /// The resolution of `card` has finished — an operation played, or an
     /// action on an expendable card used from HQ — announced once whatever
     /// it parked has resolved (`DeferredTrigger::announce`). Nuvem SA:
@@ -575,13 +582,22 @@ pub enum GameEvent {
     ///
     /// `from_installed` is how many of them came off installed cards'
     /// hosted pools — The Twinning's "spend credits from an installed
-    /// card" (`Trigger::OnCreditsSpentFromInstalledCard`).
+    /// card" (`Trigger::OnCreditsSpentFromInstalledCard`) — and
+    /// `first_host` the installed card the first of those came off, which
+    /// that moment is about: Keiko's "spend credits from an installed
+    /// **companion** card". One card per payment, because a payment is one
+    /// occurrence ("the first time each turn") however many cards gave to
+    /// it; the first is the narrowest pool (`payment::plan` spends a
+    /// lesser pool first), which is where a card's reserved credits sit.
+    /// Public: a hosted credit leaves a card on the table.
     CreditsSpentFromOutsidePool {
         side: Side,
         amount: u32,
         run_against: Option<ServerId>,
         #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
         from_installed: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        first_host: Option<(CardId, InstallId)>,
     },
     /// A breach of Archives turned `count` facedown cards faceup (CR
     /// 7.3.2), once per breach — Nurse Hạnh's "whenever 2 or more facedown
@@ -734,7 +750,7 @@ impl GameEvent {
             | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. } | GameEvent::CardsSetAside { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
-            | GameEvent::CardsTrashedFromRnD { .. }
+            | GameEvent::CardsTrashedFromRnD { .. } | GameEvent::CardsTrashedFromGripOrStack { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
             | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::PsiBidsRevealed { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }

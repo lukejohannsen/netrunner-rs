@@ -1,0 +1,87 @@
+{
+  "id": "the_back",
+  "title": "The Back",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnAbilityUsed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Hardware"
+        }
+      },
+      "requirement": {
+        "And": [
+          "RunInProgress",
+          "OncePerTurn"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you use a piece of hardware during a run, place 1 power counter on this resource."
+    },
+    {
+      "trigger": "OnCreditsSpentFromInstalledCard",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Hardware"
+        }
+      },
+      "requirement": {
+        "And": [
+          "RunInProgress",
+          "OncePerTurn"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you use a piece of hardware during a run, place 1 power counter on this resource."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "RemoveSelfFromGame"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": "HasTrashAbility",
+          "min": 0,
+          "max": 0,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnStack",
+          "up_to": {
+            "Increased": {
+              "amount": "HostedCounters",
+              "by": "HostedCounters"
+            }
+          }
+        }
+      },
+      "text": "[click], remove this resource from the game: For each hosted power counter, choose up to 2 cards in your heap with [trash] abilities. Shuffle the chosen cards into your stack."
+    }
+  ],
+  "built_from": 26082,
+  "is_playable": true
+}

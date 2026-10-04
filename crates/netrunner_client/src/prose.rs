@@ -96,6 +96,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
         Amount::EncountersThisRun => "the times you have encountered ice this run".to_string(),
         Amount::IcePassedThisRun => "the times you have passed ice this run".to_string(),
+        Amount::IcePassedLastRun => "the times you passed ice during that run".to_string(),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),
@@ -110,6 +111,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
         Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
+        Amount::Link => "the Runner's link".to_string(),
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
@@ -209,7 +211,8 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::HostIce => "the host ice".to_string(),
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
         CardTarget::EncounteredIce => "the ice being encountered".to_string(),
-        CardTarget::RandomFromHq => "a random card from HQ".to_string(),
+        CardTarget::RandomFromHand(Side::Corp) => "a random card from HQ".to_string(),
+        CardTarget::RandomFromHand(Side::Runner) => "a random card from the grip".to_string(),
         CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
     }
 }
@@ -352,11 +355,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             count,
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::PromptChooseCards { side, source, min, max, count, .. } => {
-            let how_many = match count {
-                Some(count) => format!("as many cards as {}", describe_amount(count)),
-                None if min == max => plural(*min, "card", "cards"),
-                None => format!("{min} to {max} cards"),
+        Effect::PromptChooseCards { side, source, min, max, count, up_to, .. } => {
+            let how_many = match (count, up_to) {
+                (Some(count), _) => format!("as many cards as {}", describe_amount(count)),
+                (None, Some(up_to)) => format!("up to as many cards as {}", describe_amount(up_to)),
+                (None, None) if min == max => plural(*min, "card", "cards"),
+                (None, None) => format!("{min} to {max} cards"),
             };
             format!("{} chooses {how_many} from {}", who(*side), describe_zone(source))
         }
@@ -375,6 +379,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n) } => format!("install a card from {}, paying {n} less", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(amount) } => {
+            format!("install a card from {}, paying 1 less for each of {}", describe_zone(from), describe_amount(amount))
+        }
         Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
         Effect::SetAsideFromTopUntil { filter, count, deck } => {
             let from = if *deck == Side::Corp { "R&D" } else { "the stack" };
@@ -382,7 +389,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
-        Effect::InstallRunnerCardFromHost => "install the hosted card".to_string(),
+        Effect::InstallRunnerCardFromGripWithDiscount(Discount::Amount(amount)) => {
+            format!("install a card from the grip, paying 1 less for each of {}", describe_amount(amount))
+        }
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
@@ -564,6 +573,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Damage(kind) => format!("of {} damage", format!("{kind:?}").to_lowercase()),
         EventFilter::AtLeast(least) => format!("{least} or more"),
         EventFilter::Whose(side) => format!("the {side:?}'s"),
+        EventFilter::Anyone => "anyone's".to_string(),
         EventFilter::OwnedBy { owner, whose } => format!("the {whose:?}'s, of a {owner:?} card"),
         EventFilter::ByThis => "by this card".to_string(),
         EventFilter::Host => "of host ice".to_string(),
@@ -578,6 +588,7 @@ fn describe_when(filter: &EventFilter) -> String {
                     TrashedFrom::Hand => "a hand",
                     TrashedFrom::Deck => "a deck",
                     TrashedFrom::Elsewhere => "anywhere else",
+                    TrashedFrom::PlayArea => "the play area",
                 })
                 .collect();
             format!("from {}", places.join(" or "))
@@ -693,7 +704,9 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
         PaysFor::TraceAttempts => "during trace attempts".to_string(),
-        PaysFor::UsingIcebreakers => "to pay for using icebreakers".to_string(),
+        PaysFor::Using(CardFilter::Icebreaker) => "to pay for using icebreakers".to_string(),
+        PaysFor::Using(filter) => format!("to use a card matching {}", humanize(format!("{filter:?}"))),
+        PaysFor::Playing(filter) => format!("to play a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
         PaysFor::DuringRuns => "during runs".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),

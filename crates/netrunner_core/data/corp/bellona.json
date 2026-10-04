@@ -1,0 +1,29 @@
+{
+  "id": "bellona",
+  "title": "Bellona",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "Credits": 5
+  },
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            5
+          ]
+        }
+      ],
+      "text": "When you score this agenda, gain 5[credit]."
+    }
+  ],
+  "built_from": 26114,
+  "is_playable": true
+}

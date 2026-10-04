@@ -402,25 +402,13 @@ fn simulate(node: &mut PuctNode, search: &Search, depth_budget: usize) -> f64 {
         Some(slot) => node.edges[edge_index].outcomes.len() <= slot,
         None => node.edges[edge_index].child.is_none(),
     };
-    if needs_child {
-        let from = match outcome {
-            Some(_) => breach.redraw(&node.state, registry),
-            None => node.state.clone(),
-        };
-        match from.step(registry, action) {
-            Ok((next_state, _events)) => match outcome {
-                Some(_) => node.edges[edge_index].outcomes.push(PuctNode::new(next_state)),
-                None => node.edges[edge_index].child = Some(Box::new(PuctNode::new(next_state))),
-            },
-            // `edge.action` came from `get_action_mask`'s legal slots, so
-            // this should never actually fail; treat it as a dead branch
-            // rather than corrupting the tree with an unresolved child.
-            Err(_) => {
-                node.edges[edge_index].visits += 1;
-                node.visits += 1;
-                return 0.0;
-            }
-        }
+    if needs_child && !add_child(node, edge_index, outcome, action, registry, breach) {
+        // `edge.action` came from `get_action_mask`'s legal slots, so
+        // this should never actually fail; treat it as a dead branch
+        // rather than corrupting the tree with an unresolved child.
+        node.edges[edge_index].visits += 1;
+        node.visits += 1;
+        return 0.0;
     }
 
     let child = match outcome {
@@ -433,6 +421,31 @@ fn simulate(node: &mut PuctNode, search: &Search, depth_budget: usize) -> f64 {
     node.edges[edge_index].total_value += value;
     node.visits += 1;
     value
+}
+
+/// Steps `node`'s state by `action` into the child `simulate` descends
+/// into next — `false` when the step fails. A function of its own, never
+/// inlined, so the states it clones and steps live in a frame that is gone
+/// before `simulate` recurses: in a debug build every temporary keeps its
+/// own stack slot, and a `GameState` in each of sixteen recursive frames
+/// overflowed a test thread's 2 MB once the turn log grew (Uprising
+/// Stage 3).
+#[inline(never)]
+fn add_child(node: &mut PuctNode, edge_index: usize, outcome: Option<usize>, action: PlayerAction, registry: &CardRegistry, breach: &Breach) -> bool {
+    let from = match outcome {
+        Some(_) => breach.redraw(&node.state, registry),
+        None => node.state.clone(),
+    };
+    match from.step(registry, action) {
+        Ok((next_state, _events)) => {
+            match outcome {
+                Some(_) => node.edges[edge_index].outcomes.push(PuctNode::new(next_state)),
+                None => node.edges[edge_index].child = Some(Box::new(PuctNode::new(next_state))),
+            }
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// `c_puct`/`iterations`/`max_depth` for `PuctAgent`. Defaults are kept

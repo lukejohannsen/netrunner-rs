@@ -1,0 +1,67 @@
+{
+  "id": "euler",
+  "title": "Euler",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 0[credit]: Break 1 code gate subroutine. Use this ability only if this program was installed this turn.",
+      "cost": {
+        "Credits": 0
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "ActingCardMatches": "InstalledThisTurn"
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 code gate subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 26087,
+  "is_playable": true
+}

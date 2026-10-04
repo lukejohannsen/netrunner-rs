@@ -1076,6 +1076,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // in Archives, which `mask_corp_state` already decides per card.
         | GameEvent::CardsTrashedFromHq { .. }
         | GameEvent::CardsTrashedFromRnD { .. }
+        | GameEvent::CardsTrashedFromGripOrStack { .. }
         // A card that resolved in the open: an operation played, or an
         // expendable card revealed to be used.
         | GameEvent::FinishedResolving { .. }

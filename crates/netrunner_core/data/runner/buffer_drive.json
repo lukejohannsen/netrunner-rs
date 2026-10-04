@@ -1,0 +1,52 @@
+{
+  "id": "buffer_drive",
+  "title": "Buffer Drive",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnCardsTrashedFromGripOrStack",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnHeap",
+            "filter": "TrashedThisWay",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddToDeck": "Bottom"
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn 1 or more cards are trashed from your grip or stack, you may add 1 of those cards to the bottom of your stack."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "RemoveSelfFromGame",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnStack"
+        }
+      },
+      "text": "Remove this hardware from the game: Add 1 card from your heap to the top of your stack."
+    }
+  ],
+  "built_from": 26093,
+  "is_playable": true
+}

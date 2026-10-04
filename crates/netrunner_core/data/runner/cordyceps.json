@@ -1,0 +1,106 @@
+{
+  "id": "cordyceps",
+  "title": "Cordyceps",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this program, place 2 virus counters on it."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Archives",
+          "Hq",
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "And": [
+              {
+                "ThisCardCountersAtLeast": 1
+              },
+              {
+                "ZoneHasAtLeast": {
+                  "zone": "OpponentInstalled",
+                  "count": 2,
+                  "filter": "Ice"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    "Ice",
+                    "InAttackedServer"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentInstalled",
+                    "filter": {
+                      "All": [
+                        "Ice",
+                        "NotSourceCard"
+                      ]
+                    },
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "SwapInstalledIce": [
+                        0,
+                        0
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted virus counter to swap 1 piece of ice protecting that server with another installed piece of ice"
+          }
+        }
+      ],
+      "text": "Once per turn → When you make a successful run on a central server, you may remove 1 hosted virus counter to swap 1 piece of ice protecting that server with another installed piece of ice."
+    }
+  ],
+  "built_from": 26086,
+  "is_playable": true
+}

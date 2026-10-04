@@ -1,0 +1,36 @@
+{
+  "id": "moshing",
+  "title": "Moshing",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnGrip",
+      "filter": "Any",
+      "count": 3
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 26067,
+  "is_playable": true
+}

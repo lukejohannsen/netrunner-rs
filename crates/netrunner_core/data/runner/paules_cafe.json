@@ -1,0 +1,131 @@
+{
+  "id": "paules_cafe",
+  "title": "Pauleʼs Café",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "CardTypeOneOf": [
+              "Program",
+              "Hardware"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      },
+      "text": "[click]: Host 1 program or piece of hardware from your grip faceup on this resource."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": {
+        "And": [
+          "DuringYourTurn",
+          "OncePerTurn"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": {
+            "InstallableRunnerCardWithDiscount": {
+              "Amount": {
+                "RunnerInstalls": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    "Unique",
+                    {
+                      "HasSubtype": "Connection"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "HostedOnSource",
+              "discount": {
+                "Amount": {
+                  "RunnerInstalls": {
+                    "All": [
+                      {
+                        "CardType": "Resource"
+                      },
+                      "Unique",
+                      {
+                        "HasSubtype": "Connection"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "1[credit]: Install 1 hosted card. The first card you install this way during each of your turns costs 1[credit] less to install for each unique (♦) connection resource you have installed."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": {
+        "Not": {
+          "And": [
+            "DuringYourTurn",
+            "OncePerTurn"
+          ]
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": "InstallableRunnerCard",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "HostedOnSource",
+              "discount": {
+                "Credits": 0
+              }
+            }
+          }
+        }
+      },
+      "text": "1[credit]: Install 1 hosted card."
+    }
+  ],
+  "built_from": 26092,
+  "is_playable": true
+}

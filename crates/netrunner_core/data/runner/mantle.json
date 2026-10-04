@@ -1,0 +1,23 @@
+{
+  "id": "mantle",
+  "title": "Mantle",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Using": {
+        "CardTypeOneOf": [
+          "Hardware",
+          "Program"
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 26088,
+  "is_playable": true
+}

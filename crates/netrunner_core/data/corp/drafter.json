@@ -1,0 +1,100 @@
+{
+  "id": "drafter",
+  "title": "Drafter",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "You may add 1 card from Archives to HQ.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Any",
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      }
+    },
+    {
+      "text": "You may install 1 card from Archives or HQ, ignoring all costs.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnArchives",
+                    "ignore_costs": true
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnHq",
+                    "ignore_costs": true
+                  }
+                }
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "You may install 1 card from Archives or HQ, ignoring all costs — from Archives",
+            "You may install 1 card from Archives or HQ, ignoring all costs — from HQ",
+            ""
+          ]
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 26101,
+  "is_playable": true
+}

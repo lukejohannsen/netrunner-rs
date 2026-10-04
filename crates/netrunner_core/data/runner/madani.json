@@ -43,7 +43,14 @@
           "max": 1,
           "reveal": false,
           "shuffle_after": false,
-          "then": "InstallRunnerCardFromHost"
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "HostedOnSource",
+              "discount": {
+                "Credits": 0
+              }
+            }
+          }
         }
       },
       "text": "Once per turn → 0[credit]: Install 1 hosted program (paying its install cost)."

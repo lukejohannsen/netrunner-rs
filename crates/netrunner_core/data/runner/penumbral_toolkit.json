@@ -1,0 +1,52 @@
+{
+  "id": "penumbral_toolkit",
+  "title": "Penumbral Toolkit",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "DuringRuns"
+  ],
+  "trash_when_empty": true,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -2
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Hq"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "text": "If you made a successful run on HQ this turn, this resource costs 2[credit] less to install."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 4
+        }
+      ],
+      "text": "When you install this resource, load 4[credit] onto it. When it is empty, trash it."
+    }
+  ],
+  "built_from": 26081,
+  "is_playable": true
+}

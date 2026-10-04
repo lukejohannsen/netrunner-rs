@@ -258,6 +258,15 @@ pub enum EffectRequirement {
     /// identity_flipped`) — the gate on a flip identity's back-side
     /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.
     IdentityFlipped,
+    /// The controller's identity matches the filter, read off its
+    /// definition — DreamNet's "If your identity is **digital**",
+    /// `IdentityMatches(HasSubtype(Digital))`. Composition didn't work:
+    /// `ActingCardMatches` reads the card resolving, which is DreamNet, and
+    /// no other requirement reads a card that is neither acting nor in a
+    /// zone. A flip identity's back side has the front's subtypes: the
+    /// catalog gives only the front's (`docs/roadmap/nsg-card-pool.md`,
+    /// Known limits).
+    IdentityMatches(crate::dsl::CardFilter),
     /// The controller's identity is copy `n` of itself (`CorpState::
     /// identity_copy`, set by `Effect::SetIdentityCopy`) — the gate on
     /// each of Méliès U's three reverse sides ("Side 1: When you flip this
@@ -554,8 +563,11 @@ pub enum EffectRequirement {
     /// other requirement that reads a card reads the triggering event's
     /// (`EventFilter::Card` is a trigger condition, not an "if") or a zone
     /// (`ZoneHasAtLeast`), and a card that has just been installed is in
-    /// neither. Definition-level only, like `EventFilter::Card`: an
-    /// instance filter (`Rezzed`) passes.
+    /// neither. The definition's half, and the copy's where the copy can
+    /// say (`pending_choice::copy_matches`): Euler's "Use this ability only
+    /// if this program was installed this turn" is
+    /// `ActingCardMatches(InstalledThisTurn)` on the program's own copy.
+    /// Any other instance filter (`Rezzed`) passes, as in `EventFilter::Card`.
     ActingCardMatches(crate::dsl::CardFilter),
     /// The scored agenda this resolves as was scored this turn —
     /// Witch Hunt's "When your action phase ends, if you scored this agenda
@@ -599,6 +611,19 @@ impl EffectRequirement {
             EffectRequirement::OncePerRun | EffectRequirement::OncePerEncounter => true,
             EffectRequirement::And(one, other) => one.mentions_once_per_run() || other.mentions_once_per_run(),
             EffectRequirement::Not(inner) => inner.mentions_once_per_run(),
+            _ => false,
+        }
+    }
+
+    /// Whether using what this gates spends its card's `OncePerTurn` — one
+    /// under `And`, never one under `Not`, which reads the use and spends
+    /// nothing (`ability::consume_requirement`). Pauleʼs Café's plain
+    /// install is `Not(And(DuringYourTurn, OncePerTurn))`: offered only once
+    /// its discounted twin, the turn's first install that way, is spent.
+    pub fn spends_once_per_turn(&self) -> bool {
+        match self {
+            EffectRequirement::OncePerTurn => true,
+            EffectRequirement::And(one, other) => one.spends_once_per_turn() || other.spends_once_per_turn(),
             _ => false,
         }
     }

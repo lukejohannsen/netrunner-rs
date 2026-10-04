@@ -1080,10 +1080,11 @@ mod tests {
             assert_eq!(eternal.first().map(String::as_str), Some("vantage_point"), "{eternal:?}");
             assert_eq!(eternal.last().map(String::as_str), Some("core_set"), "{eternal:?}");
             assert!(eternal.contains(&"system_update_2021".to_string()), "a reprint puts its set on the list: {eternal:?}");
-            assert!(!eternal.contains(&"uprising".to_string()), "no Uprising card is built yet: {eternal:?}");
-            // Midnight Sun Stage 1 built its Corp cards and Stage 2 its
-            // Runner cards, so both sides are offered the set.
+            assert!(!eternal.contains(&"downfall".to_string()), "no Downfall card is built yet: {eternal:?}");
+            // Midnight Sun is complete, and Uprising Stage 1 built cards of
+            // both sides, so both are offered both sets.
             assert!(eternal.contains(&"midnight_sun".to_string()), "{side:?}: {eternal:?}");
+            assert!(eternal.contains(&"uprising".to_string()), "{side:?}: {eternal:?}");
             let order = catalog::sets();
             let rank = |set: &String| order.iter().position(|known| known.id == *set).unwrap();
             assert!(eternal.windows(2).all(|pair| rank(&pair[0]) < rank(&pair[1])), "newest first: {eternal:?}");

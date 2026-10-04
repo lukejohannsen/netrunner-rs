@@ -3,7 +3,7 @@
   "name": "Mixtape",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Nova Initiumia: Catalyst & Impetus, Parhelion's neutral Runner identity, which prints no influence limit and allows one copy of each card. Forty different cards from every faction, each the most-played of its kind in the other decks, so a singleton deck is still seen whole, and a Meeting of Minds, whose one copy in Spare Parts went unseen in a 256-seed sweep once this deck and Sampler re-paired the seeds — Spare Parts has no influence left for a second (Parhelion Stage 5a).",
+  "description": "Not a published list: built so the sweeps reach Nova Initiumia: Catalyst & Impetus, Parhelion's neutral Runner identity, which prints no influence limit and allows one copy of each card. Forty different cards from every faction, each the most-played of its kind in the other decks, so a singleton deck is still seen whole, and a Meeting of Minds, whose one copy in Spare Parts went unseen in a 256-seed sweep once this deck and Sampler re-paired the seeds — Spare Parts has no influence left for a second (Parhelion Stage 5a). Uprising Stage 2: a DreamNet for its Side Hustle, which on Nova, a digital identity, draws and pays a credit on the turn's first successful run; eight other decks keep Side Hustle.",
   "style": [
     "pressure"
   ],
@@ -150,7 +150,7 @@
       "count": 1
     },
     {
-      "card": "side_hustle",
+      "card": "dreamnet",
       "count": 1
     },
     {

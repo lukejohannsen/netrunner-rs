@@ -1301,6 +1301,15 @@ mod tests {
     /// Corp already tagged on 7 seeds of 20 (6 after it), the kill Corp
     /// on all 20 and, against the full grip, on none: the claim is the
     /// difference between the plans, which one seed could only witness.
+    /// **The balanced Corp is counted over sixty seeds since Uprising
+    /// Stage 1** (3 October 2026): the planner stages since had moved it
+    /// to 9 of 20 on `main`, one under the bar, and ten more cards in the
+    /// pool moved it to 11. Over sixty it is 25 before the stage and 26
+    /// after — about two in five, where twenty seeds land either side of
+    /// half by the sample alone. The kill Corp's two claims stay on the
+    /// first twenty, where both hold exactly: over sixty, the kill Corp
+    /// tags every time against three cards, and against the full grip
+    /// once after the stage (seed 35, Hedge Fund first) and never before.
     /// (With the credits to play Scorched Earth in the same turn, every
     /// planner tags: the line kills inside the turn and scores the win.)
     /// Public Trail's shape without its "play only if" (a successful run
@@ -1356,8 +1365,11 @@ mod tests {
                 .count() as u64
         };
         assert_eq!(tagging(Some(Plan::Kill), &view), SEEDS, "the kill Corp tags this turn, whatever the sample");
-        let balanced = tagging(None, &view);
-        assert!(balanced * 2 < SEEDS, "a balanced Corp sees nothing in the tag but a lucky sample: {balanced} of {SEEDS}");
+        const BALANCED_SEEDS: u64 = 60;
+        let balanced = (1..=BALANCED_SEEDS)
+            .filter(|&seed| plans_to_tag(&mut PlanningAgent::new(Side::Corp, seed), &view))
+            .count() as u64;
+        assert!(balanced * 2 < BALANCED_SEEDS, "a balanced Corp sees nothing in the tag but a lucky sample: {balanced} of {BALANCED_SEEDS}");
         let mut safe = state.clone();
         safe.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
         let view = build_client_view(&safe, &registry, Side::Corp);
@@ -1607,6 +1619,7 @@ mod positions {
                 destination: None,
                 then: Some(Box::new(Effect::PlaceAdvancementCounters(netrunner_core::dsl::Amount::Fixed(1)))),
                 count: None,
+                up_to: None,
             },
             if_declined: Effect::Sequence(Vec::new()),
             source_card: None,

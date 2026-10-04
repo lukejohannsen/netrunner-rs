@@ -301,6 +301,16 @@ impl Cost {
     /// Whether paying this could ask the payer which cards — the structural
     /// half of `payment::could_ask`, which copies an action only where a
     /// question is possible.
+    /// Whether the cost prints [trash] — the card's own trash, alone or
+    /// beside the rest of the cost (`CardFilter::HasTrashAbility`).
+    pub fn prints_trash(&self) -> bool {
+        match self {
+            Cost::TrashSelf => true,
+            Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::prints_trash),
+            _ => false,
+        }
+    }
+
     /// Whether the cost prints an X (`CreditsX`), at the front or inside.
     pub fn names_x(&self) -> bool {
         match self {

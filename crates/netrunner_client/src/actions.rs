@@ -522,6 +522,9 @@ pub fn narrate_event(
         GameEvent::IceRezzed { install, card, server } => {
             format!("rezzed {} protecting {}", named(&Some(card.clone()), install), server_name(*server))
         }
+        // An event leaving the play area as it resolves (CR 3.7.1): the
+        // rules' trash, nobody's.
+        GameEvent::CardTrashed { card, from: netrunner_core::dsl::TrashedFrom::PlayArea, .. } => format!("{} is trashed", title(card)),
         GameEvent::CardTrashed { side, card, .. } => format!("{side:?} trashed {}", title(card)),
         GameEvent::CardsLookedAt { deck, cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();
@@ -543,6 +546,7 @@ pub fn narrate_event(
         GameEvent::ActionPhaseEnded { side } => format!("the {side:?}'s action phase ended"),
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
         GameEvent::CardsTrashedFromRnD { count, .. } => format!("trashed {count} card(s) from R&D"),
+        GameEvent::CardsTrashedFromGripOrStack { cards, .. } => format!("trashed {} card(s) from the grip or stack", cards.len()),
 
         // ---- what the cards did ----
         GameEvent::TriggerFired { card, trigger } => format!("{} triggered ({trigger:?})", title(card)),

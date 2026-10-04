@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnCreditsSpentFromInstalledCard",
+      "subject": "Any",
       "first_each_turn": true,
       "effects": [
         {

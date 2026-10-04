@@ -1,0 +1,92 @@
+{
+  "id": "mystic_maemi",
+  "title": "Mystic Maemi",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "Playing": {
+        "CardType": "Event"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "ZoneHasAtLeast": {
+                  "zone": "OwnGrip",
+                  "count": 1
+                }
+              }
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "TrashCard": {
+                      "RandomFromHand": "Runner"
+                    }
+                  },
+                  {
+                    "TrashCard": "ThisCard"
+                  }
+                ],
+                "texts": [
+                  "you must trash 1 card from your grip at random",
+                  "trash this resource"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn ends, if there are 3 or more hosted credits, you must trash 1 card from your grip at random or trash this resource."
+    }
+  ],
+  "built_from": 26072,
+  "is_playable": true
+}

@@ -1,0 +1,49 @@
+{
+  "id": "swift",
+  "title": "Swift",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            {
+              "CardType": "Event"
+            },
+            {
+              "HasSubtype": "Run"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you play a run event, gain [click]."
+    }
+  ],
+  "built_from": 26078,
+  "is_playable": true
+}

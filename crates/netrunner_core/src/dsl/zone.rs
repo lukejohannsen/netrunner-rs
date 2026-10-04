@@ -239,6 +239,11 @@ pub enum CardFilter {
     /// Definition-level. Not a subtype: uniqueness is printed before the
     /// name (CR 2.2.1), and `CardDefinition::unique` is where it is read.
     Unique,
+    /// A card with a [trash] ability — The Back's "choose up to 2 cards in
+    /// your heap with [trash] abilities": a paid ability whose cost prints
+    /// [trash] (`Cost::prints_trash`). Definition-level. Composition didn't
+    /// work: no filter read a card's abilities.
+    HasTrashAbility,
     /// The positive twin of `NotInstalledThisTurn`: Word on the Street's
     /// "an agenda the Corp installed this turn". A separate word rather
     /// than `Not(NotInstalledThisTurn)`, because `Not` is definition-level
@@ -589,6 +594,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::Not(filter) => filter.is_about_the_copy_alone() || !card_matches_filter(card, filter),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
         CardFilter::Unique => card.unique,
+        CardFilter::HasTrashAbility => card
+            .abilities
+            .iter()
+            .any(|ability| ability.trigger == crate::dsl::Trigger::Paid && ability.cost.as_ref().is_some_and(crate::dsl::Cost::prints_trash)),
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
         // Instance-level: where the card sits is state.
         CardFilter::InAttackedServer => true,

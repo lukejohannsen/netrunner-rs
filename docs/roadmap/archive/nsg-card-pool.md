@@ -6675,3 +6675,308 @@ complete, and Midnight Sun with it.**
   the rotation, the card gate included. `coverage_identical.py` against
   Stage 8b (dceab7e, 192 games a report): **identical in all four shapes**,
   random and planner, view and index.
+
+### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
+
+#### Stage 1 — ten cards, composed (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Moshing, Self-modifying Code, Daily
+Casts, Bass CH1R180G4, Cerebral Overwriter, Drafter, Flower Sermon, Prāna
+Condenser, Bellona and Colossus. **No new `Effect`, and no change to the
+engine:** card files, decks and tests, with one line each in a client test
+and a planner test. Uprising 10 of 65, its booster pack 0 of 7;
+`UR_UNIMPLEMENTED` 65 → 55. The survey's "composes" held for all ten.
+Moshing and Bellona are Standard-banned and built anyway, as Svyatogor
+Excavator was.
+
+- **The survey re-read first.** Most of what it called vocabulary has been
+  built since it was written: the turn's end heard, stealth credits, set
+  aside, psi, a forced encounter, a remembered choice and additional costs
+  to steal, score or trash. Still new: lockdown (CR 3.5.1c), the first card
+  to start a trace (`Effect::Trace`), an encounter nested in an encounter
+  (Konjin, CR 6.1.3c), a replacement as an agenda enters the Runner's score
+  area (Project Vacheron), and a cost to run that changes when the identity
+  flips (Earth Station, CR 6.3.2b). The stage order stands.
+- **What each is made of.** Moshing is Sell Out's additional cost over
+  the grip (`Cost::Trash { from: OwnGrip, count: 3 }`): the event has left
+  the grip before its cost is paid, so it needs three *other* cards, and a
+  grip of two refuses it. Self-modifying Code is Arruaceiras Crew's
+  `AllOf[Credits 2, TrashSelf]` on Into the Depths' stack search, its
+  install guarded by `EffectIf(AmountAtLeast(CardsSelected, 1))` so a
+  search that finds nothing declines; trashing itself first frees its
+  memory. Daily Casts is Open Market's eight credit counters, two a turn,
+  trashed when empty. Bass CH1R180G4 is Humanoid Resources' cost with
+  Nanomanagement's click gain. Cerebral Overwriter is Mr. Hendrik's access
+  offer paid in credits into Urtica Cipher's damage per advancement counter.
+  Drafter is The Basalt Spire's Archives-to-HQ prompt and The Powers That
+  Be's choice of zone into an install ignoring all costs. Flower Sermon is
+  five agenda counters on scoring and a once-per-turn counter ability:
+  Balanced Coverage's revealed top card of R&D, two cards drawn and
+  Mindscaping's card from HQ to the top of R&D. Prāna Condenser hears net
+  damage about to resolve (`OnDamageAboutToResolve`, `when: Damage(Net)`,
+  Net Shield's word, settled in `prevention::settle`) and offers the Corp
+  the prevention, a counter and 3[credit]; it is a trigger and not an
+  interrupt, because a cost-free interrupt could be used once per point.
+  Its trash ability reads the counters its own cost removed
+  (`last_known`, as Fermenter's). Bellona is Méliès U.'s `steal_cost` and
+  a gain on scoring. Colossus is advanceable ice with strength per counter
+  and Mindscaping's "instead": each subroutine is two `EffectIf`s either
+  side of three counters.
+- **Fidelity limits:** two, under Known limits. Prāna Condenser hears net
+  damage whoever does it, since `EventFilter::Damage` reads only the kind;
+  Self-modifying Code's search offers only a program that could be
+  installed, as Into the Depths' does.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. Cerebral Overwriter is an ambush that
+  works face down, so `board::rez::gains_nothing` now names it among the
+  traps (`exactly_the_traps_gain_nothing_by_a_rez`): its rez stays legal
+  and on its menu, and earns no glow. The deck builder's set test offers
+  Uprising to both sides and names Downfall as the set with nothing built.
+- **Decks.** Burn Rate takes two Moshing for its two Chastushka; Safety Net
+  two Self-modifying Code for its two Lobisomem; Spare Parts two Daily
+  Casts for its two Smartware Distributor; Retirement Package two Bass
+  CH1R180G4 for its two Warm Reception, two Cerebral Overwriter for its two
+  Perfect Recall and two Drafter for its two Ansel 2.0; A Thousand Cuts two
+  Flower Sermon for its two See How They Run, point for point, and two
+  Prāna Condenser for its two Dr. Vientiane Keeling, so the deck's own net
+  damage is what Prāna prevents; Paid Content two Bellona for two Send a
+  Message; Hostile Bid two Colossus for its two Maskirovka. Every card
+  given up is still in another deck.
+- **A planner test moved again.**
+  `a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced`
+  counted the balanced Corp over twenty seeds since Midnight Sun Stage 1,
+  asserting fewer than half tag. The planner stages since had moved it to
+  9 of 20 on `main`, one under the bar, and ten more cards in the prior
+  moved it to 11. Over sixty seeds it is 25 before the stage and 26 after,
+  about two in five, so the balanced Corp is now counted over sixty. The
+  kill Corp's two claims stay on the first twenty, where both hold exactly:
+  over sixty, the kill Corp tags against three cards every time, and
+  against the full grip once after the stage (seed 35, Hedge Fund first)
+  and never before.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 518 card files, as on `main` over
+  508.
+- **Real play** (`--headless`, each edited deck against Safety Net or
+  Hostile Bid — Colossus's planner seats against Spare Parts — seed 2; random seats 96 games, planner seats 48; each pair
+  random / planner). Moshing played 31 / 43 times. Self-modifying Code used
+  27 / 9 times. Daily Casts installed 24 / 22 times and paid at 87 / 71
+  turn starts. Bass CH1R180G4 used 47 / 3 times. Cerebral Overwriter's
+  access offer fired 55 / 51 times. Drafter rezzed 39 / 37 times, its
+  subroutines firing 189 / 171 times. Flower Sermon scored 0 / 1 times and
+  stolen 40 / 25, its ability used once. Prāna Condenser's prevention fired
+  29 / 99 times and its trash ability 11 / 14. Bellona scored 0 / 28 times
+  and stolen 10 / 8. Colossus rezzed 4 / 20 times, its subroutines firing
+  22 / 77 times. Bass and Flower Sermon go on the bot debts.
+- **Measured.** `cargo test --workspace` green and clippy silent. Both
+  sweeps are green at 256 seeds, the card gate included, so every new card
+  was seen in play. `coverage_identical.py` against `origin/main`
+  (95a6097, 192 games a report): random identical, view and index alike,
+  because the sample matchups hold no Sweep deck. The planner seatings
+  move by `determinize`'s larger prior (view and index alike, of 192):
+  Corp agenda wins 60 → 58, Corp flatlines 26 → 25, Runner deck-outs 1 →
+  4.
+
+#### Stage 2 — the turn's end, `PaysFor` and subtype words (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Mystic Maemi, Paladin Poemu, Hoshiko
+Shiro: Untold Protagonist, Penumbral Toolkit, Mantle, Keiko, Cybertrooper
+Talut, Odore, DreamNet, Euler and Pauleʼs Café — eleven Runner cards, and
+Hoshiko's Sweep deck, Side Quest. **No new `Effect`, and one fewer:**
+Madani's single-use `InstallRunnerCardFromHost` became the zone install's
+`HostedOnSource`, which Pauleʼs Café needed with a discount. Uprising 21 of
+65, its booster pack 2 of 7 (Maemi and Talut are reprinted there);
+`UR_UNIMPLEMENTED` 55 → 44, `URBP_UNIMPLEMENTED` 7 → 5. Hoshiko Shiro is
+Standard-banned and built anyway.
+
+- **The words.** Each is a gap in a vocabulary, fixed there for every card:
+  - **Hosted credits for using a card, and for playing one.**
+    `PaysFor::UsingIcebreakers` became `Using(CardFilter)` (Cyberfeeder and
+    The Toolbox write `Using(Icebreaker)`, Mantle
+    `Using(CardTypeOneOf([Hardware, Program]))`; using a card is using its
+    abilities, CR 9.1.6, and spending its credits is using it, CR 1.10.4d),
+    and `Playing(CardFilter)` is Mystic Maemi's "to play events", matched
+    against a new `payment::Purpose::Play` that the event's and the
+    operation's plays state. Paladin Poemu's "to install non-connection
+    cards" was already `Installing(Not(..))`. A pool is spent before another
+    unasked when its words are *within* the other's, which was word-for-word
+    equality and is now a conservative filter implication
+    (`payment::filter_implies`), so The Toolbox's credit still goes before
+    Mantle's on a break.
+  - **A companion column in the turn log** (`Kind::CompanionResource`, the
+    sixteenth kind and the last a `u32` of columns holds), and **the spend
+    off an installed card is about the card** — the first a payment took
+    credits from (`CreditsSpentFromOutsidePool::first_host`), so Keiko's
+    "spend credits from an installed companion card" is a `when` and shares
+    its first time with "install a companion card". The Twinning's entry
+    now names `subject: Any`.
+  - **A discount that is an amount** (`Discount::Amount`, read by
+    `ability::discount_credits` at the offer and the install alike): Pauleʼs
+    Café's "1[credit] less for each unique connection resource". Its "the
+    first card you install this way during each of your turns" is two
+    abilities on one use limit — the discounted one `And(DuringYourTurn,
+    OncePerTurn)`, the plain one its `Not` — and `validate` now counts only
+    the abilities that *spend* a `OncePerTurn` (`spends_once_per_turn`).
+  - **A rig card's own install is counted on its copy**
+    (`CopyTurn::counts_on_rig`), and `ActingCardMatches` asks the copy too,
+    so Euler's "only if this program was installed this turn" is
+    `ActingCardMatches(InstalledThisTurn)`.
+  - **Who the Runner is:** `EffectRequirement::IdentityMatches` (DreamNet's
+    "if your identity is digital") and `Amount::Link` ("at least 2[link]"),
+    with the "or" written `Not(And(Not, Not))`.
+  - **A random card from either hand:** `CardTarget::RandomFromHq` became
+    `RandomFromHand(Side)` (Heliamphora writes `Corp`), for Mystic Maemi's
+    "trash 1 card from your grip at random".
+- **What each is made of.** Maemi and Poemu bank a credit at turn start and
+  on a steal and answer "when your turn ends" with `OnDiscardPhaseEnd` (CR
+  5.7.2d); Maemi asks the random grip card or itself, and takes itself
+  unasked from an empty grip. Penumbral Toolkit is Carmen's self-discount
+  on Deep Dive's "a successful run on HQ this turn" and Open Market's load,
+  trashed when empty, paying during runs. Odore and Euler are breakers whose
+  free break is gated: three virtual resources (`RunnerInstalls`), the
+  turn of the install. Cybertrooper Talut is The Toolbox's link and
+  Cookbook's "it" (`acts_on_subject`) with Living Mural's turn-long
+  strength. Hoshiko is Dewi's flip with `TimesThisTurn(OnAccessed)` on each
+  side's turn end.
+- **Two engine gaps the stage found.** An event's and an operation's play
+  price was paid and never dispatched, so credits spent on a play off a
+  card reached no listener; and a psi bid paid off Methuselah's hosted
+  credits during a run (the debug audit, on a seed the new deck re-paired)
+  had the same gap. Both now dispatch their cost's events after the
+  effect, as every payer does.
+- **Fidelity limits:** under Known limits. Hoshiko's back has the front's
+  subtypes and link (the catalog keeps the flip side's text alone); Keiko
+  counts companion resources, and a payment's companion only when it gave
+  first; Pauleʼs Café's discount is spent by a discounted use that installs
+  nothing; Maemi's empty grip takes the resource unasked.
+- **Client.** Nothing added to the view or a decision: the spend event's
+  new field is drawn nowhere, as the event never was. `prose` reads the new
+  words (`describe_pays_for`, the link, the grip's random card, an amount
+  discount).
+- **Decks.** Side Quest is Pay As You Go's frame on Hoshiko: two Mystic
+  Maemi, two Paladin Poemu, two Keiko, two Odore and a DreamNet for its Take
+  a Dive, Time Bomb, Friend of a Friend, Chastushka and a Valentina Ferreira
+  Carvalho. Safety Net takes two Euler and two Mantle for its Coalescence
+  and Flux Capacitor; Dead Reckoning two Cybertrooper Talut and two Pauleʼs
+  Café for its Burner and Environmental Testing; Hit List two Penumbral
+  Toolkit for two Underdome Irregulars; Mixtape, a singleton deck on Nova (a
+  digital identity), a DreamNet for its Side Hustle. Borrowed Time, Vic's,
+  was the first choice for DreamNet and is pinned Startup-legal, which an
+  Uprising card is not. Every card given up is still in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 98 `Effect` variants single-use,
+  1 unused (`Trace`), over 529 card files — from 17 of 99 over 518.
+- **Real play** (`--headless`, each edited Runner deck against Hostile Bid,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Mystic Maemi installed 33 / 20 times, its turn-end clause
+  37 / 25; Paladin Poemu 40 / 11, its turn-end trash 25 / 5; Keiko 23 / 17,
+  its credit for an install 5 / 29 and for a spend 16 / 74; Odore 7 / 16
+  installs, 2 / 16 uses; DreamNet on Hoshiko 12 / 2, on Nova 18 / 0, its
+  draw 68 / 5 and 87 / 0; Hoshiko's turn-end abilities 377 / 230 and the
+  flipped turn start 592 / 392; Euler 40 / 28 installs, 13 / 77 uses;
+  Mantle 48 / 24 installs; Cybertrooper Talut 24 / 0, its strength 9 / 0;
+  Pauleʼs Café 26 / 24 installs, 220 / 124 uses; Penumbral Toolkit 22 / 16.
+  Talut and DreamNet go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,652) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate included.
+  `coverage_identical.py` against Stage 1 (7b76d22, 192 games a report):
+  random seatings differ only by the rename — Madani's 94 hosted installs
+  are `InstallRunnerCardFromZone` (202 → 296), `InstallRunnerCardFromHost`
+  94 → 0 — view and index alike. The planner seatings move by
+  `determinize`'s larger prior, with every end reason unchanged (Corp agenda
+  wins 58, flatlines 25; Runner agenda wins 105, deck-outs 4).
+
+#### Stage 3 — Runner triggers and zones (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Swift, Aniccam, Buffer Drive, The Back,
+Prognostic Q-Loop, Simulchip, Harmony AR Therapy, Devil Charm, Bravado and
+Cordyceps — ten Runner cards. **No new `Effect`.** Uprising 31 of 65, its
+booster pack 3 of 7 (Swift is reprinted there); `UR_UNIMPLEMENTED` 44 →
+34, `URBP_UNIMPLEMENTED` 5 → 4.
+
+- **The words.**
+  - **A played event is trashed as it finishes resolving** (CR 3.7.1):
+    `TrashedFrom::PlayArea`, the rules' trash (`by: None`) and the one that
+    is a moment, so Aniccam's "an event is trashed (from any location)"
+    hears it. **`EventFilter::Anyone`** makes a "you trash" passive — the
+    moment anyone's or nobody's — for Aniccam and for Simulchip's "if an
+    installed program has already been trashed this turn"; two entries, one
+    per player, would both have counted the played event's trash, so
+    neither would have been the first.
+  - **The Runner's grip and stack trash in batches**
+    (`GameEvent::CardsTrashedFromGripOrStack`, `Trigger::
+    OnCardsTrashedFromGripOrStack`, passive): one per instruction — damage,
+    a mill, a card's trash, a selection to the heap, a trash cost — naming
+    its cards, which are written into the trigger's effects as "those
+    cards" (`CardFilter::TrashedThisWay`) as it fires, as a mill's `then`
+    already had them. Buffer Drive chooses one to the bottom of the stack.
+    `AddToDeck` now finds a chosen heap card when the install resolving is
+    the card that parked the selection.
+  - **Using any paid ability is a moment** (`Trigger::OnAbilityUsed`, CR
+    9.1.6), heard as the cost is paid; `OnActionTaken` is the same moment
+    narrowed to an action, and an action is never taken during a run.
+  - **"Up to" an amount on a selection** (`PromptChooseCards::up_to`, The
+    Back's "for each hosted power counter, choose up to 2") and **a card
+    with a [trash] ability** (`CardFilter::HasTrashAbility`,
+    `Cost::prints_trash`).
+  - **A completed run remembers the ice it passed**
+    (`CompletedRun::ice_passed`, `Amount::IcePassedLastRun`), which Bravado's
+    run-end gain reads after the run has left `active_run`.
+  - **Run events have a turn-log column** (`Kind::RunEvent`, and
+    `DoubleRunEvent` for Maintenance Access so a double and a run event each
+    still read it): the seventeenth and eighteenth kinds, which widened
+    `Occurrences::columns` to a `u64`. Swift's first run event each turn.
+  - **One printed ability may share a use limit across entries**: `validate`
+    now lets triggers with the same printed `text` spend one `OncePerTurn`
+    (The Back's two ways of using hardware).
+- **What each is made of.** Swift and Aniccam are consoles with +1[mu];
+  Prognostic Q-Loop is a first run each turn's look (`LookAtTopOfDeck`) and
+  a once-per-turn reveal of the top card installed if it is a program or
+  hardware; Simulchip is two abilities on complementary requirements, as
+  Pauleʼs Café's are — `TrashSelf`, or `AllOf[TrashSelf, Trash(installed
+  program)]` until an installed program has been trashed this turn — into
+  Privileged Access's discounted heap install; Harmony AR Therapy is
+  Asmund Pudlat's `DifferentNames` into the stack, removed from the game;
+  Devil Charm is Malandragem's removal from the game into a run-long −6 on
+  the encountered ice; Bravado is Kompromat's server choice with a run-end
+  gain; Cordyceps is two counters on install and, once per turn on a
+  central success, a counter for Sipa's swap of the ice protecting that
+  server.
+- **A stack the turn log grew.** The log is held twice in every state, and
+  the planner's PUCT search (`dividends_over_advance`, 2,048 iterations,
+  depth 16) overflowed a debug test thread's 2 MB: each recursive frame of
+  `puct::simulate` kept slots for the states it cloned and stepped. Those
+  are now made in a callee that is gone before it recurses
+  (`puct::add_child`, never inlined); the test that needed 2.2 MB now runs
+  in 1.2.
+- **Fidelity limits:** under Known limits. Aniccam hears a run event's
+  trash as its server is chosen, before its run, and no operation's;
+  Buffer Drive's batches are per instruction; The Back's first time is a
+  use limit (the second card deferred on "during a run", after Ryō
+  "Phoenix" Ōno); Simulchip counts no trash the rules made.
+- **Client.** Nothing added to the view or a decision. The log reads a
+  played event's trash as "… is trashed" and a batch as "trashed N
+  card(s) from the grip or stack"; `prose` reads the new words.
+- **Decks.** Hit List takes two Bravado, a Swift, The Back and a Prognostic
+  Q-Loop for its two Info Bounty, a Red Team and two Tunnel Vision; Safety
+  Net two Simulchip, two Cordyceps, an Aniccam and a Harmony AR Therapy for
+  its two Hyperbaric, two Propeller and two Orca; Side Quest a Devil Charm
+  for its Valentina Ferreira Carvalho; Burn Rate a Buffer Drive for one of
+  its two Hush. Every card given up is still in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 98 `Effect` variants single-use,
+  1 unused (`Trace`), over 539 card files — unmoved.
+- **Real play** (`--headless`, each edited Runner deck against Hostile Bid,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Bravado played 13 / 0 times; Swift installed 15 / 9, its click
+  7 / 3; The Back 19 / 1, never charged (Hit List's hardware is rarely used
+  in a run), its own ability used 14 / 0; Prognostic Q-Loop 13 / 2, its
+  look 105 / 6 and its reveal 103 / 4; Simulchip installed 37 / 37, used
+  37 / 14; Cordyceps 35 / 1, its offer 33 / 0; Aniccam 10 / 9, its draw
+  3 / 7; Harmony AR Therapy played 10 / 1; Devil Charm 13 / 3, its offer
+  10 / 4; Buffer Drive 9 / 0, its removal used 9 / 0. Bravado, The Back,
+  Cordyceps and Buffer Drive go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,662) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate included.
+  `coverage_identical.py` against Stage 2 (7ea5887, 192 games a report):
+  random seatings differ only by the new records — every played event now
+  a `CardTrashed` (2,028 → 2,506, each event's `trashed` count with it) and
+  270 `CardsTrashedFromGripOrStack` — view and index alike; the planner
+  seatings drift by the larger prior with every end reason unchanged.

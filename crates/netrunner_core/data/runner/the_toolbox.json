@@ -7,7 +7,9 @@
   "counter_kind": "Credit",
   "recurring_credits": 2,
   "pays_for": [
-    "UsingIcebreakers"
+    {
+      "Using": "Icebreaker"
+    }
   ],
   "continuous": [
     {

@@ -1,0 +1,57 @@
+{
+  "id": "dreamnet",
+  "title": "DreamNet",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "And": [
+                  {
+                    "Not": {
+                      "IdentityMatches": {
+                        "HasSubtype": "Digital"
+                      }
+                    }
+                  },
+                  {
+                    "Not": {
+                      "AmountAtLeast": [
+                        "Link",
+                        2
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "effect": {
+              "GainCredits": [
+                "Runner",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you make a successful run, draw 1 card. If your identity is digital or you have at least 2[link], also gain 1[credit]."
+    }
+  ],
+  "built_from": 26095,
+  "is_playable": true
+}

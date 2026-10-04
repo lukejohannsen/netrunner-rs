@@ -1,0 +1,65 @@
+{
+  "id": "self_modifying_code",
+  "title": "Self-modifying Code",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 0
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": true,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnStack",
+                  "discount": {
+                    "Credits": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "2[credit], [trash]: Search your stack for 1 program. Install it."
+    }
+  ],
+  "built_from": 26090,
+  "is_playable": true
+}

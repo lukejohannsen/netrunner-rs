@@ -1,0 +1,142 @@
+{
+  "id": "colossus",
+  "title": "Colossus",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "It gets +1 strength for each hosted advancement counter."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag. If there are 3 or more hosted advancement counters, instead give the Runner 2 tags.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "AmountAtLeast": [
+                    "HostedAdvancementTokens",
+                    3
+                  ]
+                }
+              },
+              "effect": {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  3
+                ]
+              },
+              "effect": {
+                "GiveTags": {
+                  "Fixed": 2
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Trash 1 installed program. If there are 3 or more hosted advancement counters, instead trash 1 installed program and 1 installed resource.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "AmountAtLeast": [
+                    "HostedAdvancementTokens",
+                    3
+                  ]
+                }
+              },
+              "effect": {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "CardType": "Program"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  3
+                ]
+              },
+              "effect": {
+                "Sequence": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "CardType": "Program"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "destination": "OpponentDiscard"
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "CardType": "Resource"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "destination": "OpponentDiscard"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 26124,
+  "is_playable": true
+}

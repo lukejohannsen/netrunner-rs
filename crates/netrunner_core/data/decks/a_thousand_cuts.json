@@ -3,7 +3,7 @@
   "name": "A Thousand Cuts",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna. The Automata Initiative Stage 3: two Phoneutria for two Neurospike, and two Tatu-Bola for two Byte. The Automata Initiative Stage 5: two Front Company for two Urtica Cipher, an asset for an asset. Parhelion Stage 1: two Vampyronassa for its Ansel 1.0 and a Mindscaping. Parhelion Stage 4a: two Dr. Vientiane Keeling for two Cultivate, which Second Site still carries. Midnight Sun Stage 1: two Anemone for its two Phoneutria, a sentry rezzed on a run at its server for one, and two Bladderwort for its two Esca, an asset that hurts for an asset that hurts. Permafrost and Second Site keep both. Midnight Sun Stage 4: two Moon Pool and two Mavirus for its two Mindscaping and two Front Company. Midnight Sun Stage 5: two Ivik for its two Tatu-Bola, a barrier for a barrier, cheaper for each of its rezzed code gates, and two Bathynomus for its two Lionsmane, a sentry for a sentry, stronger on Archives; Permafrost and Second Site keep Tatu-Bola, Second Site Lionsmane. Midnight Sun Stage 7a: two Regenesis and two Blood in the Water for its two Sericulture Expansion and a Lotus Haze, six points for six — its traps leave agendas facedown in Archives for Regenesis to take back, and its net damage empties the grip Blood in the Water counts; Permafrost keeps both.",
+  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna. The Automata Initiative Stage 3: two Phoneutria for two Neurospike, and two Tatu-Bola for two Byte. The Automata Initiative Stage 5: two Front Company for two Urtica Cipher, an asset for an asset. Parhelion Stage 1: two Vampyronassa for its Ansel 1.0 and a Mindscaping. Parhelion Stage 4a: two Dr. Vientiane Keeling for two Cultivate, which Second Site still carries. Midnight Sun Stage 1: two Anemone for its two Phoneutria, a sentry rezzed on a run at its server for one, and two Bladderwort for its two Esca, an asset that hurts for an asset that hurts. Permafrost and Second Site keep both. Midnight Sun Stage 4: two Moon Pool and two Mavirus for its two Mindscaping and two Front Company. Midnight Sun Stage 5: two Ivik for its two Tatu-Bola, a barrier for a barrier, cheaper for each of its rezzed code gates, and two Bathynomus for its two Lionsmane, a sentry for a sentry, stronger on Archives; Permafrost and Second Site keep Tatu-Bola, Second Site Lionsmane. Midnight Sun Stage 7a: two Regenesis and two Blood in the Water for its two Sericulture Expansion and a Lotus Haze, six points for six — its traps leave agendas facedown in Archives for Regenesis to take back, and its net damage empties the grip Blood in the Water counts; Permafrost keeps both. Uprising Stage 1: two Flower Sermon for its two See How They Run, point for point, and two Prāna Condenser for its two Dr. Vientiane Keeling, so the deck's own net damage is what Prāna prevents and charges on; Permafrost keeps both.",
   "style": [
     "traps"
   ],
@@ -42,19 +42,11 @@
       "count": 1
     },
     {
-      "card": "dr_vientiane_keeling",
-      "count": 2
-    },
-    {
       "card": "cloud_eater",
       "count": 2
     },
     {
       "card": "bring_them_home",
-      "count": 2
-    },
-    {
-      "card": "see_how_they_run",
       "count": 2
     },
     {
@@ -103,6 +95,14 @@
     },
     {
       "card": "blood_in_the_water",
+      "count": 2
+    },
+    {
+      "card": "flower_sermon",
+      "count": 2
+    },
+    {
+      "card": "prana_condenser",
       "count": 2
     }
   ]

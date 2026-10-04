@@ -558,7 +558,8 @@ pub struct InstalledRunnerCard {
     /// faceup programs. Public, like the rig. They are not in any other
     /// zone (the card-conservation invariant counts them here), leave with
     /// their host (`ability::cascade_trash_hosted_on_rig_card`), and are
-    /// installed out of here by `Effect::InstallRunnerCardFromHost`.
+    /// installed out of here by `Effect::InstallRunnerCardFromZone { from:
+    /// HostedOnSource }`.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
     /// How many of `hosted_cards` have been **turned facedown** — Matryoshka's copies,
@@ -1395,6 +1396,10 @@ pub struct CompletedRun {
     pub initiated_by: Option<CardId>,
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub event_counters: u32,
+    /// `RunState::ice_passed` at conclusion — Bravado's "for each piece of
+    /// ice you passed during that run" (`Amount::IcePassedLastRun`).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub ice_passed: u32,
 }
 
 impl CompletedRun {
@@ -1415,6 +1420,7 @@ impl CompletedRun {
             breached: run.breached,
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,
+            ice_passed: run.ice_passed,
         }
     }
 }

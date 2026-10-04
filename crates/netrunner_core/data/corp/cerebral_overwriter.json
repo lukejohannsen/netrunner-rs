@@ -1,0 +1,38 @@
+{
+  "id": "cerebral_overwriter",
+  "title": "Cerebral Overwriter",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 3
+            },
+            "if_paid": {
+              "DealDamageAmount": [
+                "Brain",
+                "HostedAdvancementTokens"
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 3[credit] to do X core damage"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 26099,
+  "is_playable": true
+}

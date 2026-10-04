@@ -2948,7 +2948,8 @@ mod tests {
         assert_eq!(events[2], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
         assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
         assert_eq!(events.last(), Some(&GameEvent::ArchivesTurnedFaceup { count: 1 }));
-        assert_eq!(events.len(), 7);
+        // The two cards' trashes and their batch out of the grip.
+        assert_eq!(events.len(), 8);
     }
 
     #[test]
@@ -2986,8 +2987,9 @@ mod tests {
         assert_eq!(events[3], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
         assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: Some(Side::Corp) });
         assert!(matches!(events[5], GameEvent::CardTrashed { side: Side::Runner, from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), .. }));
-        assert_eq!(events[6], GameEvent::RunCompleted { server: ServerId::Remote(0) });
-        assert_eq!(events.len(), 7);
+        assert!(matches!(&events[6], GameEvent::CardsTrashedFromGripOrStack { cards, by: Some(Side::Corp) } if cards.len() == 1), "the batch");
+        assert_eq!(events[7], GameEvent::RunCompleted { server: ServerId::Remote(0) });
+        assert_eq!(events.len(), 8);
     }
 
     #[test]

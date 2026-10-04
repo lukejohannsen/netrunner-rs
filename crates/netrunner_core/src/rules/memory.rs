@@ -126,6 +126,7 @@ pub(crate) fn enforce_limit(state: &mut GameState, registry: &CardRegistry) -> R
         destination: Some(CardZoneRef::OwnHeap),
         then: None,
         count: None,
+        up_to: None,
     };
     let parked = ability::evaluate_effect(state, &prompt, &mut ability::ResolutionContext::default(), registry)?;
     if parked.is_empty() {

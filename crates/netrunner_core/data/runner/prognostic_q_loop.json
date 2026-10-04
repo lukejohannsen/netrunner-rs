@@ -1,0 +1,95 @@
+{
+  "id": "prognostic_q_loop",
+  "title": "Prognostic Q-Loop",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "LookAtTopOfDeck": {
+                  "deck": "Runner",
+                  "count": 2
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may look at the top 2 cards of your stack",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn a run begins, you may look at the top 2 cards of your stack."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "TopOfOwnStack",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "ActingCardMatches": {
+                  "CardTypeOneOf": [
+                    "Program",
+                    "Hardware"
+                  ]
+                }
+              },
+              "effect": {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "InstallRunnerCardFromZone": {
+                        "from": "OwnStack",
+                        "discount": {
+                          "Credits": 0
+                        }
+                      }
+                    },
+                    {
+                      "Sequence": []
+                    }
+                  ],
+                  "texts": [
+                    "you may install it",
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "Once per turn → 1[credit]: Reveal the top card of your stack. If that card is a program or piece of hardware, you may install it."
+    }
+  ],
+  "built_from": 26077,
+  "is_playable": true
+}

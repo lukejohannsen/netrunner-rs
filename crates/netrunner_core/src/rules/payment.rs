@@ -75,9 +75,15 @@ use crate::rules::state::{Credits, GameState, InstallId, InstallSlot, Side};
 /// else is `Other`, which no restricted pool covers.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Purpose<'a> {
-    /// A cost no card's credits are reserved for: a play cost, an ability,
-    /// an advance, a steal cost, the basic actions.
+    /// A cost no card's credits are reserved for: an additional cost, an
+    /// advance, a steal cost, the basic actions.
     Other,
+    /// Playing this event or operation: its price, never an additional
+    /// cost. Stated where the play is paid (`engine::play_event`,
+    /// `engine::play_operation_card`) and where an operation's play is
+    /// asked about ahead of time (`engine::can_play_operation`); an event
+    /// is asked about by applying its play.
+    Play(&'a CardDefinition),
     /// Installing this card, by a click or by a card's text.
     Install(&'a CardDefinition),
     /// Rezzing this install.
@@ -285,8 +291,47 @@ impl Breadth {
         match (self, other) {
             (_, Breadth::Anything) => true,
             (Breadth::Anything, Breadth::Words(_)) => false,
-            (Breadth::Words(mine), Breadth::Words(theirs)) => mine.iter().all(|word| theirs.contains(word)),
+            (Breadth::Words(mine), Breadth::Words(theirs)) => mine.iter().all(|word| theirs.iter().any(|their| word_within(word, their))),
         }
+    }
+}
+
+/// Whether whatever `word` pays for, `other` pays for too. Equal words do;
+/// beyond that, only two words that name the same kind of payment with
+/// filters one implies the other (`filter_implies`) — The Toolbox's
+/// `Using(Icebreaker)` within Mantle's `Using(CardTypeOneOf([Hardware,
+/// Program]))`. A `false` costs the payer a question, never a wrong spend,
+/// so the test is conservative.
+fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
+    match (word, other) {
+        (PaysFor::Using(mine), PaysFor::Using(theirs))
+        | (PaysFor::Installing(mine), PaysFor::Installing(theirs))
+        | (PaysFor::Playing(mine), PaysFor::Playing(theirs)) => filter_implies(mine, theirs),
+        _ => word == other,
+    }
+}
+
+/// Whether every card `filter` admits, `wider` admits too — read off the
+/// two filters' words alone, and only for the shapes a pool prints: an
+/// equal filter, `Any`, a card type among a list, an icebreaker as a
+/// program, one part of an `All`, one of an `AnyOf`. Anything else is
+/// "not known to", which `word_within` turns into a question.
+fn filter_implies(filter: &crate::dsl::CardFilter, wider: &crate::dsl::CardFilter) -> bool {
+    use crate::dsl::CardFilter as F;
+    if filter == wider || matches!(wider, F::Any) {
+        return true;
+    }
+    match (filter, wider) {
+        (F::All(parts), _) if parts.iter().any(|part| filter_implies(part, wider)) => true,
+        (_, F::AnyOf(parts)) if parts.iter().any(|part| filter_implies(filter, part)) => true,
+        (_, F::All(parts)) => parts.iter().all(|part| filter_implies(filter, part)),
+        (F::AnyOf(parts), _) => parts.iter().all(|part| filter_implies(part, wider)),
+        (F::Icebreaker, F::CardType(CardType::Program)) => true,
+        (F::Icebreaker, F::CardTypeOneOf(types)) => types.contains(&CardType::Program),
+        (F::CardType(kind), F::CardTypeOneOf(types)) => types.contains(kind),
+        (F::CardTypeOneOf(kinds), F::CardTypeOneOf(types)) => kinds.iter().all(|kind| types.contains(kind)),
+        (F::CardTypeOneOf(kinds), F::CardType(kind)) => kinds.iter().all(|k| k == kind),
+        _ => false,
     }
 }
 
@@ -401,7 +446,8 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
     match (word, purpose) {
         (PaysFor::TrashCosts, Purpose::TrashCost) => true,
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
-        (PaysFor::UsingIcebreakers, Purpose::Ability(card)) => card_matches_filter(card, &crate::dsl::CardFilter::Icebreaker),
+        (PaysFor::Using(filter), Purpose::Ability(card)) => card_matches_filter(card, filter),
+        (PaysFor::Playing(filter), Purpose::Play(card)) => card_matches_filter(card, filter),
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
@@ -423,7 +469,8 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
             | PaysFor::TraceAttempts
-            | PaysFor::UsingIcebreakers
+            | PaysFor::Using(_)
+            | PaysFor::Playing(_)
             | PaysFor::RemovingTags,
             _,
         ) => false,
@@ -681,7 +728,7 @@ fn pools_could_ask(state: &GameState) -> bool {
 /// and it lasts the turn if the card prints recurring credits
 /// (`CardDefinition::recurring_credits` — what is unspent is only topped
 /// back up) and until spent otherwise (Open Market's load).
-fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) -> Class {
+pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) -> Class {
     let of_card = |card: Option<&crate::dsl::CardId>| {
         let definition = card.and_then(|card| registry.get(card));
         let words = definition.map(|d| d.pays_for.clone()).unwrap_or_default();
@@ -772,7 +819,16 @@ pub(crate) fn pay_from(
     if elsewhere > 0 {
         let run_against = state.active_run.as_ref().map(|run| run.server);
         let from_installed = planned.spend.iter().filter(|(pool, _)| matches!(pool, Pool::Hosted(_))).map(|(_, spend)| spend).sum();
-        events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against, from_installed });
+        // Read before anything is spent: an emptied host may be trashed
+        // (`spend_hosted`), and the moment is still about it.
+        let first_host = planned.spend.iter().find_map(|(pool, _)| match pool {
+            Pool::Hosted(install) => match side {
+                Side::Corp => state.corp.installed.iter().find(|c| c.install_id == *install).map(|c| (c.card.clone(), *install)),
+                Side::Runner => state.runner.rig.iter().find(|c| c.install_id == *install).map(|c| (c.card.clone(), *install)),
+            },
+            _ => None,
+        });
+        events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against, from_installed, first_host });
     }
     let mut from_hosted = 0;
     for (pool, spend) in planned.spend {
@@ -1085,7 +1141,7 @@ mod tests {
 
     #[test]
     fn three_classes_are_two_questions_and_the_last_is_never_asked_about() {
-        let icebreakers = entry(TOOLBOX, 2, words(&[PaysFor::UsingIcebreakers]), Life::Turn);
+        let icebreakers = entry(TOOLBOX, 2, words(&[PaysFor::Using(crate::dsl::CardFilter::Icebreaker)]), Life::Turn);
         let table = [azimat(2), icebreakers, run_credits(2), wallet(0)];
         assert_eq!(plan(&table, 3, &[]), Err(ask(AZIMAT, 0, 2)));
         assert_eq!(plan(&table, 3, &[1]), Err(ask(TOOLBOX, 0, 2)), "2 still owed, and the run could cover it all");
