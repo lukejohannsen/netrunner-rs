@@ -5927,3 +5927,118 @@ NETRUNNER_SETTINGS_FILE=$D/settings.toml XDG_CACHE_HOME=$D/cache cargo run -p ne
 ```
 
 No engine change, so no coverage run or sweeps.
+
+## 13. A cyberpunk sound theme, synthesized here — DONE (4 October 2026)
+
+`feat/cyberpunk-sound-theme`, at the person's request: "I do not like the
+sound effects for buttons or movement or open close windows or the card
+shuffles. I know this is a card game but I want a different sound. I
+would like a full theme for the game — button clicks, windows open and
+windows close, when runs start (jack in) and end (jack out) — something
+more thematic with cyberpunk/netrunner styles."
+
+**What was there.** The sounds of 1 October (`feat/desktop-sound-and-tables`)
+were Kenney's CC0 recordings of paper cards, poker chips and plain
+clicks, chosen by the person sound by sound. Eight moments had one.
+Nothing was heard when a run began or ended, when anything opened or
+closed, on a rez, damage, a tag, an agenda, a turn or the end of the
+match, and a button with no `ButtonSound` was silent.
+
+**What the person chose** (asked before anything was built): the sounds
+synthesized in this project rather than picked from CC0 packs; card
+movement fully digital, with no paper under it; every extra moment
+offered — the run's beats, rez and damage, score, steal and the end, the
+turn; and the set rendered for them to hear before the PR.
+
+**What is built.**
+
+- **The set is made in code and committed as files.**
+  `examples/render_sfx.rs` holds one recipe per file over one small
+  toolkit — a five-voice supersaw, struck metal (FM at a ratio no
+  harmonic series holds), a ping (noise through a narrow filter), a
+  swept state-variable filter, a sample-and-hold crusher, an echo and a
+  small room — with every seed fixed. `scripts/render_sfx.sh`
+  renders them and encodes with ffmpeg, oggenc or VLC, whichever the
+  machine has. 32 files, 26 sounds, about 480 KB, all `project` /
+  GPL-3.0-or-later in `CREDITS.md`. Kenney's 26 files, their rows and
+  their licence text are gone. **Rejected: making the client's
+  synthesized tier the look.** That tier stays plain so a missing file
+  is noticed (AGENTS.md §5); the recipes are an example, compiled into
+  nothing the client ships.
+- **`Sfx` is 26 sounds and the bank is keyed by it.** The `Set` enum
+  existed because the opening was two recordings in sequence, a shuffle
+  and then a fan timed off the shuffle's Ogg length; the opening is one
+  sound now, so `Set`, the chaining and `ogg_length` went.
+- **What happened is heard from the events, where a thing went from the
+  transitions** (`models::sound::{event_cues, cues}`). A run's events
+  reach the model a beat at a time, ahead of the view the transitions
+  are computed from, so a jack-in cued off `Transition::RunStarted`
+  would have sounded after the approach it precedes. `event_cues` is
+  called with each beat's events and, on the applied message, with what
+  no beat carried (`after_the_beats`: everything after the record's last
+  `trail::is_step`, which is how the pacer splits it) — so each event is
+  heard once. The transitions that restate an event are silent,
+  including an agenda's move into a score area.
+- **Opening and closing is decided in one place per layer.**
+  `Game::apply` counts what the person has open before and after an
+  intent — sheets, the card read, the options, the keys, the timing
+  chart, the quit prompt, a click's menu — and one more is `Open`, one
+  fewer `Close`, a swap neither; an overlay added to that count is heard
+  with no call of its own. Menu screens' drop-downs and the card reader
+  are counted the same way off their own state (`audio::popup_sounds`).
+  The phase panel and the play helper (L, H) are panels and say so,
+  where they used to play the toggle.
+- **Every button clicks, and a click gives way to what the press did.**
+  A press with no `ButtonSound` plays `Click` 35 ms late; a named
+  interface sound inside the debounce window is the press's sound and
+  the click is dropped.
+- **A test holds the folder to the list**: every `Sfx` has a file and a
+  row in `assets/sfx/README.md`, and every file is some sound's.
+
+**The first render was wrong, and the palette is the correction.** It
+was built from FM bells, bare square-wave blips, rising notes and major
+climbs — a win was an arpeggio into a major chord. The person's verdict:
+"too bright, like a happy Mario game and not futuristic tech. The loss
+and win are especially terrible — but all of them are bad." Every recipe
+was rewritten on one rule, recorded above the recipes: nothing plays a
+tune. A sound is weight (a sub), air (filtered noise), a part moving (a
+ping, struck metal) or a low drone behind a moving filter, and two
+pitches together are a fifth, an octave or a tritone, never a third. By
+zero crossings the set's mean frequency fell from the low thousands of
+hertz to the low hundreds for most sounds.
+
+**Then sound by sound, by ear** (the person's, the same day; the
+reason for each is on its recipe):
+
+- *Score* was a low chord under a closing filter and was heard as sad;
+  it is two hits, the second higher and held, behind a filter that
+  opens.
+- *Credits* were one struck contact, and nothing in it was a transfer;
+  they are a counter's roll of ticks and the tone that clears it.
+- *Boot* was a drone swelling into a thump — a mood; it is a sequence:
+  the breaker, the charge climbing, the drives, the tone that says up.
+- *Rez* was power coming on and a heavy part engaging; it is a stutter
+  that quickens into a tone, "a program coming alive".
+- *Tag* went klaxon, then electroshock, then what it is: a tracker
+  swinging in, clamping on, and its beacon — "something being applied".
+  **The shock became damage's**, one sound for net, meat and core.
+- *Ice approach* was a 196 Hz sine over a sub and was silence on the
+  person's speakers. A sound with every part under 200 Hz is one small
+  speakers do not make; the pulse now sits near 390 Hz with a tick on
+  its front. Lock-in, deck-add, switch and back are the next lowest by
+  the same measure (under 15% of their energy above 300 Hz) and were
+  heard, so they stand.
+- *Advance* was added at the person's request — any counter added, by
+  an advance or by a card's text, read off `Transition::Advancement`.
+  Its first try pulled a saw up a fifth and was "frogger jumping": **a
+  short upward glide is a jump, whatever it is made of.** It is a notch
+  and a pulse of current at one pitch.
+
+**Known limits.** A rez or damage inside a run is heard with its beat,
+but the card's face turns with the message after the last beat, as the
+board always has. VLC, the only encoder on the machine that rendered the
+set, drops its last buffer, so the renderer writes 0.2 s of silence
+after each sound for it to lose. The encoded bytes depend on the
+encoder; the WAVs do not.
+
+No engine change, so no coverage run or sweeps.

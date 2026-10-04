@@ -7,13 +7,17 @@
 //! *set* of recordings, one drawn at random per play, read from `sfx/`
 //! across the asset tiers (`assets::list_files`): every `.ogg` whose name
 //! is one of the set's stems, alone or followed by `-<n>` or `_<n>`. So a
-//! player adds a variant by dropping `card-place-5.ogg` into their own
+//! player adds a variant by dropping `lock-in-4.ogg` into their own
 //! `sfx/`, and replaces one by dropping a file of the same name.
 //!
-//! **A set nobody recorded is synthesized** ([`synth`]): a burst of shaped
-//! noise or a short chirp, written as a WAV in memory. That is the tier
-//! that always works (AGENTS.md §5) and it is deliberately plain, so a
-//! missing file is noticed rather than mistaken for the look.
+//! **The shipped recordings are made in this project**, by
+//! `examples/render_sfx.rs` (`scripts/render_sfx.sh`): a cyberpunk set
+//! the person asked for on 4 October 2026, in place of Kenney's recorded
+//! paper cards and poker chips. **A set with no file is synthesized
+//! here** ([`synth`]): a burst of shaped noise or a short chirp, written
+//! as a WAV in memory. That is the tier that always works (AGENTS.md §5)
+//! and it is deliberately plain, so a missing file is noticed rather
+//! than mistaken for the look.
 //!
 //! **Music** is the files in `music/`. The menus loop one theme,
 //! [`MENU_THEME`] (the person's choice, 1 October 2026); a game plays every
@@ -44,9 +48,12 @@ use crate::core::ClientCore;
 use crate::dev::Dev;
 use crate::nav::{self, Navigate};
 use crate::screens::AppScreen;
+use crate::widgets::dropdown::Dropdown;
+use crate::widgets::reader::Reading;
 use crate::widgets::Pressed;
 
 pub use crate::models::sound::Sfx;
+use crate::models::sound::opened_or_closed;
 
 /// The menus' theme, by its file's stem in `music/`.
 pub const MENU_THEME: &str = "glass-and-morning-sky";
@@ -59,6 +66,14 @@ const FADE_OUT: Duration = Duration::from_millis(900);
 /// Back button plays Back, and the navigation it writes would play it
 /// again a frame later.
 const UI_DEBOUNCE: Duration = Duration::from_millis(120);
+
+/// How long a plain click waits for what the press did. A press that
+/// opens a sheet or changes the screen is heard as that, and the sound
+/// of it is written a frame or two after the press — by the navigation,
+/// or by the game's model once it has taken the intent — so the click
+/// is held this long and dropped if a named interface sound got there
+/// first. Under the ear's threshold for "late".
+const CLICK_WAIT: Duration = Duration::from_millis(35);
 
 /// The gap between the sounds one action makes, so three cards drawn are
 /// heard as three.
@@ -76,7 +91,7 @@ impl Plugin for SoundPlugin {
             .add_systems(OnEnter(AppScreen::Game), |mut out: MessageWriter<PlaySfx>| {
                 out.write(PlaySfx::now(Sfx::Opening));
             })
-            .add_systems(Update, (button_sounds, navigation_sounds, play, music).chain().after(nav::apply_navigation));
+            .add_systems(Update, (button_sounds, navigation_sounds, popup_sounds, play, music).chain().after(nav::apply_navigation));
     }
 }
 
@@ -103,63 +118,46 @@ impl PlaySfx {
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ButtonSound(pub Sfx);
 
-/// A set of recordings, as the bank keeps them: an [`Sfx`] is one set or
-/// two, the opening being the shuffle and then the fan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Set {
-    Shuffle,
-    Fan,
-    Place,
-    Take,
-    Chips,
-    Toggle,
-    Switch,
-    Back,
-    DeckAdd,
-}
-
-impl Set {
-    const ALL: [Set; 9] = [Set::Shuffle, Set::Fan, Set::Place, Set::Take, Set::Chips, Set::Toggle, Set::Switch, Set::Back, Set::DeckAdd];
-
-    /// The file stems that are this set's recordings, each alone or with
-    /// a number: Kenney's names, kept so the register reads like the
-    /// packs they came from.
-    fn stems(self) -> &'static [&'static str] {
-        match self {
-            Set::Shuffle => &["card-shuffle"],
-            Set::Fan => &["card-fan"],
-            Set::Place => &["card-place"],
-            Set::Take => &["card-shove", "card-slide"],
-            Set::Chips => &["chips-stack"],
-            Set::Toggle => &["toggle"],
-            Set::Switch => &["switch"],
-            Set::Back => &["back"],
-            Set::DeckAdd => &["deck-add"],
-        }
-    }
-
-    /// The interface's own sounds, which [`UI_DEBOUNCE`] applies to.
-    fn is_interface(self) -> bool {
-        matches!(self, Set::Toggle | Set::Switch | Set::Back)
-    }
-}
-
-/// The set an [`Sfx`] starts with; the opening's fan follows its shuffle
-/// in [`play`], once the shuffle drawn is over.
-fn first_set(sfx: Sfx) -> Set {
+/// The file stems that are `sfx`'s recordings in `sfx/`, each alone or
+/// with a number. `assets/sfx/README.md` lists them, and a test holds it
+/// to this.
+fn stem(sfx: Sfx) -> &'static str {
     match sfx {
-        Sfx::Opening => Set::Shuffle,
-        Sfx::Place => Set::Place,
-        Sfx::Take => Set::Take,
-        Sfx::Chips => Set::Chips,
-        Sfx::Toggle => Set::Toggle,
-        Sfx::Switch => Set::Switch,
-        Sfx::Back => Set::Back,
-        Sfx::DeckAdd => Set::DeckAdd,
+        Sfx::Opening => "boot",
+        Sfx::Place => "lock-in",
+        Sfx::Take => "data-in",
+        Sfx::Chips => "credit",
+        Sfx::Click => "click",
+        Sfx::Toggle => "toggle",
+        Sfx::Switch => "switch",
+        Sfx::Back => "back",
+        Sfx::DeckAdd => "deck-add",
+        Sfx::Open => "panel-open",
+        Sfx::Close => "panel-close",
+        Sfx::JackIn => "jack-in",
+        Sfx::JackOut => "jack-out",
+        Sfx::Approach => "ice-approach",
+        Sfx::Encounter => "ice-encounter",
+        Sfx::RunSuccess => "run-success",
+        Sfx::RunEnded => "run-ended",
+        Sfx::Rez => "rez",
+        Sfx::Damage => "damage",
+        Sfx::Tag => "tag",
+        Sfx::Advance => "advance",
+        Sfx::Score => "score",
+        Sfx::Steal => "steal",
+        Sfx::TurnStart => "turn-start",
+        Sfx::Win => "win",
+        Sfx::Loss => "loss",
     }
 }
 
-/// Whether `file` (`card-slide-3.ogg`) is one of `stem`'s recordings.
+/// The interface's own sounds, which [`UI_DEBOUNCE`] applies to.
+fn is_interface(sfx: Sfx) -> bool {
+    matches!(sfx, Sfx::Click | Sfx::Toggle | Sfx::Switch | Sfx::Back | Sfx::Open | Sfx::Close)
+}
+
+/// Whether `file` (`lock-in-3.ogg`) is one of `stem`'s recordings.
 fn is_recording_of(file: &str, stem: &str) -> bool {
     let Some(name) = file.strip_suffix(".ogg").or_else(|| file.strip_suffix(".OGG")) else { return false };
     match name.strip_prefix(stem) {
@@ -169,52 +167,37 @@ fn is_recording_of(file: &str, stem: &str) -> bool {
     }
 }
 
-/// Every set's recordings, with each one's length (the opening needs the
-/// shuffle's). Loaded on the first sound rather than at start-up, so a
-/// client that never makes one never reads a file.
+/// Every set's recordings. Loaded on the first sound rather than at
+/// start-up, so a client that never makes one never reads a file.
 #[derive(Resource, Default)]
 struct Bank {
     loaded: bool,
-    sets: HashMap<Set, Vec<(Handle<AudioSource>, Duration)>>,
+    sets: HashMap<Sfx, Vec<Handle<AudioSource>>>,
 }
 
 impl Bank {
     fn load(&mut self, sources: &mut Assets<AudioSource>) {
         self.loaded = true;
         let files = assets::list_files("sfx", "ogg");
-        for set in Set::ALL {
-            let mut recordings: Vec<(Handle<AudioSource>, Duration)> = files
+        for sfx in Sfx::ALL {
+            let mut recordings: Vec<Handle<AudioSource>> = files
                 .iter()
-                .filter(|file| set.stems().iter().any(|stem| is_recording_of(file, stem)))
+                .filter(|file| is_recording_of(file, stem(sfx)))
                 .filter_map(|file| assets::read(&format!("sfx/{file}")))
-                .map(|bytes| {
-                    let length = ogg_length(&bytes).unwrap_or(Duration::from_millis(500));
-                    (sources.add(AudioSource { bytes: Arc::from(bytes) }), length)
-                })
+                .map(|bytes| sources.add(AudioSource { bytes: Arc::from(bytes) }))
                 .collect();
             if recordings.is_empty() {
-                let (bytes, length) = synth::wav(set);
-                recordings.push((sources.add(AudioSource { bytes: Arc::from(bytes) }), length));
+                recordings.push(sources.add(AudioSource { bytes: Arc::from(synth::wav(sfx)) }));
             }
-            self.sets.insert(set, recordings);
+            self.sets.insert(sfx, recordings);
         }
     }
-}
-
-/// The length of an Ogg Vorbis file: the last page's granule position
-/// (its sample count) over the identification header's sample rate.
-fn ogg_length(bytes: &[u8]) -> Option<Duration> {
-    let header = bytes.windows(7).position(|window| window == b"\x01vorbis")?;
-    let rate = u32::from_le_bytes(bytes.get(header + 12..header + 16)?.try_into().ok()?);
-    let last_page = bytes.windows(4).rposition(|window| window == b"OggS")?;
-    let samples = i64::from_le_bytes(bytes.get(last_page + 6..last_page + 14)?.try_into().ok()?);
-    (rate > 0 && samples > 0).then(|| Duration::from_secs_f64(samples as f64 / f64::from(rate)))
 }
 
 /// The sounds waiting for their moment.
 #[derive(Resource, Default)]
 struct Queue {
-    pending: Vec<(Duration, Set)>,
+    pending: Vec<(Duration, Sfx)>,
     last_interface: Option<Duration>,
 }
 
@@ -245,12 +228,29 @@ fn silenced(dev: Option<&Dev>) -> bool {
     dev.is_some_and(|dev| dev.screenshot.is_some())
 }
 
+/// A press is heard: as the button's own sound when it names one, and
+/// as a click otherwise, which waits [`CLICK_WAIT`] for the press to
+/// turn out to be something with a sound of its own.
 fn button_sounds(mut pressed: MessageReader<Pressed>, sounds: Query<&ButtonSound>, mut out: MessageWriter<PlaySfx>) {
     for Pressed(entity) in pressed.read() {
-        if let Ok(ButtonSound(sfx)) = sounds.get(*entity) {
-            out.write(PlaySfx::now(*sfx));
-        }
+        out.write(match sounds.get(*entity) {
+            Ok(ButtonSound(sfx)) => PlaySfx::now(*sfx),
+            Err(_) => PlaySfx::after(Sfx::Click, CLICK_WAIT),
+        });
     }
+}
+
+/// What opens over a menu screen: a drop-down's list and the card
+/// reader. Both are widgets any screen may use, so the sound is read off
+/// their state here rather than written at each place one is opened.
+/// (The board's own sheets and menus are the game model's, which says
+/// so itself: `models::game::Game::apply`.)
+fn popup_sounds(dropdowns: Query<&Dropdown>, reading: Option<Res<Reading>>, mut was_open: Local<usize>, mut out: MessageWriter<PlaySfx>) {
+    let open = dropdowns.iter().filter(|dropdown| dropdown.open).count() + usize::from(reading.is_some_and(|reading| reading.is_open()));
+    if let Some(sfx) = opened_or_closed(*was_open, open) {
+        out.write(PlaySfx::now(sfx));
+    }
+    *was_open = open;
 }
 
 /// A screen left for another: Back when it is the screen this one goes
@@ -281,7 +281,7 @@ fn play(
 ) {
     let now = time.elapsed();
     for request in requests.read() {
-        queue.pending.push((now + request.after, first_set(request.sfx)));
+        queue.pending.push((now + request.after, request.sfx));
     }
     let volume = core.map_or(0.0, |core| core.settings.desktop.sfx_volume);
     let Some(mut sources) = sources.filter(|_| volume > 0.0 && !silenced(dev.as_deref())) else {
@@ -296,20 +296,20 @@ fn play(
     }
     let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut queue.pending).into_iter().partition(|(at, _)| *at <= now);
     queue.pending = later;
-    for (_, set) in due {
-        if set.is_interface() {
+    // A named interface sound due in the same frame as a click is what
+    // the click was; it goes first, and the debounce then drops the click.
+    let named = |sfx: Sfx| is_interface(sfx) && sfx != Sfx::Click;
+    let (first, rest): (Vec<_>, Vec<_>) = due.into_iter().partition(|(_, sfx)| named(*sfx));
+    for (_, sfx) in first.into_iter().chain(rest) {
+        if is_interface(sfx) {
             if queue.last_interface.is_some_and(|last| now.saturating_sub(last) < UI_DEBOUNCE) {
                 continue;
             }
             queue.last_interface = Some(now);
         }
-        let Some(recordings) = bank.sets.get(&set).filter(|recordings| !recordings.is_empty()) else { continue };
-        let (handle, length) = recordings[dice.below(recordings.len())].clone();
+        let Some(recordings) = bank.sets.get(&sfx).filter(|recordings| !recordings.is_empty()) else { continue };
+        let handle = recordings[dice.below(recordings.len())].clone();
         commands.spawn((AudioPlayer(handle), PlaybackSettings::DESPAWN.with_volume(Volume::Linear(volume))));
-        // The deck is fanned once it is shuffled.
-        if set == Set::Shuffle {
-            queue.pending.push((now + length, Set::Fan));
-        }
     }
 }
 
@@ -426,29 +426,44 @@ fn music(
 }
 
 /// The tier that always works: each set drawn in code, as 16-bit mono
-/// WAV, plain on purpose.
+/// WAV, plain on purpose. The shipped sounds are not made here but by
+/// `examples/render_sfx.rs`.
 mod synth {
-    use std::time::Duration;
-
-    use super::Set;
+    use super::Sfx;
 
     const RATE: u32 = 44_100;
 
-    /// `set`'s stand-in and its length.
-    pub fn wav(set: Set) -> (Vec<u8>, Duration) {
-        let samples = match set {
-            Set::Shuffle => riffle(1.2),
-            Set::Fan => swish(0.35, 0.6),
-            Set::Place => thud(0.07),
-            Set::Take => swish(0.18, 0.8),
-            Set::Chips => pings(&[3100.0, 2600.0, 3400.0], 0.045),
-            Set::Toggle => chirp(1800.0, 1800.0, 0.02),
-            Set::Switch => chirp(900.0, 1400.0, 0.06),
-            Set::Back => chirp(800.0, 400.0, 0.06),
-            Set::DeckAdd => chirp(600.0, 1200.0, 0.05),
+    /// `sfx`'s stand-in.
+    pub fn wav(sfx: Sfx) -> Vec<u8> {
+        let samples = match sfx {
+            Sfx::Opening => chirp(300.0, 1200.0, 0.5),
+            Sfx::Place => thud(0.07),
+            Sfx::Take => chirp(900.0, 1800.0, 0.05),
+            Sfx::Chips => pings(&[3100.0, 3400.0], 0.045),
+            Sfx::Click => chirp(1500.0, 1500.0, 0.012),
+            Sfx::Toggle => chirp(1800.0, 1800.0, 0.02),
+            Sfx::Switch => chirp(900.0, 1400.0, 0.06),
+            Sfx::Back => chirp(800.0, 400.0, 0.06),
+            Sfx::DeckAdd => chirp(600.0, 1200.0, 0.05),
+            Sfx::Open => chirp(400.0, 900.0, 0.1),
+            Sfx::Close => chirp(900.0, 400.0, 0.1),
+            Sfx::JackIn => chirp(150.0, 1200.0, 0.4),
+            Sfx::JackOut => chirp(1200.0, 150.0, 0.3),
+            Sfx::Approach => chirp(330.0, 330.0, 0.2),
+            Sfx::Encounter => chirp(160.0, 140.0, 0.2),
+            Sfx::RunSuccess => pings(&[880.0, 1108.0, 1318.0], 0.06),
+            Sfx::RunEnded => chirp(400.0, 60.0, 0.4),
+            Sfx::Rez => chirp(200.0, 800.0, 0.25),
+            Sfx::Damage => thud(0.25),
+            Sfx::Tag => pings(&[1000.0, 750.0, 1000.0, 750.0], 0.08),
+            Sfx::Advance => chirp(300.0, 500.0, 0.08),
+            Sfx::Score => pings(&[587.0, 740.0, 880.0], 0.08),
+            Sfx::Steal => pings(&[587.0, 698.0, 830.0], 0.08),
+            Sfx::TurnStart => pings(&[660.0, 880.0], 0.1),
+            Sfx::Win => pings(&[587.0, 740.0, 880.0, 1174.0], 0.12),
+            Sfx::Loss => pings(&[880.0, 698.0, 587.0, 440.0], 0.12),
         };
-        let length = Duration::from_secs_f64(samples.len() as f64 / f64::from(RATE));
-        (encode(&samples), length)
+        encode(&samples)
     }
 
     fn count(seconds: f32) -> usize {
@@ -468,7 +483,7 @@ mod synth {
             .collect()
     }
 
-    /// Low-passed noise that dies at once: a card set down.
+    /// Low-passed noise that dies at once.
     fn thud(seconds: f32) -> Vec<f32> {
         let n = count(seconds);
         let mut low = 0.0;
@@ -482,29 +497,7 @@ mod synth {
             .collect()
     }
 
-    /// Noise that swells and falls: a card drawn across the felt.
-    fn swish(seconds: f32, loudness: f32) -> Vec<f32> {
-        let n = count(seconds);
-        noise(n).into_iter().enumerate().map(|(i, x)| x * loudness * 0.4 * (std::f32::consts::PI * i as f32 / n as f32).sin()).collect()
-    }
-
-    /// Thuds in quick succession: a riffle.
-    fn riffle(seconds: f32) -> Vec<f32> {
-        let n = count(seconds);
-        let flick = thud(0.03);
-        let mut out = vec![0.0; n];
-        let step = count(0.04);
-        for start in (0..n).step_by(step) {
-            for (offset, sample) in flick.iter().enumerate() {
-                if let Some(slot) = out.get_mut(start + offset) {
-                    *slot += sample * 0.6;
-                }
-            }
-        }
-        out
-    }
-
-    /// Short bright tones one after another: chips meeting.
+    /// Short bright tones one after another.
     fn pings(pitches: &[f32], gap: f32) -> Vec<f32> {
         let ring = count(0.06);
         let step = count(gap);
@@ -559,23 +552,39 @@ mod tests {
 
     #[test]
     fn a_recording_is_a_stem_alone_or_numbered() {
-        assert!(is_recording_of("card-slide-3.ogg", "card-slide"));
+        assert!(is_recording_of("lock-in-3.ogg", "lock-in"));
         assert!(is_recording_of("toggle.ogg", "toggle"));
         assert!(is_recording_of("switch_001.ogg", "switch"));
-        assert!(!is_recording_of("card-slider.ogg", "card-slide"));
-        assert!(!is_recording_of("card-slide-.ogg", "card-slide"));
-        assert!(!is_recording_of("card-slide-3.wav", "card-slide"));
+        assert!(!is_recording_of("lock-inside.ogg", "lock-in"));
+        assert!(!is_recording_of("lock-in-.ogg", "lock-in"));
+        assert!(!is_recording_of("lock-in-3.wav", "lock-in"));
+        // One stem is never the start of another's file.
+        for a in Sfx::ALL {
+            for b in Sfx::ALL {
+                assert!(a == b || !is_recording_of(&format!("{}.ogg", stem(a)), stem(b)), "{a:?} / {b:?}");
+            }
+        }
     }
 
+    /// Every sound ships as a file, every file is some sound's, and the
+    /// guide beside them lists every stem: a new `Sfx` needs its
+    /// recording and its row, and a recipe renamed in
+    /// `examples/render_sfx.rs` cannot leave a file nothing plays.
     #[test]
-    fn every_set_has_a_bundled_recording_and_the_shuffle_has_a_length() {
-        let files = assets::list_files("sfx", "ogg");
-        for set in Set::ALL {
-            assert!(files.iter().any(|file| set.stems().iter().any(|stem| is_recording_of(file, stem))), "{set:?} has no recording in sfx/");
+    fn every_sound_has_a_bundled_recording_a_row_in_the_guide_and_no_stray_file() {
+        // The committed folder itself, not the tiers: a player's own
+        // `sfx/` may hold anything.
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/sfx");
+        let mut files: Vec<String> = std::fs::read_dir(&folder).unwrap().filter_map(|entry| entry.ok()?.file_name().into_string().ok()).filter(|name| name.ends_with(".ogg")).collect();
+        files.sort();
+        let guide = std::fs::read_to_string(folder.join("README.md")).expect("the guide is committed");
+        for sfx in Sfx::ALL {
+            assert!(files.iter().any(|file| is_recording_of(file, stem(sfx))), "{sfx:?} has no recording in sfx/");
+            assert!(guide.contains(&format!("`{}`", stem(sfx))), "{sfx:?}'s stem `{}` is not in assets/sfx/README.md", stem(sfx));
         }
-        let shuffle = assets::read("sfx/card-shuffle.ogg").expect("the shuffle is bundled");
-        let length = ogg_length(&shuffle).expect("an Ogg Vorbis length");
-        assert!(length > Duration::from_secs(2) && length < Duration::from_secs(4), "{length:?}");
+        for file in &files {
+            assert!(Sfx::ALL.iter().any(|sfx| is_recording_of(file, stem(*sfx))), "sfx/{file} is no sound's recording");
+        }
     }
 
     #[test]
@@ -593,7 +602,9 @@ mod tests {
     /// Bevy decodes on the audio thread and unwraps a format it was not
     /// built for, so a file it cannot read is a panic at the moment it
     /// plays. Decoding every bundled file and every stand-in here is the
-    /// check that the features in `Cargo.toml` cover what is shipped.
+    /// check that the features in `Cargo.toml` cover what is shipped —
+    /// and, since the sounds are encoded by whichever encoder the machine
+    /// that rendered them had, that the encoder wrote something.
     #[test]
     fn every_bundled_sound_and_track_and_every_stand_in_decodes() {
         use bevy::audio::Decodable;
@@ -604,19 +615,17 @@ mod tests {
         for track in assets::list_files("music", "ogg") {
             assert!(decodes(assets::read(&format!("music/{track}")).unwrap()), "music/{track}");
         }
-        for set in Set::ALL {
-            assert!(decodes(synth::wav(set).0), "{set:?}'s stand-in");
+        for sfx in Sfx::ALL {
+            assert!(decodes(synth::wav(sfx)), "{sfx:?}'s stand-in");
         }
     }
 
     #[test]
-    fn the_drawn_tier_is_a_wav_of_the_length_it_claims() {
-        for set in Set::ALL {
-            let (bytes, length) = synth::wav(set);
+    fn the_drawn_tier_is_a_wav_with_something_in_it() {
+        for sfx in Sfx::ALL {
+            let bytes = synth::wav(sfx);
             assert_eq!(&bytes[..4], b"RIFF");
-            let samples = (bytes.len() - 44) / 2;
-            assert_eq!(Duration::from_secs_f64(samples as f64 / 44_100.0), length, "{set:?}");
-            assert!(length > Duration::ZERO);
+            assert!(bytes.len() > 44, "{sfx:?}");
         }
     }
 }
