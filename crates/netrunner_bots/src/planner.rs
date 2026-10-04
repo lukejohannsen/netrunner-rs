@@ -310,9 +310,10 @@ impl PlanningAgent {
     /// Whether `view` is a decision to plan from: the seat's own action
     /// phase with nothing parked and no window open, a decision parked
     /// on the seat in the other side's start of turn — its own turn's end
-    /// (`owes_its_turns_end`) — or a selection its own identity parked on
-    /// it (`its_identitys_selection`), wherever it stands. Everything else
-    /// is played one ply.
+    /// (`owes_its_turns_end`) — or a decision its own identity parked on
+    /// it (`its_identitys_decision`: a selection, the choice that leads
+    /// into one, an offer), wherever it stands. Everything else is played
+    /// one ply.
     fn plannable(&self, view: &ClientView) -> bool {
         if its_identitys_decision(view, self.identity(view), self.side) {
             return true;
@@ -506,6 +507,12 @@ impl Search<'_> {
             }
             let expected: Vec<PlayerAction> =
                 if at_root { self.root_legal.to_vec() } else { transitions.iter().map(|(action, _, _)| action.clone()).collect() };
+            if self.deciding
+                && let Some(sets) = whole_sets(&state, self.side, &expected)
+            {
+                self.expand_sets(state, steps, expected, sets, next, finished);
+                return;
+            }
             let mut children: Vec<(PlayerAction, GameState)> = transitions
                 .into_iter()
                 .filter(|(action, _, _)| !is_regressive(action, state.pending_decision.as_ref()))
@@ -546,6 +553,26 @@ impl Search<'_> {
                 }
             }
             return;
+        }
+    }
+
+    /// Each of `sets` toggled in turn from `state` — a step a card, the
+    /// first expecting `expected` — and the selection then walked on from
+    /// its last card as any node is (`expand`): its confirm, which is
+    /// forced at the count, and whatever the decision asks after it. See
+    /// `whole_sets`.
+    fn expand_sets(&mut self, state: GameState, steps: Vec<Step>, expected: Vec<PlayerAction>, sets: Vec<Vec<PlayerAction>>, next: &mut Vec<Node>, finished: &mut Vec<Finished>) {
+        'sets: for set in sets {
+            let mut line = steps.clone();
+            let mut at = state.clone();
+            for (index, toggle) in set.into_iter().enumerate() {
+                let expected = if index == 0 { expected.clone() } else { netrunner_core::rules::legal_actions_for(&at, self.registry, self.side) };
+                self.applications += 1;
+                let Ok((toggled, _)) = apply_action(&at, self.registry, toggle.clone()) else { continue 'sets };
+                line.push(Step { expected, action: toggle });
+                at = toggled;
+            }
+            self.expand(Node { score: 0.0, state: at, steps: line }, next, finished);
         }
     }
 
@@ -775,15 +802,17 @@ fn owes_its_turns_end(state: &GameState, side: Side, root_turn: u32) -> bool {
 /// Planned, the selection, its confirm and the server the install asks
 /// for are steps of a line scored where the install leaves the board.
 ///
-/// **Over the seat's own cards only**, because that is what the evaluator
-/// prices where it stands. Tāo Salonga's swap selects the Corp's ICE, and
-/// what two pieces are worth in each other's places is a reading of where
-/// each stands against the rig that no term makes off a run: planned, the
-/// swap and the decline would tie and the jitter would swap at random.
+/// **Over the seat's own cards, and the other side's installed ones**,
+/// because that is what the evaluator prices where it stands. The second
+/// is Tāo Salonga's "you may swap 2 installed pieces of ice" (§38): what
+/// two pieces are worth in each other's places is where each stands
+/// against the rig, which the Runner reads off a run since §38
+/// (`eval::runner::shut_doors`). Before it, planned, the swap and the
+/// decline would have tied and the jitter would have swapped at random.
 fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
     use netrunner_core::dsl::CardZoneRef;
     let Some(PendingDecision::ChooseCards { side: chooser, source, source_card, prompting_card, .. }) = decision else { return false };
-    let own = matches!(
+    let priced = matches!(
         source,
         CardZoneRef::OwnHq
             | CardZoneRef::OwnArchives
@@ -795,8 +824,82 @@ fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<
             | CardZoneRef::OwnInstalled
             | CardZoneRef::HostedOnSource
             | CardZoneRef::TopOfOwnStack
+            | CardZoneRef::OpponentInstalled
     );
-    *chooser == side && own && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+    *chooser == side && priced && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+}
+
+/// Whether `decision` is a choice the seat's own identity parked on it
+/// whose yes is a selection of the other side's installed cards (§38):
+/// Tāo Salonga's "you may swap 2 installed pieces of ice". The selection
+/// is planned (`its_identitys_selection`), but the choice that leads into
+/// it fell to the one-ply chooser, which prices a parked selection at its
+/// worst resolution (`fundamentals::pending_decision_upside`) — for Tāo,
+/// nothing — so the swap was taken 0 times in 634 offers over four
+/// pairings. Planned, the yes is the selection's best line and the no is
+/// the no.
+///
+/// **Not the "may" ahead of a selection of the seat's own cards**, which
+/// was the rule first tried: Haas-Bioroid: Precision Design's, Méliès
+/// U.'s, Barry "Baz" Wong's, Magdalene Keino-Chemutai's and Sebastião
+/// Souza Pessoa's. Planned too (with `shut_doors` switched off, so that
+/// nothing else moved), the Startup pass moved toward the Corp, +15 games
+/// to −4 over two seeds of 90 (z +2.52), in Barry's, Magdalene's and Tāo's
+/// decks; Barry's installs from the grip were made 37 → 122 times in 48
+/// games. Why it costs the Runner was not traced, so those stay one ply.
+fn its_identitys_choice(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
+    use netrunner_core::dsl::{CardZoneRef, Effect};
+    let Some(PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, .. }) = decision else { return false };
+    let selects_theirs = options.iter().any(|option| {
+        let mut found = false;
+        option.for_each_effect(&mut |effect| found |= matches!(effect, Effect::PromptChooseCards { source: CardZoneRef::OpponentInstalled, .. }));
+        found
+    });
+    *chooser == side && selects_theirs && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+}
+
+/// The ways through a selection parked on `side` that takes an exact count
+/// of two or more, nothing chosen yet, as whole sets of its toggles in
+/// `actions` — `None` for any other state, or past `WHOLE_SETS` sets (§38).
+/// Toggled one card a ply, the selection's first card is judged where it
+/// stands, before the set it begins is made, so every first card ties
+/// and the beam keeps `PLAN_BEAM` of them at random: of Tāo Salonga's
+/// pairs among ten pieces of ICE, the best was out of reach one time in
+/// eight. As whole sets every pair is scored where its swap leaves the
+/// board. Asked only while the seat decides for its own identity
+/// (`Search::deciding`): a card's own selections are toggled as before.
+fn whole_sets(state: &GameState, side: Side, actions: &[PlayerAction]) -> Option<Vec<Vec<PlayerAction>>> {
+    let Some(PendingDecision::ChooseCards { side: chooser, min, max, selected, .. }) = state.pending_decision.as_ref() else { return None };
+    if *chooser != side || min != max || *max < 2 || !selected.is_empty() {
+        return None;
+    }
+    let toggles: Vec<&PlayerAction> = actions.iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+    let count = *max as usize;
+    if toggles.len() < count || combinations(toggles.len(), count) > WHOLE_SETS {
+        return None;
+    }
+    let mut sets = Vec::new();
+    let mut picked: Vec<usize> = (0..count).collect();
+    loop {
+        sets.push(picked.iter().map(|&index| toggles[index].clone()).collect());
+        // The next combination in lexicographic order: the last index that
+        // can move up does, and every one after it follows it.
+        let Some(at) = (0..count).rev().find(|&at| picked[at] < toggles.len() - count + at) else { break };
+        picked[at] += 1;
+        for after in at + 1..count {
+            picked[after] = picked[after - 1] + 1;
+        }
+    }
+    Some(sets)
+}
+
+/// The most whole sets `whole_sets` enumerates: every pair of sixteen
+/// pieces of ICE, which no Corp in the pool reaches.
+const WHOLE_SETS: usize = 120;
+
+/// `n` choose `k`, saturating.
+fn combinations(n: usize, k: usize) -> usize {
+    (0..k).fold(1usize, |acc, i| acc.saturating_mul(n - i) / (i + 1))
 }
 
 /// Whether `choice` is a paid choice the seat's own identity offers it
@@ -814,10 +917,13 @@ fn its_identitys_offer(choice: Option<&PendingPaidChoice>, identity: Option<&Car
     choice.is_some_and(|choice| choice.side == side && identity.is_some_and(|id| choice.prompting_card.as_ref().or(choice.source_card.as_ref()) == Some(id)))
 }
 
-/// A decision the seat's own identity parked on it, of either kind, which
-/// the seat plans from: `its_identitys_selection` or `its_identitys_offer`.
+/// A decision the seat's own identity parked on it, of any of the kinds
+/// the seat plans from: `its_identitys_selection`, `its_identitys_choice`
+/// or `its_identitys_offer`.
 fn its_identitys_decision(view: &ClientView, identity: Option<&CardId>, side: Side) -> bool {
-    its_identitys_selection(view.pending_decision.as_ref(), identity, side) || its_identitys_offer(view.pending_paid_choice.as_ref(), identity, side)
+    its_identitys_selection(view.pending_decision.as_ref(), identity, side)
+        || its_identitys_choice(view.pending_decision.as_ref(), identity, side)
+        || its_identitys_offer(view.pending_paid_choice.as_ref(), identity, side)
 }
 
 /// The one-ply choice: every legal action applied to `sample`, the result
@@ -2418,6 +2524,87 @@ mod positions {
             "PAD Campaign is installed from HQ: {:?}",
             state.corp.installed
         );
+    }
+
+    /// Tāo Salonga steals an agenda on its last click, with a code gate the
+    /// rig cannot break and an Ice Wall Corroder breaks, one on R&D and
+    /// one on a remote holding nothing (§38). It swaps the code gate off
+    /// R&D, which opens R&D for the turns to come, and leaves it on the
+    /// remote, where a swap would shut R&D. With the reading off a run
+    /// switched off, the swap and the decline tie exactly, and the jitter
+    /// took the swap that shuts R&D; with the choice played one ply, the
+    /// swap is never taken.
+    #[test]
+    fn tao_salonga_swaps_the_piece_the_rig_cannot_break_off_rnd_and_never_onto_it() {
+        let on_rnd = |state: &GameState| -> Vec<String> {
+            state.corp.installed.iter().filter(|card| card.server == ServerId::RnD).map(|card| card.card.0.clone()).collect()
+        };
+        for seed in 0..6 {
+            let state = tao_steals(seed, "enigma", "ice_wall");
+            assert_eq!(on_rnd(&state), ["ice_wall"], "seed {seed}: Ice Wall is swapped onto R&D: {:?}", state.corp.installed);
+            let state = tao_steals(seed, "ice_wall", "enigma");
+            assert_eq!(on_rnd(&state), ["ice_wall"], "seed {seed}: Ice Wall stays on R&D: {:?}", state.corp.installed);
+        }
+    }
+
+    /// A Tāo Salonga Runner's last-click run on an Offworld Office, stolen,
+    /// with `on_rnd` protecting R&D and `on_remote` an empty remote, and
+    /// the identity's swap answered by a planner seeded `seed`.
+    fn tao_steals(seed: u64, on_rnd: &str, on_remote: &str) -> GameState {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(CardId("tao_salonga_telepresence_magician".to_string()));
+        state.corp.resources = PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 2];
+        let installed = |card: &str, id: u32, server: ServerId, slot: netrunner_core::rules::InstallSlot| InstalledCard {
+            card: CardId(card.to_string()),
+            install_id: InstallId(id),
+            server,
+            slot,
+            rezzed: slot == netrunner_core::rules::InstallSlot::Ice,
+            ..Default::default()
+        };
+        use netrunner_core::rules::InstallSlot;
+        state.corp.installed = vec![
+            installed("offworld_office", 1, ServerId::Remote(0), InstallSlot::Root),
+            installed(on_rnd, 2, ServerId::RnD, InstallSlot::Ice),
+            installed(on_remote, 3, ServerId::Remote(1), InstallSlot::Ice),
+        ];
+        // The run is the turn's last click: with clicks left the line goes
+        // on to run R&D through the Ice Wall, and that run's leaf prices
+        // the swap without any reading off a run.
+        state.runner.resources = PlayerResources { credits: Credits(8), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(4), base_strength: 2, ..Default::default() }];
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("the Runner runs").0;
+        let mut agent = PlanningAgent::new(Side::Runner, seed);
+        let mut asked = false;
+        for _ in 0..60 {
+            if state.active_run.is_none() && state.pending_decision.is_none() {
+                break;
+            }
+            let Some(actor) = current_actor(&state) else { break };
+            let view = build_client_view(&state, &registry, actor);
+            let action = if actor == Side::Runner && state.pending_decision.is_some() {
+                asked = true;
+                agent.observe(&view);
+                agent.select_action(&view, &registry)
+            } else {
+                // Both sides go on, and the Runner steals what it finds.
+                let pick = |action: &&PlayerAction| {
+                    matches!(action, PlayerAction::ContinueRun | PlayerAction::SelectCardToAccess { .. } | PlayerAction::StealAgenda { .. } | PlayerAction::PassPriority { .. })
+                };
+                view.legal_actions.iter().find(pick).cloned().unwrap_or_else(|| view.legal_actions[0].clone())
+            };
+            state = apply_action(&state, &registry, action).expect("the action applies").0;
+        }
+        assert!(asked, "the premise: Tāo Salonga asks the Runner");
+        assert_eq!(state.runner.resources.agenda_points.0, 2, "the premise: Offworld Office is stolen");
+        state
     }
 
     /// With an empty grip, open servers and a stack to draw from, the

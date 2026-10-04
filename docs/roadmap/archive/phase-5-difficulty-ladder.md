@@ -3189,3 +3189,46 @@ Tests: `takes_au_cos_search_at_its_turn_start_and_keeps_the_agenda` (taken in 0 
 - **Tāo Salonga's swap** stays the Open item it was (§36).
 
 **Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
+
+## 38. Tāo Salonga's swap is priced by where each piece of ICE stands: the Runner reads the doors the Corp's ICE shuts, off a run, and the swap is planned — DONE (`feat/tao-salonga-swap`, 4 October 2026)
+
+**The last of the identities' text** (§34–§37 read the rest on both chairs in four stages). Measured first, on `main` (`11447bc`), planner both chairs, 48 games a pairing on seed 2: Tāo Salonga's "whenever an agenda is scored or stolen, you may swap 2 installed pieces of ice" was offered 634 times over four pairings (Peculiarity, Brick Stack, Gimbatul and Undertow against Planning Ahead and Flow and Ebb) and **taken 0 times** — not one `IceSwapped`. Two things stood in the way:
+
+- **Nothing read where a piece stood off a run.** The Runner priced the ICE only on a run, as the leaf's break cost, so a swap changed nothing the evaluator could see until a run went through the server it touched.
+- **The choice was one ply.** Its yes parks a selection, which `fundamentals::pending_decision_upside` prices at its worst resolution — for Tāo, nothing — so the yes never beat the no.
+
+**What it is now.**
+- `runner::shut_doors`: for every server behind rezzed ICE, what a breach of it is worth (`access_prospect`'s reading, as a run to come would find it, nothing there seen yet) at the share its ICE shuts the rig out — all of it behind a piece no rig card breaks, `cost / (cost + RUNNER_TURN_CLICKS)` behind ICE the rig breaks for `cost`, so a door that costs a turn's clicks in credits is half shut. Subtracted at `SHUT_DOOR_WEIGHT`, one of every Runner planner seat's general terms (zero in `Weights::default()`, so the one-ply reference and MCTS do not move). The Runner's credits are not read, so a credit click opens no door; rezzed ICE only, as `server_break_cost` reads it.
+- `planner::its_identitys_choice`: a choice the seat's own identity parks on it whose yes is a selection of the other side's installed cards is a root to plan from, and `its_identitys_selection` admits that selection (`OpponentInstalled`) beside the seat's own cards.
+- `planner::whole_sets`: while the seat decides for its identity, a selection of an exact count of two or more is expanded as its whole sets (up to `WHOLE_SETS`, 120), each scored where its swap leaves the board. Toggled a card a ply, every first card ties and the beam keeps six of them at random, so of the pairs among ten pieces the best was out of reach about one time in eight.
+
+Tests: `tao_salonga_swaps_the_piece_the_rig_cannot_break_off_rnd_and_never_onto_it` (six seeds, both boards: the code gate the rig cannot break is swapped off R&D, and never onto it) fails with either the reading or the choice's planning switched off — the reading off, the swap and the decline tie exactly and the jitter took the swap that shuts R&D; the choice one ply, the swap is never taken. `a_server_behind_ice_the_rig_cannot_break_is_a_shut_door`. With clicks left after the steal, the line goes on to run the opened server and its run leaf already prices the swap; the reading is what decides it on the last click and on the Corp's turn.
+
+**The weight is a tenth of the breach's rate, and that is the measurement.** At one, the reading also pulled every Runner toward installs (+0.3 install clicks a game, +0.1 breakers, 3 to 5 fewer credits summed over its turn starts), and the Startup pass moved toward the Corp: **+50 games to −32 over three seeds of 90** (z +1.99; Corp share 0.544 / 0.578 / 0.511 → 0.656 / 0.622 / 0.556), in Enthusiasm, Sabbatical, Flow and Ebb and Dashing Mad, while the Casual pass leaned the other way (0.469 → 0.458, 0.464 → 0.438) and the paired bench did not move (−0.008, z −0.30; +0.005, z +0.18). At a tenth the Startup pass is +30 to −29 (z +0.13) and Tāo swaps as often — a swap is taken on the reading's sign, and the gain a swap was taken on (median 0.44 at one, in a probe of 146 choices over two pairings: 91 above the jitter, 53 within it, 1 below) is still about forty times the jitter at a tenth. A quarter measured as close on Startup (0.567 / 0.544 / 0.544); a tenth is the one shipped.
+
+**Narrowed once, measured.** The first cut planned every "may" an identity parks ahead of a selection — Haas-Bioroid: Precision Design's, Méliès U.'s, Barry "Baz" Wong's, Magdalene Keino-Chemutai's and Sebastião Souza Pessoa's over their own cards as well as Tāo's. With the reading switched off so that nothing else moved, the Startup pass went toward the Corp, +15 to −4 over two seeds (z +2.52), in Barry's, Magdalene's and Tāo's decks; Barry's install from the grip, offered when the Corp rezzes a barrier mid-run, was made 37 → 122 times in 48 games. Why that costs the Runner was not traced, so the rule is Tāo's kind only, and the other five stay one ply (an Open item).
+
+**Measured** (pinned binaries, `main` at `11447bc`):
+- `coverage_identical.py main`: both random shapes identical (`57e361e0…`); planner shapes `c7a130b7…` (§37's, reproduced) → `910417e6…`.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.458 → 0.432** (seed 1, −0.026, z −1.25, 64 discordant) and **0.458 → 0.451** (seed 2, −0.008, z −0.33, 85 discordant) — toward the Runner, inside the band.
+- `diag precepts --deck-styles` (planner both chairs): Corp share casual 0.469 → 0.411 and 0.464 → 0.438 (192 games; seed 1 +9 / −20, z −2.04, of which the Tāo decks' 32 games are +1 / −8 and the other 160 +8 / −12, z −0.89; seed 2 +20 / −25, the Tāo decks +4 / −5); startup 0.544 / 0.578 / 0.511 → 0.567 / 0.556 / 0.522 (90 games, seeds 1–3, paired +30 / −29). The blind list by drift: casual 6 / 8 → 7 / 5, startup 5 → 3 (seed 1).
+- Tāo Salonga and the identities the first cut touched, seed 2, planner both chairs, 48 games a pairing:
+
+  | pairing | identity | swaps | Corp wins |
+  |---|---|---|---|
+  | Brick Stack vs Flow and Ebb | Tāo Salonga | 0 → **137** of 169 offers | 24 → 17 |
+  | Gimbatul vs Planning Ahead | Tāo Salonga | 0 → **146** of 162 | 20 → 20 |
+  | Peculiarity vs Planning Ahead | Tāo Salonga | 0 → **133** of 147 | 21 → 19 |
+  | Undertow vs Flow and Ebb | Tāo Salonga | 0 → **104** of 131 | 5 → 4 |
+  | Brutal Efficiency vs Stolen Goods, Discretion Advised vs Dashing Mad | Precision Design | — | 13 → 12, 24 → 24 |
+  | Honor Roll vs Stolen Goods | Méliès U. | — | 17 → 17 |
+  | Gimbatul vs Professional Opportunities, Sabbatical, Grassroots | Barry, Magdalene, Sebastião | — | 28 → 28, 19 → 19, 37 → 38 |
+
+  The Tāo Corp's wins 70 → 60 of 192; each pairing is inside 48 games' noise.
+
+**Not done, and why.**
+- **A swap with nothing to gain is the jitter's.** A swap within one server, or between two servers shut alike, moves nothing the reading sees and ties with the decline; in the probe above that was 53 of 146 choices, and the jitter takes one of the many tied swaps over the one decline. Recorded, not fixed: nothing measured says such a swap costs either side.
+- **Face-down ICE costs nothing to the reading**, as it costs nothing to a run's gate, so a face-down piece swapped in front of a server is read as open.
+- **The "may" ahead of an identity's selection of its own cards** stays one ply (above).
+
+**Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
