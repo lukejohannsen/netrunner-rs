@@ -3,7 +3,7 @@
   "name": "Side Quest",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hoshiko Shiro: Untold Protagonist, Uprising's Anarch identity, which flips after a turn with an access and pays a card and a credit a turn while flipped, and the Anarch cards of Uprising Stage 2. On Pay As You Go's frame, its identity swapped: two Mystic Maemi and two Paladin Poemu for its two Take a Dive and two Time Bomb, companions that bank a credit a turn for events and for installs and cost a card at three; two Keiko for its two Friend of a Friend, a console that pays a credit the first time each turn a companion is installed or paid from (and trashes The Toolbox, the older console, by the console limit); two Odore for its two Chastushka, a killer that breaks for nothing beside three virtual resources; and a DreamNet for one Valentina Ferreira Carvalho, a draw on the turn's first successful run. Pay As You Go keeps every card given up here.",
+  "description": "Not a published list: built so the sweeps reach Hoshiko Shiro: Untold Protagonist, Uprising's Anarch identity, which flips after a turn with an access and pays a card and a credit a turn while flipped, and the Anarch cards of Uprising Stage 2. On Pay As You Go's frame, its identity swapped: two Mystic Maemi and two Paladin Poemu for its two Take a Dive and two Time Bomb, companions that bank a credit a turn for events and for installs and cost a card at three; two Keiko for its two Friend of a Friend, a console that pays a credit the first time each turn a companion is installed or paid from (and trashes The Toolbox, the older console, by the console limit); two Odore for its two Chastushka, a killer that breaks for nothing beside three virtual resources; and a DreamNet for one Valentina Ferreira Carvalho, a draw on the turn's first successful run. Pay As You Go keeps every card given up here. Uprising Stage 3: a Devil Charm for its Valentina Ferreira Carvalho, −6 strength for a run at the cost of the chip.",
   "style": [
     "rig",
     "dismantle"
@@ -45,10 +45,6 @@
     {
       "card": "the_tungsten_tailor",
       "count": 2
-    },
-    {
-      "card": "valentina_ferreira_carvalho",
-      "count": 1
     },
     {
       "card": "banner",
@@ -104,6 +100,10 @@
     },
     {
       "card": "dreamnet",
+      "count": 1
+    },
+    {
+      "card": "devil_charm",
       "count": 1
     }
   ]

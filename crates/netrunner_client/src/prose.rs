@@ -96,6 +96,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
         Amount::EncountersThisRun => "the times you have encountered ice this run".to_string(),
         Amount::IcePassedThisRun => "the times you have passed ice this run".to_string(),
+        Amount::IcePassedLastRun => "the times you passed ice during that run".to_string(),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),
@@ -354,11 +355,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             count,
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::PromptChooseCards { side, source, min, max, count, .. } => {
-            let how_many = match count {
-                Some(count) => format!("as many cards as {}", describe_amount(count)),
-                None if min == max => plural(*min, "card", "cards"),
-                None => format!("{min} to {max} cards"),
+        Effect::PromptChooseCards { side, source, min, max, count, up_to, .. } => {
+            let how_many = match (count, up_to) {
+                (Some(count), _) => format!("as many cards as {}", describe_amount(count)),
+                (None, Some(up_to)) => format!("up to as many cards as {}", describe_amount(up_to)),
+                (None, None) if min == max => plural(*min, "card", "cards"),
+                (None, None) => format!("{min} to {max} cards"),
             };
             format!("{} chooses {how_many} from {}", who(*side), describe_zone(source))
         }
@@ -571,6 +573,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Damage(kind) => format!("of {} damage", format!("{kind:?}").to_lowercase()),
         EventFilter::AtLeast(least) => format!("{least} or more"),
         EventFilter::Whose(side) => format!("the {side:?}'s"),
+        EventFilter::Anyone => "anyone's".to_string(),
         EventFilter::OwnedBy { owner, whose } => format!("the {whose:?}'s, of a {owner:?} card"),
         EventFilter::ByThis => "by this card".to_string(),
         EventFilter::Host => "of host ice".to_string(),
@@ -585,6 +588,7 @@ fn describe_when(filter: &EventFilter) -> String {
                     TrashedFrom::Hand => "a hand",
                     TrashedFrom::Deck => "a deck",
                     TrashedFrom::Elsewhere => "anywhere else",
+                    TrashedFrom::PlayArea => "the play area",
                 })
                 .collect();
             format!("from {}", places.join(" or "))

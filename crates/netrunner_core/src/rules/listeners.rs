@@ -221,11 +221,15 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AdvancementCountersPlaced { .. } => Vec::new(),
         // A cost paid; nothing prints "when a counter is removed".
         GameEvent::AdvancementCountersRemoved { .. } => Vec::new(),
-        // Only an action is "taking an action on" a card (CR 9.5.2a).
-        GameEvent::AbilityActivated { side, card_id, install, action: true, .. } => {
-            vec![moment(Trigger::OnActionTaken, &card(card_id, *install), Some(*side))]
+        // Every use is using the card (CR 9.1.6, The Back); only an action
+        // is "taking an action on" it (CR 9.5.2a, Juli Moreira Lee).
+        GameEvent::AbilityActivated { side, card_id, install, action, .. } => {
+            let used = moment(Trigger::OnAbilityUsed, &card(card_id, *install), Some(*side));
+            match action {
+                true => vec![moment(Trigger::OnActionTaken, &card(card_id, *install), Some(*side)), used],
+                false => vec![used],
+            }
         }
-        GameEvent::AbilityActivated { action: false, .. } => Vec::new(),
         GameEvent::AbilityGainedCredits { side, card: source } => {
             vec![moment(Trigger::OnAbilityGainedCredits, &card(source, None), Some(*side))]
         }
@@ -307,6 +311,14 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let was_active = install.is_some_and(|install| install.rezzed);
             vec![Moment { trashed_from: Some(*from), was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
         }
+        // The one rules' trash that is a moment: an event leaving the play
+        // area as it finishes resolving (CR 3.7.1), nobody's, so heard by a
+        // card whose trash is passive — Aniccam's "an event is trashed"
+        // (`EventFilter::Anyone`) — and by no "you trash" a filter asks of.
+        GameEvent::CardTrashed { card: trashed, from: from @ crate::dsl::TrashedFrom::PlayArea, by: None, .. } => {
+            let about = About::Card { card: trashed.clone(), install: None, installed: false };
+            vec![Moment { trashed_from: Some(*from), ..moment(Trigger::OnCardTrashed, &about, None) }]
+        }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         // The Corp purges, whatever the card that made it (CR 10.1.2).
         GameEvent::VirusCountersPurged { .. } => vec![moment(Trigger::OnVirusCountersPurged, &About::Nothing, Some(Side::Corp))],
@@ -345,6 +357,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // One occurrence per batch, not per card: "trash 1 **or more**".
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
         GameEvent::CardsTrashedFromRnD { by, .. } => vec![moment(Trigger::OnCardsTrashedFromRnD, &About::Nothing, *by)],
+        GameEvent::CardsTrashedFromGripOrStack { by, .. } => vec![moment(Trigger::OnCardsTrashedFromGripOrStack, &About::Nothing, *by)],
         GameEvent::FinishedResolving { side, card: resolved } => vec![moment(Trigger::OnFinishedResolving, &card(resolved, None), Some(*side))],
         // Which action is the event's to say, for a requirement to read;
         // the moment is the actor's and about nothing.
@@ -622,6 +635,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::Whose(side) = filter {
         return moment.of == Some(*side);
+    }
+    if let EventFilter::Anyone = filter {
+        return true;
     }
     if let EventFilter::OwnedBy { owner, whose } = filter {
         return moment.of == Some(*whose)

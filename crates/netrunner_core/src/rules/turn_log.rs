@@ -126,14 +126,21 @@ pub enum Kind {
     /// spend credits from an installed companion card" — faceup on the
     /// table, so as public as any resource. The pool's one companion that
     /// is not a resource is Keiko itself, which its own clause does not
-    /// count (`docs/roadmap/nsg-card-pool.md`, Known limits). The sixteenth
-    /// kind is the last a `u32` of columns holds (`Occurrences::columns`):
-    /// a seventeenth widens that mask first.
+    /// count (`docs/roadmap/nsg-card-pool.md`, Known limits).
     CompanionResource,
+    /// A **run** event, the fifth subtype given a column, for Swift's "the
+    /// first time each turn you play a run event" — played in the open, so
+    /// as public as any event. The seventeenth kind, which widened
+    /// `Occurrences::columns` from a `u32` to a `u64`.
+    RunEvent,
+    /// A run event that is also a double (Maintenance Access), counted
+    /// apart from both so a card has one column and each of "a double
+    /// event" and "a run event" still reads it (`all_of`, `kinds`).
+    DoubleRunEvent,
 }
 
 impl Kind {
-    const COUNT: usize = 16;
+    const COUNT: usize = 18;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -151,19 +158,24 @@ impl Kind {
         Kind::MandateOperation,
         Kind::VirusProgram,
         Kind::CompanionResource,
+        Kind::RunEvent,
+        Kind::DoubleRunEvent,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
-    /// mandate, virus or companion.
+    /// mandate, virus, companion or run (and a double run event's own).
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
         let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
         let virus = definition.subtypes.contains(&CardSubtype::Virus);
         let companion = definition.subtypes.contains(&CardSubtype::Companion);
+        let run = definition.subtypes.contains(&CardSubtype::Run);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
+            Kind::Event if double && run => Kind::DoubleRunEvent,
             Kind::Event if double => Kind::DoubleEvent,
+            Kind::Event if run => Kind::RunEvent,
             Kind::Program if virus => Kind::VirusProgram,
             Kind::Resource if companion => Kind::CompanionResource,
             kind => kind,
@@ -174,7 +186,7 @@ impl Kind {
     fn all_of(card_type: &CardType) -> Vec<Kind> {
         match Kind::of(card_type) {
             Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
-            Kind::Event => vec![Kind::Event, Kind::DoubleEvent],
+            Kind::Event => vec![Kind::Event, Kind::DoubleEvent, Kind::RunEvent, Kind::DoubleRunEvent],
             Kind::Program => vec![Kind::Program, Kind::VirusProgram],
             Kind::Resource => vec![Kind::Resource, Kind::CompanionResource],
             kind => vec![kind],
@@ -184,7 +196,7 @@ impl Kind {
     /// A Runner card's type: every Runner card trashed goes faceup to the
     /// heap, from wherever it was, so both players see what it was.
     fn is_runners(self) -> bool {
-        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent)
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent | Kind::RunEvent | Kind::DoubleRunEvent)
     }
 
     fn of(card_type: &CardType) -> Kind {
@@ -279,7 +291,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnWouldBeUninstalled
         // An ability is used on a faceup card, or on one its cost reveals
         // (Tocsin, from HQ).
-        | Trigger::OnActionTaken => false,
+        | Trigger::OnActionTaken
+        | Trigger::OnAbilityUsed => false,
         // An unrezzed piece of ice is passed without being seen. The log
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.
@@ -317,6 +330,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnDamageDealt
         | Trigger::OnCardsTrashedFromHq
         | Trigger::OnCardsTrashedFromRnD
+        | Trigger::OnCardsTrashedFromGripOrStack
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
         | Trigger::OnDamageSuffered
@@ -383,7 +397,7 @@ pub(crate) struct Occurrences {
     /// `None`: anyone's.
     of: Option<Side>,
     /// A bit per column; `None`: every column.
-    columns: Option<u32>,
+    columns: Option<u64>,
 }
 
 impl Occurrences {
@@ -421,13 +435,13 @@ impl Occurrences {
         let of = match when {
             Some(EventFilter::Whose(side) | EventFilter::OwnedBy { whose: side, .. }) => Some(*side),
             Some(EventFilter::InRoot) => Some(Side::Corp),
-            // "A player trashes."
-            Some(EventFilter::TrashedFromThisServer) => None,
+            // "A player trashes", and "is trashed".
+            Some(EventFilter::TrashedFromThisServer | EventFilter::Anyone) => None,
             _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
         };
-        let bit = |class: Class| 1u32 << class.column();
+        let bit = |class: Class| 1u64 << class.column();
         let columns = match when {
-            None | Some(EventFilter::Whose(_)) => None,
+            None | Some(EventFilter::Whose(_) | EventFilter::Anyone) => None,
             Some(EventFilter::Server(servers)) => Some(
                 servers
                     .iter()
@@ -544,7 +558,8 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
         };
         match subtype_of {
             Some((CardType::Operation, CardSubtype::Double)) => return Ok(vec![Kind::DoubleOperation]),
-            Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent]),
+            Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent, Kind::DoubleRunEvent]),
+            Some((CardType::Event, CardSubtype::Run)) => return Ok(vec![Kind::RunEvent, Kind::DoubleRunEvent]),
             Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
             Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram]),
             Some((CardType::Resource, CardSubtype::Companion)) => return Ok(vec![Kind::CompanionResource]),

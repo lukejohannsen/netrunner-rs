@@ -825,6 +825,10 @@ pub(crate) fn trash_as_cost(
     if matches!(zone, CardZoneRef::OwnRAndD) && side == Side::Corp && !selected.is_empty() {
         events.push(GameEvent::CardsTrashedFromRnD { count: selected.len() as u32, by: Some(side) });
     }
+    // The payer dispatches a cost's events, the batch with them.
+    if let Some(batch) = ability::grip_or_stack_batch(&events) {
+        events.push(batch);
+    }
     Ok(events)
 }
 
@@ -1449,6 +1453,7 @@ pub(crate) fn resolve_confirm_card_selection(
         let batch = GameEvent::CardsTrashedFromRnD { count: trashed_from_rnd, by: Some(side) };
         dispatcher::emit(state, registry, &mut events, batch)?;
     }
+    ability::emit_grip_or_stack_batch(state, registry, &mut events)?;
 
     if let Some(effect) = then {
         let acting = selected.first().or(source_card.as_ref());
@@ -1858,6 +1863,7 @@ mod tests {
                 destination: Some(CardZoneRef::OwnHq),
                 then: None,
                 count: None,
+                up_to: None,
             })),
             selected: Vec::new(),
             source_card: Some(CardId("au_co".to_string())),

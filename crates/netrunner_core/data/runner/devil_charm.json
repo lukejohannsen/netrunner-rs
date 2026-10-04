@@ -1,0 +1,35 @@
+{
+  "id": "devil_charm",
+  "title": "Devil Charm",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "RemoveSelfFromGame",
+            "if_paid": {
+              "ModifyStrength": {
+                "delta": -6,
+                "duration": "Run"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove this hardware from the game. If you do, that ice gets −6 strength for the remainder of this run"
+          }
+        }
+      ],
+      "text": "Whenever you encounter a piece of ice, you may remove this hardware from the game. If you do, that ice gets −6 strength for the remainder of this run."
+    }
+  ],
+  "built_from": 26068,
+  "is_playable": true
+}

@@ -1529,7 +1529,12 @@ fn play_event(
         next.runner.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id });
     } else {
-        next.runner.heap.push(card_id);
+        // Trashed as it finishes resolving (CR 3.7.1): the rules' trash,
+        // and a moment (Aniccam's "an event is trashed"), heard with the
+        // card already in the heap.
+        next.runner.heap.push(card_id.clone());
+        let trashed = GameEvent::CardTrashed { side, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
+        dispatcher::emit(&mut next, registry, &mut events, trashed)?;
     }
 
     Ok((next, events))
@@ -4769,7 +4774,9 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone() },
+                // Trashed as it finishes resolving (CR 3.7.1).
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
             ]
         );
@@ -4807,6 +4814,8 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
+                // Trashed as it finishes resolving (CR 3.7.1).
+                GameEvent::CardTrashed { side: Side::Runner, card: CardId("sure_gamble".to_string()), from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
             ]
         );

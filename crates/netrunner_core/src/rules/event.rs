@@ -398,6 +398,13 @@ pub enum GameEvent {
     /// as on `CardTrashed`: Nuvem SA hears the Corp's own, never the
     /// Runner's trash of a card accessed there.
     CardsTrashedFromRnD { count: u32, by: Option<Side> },
+    /// One instruction trashed `cards` from the Runner's grip or stack —
+    /// damage, a mill, a cost, a selection — after their own
+    /// `CardTrashed`s, as the Corp's batches follow theirs. Named because
+    /// Buffer Drive chooses among "those cards"; all of them went faceup
+    /// to the heap, so public. `by` is who carried it out, `None` for the
+    /// rules (`Trigger::OnCardsTrashedFromGripOrStack`, which is passive).
+    CardsTrashedFromGripOrStack { cards: Vec<CardId>, by: Option<Side> },
     /// The resolution of `card` has finished — an operation played, or an
     /// action on an expendable card used from HQ — announced once whatever
     /// it parked has resolved (`DeferredTrigger::announce`). Nuvem SA:
@@ -743,7 +750,7 @@ impl GameEvent {
             | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. } | GameEvent::CardsSetAside { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
-            | GameEvent::CardsTrashedFromRnD { .. }
+            | GameEvent::CardsTrashedFromRnD { .. } | GameEvent::CardsTrashedFromGripOrStack { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
             | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::PsiBidsRevealed { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }

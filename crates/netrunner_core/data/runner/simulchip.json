@@ -1,0 +1,137 @@
+{
+  "id": "simulchip",
+  "title": "Simulchip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnCardTrashed",
+              "when": {
+                "All": [
+                  "Anyone",
+                  {
+                    "InstalledCard": {
+                      "CardType": "Program"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 3
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "OwnHeap",
+              "discount": {
+                "Credits": 3
+              }
+            }
+          }
+        }
+      },
+      "text": "[trash]: Install 1 program from your heap, paying 3[credit] less."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          "TrashSelf",
+          {
+            "Trash": {
+              "from": "OwnInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "count": 1
+            }
+          }
+        ]
+      },
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnCardTrashed",
+                "when": {
+                  "All": [
+                    "Anyone",
+                    {
+                      "InstalledCard": {
+                        "CardType": "Program"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 3
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "InstallRunnerCardFromZone": {
+              "from": "OwnHeap",
+              "discount": {
+                "Credits": 3
+              }
+            }
+          }
+        }
+      },
+      "text": "As an additional cost to use this hardware, trash 1 installed program. Ignore this cost if an installed program has already been trashed this turn."
+    }
+  ],
+  "built_from": 26085,
+  "is_playable": true
+}

@@ -6883,3 +6883,100 @@ Standard-banned and built anyway.
   94 → 0 — view and index alike. The planner seatings move by
   `determinize`'s larger prior, with every end reason unchanged (Corp agenda
   wins 58, flatlines 25; Runner agenda wins 105, deck-outs 4).
+
+#### Stage 3 — Runner triggers and zones (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Swift, Aniccam, Buffer Drive, The Back,
+Prognostic Q-Loop, Simulchip, Harmony AR Therapy, Devil Charm, Bravado and
+Cordyceps — ten Runner cards. **No new `Effect`.** Uprising 31 of 65, its
+booster pack 3 of 7 (Swift is reprinted there); `UR_UNIMPLEMENTED` 44 →
+34, `URBP_UNIMPLEMENTED` 5 → 4.
+
+- **The words.**
+  - **A played event is trashed as it finishes resolving** (CR 3.7.1):
+    `TrashedFrom::PlayArea`, the rules' trash (`by: None`) and the one that
+    is a moment, so Aniccam's "an event is trashed (from any location)"
+    hears it. **`EventFilter::Anyone`** makes a "you trash" passive — the
+    moment anyone's or nobody's — for Aniccam and for Simulchip's "if an
+    installed program has already been trashed this turn"; two entries, one
+    per player, would both have counted the played event's trash, so
+    neither would have been the first.
+  - **The Runner's grip and stack trash in batches**
+    (`GameEvent::CardsTrashedFromGripOrStack`, `Trigger::
+    OnCardsTrashedFromGripOrStack`, passive): one per instruction — damage,
+    a mill, a card's trash, a selection to the heap, a trash cost — naming
+    its cards, which are written into the trigger's effects as "those
+    cards" (`CardFilter::TrashedThisWay`) as it fires, as a mill's `then`
+    already had them. Buffer Drive chooses one to the bottom of the stack.
+    `AddToDeck` now finds a chosen heap card when the install resolving is
+    the card that parked the selection.
+  - **Using any paid ability is a moment** (`Trigger::OnAbilityUsed`, CR
+    9.1.6), heard as the cost is paid; `OnActionTaken` is the same moment
+    narrowed to an action, and an action is never taken during a run.
+  - **"Up to" an amount on a selection** (`PromptChooseCards::up_to`, The
+    Back's "for each hosted power counter, choose up to 2") and **a card
+    with a [trash] ability** (`CardFilter::HasTrashAbility`,
+    `Cost::prints_trash`).
+  - **A completed run remembers the ice it passed**
+    (`CompletedRun::ice_passed`, `Amount::IcePassedLastRun`), which Bravado's
+    run-end gain reads after the run has left `active_run`.
+  - **Run events have a turn-log column** (`Kind::RunEvent`, and
+    `DoubleRunEvent` for Maintenance Access so a double and a run event each
+    still read it): the seventeenth and eighteenth kinds, which widened
+    `Occurrences::columns` to a `u64`. Swift's first run event each turn.
+  - **One printed ability may share a use limit across entries**: `validate`
+    now lets triggers with the same printed `text` spend one `OncePerTurn`
+    (The Back's two ways of using hardware).
+- **What each is made of.** Swift and Aniccam are consoles with +1[mu];
+  Prognostic Q-Loop is a first run each turn's look (`LookAtTopOfDeck`) and
+  a once-per-turn reveal of the top card installed if it is a program or
+  hardware; Simulchip is two abilities on complementary requirements, as
+  Pauleʼs Café's are — `TrashSelf`, or `AllOf[TrashSelf, Trash(installed
+  program)]` until an installed program has been trashed this turn — into
+  Privileged Access's discounted heap install; Harmony AR Therapy is
+  Asmund Pudlat's `DifferentNames` into the stack, removed from the game;
+  Devil Charm is Malandragem's removal from the game into a run-long −6 on
+  the encountered ice; Bravado is Kompromat's server choice with a run-end
+  gain; Cordyceps is two counters on install and, once per turn on a
+  central success, a counter for Sipa's swap of the ice protecting that
+  server.
+- **A stack the turn log grew.** The log is held twice in every state, and
+  the planner's PUCT search (`dividends_over_advance`, 2,048 iterations,
+  depth 16) overflowed a debug test thread's 2 MB: each recursive frame of
+  `puct::simulate` kept slots for the states it cloned and stepped. Those
+  are now made in a callee that is gone before it recurses
+  (`puct::add_child`, never inlined); the test that needed 2.2 MB now runs
+  in 1.2.
+- **Fidelity limits:** under Known limits. Aniccam hears a run event's
+  trash as its server is chosen, before its run, and no operation's;
+  Buffer Drive's batches are per instruction; The Back's first time is a
+  use limit (the second card deferred on "during a run", after Ryō
+  "Phoenix" Ōno); Simulchip counts no trash the rules made.
+- **Client.** Nothing added to the view or a decision. The log reads a
+  played event's trash as "… is trashed" and a batch as "trashed N
+  card(s) from the grip or stack"; `prose` reads the new words.
+- **Decks.** Hit List takes two Bravado, a Swift, The Back and a Prognostic
+  Q-Loop for its two Info Bounty, a Red Team and two Tunnel Vision; Safety
+  Net two Simulchip, two Cordyceps, an Aniccam and a Harmony AR Therapy for
+  its two Hyperbaric, two Propeller and two Orca; Side Quest a Devil Charm
+  for its Valentina Ferreira Carvalho; Burn Rate a Buffer Drive for one of
+  its two Hush. Every card given up is still in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 98 `Effect` variants single-use,
+  1 unused (`Trace`), over 539 card files — unmoved.
+- **Real play** (`--headless`, each edited Runner deck against Hostile Bid,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Bravado played 13 / 0 times; Swift installed 15 / 9, its click
+  7 / 3; The Back 19 / 1, never charged (Hit List's hardware is rarely used
+  in a run), its own ability used 14 / 0; Prognostic Q-Loop 13 / 2, its
+  look 105 / 6 and its reveal 103 / 4; Simulchip installed 37 / 37, used
+  37 / 14; Cordyceps 35 / 1, its offer 33 / 0; Aniccam 10 / 9, its draw
+  3 / 7; Harmony AR Therapy played 10 / 1; Devil Charm 13 / 3, its offer
+  10 / 4; Buffer Drive 9 / 0, its removal used 9 / 0. Bravado, The Back,
+  Cordyceps and Buffer Drive go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,662) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate included.
+  `coverage_identical.py` against Stage 2 (7ea5887, 192 games a report):
+  random seatings differ only by the new records — every played event now
+  a `CardTrashed` (2,028 → 2,506, each event's `trashed` count with it) and
+  270 `CardsTrashedFromGripOrStack` — view and index alike; the planner
+  seatings drift by the larger prior with every end reason unchanged.

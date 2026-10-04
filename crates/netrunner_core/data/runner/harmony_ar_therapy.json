@@ -1,0 +1,31 @@
+{
+  "id": "harmony_ar_therapy",
+  "title": "Harmony AR Therapy",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnHeap",
+            "filter": "DifferentNames",
+            "min": 0,
+            "max": 5,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnStack"
+          }
+        }
+      ],
+      "text": "Choose up to 5 cards with different names in your heap. Shuffle those cards into your stack."
+    }
+  ],
+  "built_from": 26083,
+  "is_playable": true
+}

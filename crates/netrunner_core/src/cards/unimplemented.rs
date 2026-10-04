@@ -46,7 +46,6 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
 pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("swift", "Swift"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("la_costa_grid", "La Costa Grid"),
     ("digital_rights_management", "Digital Rights Management"),
@@ -55,22 +54,12 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Uprising* (`uprising`): tranche 6 of the NSG plan.
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("devil_charm", "Devil Charm"),
     ("gachapon", "Gachapon"),
-    ("bravado", "Bravado"),
     ("boomerang", "Boomerang"),
     ("mu_safecracker", "Mu Safecracker"),
-    ("prognostic_q_loop", "Prognostic Q-Loop"),
-    ("swift", "Swift"),
     ("afterimage", "Afterimage"),
     ("makler", "Makler"),
-    ("the_back", "The Back"),
-    ("harmony_ar_therapy", "Harmony AR Therapy"),
-    ("aniccam", "Aniccam"),
-    ("simulchip", "Simulchip"),
-    ("cordyceps", "Cordyceps"),
     ("penrose", "Penrose"),
-    ("buffer_drive", "Buffer Drive"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
     ("vaporframe_fabricator", "Vaporframe Fabricator"),

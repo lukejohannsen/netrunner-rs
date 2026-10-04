@@ -402,6 +402,26 @@ pub enum Trigger {
     /// run, for Shackleton Grid, and counts bad publicity's and a run
     /// event's credits, which come off no card.
     OnCreditsSpentFromInstalledCard,
+    /// "1 or more cards are trashed from your grip or stack" (Buffer
+    /// Drive's "the first time each turn") — `GameEvent::
+    /// CardsTrashedFromGripOrStack`, once per instruction however many
+    /// cards it trashed, which the event names so the trigger's effects
+    /// can choose among "those cards" (`CardFilter::TrashedThisWay`,
+    /// written in as the trigger fires). Passive, so heard whoever did it:
+    /// damage the Corp does, a mill, the Runner's own cost. Composition
+    /// didn't work: `OnCardTrashed` is one moment per card, so a first time
+    /// is one card and not the batch, the turn log counts it by type and
+    /// not by pile, and the Corp's twins (`OnCardsTrashedFromHq`,
+    /// `OnCardsTrashedFromRnD`) are each one pile and name no cards.
+    OnCardsTrashedFromGripOrStack,
+    /// "You use a piece of hardware" (The Back) — `GameEvent::
+    /// AbilityActivated`, any paid ability, an action or not, heard by the
+    /// player who used it, about the card (CR 9.1.6: resolving an optional
+    /// ability is using it and its card). Heard as the cost is paid, as
+    /// `OnActionTaken` is, which is the same moment narrowed to an action.
+    /// Composition didn't work: an action is never taken during a run
+    /// (CR 5.2.2a), and "during a run" is The Back's.
+    OnAbilityUsed,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -623,6 +643,16 @@ pub enum EventFilter {
     /// phase, and a `Trigger` per "the Runner's" would be the variant the
     /// Listener Rule forbids.
     Whose(crate::rules::Side),
+    /// The moment is anyone's, or nobody's — Aniccam's "the first time each
+    /// turn an event **is trashed**", Simulchip's "if an installed program
+    /// **has already been trashed** this turn": a trigger phrased about its
+    /// controller ("you trash", `Hears::OwnSide`) made passive. Only on a
+    /// trigger whose moment names a player (`Trigger::states_whose`), as
+    /// `Whose`. Composition didn't work: `Whose` names one player, and two
+    /// entries, one per player, both count a moment nobody carried out (a
+    /// played event's trash, `TrashedFrom::PlayArea`), so neither would be
+    /// the first.
+    Anyone,
     /// The Corp install came out of HQ, or did not — Stoke the Embers'
     /// "When you install this agenda **from anywhere except HQ**"
     /// (`InstalledFromHq(false)`). Read off the moment, which the event
@@ -739,7 +769,7 @@ impl EventFilter {
 
     pub(crate) fn names_whose(&self) -> bool {
         match self {
-            EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot | EventFilter::TrashedFromThisServer => true,
+            EventFilter::Whose(_) | EventFilter::Anyone | EventFilter::OwnedBy { .. } | EventFilter::InRoot | EventFilter::TrashedFromThisServer => true,
             EventFilter::All(parts) => parts.iter().any(EventFilter::names_whose),
             _ => false,
         }
@@ -762,6 +792,14 @@ pub enum TrashedFrom {
     /// Anywhere else: hosted on a card without being installed, set aside,
     /// or a card being accessed that was in none of the above.
     Elsewhere,
+    /// The play area: an event trashed as it finishes resolving (CR 3.7.1,
+    /// 4.6.4e) — the trash Aniccam's "an event is trashed (from any
+    /// location)" hears most often. The rules' trash (`by: None`), and the
+    /// one rules' trash that is a moment (`listeners::moments`), since an
+    /// event is the only card that leaves the play area this way and the
+    /// listeners that would hear it ask what it is. An operation is filed
+    /// in Archives as it resolves with no trash recorded: no card hears it.
+    PlayArea,
 }
 
 impl TrashedFrom {
@@ -779,7 +817,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 50] = [
+    pub const ALL: [Trigger; 52] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -830,6 +868,8 @@ impl Trigger {
         Trigger::OnSubroutineResolved,
         Trigger::OnDamageSuffered,
         Trigger::OnCreditsSpentFromInstalledCard,
+        Trigger::OnCardsTrashedFromGripOrStack,
+        Trigger::OnAbilityUsed,
     ];
 
     /// This trigger's position in `ALL`.
@@ -873,6 +913,7 @@ impl Trigger {
             | Trigger::OnFinishedResolving
             | Trigger::OnDerez
             | Trigger::OnActionTaken
+            | Trigger::OnAbilityUsed
             | Trigger::OnCreditsSpentFromInstalledCard => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
@@ -895,6 +936,7 @@ impl Trigger {
             | Trigger::OnIdentityFlipped
             | Trigger::OnVirusCountersPurged
             | Trigger::OnActionFinished
+            | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
             // "whenever you do **meat** damage"; none does.
@@ -951,6 +993,7 @@ impl Trigger {
             | Trigger::OnActionTaken
             | Trigger::OnActionFinished
             | Trigger::OnDamageSuffered
+            | Trigger::OnAbilityUsed
             | Trigger::OnCreditsSpentFromInstalledCard => Hears::OwnSide,
             // `OnPlay` and `OnForfeit` are only ever printed about the card
             // itself, so `Subject::This` already says whose they are.
@@ -987,6 +1030,7 @@ impl Trigger {
             | Trigger::OnTagRemoved
             | Trigger::OnDamageAboutToResolve
             | Trigger::OnVirusCountersPurged
+            | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::Paid => Hears::Everyone,
         }
     }
@@ -1004,7 +1048,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

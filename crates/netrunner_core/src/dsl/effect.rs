@@ -492,6 +492,15 @@ pub enum Effect {
         /// `EffectIf` branch per count.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         count: Option<Amount>,
+        /// "Up to that many": `max`, read when the prompt parks, with
+        /// `min` 0 — The Back's "For each hosted power counter, choose up to
+        /// 2 cards", `Increased { HostedCounters, HostedCounters }`. Nothing
+        /// is asked when it comes to 0, and `validate` wants `min` and `max`
+        /// written 0 beside it, as beside `count`. Composition didn't work:
+        /// `count` is exactly that many, and the prompt does nothing when
+        /// fewer cards qualify.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        up_to: Option<Amount>,
     },
     /// Lets `chooser` pick any server to run, then initiates a run against
     /// it — e.g. Tread Lightly ("run any server; during that run, ICE rez
@@ -1863,6 +1872,14 @@ pub enum Amount {
     /// `EncountersThisRun` counts encounters, and an unrezzed piece of ice
     /// is passed without one, a forced encounter met without a pass.
     IcePassedThisRun,
+    /// How many times the Runner passed ice during the run that ended
+    /// last (`CompletedRun::ice_passed`) — Bravado's "When that run ends,
+    /// gain 6[credit] plus 1[credit] for each piece of ice you passed during
+    /// that run", read by a run-end effect after the run has left
+    /// `active_run`. `IcePassedThisRun`'s other half, as
+    /// `CardsAccessedLastRun` is the access count's; 0 before any run has
+    /// ended.
+    IcePassedLastRun,
     /// The strength of the piece of ice being encountered, never below 0
     /// (`continuous::ice_strength`, which may be) — Arruaceiras Crew's
     /// "trash the ice you are encountering if its strength is 0 or less",
@@ -2222,8 +2239,8 @@ impl Effect {
     pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> Effect {
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_those_trashed(cards)).collect();
         match self {
-            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count } => {
-                Effect::PromptChooseCards { side, source, filter: filter.with_those_trashed(cards), min, max, reveal, shuffle_after, destination, then, count }
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter: filter.with_those_trashed(cards), min, max, reveal, shuffle_after, destination, then, count, up_to }
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
@@ -2289,7 +2306,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_attacked_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_attacked_server(server)).collect();
         match self {
-            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count } => Effect::PromptChooseCards {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
                 side,
                 source,
                 filter: filter.with_attacked_server(server),
@@ -2300,6 +2317,7 @@ impl Effect {
                 destination,
                 then: then.map(boxed),
                 count,
+                up_to,
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
