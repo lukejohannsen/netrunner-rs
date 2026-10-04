@@ -215,6 +215,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::RandomFromHand(Side::Corp) => "a random card from HQ".to_string(),
         CardTarget::RandomFromHand(Side::Runner) => "a random card from the grip".to_string(),
         CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
+        CardTarget::SetAside => "every card still set aside".to_string(),
     }
 }
 
@@ -234,6 +235,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::Turn => "for this turn",
         EffectDuration::ThroughYourNextTurn => "until your next turn ends",
         EffectDuration::WhileRezzed => "while this card is rezzed",
+        EffectDuration::WhileInstalled => "while this card is installed",
     }
 }
 
@@ -268,6 +270,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::Turn => "this turn",
                 EffectDuration::ThroughYourNextTurn => "your next turn",
                 EffectDuration::WhileRezzed => "the time this card is rezzed",
+                EffectDuration::WhileInstalled => "the time this card is installed",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -467,6 +470,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
                 netrunner_core::dsl::EffectDuration::ThroughYourNextTurn => "the rest of your next turn",
                 netrunner_core::dsl::EffectDuration::WhileRezzed => "as long as this card is rezzed",
+                netrunner_core::dsl::EffectDuration::WhileInstalled => "as long as this card is installed",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -522,6 +526,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
         }
         Effect::ChooseServer => "choose a server".to_string(),
+        Effect::RevealHand(Side::Corp) => "reveal HQ".to_string(),
+        Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
+        Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
+        Effect::Remember { what: netrunner_core::dsl::Remembered::CardType(card_type), until } => {
+            format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))
+        }
         Effect::ReplaceSubroutines => "for this encounter, the Corp resolves this card's subroutine instead of each subroutine on the ice".to_string(),
         Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),

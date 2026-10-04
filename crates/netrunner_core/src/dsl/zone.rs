@@ -411,6 +411,15 @@ pub enum CardFilter {
     /// server is chosen as the game goes, and `InServer` is written in the
     /// card file.
     InChosenServer,
+    /// A card of the type the acting card chose (`Effect::Remember`,
+    /// `Lingering::ChosenCardType`) — Engram Flush's "you may trash 1
+    /// revealed card of **the chosen type**". A placeholder, as
+    /// `InChosenServer` is: written over as `CardType` where the choice is
+    /// known (`with_chosen_card_type`) and matching nothing where it is
+    /// not, so a subroutine of an encounter in which no type was chosen
+    /// trashes nothing. Composition didn't work: the type is chosen as the
+    /// game goes, and `CardType` is written in the card file.
+    OfChosenCardType,
     /// A card in this server, its root or its ice. `InRootOf` is the root
     /// alone; a card "protecting" a server is `All([Ice, InServer(..)])`.
     InServer(ServerId),
@@ -473,6 +482,18 @@ impl CardFilter {
             CardFilter::InChosenServer => server.map_or(CardFilter::InChosenServer, CardFilter::InServer),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            other => other,
+        }
+    }
+
+    /// This filter with `OfChosenCardType` written over as the type the
+    /// card chose (`Effect::Remember`), where it chose one; left
+    /// unresolved, it matches nothing.
+    pub fn with_chosen_card_type(self, chosen: Option<&CardType>) -> CardFilter {
+        match self {
+            CardFilter::OfChosenCardType => chosen.map_or(CardFilter::OfChosenCardType, |card_type| CardFilter::CardType(card_type.clone())),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_card_type(chosen)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_card_type(chosen)).collect()),
             other => other,
         }
     }
@@ -580,6 +601,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
         CardFilter::InChosenServer => true,
+        // Written over before it is read; unresolved, nothing was chosen.
+        CardFilter::OfChosenCardType => false,
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),

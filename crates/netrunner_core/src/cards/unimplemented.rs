@@ -51,15 +51,9 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Uprising* (`uprising`): tranche 6 of the NSG plan.
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("gachapon", "Gachapon"),
-    ("boomerang", "Boomerang"),
-    ("mu_safecracker", "Mu Safecracker"),
-    ("afterimage", "Afterimage"),
-    ("penrose", "Penrose"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
     ("next_activation_command", "NEXT Activation Command"),
-    ("engram_flush", "Engram Flush"),
     ("konjin", "Konjin"),
     ("hyoubu_precog_manifold", "Hyoubu Precog Manifold"),
     ("sync_rerouting", "SYNC Rerouting"),

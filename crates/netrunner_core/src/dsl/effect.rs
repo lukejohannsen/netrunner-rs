@@ -108,6 +108,13 @@ pub enum CardTarget {
     /// of everything, and trash prevention is offered only for a single
     /// selected card.
     AttackedServerRoot,
+    /// Every card the acting card's controller has set aside (CR 4.8) —
+    /// Gachapon's "Shuffle 3 of the remaining cards into your stack, then
+    /// remove the rest from the game". Only meaningful for `Effect::
+    /// RemoveFromGame`. Composition didn't work, for `AttackedServerRoot`'s
+    /// reason: a `PromptChooseCards` with a `count` of every set-aside card
+    /// parks a choice of everything, and no `Amount` counts the zone.
+    SetAside,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -1622,6 +1629,44 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_ice: bool,
     },
+    /// Reveals every card in `side`'s hand — Engram Flush's "[subroutine]
+    /// Reveal the grip." Each is public (CR 1.21.3) and stays revealed
+    /// until it moves or the ability has finished (`GameState::revealed`),
+    /// so what follows can choose among them (`CardFilter::Revealed`).
+    /// Composition didn't work: `RevealAtRandom` reveals a printed number
+    /// drawn at random, and a selection over the hand (Vera Ivanovna
+    /// Shuyskaya's, Touch-ups') shows its chooser only the cards it may
+    /// choose, so a grip with none of the chosen type was never revealed
+    /// at all.
+    RevealHand(crate::rules::Side),
+    /// The card whose text this is remembers a choice for `until` (CR
+    /// 9.10.3) — Boomerang's "choose 1 installed piece of ice. Use this
+    /// hardware only during encounters with that ice" (`Remembered::
+    /// SelectedCard`, inside its selection's `then`, for as long as
+    /// Boomerang is installed: 9.10.3c), and Engram Flush's "choose a card
+    /// type. For the remainder of the encounter…" (`Remembered::CardType`,
+    /// one under each option of the `PresentChoice` that is the choice).
+    /// A `rules::lingering::LingeringEffect` about the chooser's install
+    /// (`Lingering::ChosenCard`, `Lingering::ChosenCardType`), read back by
+    /// `EffectRequirement::EncounteringChosenIce` and `CardFilter::
+    /// OfChosenCardType`. The chooser is `ResolutionContext::
+    /// prompting_install`, since inside a selection's `then` the acting
+    /// install is the card chosen. Composition didn't work: Trieste Model
+    /// Bioroids' choice is kept by the prohibition it makes, and Tsakhia's
+    /// (`ChooseServer`) is a server parked as a decision of its own; these
+    /// two make nothing but the choice, which another of the card's
+    /// abilities reads.
+    Remember { what: Remembered, until: EffectDuration },
+}
+
+/// What `Effect::Remember` keeps. Only what a card in the pool chooses
+/// and refers back to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Remembered {
+    /// The card a selection just chose — Boomerang's ice.
+    SelectedCard,
+    /// A card type — Engram Flush's.
+    CardType(crate::dsl::CardType),
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -2036,6 +2081,12 @@ pub enum EffectDuration {
     /// Lycian Multi-Munition's `WhileRezzed` is its own, hard-wired into
     /// `GainIceSubtype`, and every duration here was a span of the game.
     WhileRezzed,
+    /// For as long as the card that made it stays installed — the Runner's
+    /// twin of `WhileRezzed`, since a rig card is active while installed
+    /// (CR 9.10.3c): Boomerang's chosen ice. Resolved to `Until::
+    /// WhileInstalled` of the card whose text this is, as `WhileRezzed`
+    /// is. Not `WhileRezzed`, which a Runner card is never.
+    WhileInstalled,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -2507,6 +2558,8 @@ impl Effect {
             | Effect::AddToDeck(_)
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
+            | Effect::RevealHand(_)
+            | Effect::Remember { .. }
             | Effect::PlaceRunCredits { .. }
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)

@@ -1382,6 +1382,12 @@ pub struct CompletedRun {
     /// `snapshot` alone.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsuccessful: bool,
+    /// Whether the run was declared successful (CR 6.9.5a,
+    /// `RunState::declared_successful`) — Boomerang's "if it was
+    /// successful" (`EffectRequirement::LastRunSuccessful`). Not
+    /// `!unsuccessful`: a run can be neither (6.8.4a, 6.8.4b).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub successful: bool,
     /// `RunState::breached` at conclusion: the server breached during the
     /// run, if any — the run's own, or another a replacement breached
     /// instead (`EffectRequirement::BreachedLastRunsServer`, Info Bounty).
@@ -1417,6 +1423,7 @@ impl CompletedRun {
             on_end: run.on_end.clone(),
             run_credits_left: run.bonus_run_credits,
             unsuccessful: false,
+            successful: run.declared_successful,
             breached: run.breached,
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,

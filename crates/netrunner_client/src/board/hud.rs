@@ -414,6 +414,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
                 }
                 (Lingering::Mark(server), _) => format!("the Runner's mark is {}", crate::board::action_map::server_name(*server)),
+                // Boomerang: the ice it is used against.
+                (Lingering::ChosenCard(chosen), _) => {
+                    let ice = super::facts::card_of(view, *chosen).map_or_else(|| "a piece of ice".to_string(), |card| title(&card));
+                    format!("the chosen ice is {ice}")
+                }
+                // Engram Flush: the type its subroutines may trash.
+                (Lingering::ChosenCardType(card_type), _) => format!("the chosen card type is {}", format!("{card_type:?}").to_lowercase()),
                 (Lingering::AllottedClicks(n), on) => {
                     let side = who(on, Side::Runner);
                     let clicks = n.unsigned_abs();
@@ -432,6 +439,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 },
                 Until::NextTurnOf(_) => "",
                 Until::WhileRezzed(_) => ", while it remains rezzed",
+                Until::WhileInstalled(_) => ", while it remains installed",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))

@@ -98,7 +98,11 @@ pub(crate) enum Purpose<'a> {
     /// `paid_ability::has_usable_paid_ability` (whether a window opens) and
     /// `prevention::could_prevent`. One of them left at `Other` is the
     /// disagreement stage 1 of this item was about: an ability only a
-    /// console's credits could pay for, payable and never offered.
+    /// console's credits could pay for, payable and never offered. Also
+    /// the optional cost of this card's own conditional ability ("you may
+    /// pay…"), which is using the card as much (CR 9.1.6), stated by
+    /// `pending_choice::resolve_accept`; asked ahead of time only by
+    /// applying the acceptance, so there is no second site to agree with.
     Ability(&'a CardDefinition),
     /// The basic action that removes a tag.
     RemoveTag,

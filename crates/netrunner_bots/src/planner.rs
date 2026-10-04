@@ -1424,6 +1424,13 @@ mod tests {
     /// sixty. After it, seeds 2 and 35 of sixty: a lucky sample, as the
     /// balanced Corp's are, and far under the twenty of twenty against
     /// three cards, which still holds exactly.
+    /// **The balanced Corp is counted over 180 seeds since Uprising Stage
+    /// 6** (4 October 2026): over sixty it stood at 27 to 30 — the bar is
+    /// under 30 — and which it was depended on the build (a debug build
+    /// with or without debuginfo, a workspace build or the crate's alone,
+    /// release), on the same source before the stage as after it. Over
+    /// 180 it is 73 before the stage and 78 after, in each build tried:
+    /// two in five, as it has been since Midnight Sun.
     /// (With the credits to play Scorched Earth in the same turn, every
     /// planner tags: the line kills inside the turn and scores the win.)
     /// Public Trail's shape without its "play only if" (a successful run
@@ -1479,7 +1486,7 @@ mod tests {
                 .count() as u64
         };
         assert_eq!(tagging(Some(Plan::Kill), &view), SEEDS, "the kill Corp tags this turn, whatever the sample");
-        const BALANCED_SEEDS: u64 = 60;
+        const BALANCED_SEEDS: u64 = 180;
         let balanced = (1..=BALANCED_SEEDS)
             .filter(|&seed| plans_to_tag(&mut PlanningAgent::new(Side::Corp, seed), &view))
             .count() as u64;

@@ -907,7 +907,15 @@ pub(crate) fn resolve_accept(
     // Taken before the cost, which may trash the card `if_paid` reads
     // (Clearinghouse): see `ResolutionContext::last_known`.
     let last_known = ability::last_known(state, &payer, registry);
-    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &payer)?;
+    // Paying for the optional part of one's own card's ability is using
+    // that card (CR 9.1.6): Mu Safecracker's "you may pay 1[credit]" is
+    // paid with Mantle's "use hardware and programs" credits. Another
+    // player's "unless you pay" (Gold Farmer's) uses nothing of theirs.
+    let purpose = match pending.source_card.as_ref().and_then(|card| registry.get(card)) {
+        Some(definition) if definition.side == pending.side => Purpose::Ability(definition),
+        _ => Purpose::Other,
+    };
+    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, purpose, &payer)?;
     // Dispatched after `if_paid`: see `ability::dispatch_cost_events`.
     // A tag paid as a cost (Funhouse's "end the run unless the Runner
     // takes 1 tag") is still the Runner taking a tag, and NBN: Reality

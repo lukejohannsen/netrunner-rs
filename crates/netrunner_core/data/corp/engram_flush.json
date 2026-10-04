@@ -1,0 +1,122 @@
+{
+  "id": "engram_flush",
+  "title": "Engram Flush",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Event"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Hardware"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Program"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Resource"
+                  },
+                  "until": "Encounter"
+                }
+              }
+            ],
+            "texts": [
+              "choose a card type — event",
+              "choose a card type — hardware",
+              "choose a card type — program",
+              "choose a card type — resource"
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, choose a card type. For the remainder of the encounter, whenever you reveal the grip with a subroutine on this ice, you may trash 1 revealed card of the chosen type."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Reveal the grip.",
+      "effect": {
+        "Sequence": [
+          {
+            "RevealHand": "Runner"
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentHand",
+              "filter": {
+                "All": [
+                  "Revealed",
+                  "OfChosenCardType"
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Reveal the grip.",
+      "effect": {
+        "Sequence": [
+          {
+            "RevealHand": "Runner"
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentHand",
+              "filter": {
+                "All": [
+                  "Revealed",
+                  "OfChosenCardType"
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 26108,
+  "is_playable": true
+}

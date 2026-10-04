@@ -212,6 +212,14 @@ pub enum EffectRequirement {
     /// Composition didn't work: nothing said whether a run had failed, and
     /// "not successful" is not it (a run Crisium Grid stops is neither).
     LastRunUnsuccessful,
+    /// The most recently concluded run was successful (`state::
+    /// CompletedRun::successful`, declared so: CR 6.9.5a) — Boomerang's
+    /// "When this run ends, if it was successful, you may shuffle 1 copy of
+    /// Boomerang from your heap into your stack", asked by the run's end
+    /// effect. Composition didn't work: `Not(LastRunUnsuccessful)` admits
+    /// a run that was neither (6.8.4a and b: one Flagship kept from being
+    /// declared successful, one whose remote ceased to exist).
+    LastRunSuccessful,
     /// The Runner breached the server of the most recently concluded run
     /// during it (`state::CompletedRun::breached`) — Info Bounty's "gain
     /// 2[credit] **if you breached that server during that run**", asked
@@ -359,6 +367,13 @@ pub enum EffectRequirement {
     /// Composition didn't work: `EncounteringHostIce` asks about a Trojan's
     /// host, and the acting card here is the ice.
     EncounteringThisIce,
+    /// The active run is encountering the piece of ice the acting card
+    /// chose (`Effect::Remember`, `rules::lingering::chosen_card`) —
+    /// Boomerang's "Use this hardware only during encounters with that
+    /// ice". Composition didn't work: `EncounteringHostIce` asks about a
+    /// Trojan's host and `EncounteringThisIce` about the acting ice, and
+    /// the chosen ice is neither.
+    EncounteringChosenIce,
     /// Subroutines on this ice are resolving — Attini's "while subroutines
     /// on this ice are resolving". The run is encountering the acting ice
     /// and a subroutine on it has resolved this encounter: from the first

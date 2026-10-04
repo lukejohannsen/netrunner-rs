@@ -1,0 +1,86 @@
+{
+  "id": "mu_safecracker",
+  "title": "Mu Safecracker",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "CreditsFrom": {
+                "amount": {
+                  "Fixed": 1
+                },
+                "from": {
+                  "HasSubtype": "Stealth"
+                }
+              }
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "Hq",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] to access 1 additional card when you breach HQ"
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on HQ, you may pay 1[credit] to access 1 additional card when you breach HQ."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "CreditsFrom": {
+                "amount": {
+                  "Fixed": 2
+                },
+                "from": {
+                  "HasSubtype": "Stealth"
+                }
+              }
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "RnD",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to access 1 additional card when you breach R&D"
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, you may pay 2[credit] to access 1 additional card when you breach R&D."
+    }
+  ],
+  "built_from": 26076,
+  "is_playable": true
+}
