@@ -41,7 +41,7 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | HUD glyphs | `board/hud.<credits\|clicks\|agendas\|bad-publicity\|tags\|damage>.png` | 18 square | **64 × 64** or larger | fit | bundled NSG symbols (optional) | [board/](board/README.md) |
 | Avatar bar | `board/avatar.bar[.active].png` | 56 tall on both sides, half the board wide each wing | **480 × 96**, ends 160 each | nine-sliced, the right wing mirrored | bundled steel; drawn grey plate washed in the side's colour | [board/](board/README.md#the-avatar-bar) |
 | Avatar ring | `board/avatar.frame[.active].png` | 84 square on both sides | **256 × 256** | stretched to the disc | bundled steel ring; drawn grey ring | [board/](board/README.md#the-avatar-bar) |
-| Sound | `sfx/<stem>[-<n>].ogg`, a set per sound, one drawn per play | — | — | — | synthesized (`src/audio.rs`); the shipped recordings are Kenney's | [sfx/](sfx/README.md) |
+| Sound | `sfx/<stem>[-<n>].ogg`, a set per sound, one drawn per play | — | — | — | synthesized, plain (`src/audio.rs`); the shipped set is rendered by `scripts/render_sfx.sh` | [sfx/](sfx/README.md) |
 | Music | `music/<track>.ogg`; the menus loop `glass-and-morning-sky.ogg` | — | — | — | none: silence (a tune made in code would be worse) | [music/](music/README.md) |
 
 A skin may carry its own `board/` folder, which wins over the board art

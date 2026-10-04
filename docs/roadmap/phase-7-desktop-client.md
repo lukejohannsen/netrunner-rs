@@ -74,7 +74,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, 
 
 ## Owed
 
-- **Movement** (§3 → §4): the transitions are highlights, not tweened movement, and the tween module exists only in the plan. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with Kenney's CC0 recordings and six AI-assisted tracks; five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
+- **Movement** (§3 → §4): the transitions are highlights, not tweened movement, and the tween module exists only in the plan. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with six AI-assisted tracks (the sounds themselves were Kenney's CC0 recordings until §13 replaced them with a set synthesized here); five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
 - **§3's other gaps**: a `ChooseCards` prompt's positions are reachable only from the panel; the log keeps 80 lines.
 - **§4m**: a 3D or perspective board — deferred, not refused; revisit when a run should feel dramatic.
 - **§4n, §4r — art still on the drawn tier**: panels' own art, the remaining icons, player bars, the fanned hand, the hovered card, the right-hand side; and `"tint": "state"` is promised by the skin guide and not wired (§4q delivered the contact shadows; §4t tried and removed a central's mark).
@@ -168,6 +168,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, 
 - **§7** — Online (25 September 2026).
   - **§7a** — The spectator's board looked at, and the relay in Settings (26 September 2026).
 - **§12** — The first launch asks, once, whether to download the card images, and a no is told where the download lives (`feat/first-launch-card-images`, 4 October 2026).
+- **§13** — The sounds are a cyberpunk set synthesized in this project, in place of the recorded cards and chips, and a run, a panel, a rez, an advance, damage, a tag, an agenda, the turn and the end of the match are heard (`feat/cyberpunk-sound-theme`, 4 October 2026).
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 

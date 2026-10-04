@@ -1582,7 +1582,10 @@ fn shortcuts(
                 }
                 let row = if shortcut == Shortcut::PhaseBar { Row::PhaseBar } else { Row::PlayHelper };
                 settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row), &table::available(), &skin::available());
-                sounds.write(PlaySfx::now(Sfx::Toggle));
+                // Each is a panel of the board coming or going, so it is
+                // heard as one rather than as a setting toggled.
+                let shown = if shortcut == Shortcut::PhaseBar { core.settings.desktop.phase_bar } else { core.settings.desktop.play_helper };
+                sounds.write(PlaySfx::now(if shown { Sfx::Open } else { Sfx::Close }));
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }

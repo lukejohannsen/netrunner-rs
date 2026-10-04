@@ -83,7 +83,7 @@ use netrunner_core::view::ClientView;
 use crate::models::drag::{insert_at, Drag, Release};
 use crate::models::lesson::LessonBoard;
 use crate::models::shortcuts::Shortcut;
-use crate::models::sound::{self, Sfx};
+use crate::models::sound::{self, opened_or_closed, Sfx};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
@@ -635,10 +635,31 @@ impl Game {
     }
 
     pub fn apply(&mut self, intent: Intent) -> Outcome {
-        match intent {
+        let open = self.open_surfaces();
+        let finished = self.finished();
+        let outcome = match intent {
             Intent::TakeBack => self.take_back(),
             intent => self.apply_intent(intent),
+        };
+        // The end of the match closes everything and has a sound of its
+        // own; a panel shutting under it would be heard as a second thing.
+        if finished == self.finished()
+            && let Some(sfx) = opened_or_closed(open, self.open_surfaces())
+        {
+            self.sounds.push(sfx);
         }
+        outcome
+    }
+
+    /// How many things the person opened are open: the sheets, the card
+    /// being read, the forms, the quit prompt and a click's menu. One
+    /// more after an intent is heard opening and one fewer closing
+    /// (`sound::opened_or_closed`), which is the one place that sound is
+    /// decided — an overlay added here is heard without a call of its
+    /// own. The decision pop-up and the end of the match are not here:
+    /// the game opened those, and they are heard as what happened.
+    fn open_surfaces(&self) -> usize {
+        [self.confirm_quit, self.options_open, self.help_open, self.timing_open, self.sheet.is_some(), self.inspecting.is_some(), self.menu.is_some()].into_iter().filter(|open| *open).count()
     }
 
     /// The words on the button that takes the last move back, `None` when
@@ -709,6 +730,9 @@ impl Game {
                 if events.iter().any(|e| matches!(e, GameEvent::RunInitiated { .. })) {
                     self.trail = None;
                 }
+                // Heard with the beat that shows it, not with the message
+                // that follows the last one.
+                self.sounds.extend(sound::event_cues(&events));
                 match &mut self.trail {
                     Some(trail) if !trail.ended() => {
                         for event in &events {
@@ -926,6 +950,8 @@ impl Game {
                 self.run_pass.see(&view);
                 if let Some(before) = &self.view {
                     let moved = transitions(before, &view, &entry);
+                    // What the beats did not carry, then where things went.
+                    self.sounds.extend(sound::event_cues(sound::after_the_beats(&entry.events)));
                     self.sounds.extend(sound::cues(&moved));
                     self.transitions.extend(moved);
                 }
@@ -1097,6 +1123,7 @@ impl Game {
                 self.view = Some(*view);
                 self.follow_hand();
                 self.close_for_the_end();
+                self.sounds.push(sound::ending(winner, self.side));
                 self.over = Some(Over { winner, reason, report, notice, rated: None });
                 Outcome::Redraw
             }
@@ -1522,10 +1549,13 @@ mod tests {
         game.awaiting = true;
         // The options close before the quit prompt opens; quitting
         // mid-game asks first; Escape again withdraws.
+        game.take_sounds();
         assert_eq!(game.apply(Intent::ToggleOptions), Outcome::Redraw);
         assert!(game.options_open);
+        assert_eq!(game.take_sounds(), vec![Sfx::Open], "a panel is heard opening");
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
         assert!(!game.options_open && !game.confirm_quit);
+        assert_eq!(game.take_sounds(), vec![Sfx::Close], "and closing");
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
         assert!(game.confirm_quit);
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
