@@ -810,9 +810,16 @@ fn owes_its_turns_end(state: &GameState, side: Side, root_turn: u32) -> bool {
 /// (`eval::runner::shut_doors`). Before it, planned, the swap and the
 /// decline would have tied and the jitter would have swapped at random.
 fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
-    use netrunner_core::dsl::CardZoneRef;
     let Some(PendingDecision::ChooseCards { side: chooser, source, source_card, prompting_card, .. }) = decision else { return false };
-    let priced = matches!(
+    *chooser == side && priced_zone(source) && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+}
+
+/// Whether a selection from `source` is one the evaluator prices where it
+/// leaves the board: the seat's own cards, and the other side's installed
+/// ones (`its_identitys_selection`).
+fn priced_zone(source: &netrunner_core::dsl::CardZoneRef) -> bool {
+    use netrunner_core::dsl::CardZoneRef;
+    matches!(
         source,
         CardZoneRef::OwnHq
             | CardZoneRef::OwnArchives
@@ -825,37 +832,45 @@ fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<
             | CardZoneRef::HostedOnSource
             | CardZoneRef::TopOfOwnStack
             | CardZoneRef::OpponentInstalled
-    );
-    *chooser == side && priced && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+    )
 }
 
 /// Whether `decision` is a choice the seat's own identity parked on it
-/// whose yes is a selection of the other side's installed cards (§38):
-/// Tāo Salonga's "you may swap 2 installed pieces of ice". The selection
-/// is planned (`its_identitys_selection`), but the choice that leads into
-/// it fell to the one-ply chooser, which prices a parked selection at its
-/// worst resolution (`fundamentals::pending_decision_upside`) — for Tāo,
-/// nothing — so the swap was taken 0 times in 634 offers over four
-/// pairings. Planned, the yes is the selection's best line and the no is
-/// the no.
+/// whose yes is a selection the evaluator prices (`priced_zone`): Tāo
+/// Salonga's "you may swap 2 installed pieces of ice" (§38), and the "may"
+/// ahead of a selection of the seat's own cards (§39) — Haas-Bioroid:
+/// Precision Design's, Méliès U.'s, Barry "Baz" Wong's, Magdalene
+/// Keino-Chemutai's and Sebastião Souza Pessoa's. The selection is planned
+/// (`its_identitys_selection`), but the choice that leads into it fell to
+/// the one-ply chooser, which prices a parked selection at its worst
+/// resolution (`fundamentals::pending_decision_upside`) — choosing
+/// nothing — so the yes never beat the no: Tāo's swap was taken 0 times in
+/// 634 offers over four pairings, and Barry's install 0 times in 596.
+/// Planned, the yes is the selection's best line and the no is the no.
 ///
-/// **Not the "may" ahead of a selection of the seat's own cards**, which
-/// was the rule first tried: Haas-Bioroid: Precision Design's, Méliès
-/// U.'s, Barry "Baz" Wong's, Magdalene Keino-Chemutai's and Sebastião
-/// Souza Pessoa's. Planned too (with `shut_doors` switched off, so that
-/// nothing else moved), the Startup pass moved toward the Corp, +15 games
-/// to −4 over two seeds of 90 (z +2.52), in Barry's, Magdalene's and Tāo's
-/// decks; Barry's installs from the grip were made 37 → 122 times in 48
-/// games. Why it costs the Runner was not traced, so those stay one ply.
+/// **Barry's yes is priced against the run it comes in.** The line stands
+/// mid-run once the install is made, where the run's leaf reads what is
+/// left to break with (`eval::runner`'s run terms), so the install is
+/// taken when the rezzed ICE can still be broken after it and declined
+/// when it would spend the breaking credits.
+///
+/// **What it costs is recorded, not traced** (§39). Barry's deck loses
+/// games to it in self-play — over 96 casual games, paired by seed, the
+/// Corp's wins went 35 → 46 (z +1.98), and the Startup pass +5 / −1 — while
+/// the decision itself, replayed from the record and played out both ways
+/// over eight seeds, is not worse: the Corp won 175 of 352 playouts after
+/// the planned yes and 166 after the no, inside the noise. The single
+/// installs read as sound plays (Open Market and Side Hustle for no click,
+/// at ICE that ends the run anyway), so no rule here excludes them.
 fn its_identitys_choice(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
-    use netrunner_core::dsl::{CardZoneRef, Effect};
+    use netrunner_core::dsl::Effect;
     let Some(PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, .. }) = decision else { return false };
-    let selects_theirs = options.iter().any(|option| {
+    let selects = options.iter().any(|option| {
         let mut found = false;
-        option.for_each_effect(&mut |effect| found |= matches!(effect, Effect::PromptChooseCards { source: CardZoneRef::OpponentInstalled, .. }));
+        option.for_each_effect(&mut |effect| found |= matches!(effect, Effect::PromptChooseCards { source, .. } if priced_zone(source)));
         found
     });
-    *chooser == side && selects_theirs && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
+    *chooser == side && selects && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
 }
 
 /// The ways through a selection parked on `side` that takes an exact count
@@ -2604,6 +2619,68 @@ mod positions {
         }
         assert!(asked, "the premise: Tāo Salonga asks the Runner");
         assert_eq!(state.runner.resources.agenda_points.0, 2, "the premise: Offworld Office is stolen");
+        state
+    }
+
+    /// Barry "Baz" Wong's "whenever the Corp rezzes a piece of ice, you may
+    /// install 1 resource or piece of hardware from your grip" comes in
+    /// the Runner's run, as the ice is rezzed (§39). Planned, Open Market
+    /// is installed for no click when the run can still break Ice Wall
+    /// after paying for it, and declined when the install would spend the
+    /// credit Corroder breaks with; played one ply, it was never taken.
+    #[test]
+    fn barry_installs_from_the_grip_while_the_run_can_still_break() {
+        for seed in 0..4 {
+            for credits in [3, 4] {
+                let state = barry_meets_a_rez(seed, credits);
+                assert!(state.runner.rig.iter().any(|card| card.card.0 == "open_market"), "seed {seed}, {credits}[c]: Open Market is installed");
+                assert_eq!(state.this_turn.times(netrunner_core::dsl::Trigger::OnSuccessfulRun), 1, "seed {seed}, {credits}[c]: and the run still gets in");
+            }
+            let state = barry_meets_a_rez(seed, 2);
+            assert!(!state.runner.rig.iter().any(|card| card.card.0 == "open_market"), "seed {seed}, 2[c]: the credits are the break's");
+            assert_eq!(state.this_turn.times(netrunner_core::dsl::Trigger::OnSuccessfulRun), 1, "seed {seed}, 2[c]: and the run gets in");
+        }
+    }
+
+    /// A Barry "Baz" Wong Runner with Corroder and `credits` runs HQ, the
+    /// Corp rezzes Ice Wall as it is approached, and the identity's "may"
+    /// is answered by a planner seeded `seed`, and the rest of the run played
+    /// by the same planner. Returns the state when the run ends.
+    fn barry_meets_a_rez(seed: u64, credits: u32) -> GameState {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(CardId("barry_baz_wong_tri_maf_veteran".to_string()));
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 4];
+        state.corp.installed = vec![InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() }];
+        state.runner.resources = PlayerResources { credits: Credits(credits), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(2), base_strength: 2, ..Default::default() }];
+        state.runner.grip = vec![CardId("open_market".to_string()), CardId("sure_gamble".to_string()), CardId("sure_gamble".to_string())];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("the Runner runs").0;
+        let mut agent = PlanningAgent::new(Side::Runner, seed);
+        let mut asked = false;
+        for _ in 0..80 {
+            if state.active_run.is_none() && state.pending_decision.is_none() {
+                break;
+            }
+            let Some(actor) = current_actor(&state) else { break };
+            let view = build_client_view(&state, &registry, actor);
+            let action = if actor == Side::Corp {
+                let rez = PlayerAction::RezIce { ice: InstallId(1) };
+                if view.legal_actions.contains(&rez) { rez } else { PlayerAction::PassPriority { side: Side::Corp } }
+            } else {
+                asked |= state.pending_decision.is_some() && state.active_run.as_ref().is_some_and(|run| run.position == 0);
+                agent.observe(&view);
+                agent.select_action(&view, &registry)
+            };
+            state = apply_action(&state, &registry, action).expect("the action applies").0;
+        }
+        assert!(asked, "the premise: Barry asks the Runner");
         state
     }
 
