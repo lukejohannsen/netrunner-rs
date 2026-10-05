@@ -1,0 +1,84 @@
+{
+  "id": "winchester",
+  "title": "Winchester",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "Trace[3]. If successful, end the run.",
+            "effect": {
+              "Trace": {
+                "base": 3,
+                "on_success": "EndTheRun"
+              }
+            }
+          },
+          "count": {
+            "per": 1
+          }
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "Hq"
+      },
+      "text": "While this ice is protecting HQ, it gains \"[subroutine] Trace[3]. If successful, end the run.\" after its other subroutines."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, trash 1 installed program.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[3]. If successful, trash 1 installed piece of hardware.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Hardware"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 26125,
+  "is_playable": true
+}

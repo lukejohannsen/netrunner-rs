@@ -1575,6 +1575,9 @@ pub enum Heard {
     /// A card in the Runner's heap: its `from_heap` triggers only (CR
     /// 9.1.8b, Jeitinho).
     FromHeap,
+    /// An agenda in the Runner's score area: its `from_runner_score_area`
+    /// triggers only (CR 4.5.4, Project Vacheron).
+    FromRunnerScoreArea,
 }
 
 impl Heard {
@@ -1582,7 +1585,7 @@ impl Heard {
     pub fn admits(self, subject: Option<crate::dsl::Subject>) -> bool {
         use crate::dsl::Subject;
         match (self, subject) {
-            (Heard::FromHeap, _) => true,
+            (Heard::FromHeap | Heard::FromRunnerScoreArea, _) => true,
             (Heard::Unfiltered | Heard::AsBoth, _) | (_, None) => true,
             (Heard::AsBystander, Some(subject)) => subject == Subject::Any,
             (Heard::AsSubject, Some(subject)) => subject == Subject::This,

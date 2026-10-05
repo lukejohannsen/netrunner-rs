@@ -711,6 +711,13 @@ fn install_place(zone: ServerId, slot: InstallSlot, view: Option<&ClientView>) -
     }
 }
 
+/// What a run on `server` costs beyond its click (`ClientView::run_costs`,
+/// Earth Station: SEA Headquarters), so the action says it before it is
+/// taken.
+fn run_cost(view: Option<&ClientView>, server: netrunner_core::rules::ServerId) -> Option<&netrunner_core::dsl::Cost> {
+    view?.run_costs.iter().find(|(costed, _)| *costed == server).map(|(_, cost)| cost)
+}
+
 pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
     let title = |card_id: &CardId| -> String { card_title(card_id, registry) };
     let install_label = |id: &InstallId| -> String { install_label(id, registry, view) };
@@ -727,7 +734,10 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             format!("Install {} {}{first}", title(card_id), install_place(*zone, *slot, view))
         }
         PlayerAction::RezIce { ice } => format!("Rez {}", install_label(ice)),
-        PlayerAction::InitiateRun { server } => format!("Run {}", server_name(*server)),
+        PlayerAction::InitiateRun { server } => match run_cost(view, *server) {
+            Some(cost) => format!("Run {} (+{})", server_name(*server), crate::prose::describe_cost(cost)),
+            None => format!("Run {}", server_name(*server)),
+        },
         PlayerAction::ContinueRun => "Continue run".to_string(),
         PlayerAction::JackOut => "Jack out".to_string(),
         PlayerAction::CompleteRun => "Complete run".to_string(),
@@ -1011,7 +1021,8 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         }
         PlayerAction::RezIce { .. } => "Pay the card's rez cost to turn it face up. Ice only stops the Runner once it is rezzed, and you usually rez it as they approach it.".to_string(),
         PlayerAction::InitiateRun { server } => format!(
-            "Spend 1 click to run {}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards.",
+            "Spend 1 click{} to run {}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards.",
+            run_cost(view, *server).map_or(String::new(), |cost| format!(", and {} as the server is announced,", crate::prose::describe_cost(cost))),
             server_name(*server)
         ),
         PlayerAction::ContinueRun => "Move to the next step of the run. Between pieces of ice, going on rather than jacking out gives both players a last window, then you approach the next piece of ice, or the server if there is none left.".to_string(),
@@ -1140,6 +1151,23 @@ mod tests {
     /// A board with one face-down Corp install and one rezzed piece of
     /// ice, seen from the Runner's chair — the seat every masking rule in
     /// this file exists for.
+    /// A run that costs more than its click says so on its button and in
+    /// its explanation (Earth Station: SEA Headquarters), and a run that
+    /// does not is worded as it always was.
+    #[test]
+    fn a_run_names_its_additional_cost() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = netrunner_core::rules::GameState::new(0);
+        state.corp.identity = Some(CardId("earth_station_sea_headquarters".to_string()));
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.run_costs, vec![(ServerId::Hq, netrunner_core::dsl::Cost::Credits(1))]);
+        let hq = PlayerAction::InitiateRun { server: ServerId::Hq };
+        assert_eq!(describe_action(&hq, &registry, Some(&view)), "Run HQ (+1 credit)");
+        assert!(explain_action(&hq, &registry, Some(&view)).starts_with("Spend 1 click, and 1 credit as the server is announced, to run HQ"));
+        assert_eq!(describe_action(&PlayerAction::InitiateRun { server: ServerId::RnD }, &registry, Some(&view)), "Run R&D");
+    }
+
     fn runner_view_of_a_facedown_install() -> (CardRegistry, netrunner_core::view::ClientView) {
         use netrunner_core::rules::{GameState, InstallId, InstalledCard, InstallSlot};
         let mut registry = CardRegistry::new();

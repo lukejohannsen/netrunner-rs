@@ -7428,3 +7428,114 @@ its booster pack 6 of 7; `UR_UNIMPLEMENTED` 7 → 5. Stage 7 is complete.
   game the pool pass plays; the planner moves by the larger prior — Corp
   agenda wins 66 → 70, Runner agenda wins 99 → 95, steps 110,068 →
   112,214.
+
+#### Stage 8 — points, subroutine lists and run costs that change mid-game (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Megaprix Qualifier, Project Vacheron,
+Earth Station: SEA Headquarters, Akhet and Winchester, and Earth
+Station's Sweep deck, Ground Control. **No new `Effect`.** Uprising 65 of
+65, its booster pack 7 of 7; `UR_UNIMPLEMENTED` 5 → 0 and
+`URBP_UNIMPLEMENTED` 1 → 0. **Uprising is complete.**
+
+- **The words.**
+  - **An agenda's worth is asked of the copy.** `continuous::Target::
+    Scored` names the copy's handle, so a `while` reads its own counters:
+    Megaprix Qualifier's "while this agenda has a hosted agenda counter,
+    it is worth 1 more agenda point" (`AgendaPoints` on `This`, which
+    `validate` now admits for an agenda in either score area) and Project
+    Vacheron's "worth 0" in the Runner's. The scored-agenda lookup the
+    counter effects use reads both score areas (`ability::acting_scored`),
+    since a stolen agenda keeps a handle of its own.
+  - **The stored score is the score** (`win::refresh_tallies`, run by
+    the checkpoint beside the win check). `PlayerResources::agenda_points`
+    — what the view, the bots and the tempo report read — was added to as
+    an agenda landed, at what it was worth then; Megaprix's counter is
+    placed by its score's own trigger and a stolen Vacheron is worth 3 again
+    once its last counter is gone, so the tally would have been wrong
+    after either. The win check always read the score itself.
+  - **A replacement as an agenda enters the Runner's score area** (CR
+    9.9.9c's own example): `CardDefinition::stolen_with_agenda_counters`,
+    read by `run::access::resolve_steal` — the one way into that score
+    area — which lands the agenda with its counters unless it came from
+    Archives, so the checkpoint before the steal's triggers reads it worth
+    nothing. `dividends`' shape and reason: what lands is decided as it
+    lands. An `OnAgendaStolen` trigger would have placed the counters after
+    that checkpoint, and a steal to 7 would have won on an agenda worth
+    nothing.
+  - **A trigger heard in the Runner's score area** (CR 4.5.4, "unless
+    stated otherwise"; 1.14.4a, the Corp's): `TriggeredEffect::
+    from_runner_score_area`, `from_heap`'s shape — the copy there listens
+    for those triggers and nothing else (`Heard::FromRunnerScoreArea`), and
+    a trigger pinned to it is still present there (`dispatcher::
+    still_applies`). Vacheron's "When the Runner's turn begins, remove 1
+    hosted agenda counter."
+  - **An additional cost to run** (CR 6.3.2b): `ContinuousKind::RunCost`
+    about `Scope::Runs(ServerKind)`, asked by `continuous::run_costs` and
+    paid by `run::start_run` — the one door for the basic action and a
+    card's text — as the server is announced, all at once (1.16.10b), before
+    the run's bad publicity credits exist (6.3.3). A run that cannot pay
+    is refused, so the basic action's probe never offers it. Earth
+    Station's 1[credit] on HQ (front) and 6[credit] on a remote (flip side)
+    are two effects under `while`s on which face is up; its [click] flip
+    is an ability on the front and its flip back an `OnSuccessfulRun` on
+    HQ on the back; "Limit 1 remote server" is A Teia's
+    `RemoteServerLimit`.
+  - **A trace's success that parks a choice resumes the subroutines after
+    it** (`trace::submit_runner_bid` marks the parked choice, as the paid
+    choice's resumer always did). Winchester's "trash 1 installed program"
+    with two programs to choose from left the encounter with its later
+    subroutines pending and nobody to act — a deadlock the per-card test
+    found before any sweep.
+- **What composes.** Akhet is Colossus's advanceable ice (`advancement_
+  requirement: 0`) with a `Strength` and Hammer's `BreakLimit` under one
+  `while` on its counters, and Seamless Launch's placement over any
+  installed card. Winchester's subroutines are Scapenet's `Trace`, and its
+  third Echo's `Subroutines` under Bathynomus's `Protecting`. Megaprix's
+  "another copy in either player's score area" is two `ZoneHasAtLeast`
+  over `AmongCards` joined by `Not(And(Not, Not))`, the own area counting
+  this copy.
+- **Client.** `ClientView::run_costs` lists what a run on each server
+  costs beyond its click (the engine's answer, as `standing_cannot` is),
+  and `actions::describe_action` words it on the action — "Run HQ (+1
+  credit)" on the server's menu, the play helper and the terminal's list
+  — and `explain_action` says it is paid as the server is announced. The
+  ledger names it drawn there. A stolen Vacheron's counters and worth were
+  already drawn in both score areas (`hud::ScoredCard::facts`,
+  `scored_worth`), as is Earth Station's face. No ledger row opened.
+- **Decks.** Ground Control, Earth Station's, on Hostile Bid's frame:
+  three Akhet and three Winchester for its two Hostile Architecture, two
+  Superdeep Borehole and two Svyatogor Excavator, assets that want remotes
+  the identity does not allow; Hostile Bid keeps them. Retirement Package
+  takes three Megaprix Qualifier and two Project Vacheron for its three
+  Send a Message, the same 21 points at 47 cards; twenty decks keep Send
+  a Message. Grassroots takes a third Eru Ayase-Pessoa for one of its two
+  Corroder (Burn Rate, Pay As You Go and Side Quest keep it): a new Corp
+  deck moves `sweep_decks_for_seed`'s schedule, and the view-path deep
+  sweep then never installed Eru in 768 games, where 48 random games
+  against Ground Control install it 18 times.
+- **Fidelity.** A run a card's text makes that cannot pay is refused
+  (1.16.10a: it would not happen), on the deviations list and the 6.3
+  row; Vacheron's "worth 0" is −3 off its printed 3; Earth Station's cost
+  is paid before a run's own pools exist, and GameNET does not hear it.
+- **The fog gate's selection check is per candidate.** The schedule's
+  move also gave seed 221 Cataloguer's look at the top of R&D naming a
+  Tithe while another sat facedown on the table; the gate compared card
+  names, so a card the Runner may see failed it. A candidate on an
+  install the board masks must name no card (Tāo Salonga's leak, which
+  the check was written for); one at a place in a zone names what the
+  effect shows.
+- **DSL ratio** (`pool_status.py`): 15 of 101 `Effect` variants
+  single-use, none unused, over 573 card files.
+- **Real play** (`--headless`, random seats, 48 games, seed 2). Ground
+  Control against Grassroots: Earth Station's flip used 97 times, Akhet
+  installed 78 times with 49 subroutines fired, Winchester installed 67
+  with 28 fired. Retirement Package against Grassroots: Project Vacheron
+  stolen 31 times and its countdown fired 68 times; Megaprix Qualifier
+  scored 5 times, its counter placed once.
+- **Measured.** `cargo test --workspace` green (2,478 outside the desktop
+  crate, 264 in it, the desktop's built without debug info — the session's
+  disk could not hold its debug binaries) and clippy silent. Both sweeps
+  are green at 256 seeds, the card gate included. `coverage_identical.py`
+  against `main` (d1d3857, 192 games a report): random identical, view and
+  index; the planner moves by the larger prior — Corp agenda wins 63 → 64,
+  Runner agenda wins 103 → 102, flatlines 22 → 23.

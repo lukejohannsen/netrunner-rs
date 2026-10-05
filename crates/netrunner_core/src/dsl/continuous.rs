@@ -232,6 +232,17 @@ pub enum ContinuousKind {
     /// the declaration, and everything that hears it, is withheld
     /// (`engine::complete_run`). About `RunsOnThisServer`.
     CannotBeDeclaredSuccessful,
+    /// What the Runner pays, as an additional cost, to run a server — Earth
+    /// Station: SEA Headquarters' "As an additional cost to run HQ, the
+    /// Runner must pay 1[credit]" and its flip side's "…to run a remote
+    /// server, the Runner must pay 6[credit]" (`Scope::Runs`, under a
+    /// `while` saying which face is up). Paid as the server is announced
+    /// (CR 6.3.2b), all at once (1.16.10b), by `run::start_run` — the one
+    /// door every run comes through, the basic action's and a card's — and
+    /// a run that cannot pay it is refused, so the basic action is not
+    /// offered. A `Cost`, as `StealCost` is. Composition didn't work:
+    /// nothing priced a run.
+    RunCost(crate::dsl::Cost),
     /// The Corp may have at most this many remote servers — A Teia: IP
     /// Recovery's "Limit 2 remote servers" (`Scope::Controller`). Asked
     /// wherever a new remote would be made: every Corp install
@@ -403,6 +414,12 @@ pub enum Scope {
     /// (`continuous::Target::Trashing`), so a card's own text about itself
     /// is `This` and what an identity says about the rig is this.
     Trashing(CardFilter),
+    /// Each run against a server of this kind — Earth Station: SEA
+    /// Headquarters' "to run **HQ**" and "to run **a remote server**".
+    /// Asked about `continuous::Target::Run`, as `RunsOnThisServer` is, but
+    /// said by any active card, since the server is named rather than the
+    /// card's own. Only `RunCost` is about it.
+    Runs(crate::dsl::ServerKind),
     /// Each run against the server this card is installed in — Flagship's
     /// "Runs against this server" and "During each run against this
     /// server". A run is not a card, so this is asked about

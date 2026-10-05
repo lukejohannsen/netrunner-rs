@@ -1,0 +1,74 @@
+{
+  "id": "earth_station_sea_headquarters",
+  "title": "Earth Station: SEA Headquarters",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "RemoteServerLimit": 1
+      },
+      "applies_to": "Controller",
+      "text": "Limit 1 remote server."
+    },
+    {
+      "kind": {
+        "RunCost": {
+          "Credits": 1
+        }
+      },
+      "applies_to": {
+        "Runs": "Hq"
+      },
+      "while": {
+        "Not": "IdentityFlipped"
+      },
+      "text": "As an additional cost to run HQ, the Runner must pay 1[credit]."
+    },
+    {
+      "kind": {
+        "RunCost": {
+          "Credits": 6
+        }
+      },
+      "applies_to": {
+        "Runs": "Remote"
+      },
+      "while": "IdentityFlipped",
+      "text": "As an additional cost to run a remote server, the Runner must pay 6[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "Not": "IdentityFlipped"
+      },
+      "effect": "FlipIdentity",
+      "text": "[click]: Flip this identity."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "requirement": "IdentityFlipped",
+      "effects": [
+        "FlipIdentity"
+      ],
+      "text": "When the Runner makes a successful run on HQ, flip this identity."
+    }
+  ],
+  "built_from": 26120,
+  "is_playable": true
+}

@@ -56,6 +56,7 @@ use crate::rules::win;
 /// The win first: once a side has won, nothing else is the game's to do.
 pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event: Option<&GameEvent>) -> Vec<GameEvent> {
     expire_durations(state);
+    win::refresh_tallies(state, registry);
     let mut events = win::check_win_conditions(state, registry);
     if !state.is_over() {
         events.extend(enforce_unique(state, registry, event));
@@ -190,7 +191,7 @@ mod tests {
             card_type: CardType::Identity,
             triggers: vec![TriggeredEffect {
                 trigger: Trigger::OnAgendaStolen,
-                subject: Some(Subject::Any), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: Some(Subject::Any), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 effects: vec![Effect::DealDamage(DamageType::Net, 1)],
                 requirement: None,

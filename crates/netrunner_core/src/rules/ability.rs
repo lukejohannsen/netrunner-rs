@@ -291,10 +291,18 @@ fn acting_corp_install_mut<'s>(state: &'s mut GameState, ctx: &ResolutionContext
 
 /// The scored agenda `ctx` is acting as — by `acting_install` only, since
 /// a score area can hold two copies of one agenda and only the install
-/// handle tells them apart (Off the Books spending its own counters).
-fn acting_scored_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
+/// handle tells them apart (Off the Books spending its own counters). In
+/// either score area: a stolen agenda keeps a handle of its own, and
+/// Project Vacheron's counters are on the copy the Runner stole. A handle
+/// is never reused, so the two areas cannot both hold it.
+fn acting_scored<'s>(state: &'s GameState, ctx: &ResolutionContext<'_>) -> Option<&'s crate::rules::state::ScoredAgenda> {
     let install = ctx.acting_install?;
-    state.corp.scored_agendas.iter().position(|scored| scored.install_id == install)
+    state.corp.scored_agendas.iter().chain(&state.runner.scored_agendas).find(|scored| scored.install_id == install)
+}
+
+fn acting_scored_mut<'s>(state: &'s mut GameState, ctx: &ResolutionContext<'_>) -> Option<&'s mut crate::rules::state::ScoredAgenda> {
+    let install = ctx.acting_install?;
+    state.corp.scored_agendas.iter_mut().chain(&mut state.runner.scored_agendas).find(|scored| scored.install_id == install)
 }
 
 /// Whether `ctx` is resolving as the Corp's identity — which has no
@@ -1285,7 +1293,7 @@ pub fn evaluate_effect(
                 .filter(|install| *install != InstallId::PLACEHOLDER)
                 .and_then(|install| state.runner.scored_agendas.iter().position(|s| s.install_id == install && s.card == card_id))
             {
-                let points = crate::rules::win::agenda_value_in(state, registry, &card_id, Side::Runner);
+                let points = crate::rules::win::scored_value(state, registry, &state.runner.scored_agendas[position], Side::Runner).max(0) as u32;
                 state.runner.scored_agendas.remove(position);
                 state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(-(points as i32));
                 place(&mut state.corp.r_and_d, card_id.clone());
@@ -1724,13 +1732,15 @@ pub fn evaluate_effect(
         }
 
         Effect::InitiateRun(server) => {
-            run::start_run(state, registry, *server)?;
+            let paid = run::start_run(state, registry, *server)?;
             if let Some(run) = state.active_run.as_mut() {
                 run.initiated_by = acting_card.cloned();
             }
             let run_initiated_event = GameEvent::RunInitiated { server: *server };
-            let mut events = vec![run_initiated_event.clone()];
+            let mut events = paid.clone();
+            events.push(run_initiated_event.clone());
             events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &run_initiated_event)?);
+            events.extend(dispatch_cost_events(state, registry, &paid)?);
             Ok(events)
         }
 
@@ -2316,7 +2326,7 @@ pub fn evaluate_effect(
             let Some(position) = state.runner.scored_agendas.iter().position(|scored| scored.card == card_id && scored.as_agenda.is_none()) else {
                 return Ok(Vec::new());
             };
-            let points = crate::rules::win::agenda_value_in(state, registry, &card_id, Side::Runner);
+            let points = crate::rules::win::scored_value(state, registry, &state.runner.scored_agendas[position], Side::Runner).max(0) as u32;
             // The tags are the price, and the offer was filtered so they
             // are there — but check anyway: a parked selection resolves
             // later than it was built, and paying half a cost is worse
@@ -2563,6 +2573,7 @@ pub(crate) fn fire_card_triggers(
                 // A heap ability resolves only as heard from the heap, and
                 // a card in play never resolves one (`Heard::FromHeap`).
                 && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
+                && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
                 && !((t.first_each_turn || t.first_each_encounter) && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, card_id, due.install, triggering_event)
         })
@@ -2691,6 +2702,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
         t.trigger == due.trigger
             && due.heard.admits(t.subject)
             && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
+            && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
             && !(t.first_each_turn && due.not_the_first_this_turn)
             && listeners::when_admits(state, registry, t, card.side, &due.card, due.install, due.event.as_ref())
     };
@@ -2939,8 +2951,8 @@ pub(crate) fn modify_counters(
         &mut state.corp.installed[position].counters
     } else if let Some(position) = acting_rig_position(state, ctx) {
         &mut state.runner.rig[position].counters
-    } else if let Some(position) = acting_scored_position(state, ctx) {
-        &mut state.corp.scored_agendas[position].agenda_counters
+    } else if acting_scored(state, ctx).is_some() {
+        &mut acting_scored_mut(state, ctx).expect("found above").agenda_counters
     } else if acting_is_corp_identity(state, ctx) {
         &mut state.corp.identity_counters
     } else if let Some(run) = state.active_run.as_mut().filter(|run| acting_is_run_event(run, ctx)) {
@@ -3232,7 +3244,7 @@ pub(crate) fn add_to_score_area_as_agenda(state: &mut GameState, side: Side, car
 /// scored (`ScoredAgenda::scored_on_turn` 0), so nothing that hears a score
 /// hears it. The checkpoint after the action is what a win by it waits for.
 pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardRegistry, card: CardId) -> GameEvent {
-    let agenda_points = registry.get(&card).map_or(0, |def| crate::rules::continuous::agenda_points_in(state, registry, def, Side::Corp));
+    let agenda_points = registry.get(&card).map_or(0, |def| crate::rules::continuous::agenda_points_in(state, registry, def, Side::Corp, None));
     let install_id = state.allocate_install_id();
     state.corp.scored_agendas.push(crate::rules::state::ScoredAgenda {
         card: card.clone(),
@@ -4424,7 +4436,7 @@ fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
     acting_corp_install(state, ctx)
         .map(|c| c.counters)
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
-        .or_else(|| acting_scored_position(state, ctx).map(|position| state.corp.scored_agendas[position].agenda_counters))
+        .or_else(|| acting_scored(state, ctx).map(|scored| scored.agenda_counters))
         .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
         .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| ended_run_event_counters(state, ctx))
@@ -5764,7 +5776,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -5802,7 +5814,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -5828,7 +5840,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

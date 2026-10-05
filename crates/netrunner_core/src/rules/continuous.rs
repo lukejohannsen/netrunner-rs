@@ -43,8 +43,11 @@ pub(crate) enum Target<'a> {
     Rig { card: &'a CardDefinition, install: InstallId },
     /// A Corp install, in the root of `server` or protecting it.
     Corp { card: &'a CardDefinition, install: InstallId, server: ServerId, root: bool },
-    /// An agenda in `side`'s score area.
-    Scored { card: &'a CardDefinition, side: Side },
+    /// An agenda in `side`'s score area — the copy, when there is one, so a
+    /// `while` reads its own counters (Megaprix Qualifier's "while this
+    /// agenda has a hosted agenda counter"). `None` asks what the card is
+    /// worth there before any copy has counters: an agenda landing.
+    Scored { card: &'a CardDefinition, side: Side, install: Option<InstallId> },
     /// The Corp install `install`, an agenda the Corp is scoring (Word on
     /// the Street's additional cost). The copy, not only the card, because
     /// "an agenda the Corp installed this turn" is a fact about the copy.
@@ -79,7 +82,8 @@ impl<'a> Target<'a> {
     fn install(&self) -> Option<InstallId> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } | Target::Trashing { install, .. } => Some(*install),
-            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } | Target::Run { .. } | Target::Bound(_) => None,
+            Target::Scored { install, .. } => *install,
+            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Run { .. } | Target::Bound(_) => None,
         }
     }
 
@@ -267,6 +271,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         }
         (Scope::Rig(filter), Target::Rig { card, .. }) => card_matches_filter(card, filter),
         (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
+        (Scope::Runs(kind), Target::Run { server }) => kind.admits(*server),
         (Scope::Player(side), Target::Bound(bound)) => side == bound,
         _ => false,
     }
@@ -658,6 +663,19 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
     costs
 }
 
+/// The additional costs to run `server` (CR 6.3.2b: Earth Station: SEA
+/// Headquarters), in the order their cards are asked, paid together as the
+/// server is announced (`run::start_run`).
+pub(crate) fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, _| {
+        if let ContinuousKind::RunCost(cost) = &effect.kind {
+            costs.push(cost.clone());
+        }
+    });
+    costs
+}
+
 /// What the Runner must pay beside the trash cost to trash the card they
 /// are accessing (Daniela Jorge Inácio), or `None`.
 pub(crate) fn additional_trash_cost(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
@@ -708,10 +726,12 @@ pub(crate) fn basic_trash_costs(state: &GameState, registry: &CardRegistry, inst
 
 /// The agenda points the agenda `card` is worth in `side`'s score area:
 /// what it prints and what its own text changes there (Let Them Dream),
-/// never below 0.
-pub fn agenda_points_in(state: &GameState, registry: &CardRegistry, card: &CardDefinition, side: Side) -> u32 {
+/// never below 0. `install` is the copy, whose own counters a `while` may
+/// read (Megaprix Qualifier, Project Vacheron); `None` asks of the card
+/// alone, as an agenda about to land is asked.
+pub fn agenda_points_in(state: &GameState, registry: &CardRegistry, card: &CardDefinition, side: Side, install: Option<InstallId>) -> u32 {
     let printed = card.agenda_points.unwrap_or(0) as i32;
-    (printed + sum(state, registry, Target::Scored { card, side }, |kind| match kind {
+    (printed + sum(state, registry, Target::Scored { card, side, install }, |kind| match kind {
         ContinuousKind::AgendaPoints(number) => Some(number),
         _ => None,
     }))
@@ -863,7 +883,7 @@ mod tests {
         state.runner.scored_agendas =
             vec![crate::rules::ScoredAgenda::plain(agenda.id.clone()), crate::rules::ScoredAgenda::plain(wall.id.clone())];
 
-        assert_eq!(agenda_points_in(&state, &registry, &wall, Side::Runner), 0, "not an agenda: worth nothing, and asked nothing");
+        assert_eq!(agenda_points_in(&state, &registry, &wall, Side::Runner, None), 0, "not an agenda: worth nothing, and asked nothing");
         assert_eq!(crate::rules::win::score(&state, &registry, Side::Runner), 4);
 
         state.corp.installed = vec![on_the_table("threat_wall", 1, ServerId::Hq, InstallSlot::Ice, true)];

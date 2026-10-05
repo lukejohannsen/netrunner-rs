@@ -1,0 +1,113 @@
+{
+  "id": "ground_control",
+  "name": "Ground Control",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Earth Station: SEA Headquarters, Uprising's Weyland identity, which allows one remote server, makes the Runner pay 1[credit] more to run HQ, flips for a click to make a remote cost 6[credit] to run instead, and flips back when the Runner makes a successful run on HQ — and the Weyland ice of Uprising Stage 8. On Hostile Bid's frame, its identity swapped: three Akhet, a barrier the Corp can advance that grows 3 strength and lets the Runner break only one of its subroutines once it holds 3 counters, and whose first subroutine places a counter on any installed card; and three Winchester, a sentry of traces that trashes a program or a piece of hardware and, protecting HQ, gains a third that ends the run — for its two Hostile Architecture, two Superdeep Borehole and two Svyatogor Excavator, assets that want remotes this identity does not allow. Hostile Bid keeps every card given up here.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "earth_station_sea_headquarters",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "ice_wall",
+      "count": 1
+    },
+    {
+      "card": "palisade",
+      "count": 1
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    },
+    {
+      "card": "sacrifice_zone_expansion",
+      "count": 2
+    },
+    {
+      "card": "myoshu",
+      "count": 2
+    },
+    {
+      "card": "tocsin",
+      "count": 2
+    },
+    {
+      "card": "cayambe_grid",
+      "count": 2
+    },
+    {
+      "card": "envelopment",
+      "count": 2
+    },
+    {
+      "card": "isaac_liberdade",
+      "count": 1
+    },
+    {
+      "card": "wall_to_wall",
+      "count": 2
+    },
+    {
+      "card": "pivot",
+      "count": 2
+    },
+    {
+      "card": "valentao",
+      "count": 2
+    },
+    {
+      "card": "anvil",
+      "count": 2
+    },
+    {
+      "card": "zato_city_grid",
+      "count": 2
+    },
+    {
+      "card": "azef_protocol",
+      "count": 2
+    },
+    {
+      "card": "stavka",
+      "count": 2
+    },
+    {
+      "card": "colossus",
+      "count": 2
+    },
+    {
+      "card": "false_lead",
+      "count": 2
+    },
+    {
+      "card": "transport_monopoly",
+      "count": 1
+    },
+    {
+      "card": "akhet",
+      "count": 3
+    },
+    {
+      "card": "winchester",
+      "count": 3
+    }
+  ]
+}

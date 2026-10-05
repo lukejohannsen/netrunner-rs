@@ -983,21 +983,31 @@ pub fn resolve_steal(
     // the next run and an installed agenda stayed scorable after being
     // stolen (ROADMAP Rules Audit T2). `pending.server` is what tells two
     // copies of one agenda in two remotes apart.
-    let (_, announced) = remove_from_corp_zone(state, registry, card_id, pending.server, pending.install)?;
+    let (removed_from, announced) = remove_from_corp_zone(state, registry, card_id, pending.server, pending.install)?;
     events.extend(announced);
     // A handle of its own: an ability of the agenda is used from the
     // Runner's score area by the Corp (Oracle Thinktank), and an ability
     // names its card by install.
     let install_id = state.allocate_install_id();
-    state.runner.scored_agendas.push(ScoredAgenda { scored_on_turn: state.turn, install_id, ..ScoredAgenda::plain(card_id.clone()) });
+    // Project Vacheron's replacement, applied as it lands (CR 9.9.9c), so
+    // what it is worth there is read with its counters from the start.
+    let agenda_counters = match removed_from {
+        RemovedFrom::Archives => 0,
+        _ => registry.get(card_id).and_then(|card| card.stolen_with_agenda_counters).unwrap_or(0),
+    };
+    state.runner.scored_agendas.push(ScoredAgenda { scored_on_turn: state.turn, install_id, agenda_counters, ..ScoredAgenda::plain(card_id.clone()) });
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
     // the `RunState` itself is gone by the time that trigger fires.
     if let Some(run) = state.active_run.as_mut() {
         run.agendas_stolen_this_run = run.agendas_stolen_this_run.saturating_add(1);
     }
-    let agenda_points = crate::rules::win::agenda_value_in(state, registry, card_id, Side::Runner);
+    let landed = state.runner.scored_agendas.last().expect("pushed above");
+    let agenda_points = crate::rules::win::scored_value(state, registry, landed, Side::Runner).max(0) as u32;
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points as i32);
+    if agenda_counters > 0 {
+        events.push(GameEvent::CountersAdded { card: card_id.clone(), amount: agenda_counters });
+    }
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.
@@ -1548,7 +1558,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1558,7 +1568,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -2323,7 +2333,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnAgendaStolen,
                 effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
@@ -3490,7 +3500,7 @@ mod tests {
     ) -> CardDefinition {
         CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }

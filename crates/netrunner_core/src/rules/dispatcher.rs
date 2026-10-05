@@ -530,6 +530,8 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
             state.runner.rig.iter().any(|c| c.install_id == install)
                 || state.corp.installed.iter().any(|c| c.install_id == install)
                 || state.corp.find_scored(install).is_some()
+                // Project Vacheron, heard from the Runner's score area.
+                || state.runner.scored_agendas.iter().any(|scored| scored.install_id == install)
                 || state.corp.play_area.iter().any(|played| played.handle == install)
         }
         _ => true,
@@ -609,7 +611,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }

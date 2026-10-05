@@ -88,6 +88,12 @@ pub(crate) fn submit_runner_bid(
     events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
 
     if trace.resume == TraceResume::ResumeSubroutines {
+        // What the success did may have parked a choice of its own —
+        // Winchester's "trash 1 installed program" with two to choose
+        // from. The loop stops at it, so the intent goes to the choice,
+        // whose answer resumes the loop; without the mark the encounter
+        // sat with its later subroutines pending and nobody to act.
+        crate::rules::pending_choice::mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
 
