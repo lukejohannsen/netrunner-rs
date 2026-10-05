@@ -317,6 +317,8 @@ impl<'a> Watcher<'a> {
         for event in &entry.events {
             self.event(before, after, side, event);
         }
+        self.archived_agendas(before, entry, after);
+        self.mixed_archive_choices(before, entry);
         // A run is over when the state has none: `RunCompleted` is not the
         // only way out (a jack-out, an ended run, a redirect).
         if after.active_run.is_none()
@@ -331,6 +333,74 @@ impl<'a> Watcher<'a> {
                     self.counts.bump("runner.rnd_runs.multi_access");
                 }
             }
+        }
+    }
+
+    /// Agendas that reached Archives in this entry, by who sent them —
+    /// the Corp's own discard at hand size (and whether HQ held a card
+    /// that was not an agenda to discard instead), anything else the Corp
+    /// did, or the Runner — and agendas stolen out of Archives. Read off
+    /// the zone, not an event: a discard is `CardDiscarded`, a trash is
+    /// `CardTrashed`, and §37 counted only the second.
+    fn archived_agendas(&mut self, before: &GameState, entry: &HistoryEntry, after: &GameState) {
+        let registry = self.registry;
+        let is_agenda = |card: &CardId| registry.get(card).is_some_and(|def| def.card_type == CardType::Agenda);
+        let in_archives = |state: &GameState| state.corp.archives.iter().filter(|c| is_agenda(&c.card)).count();
+        let (was, now) = (in_archives(before), in_archives(after));
+        let stolen_here = entry.events.iter().filter(|e| matches!(e, GameEvent::AgendaStolen { .. })).count();
+        if now < was && stolen_here > 0 {
+            self.counts.add("runner.steals.archives", (was - now).min(stolen_here) as f64);
+        }
+        if now <= was {
+            return;
+        }
+        let n = (now - was) as f64;
+        self.counts.add("corp.agendas_archived", n);
+        let key = match (&entry.action, entry.side) {
+            (PlayerAction::DiscardCard { .. }, Side::Corp) => {
+                if before.corp.hq.iter().any(|card| !is_agenda(card)) {
+                    self.counts.add("corp.agendas_archived.discard_avoidable", n);
+                }
+                "corp.agendas_archived.discard"
+            }
+            (action, Side::Corp) => {
+                let asking = match &before.pending_decision {
+                    Some(netrunner_core::rules::PendingDecision::ChooseCards { source_card, prompting_card, source, filter, min, max, .. }) => {
+                        let offered = offered_cards(before, source, filter);
+                        let asker = prompting_card.as_ref().or(source_card.as_ref()).map_or("none", |c| c.0.as_str());
+                        if *min == 0 || offered.iter().any(|card| !is_agenda(card)) {
+                            self.counts.add("corp.agendas_archived.chosen_avoidable", n);
+                            self.counts.add(leak(format!("corp.agendas_archived.avoidable.{asker}")), n);
+                        }
+                        format!(".{asker}.{source:?}.{min}-{max}")
+                    }
+                    _ => String::new(),
+                };
+                leak(format!("corp.agendas_archived.corp.{}{asking}", action_name(action)))
+            }
+            (action, Side::Runner) => leak(format!("corp.agendas_archived.runner.{}", action_name(action))),
+        };
+        self.counts.add(key, n);
+    }
+
+    /// The Corp's choices of cards to send to Archives out of HQ or the top
+    /// of R&D where the cards offered were agendas and not: the
+    /// denominator for `corp.agendas_archived.avoidable.*`.
+    fn mixed_archive_choices(&mut self, before: &GameState, entry: &HistoryEntry) {
+        use netrunner_core::dsl::CardZoneRef;
+        if entry.side != Side::Corp || !matches!(entry.action, PlayerAction::ConfirmCardSelection) {
+            return;
+        }
+        let Some(netrunner_core::rules::PendingDecision::ChooseCards { source_card, prompting_card, source, filter, destination: Some(CardZoneRef::OwnArchives), .. }) =
+            &before.pending_decision
+        else {
+            return;
+        };
+        let offered = offered_cards(before, source, filter);
+        let agendas = offered.iter().filter(|card| self.def(card).is_some_and(|def| def.card_type == CardType::Agenda)).count();
+        if agendas > 0 && agendas < offered.len() {
+            let asker = prompting_card.as_ref().or(source_card.as_ref()).map_or("none", |c| c.0.as_str());
+            self.counts.bump(leak(format!("corp.archive_choice.mixed.{asker}")));
         }
     }
 
@@ -374,6 +444,8 @@ impl<'a> Watcher<'a> {
                     }
                 }
                 Side::Corp => {
+                    let archived = before.corp.archives.iter().filter(|c| self.def(&c.card).is_some_and(|def| def.card_type == CardType::Agenda)).count();
+                    self.counts.add("corp.agendas_in_archives_at_turn_end", archived as f64);
                     for card in &before.corp.installed {
                         let agenda = self.def(&card.card).is_some_and(|def| def.card_type == CardType::Agenda);
                         if card.slot == InstallSlot::Root && agenda && card.advancement_tokens == 0 {
@@ -679,6 +751,29 @@ impl<'a> Watcher<'a> {
     }
 }
 
+/// The Corp's cards a selection out of HQ or R&D is made from — the top
+/// `n` of R&D for a `TopOfZone(n)` filter (AU Co.'s search), whose top is
+/// the zone's end — and none for any other zone. Every other filter is
+/// read as the whole zone, which is what "was an agenda avoidable" needs.
+fn offered_cards<'s>(state: &'s GameState, source: &netrunner_core::dsl::CardZoneRef, filter: &netrunner_core::dsl::CardFilter) -> &'s [CardId] {
+    use netrunner_core::dsl::{CardFilter, CardZoneRef};
+    let zone: &[CardId] = match source {
+        CardZoneRef::OwnHq => &state.corp.hq,
+        CardZoneRef::OwnRAndD => &state.corp.r_and_d,
+        _ => return &[],
+    };
+    match filter {
+        CardFilter::TopOfZone(n) => &zone[zone.len().saturating_sub(*n as usize)..],
+        _ => zone,
+    }
+}
+
+/// The variant's name, which is all `archived_agendas` keys on.
+fn action_name(action: &PlayerAction) -> String {
+    let debug = format!("{action:?}");
+    debug.split([' ', '{', '(']).next().unwrap_or_default().to_string()
+}
+
 fn side_key(side: Side, what: &str) -> &'static str {
     leak(format!("{}.{what}", side_name(side)))
 }
@@ -792,6 +887,10 @@ const DERIVED: &[Derived] = derived![
     "runner.14.remote_runs_share" = "runner.runs.remote" / "runner.runs",
     "runner.14.economy_events_per_game" = "runner.events.economy" / GAMES,
     "runner.14.steals_per_game" = "runner.steals" / GAMES,
+    "runner.14.steals_from_archives" = "runner.steals.archives" / "runner.steals",
+    "corp.15.agendas_archived_per_game" = "corp.agendas_archived" / GAMES,
+    "corp.15.agendas_archived_by_discard" = "corp.agendas_archived.discard" / "corp.agendas_archived",
+    "corp.15.agenda_discards_avoidable" = "corp.agendas_archived.discard_avoidable" / "corp.agendas_archived.discard",
     "knowledge.corp.guess_in_deck" = "corp.guess.in_deck" / "corp.guess.sampled",
     "knowledge.corp.guess_overlap" = "corp.guess.overlap" / "corp.guess.sampled",
     "knowledge.corp.naive_in_deck" = "corp.naive.in_deck" / "corp.naive.sampled",

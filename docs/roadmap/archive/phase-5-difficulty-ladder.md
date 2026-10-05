@@ -3261,3 +3261,33 @@ What the yeses buy: about 3[c] a game — Maglectric Rapid 41 times (1[c], never
 - **Maglectric Rapid** is installed and never used; its derez is a blind-list debt of its own (Open, the blind list).
 
 **Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
+
+## 40. Agendas the Corp sends to Archives: rare, and where a card asks it to choose, AU Co.'s search and Ryō's prompt still trash agendas the Corp could have kept — DONE, measurement only (`diag/agendas-to-archives`, 5 October 2026)
+
+**The question** (the person's, 5 October 2026): is the Corp bot discarding agendas to Archives, where a single run steals them? §37 had counted agendas *trashed* (`CardTrashed`) and brought them 68 → 10 over a planner pass of the pool; a discard at hand size is `CardDiscarded`, which it did not count.
+
+**The instrument.** `diag precepts` reads the zone rather than an event: every entry that leaves more agendas in Archives than it found is counted (`corp.agendas_archived`) by route — the Corp's discard at hand size, a Corp action keyed by the card whose selection it confirmed, a Runner action — and as *avoidable* when a discard's HQ, or a selection's offered cards, held something that was not an agenda (a selection with no minimum always is). `corp.archive_choice.mixed.<card>` is the denominator: the Corp's selections into Archives whose offered cards were agendas and not. `runner.steals.archives` counts steals that left Archives with fewer agendas, `corp.agendas_in_archives_at_turn_end` the exposure the Corp ends each turn with.
+
+**Measured** (`main` at `d1d3857`, `diag precepts --deck-styles`, planner both chairs, 192 games):
+
+| | seed 1 | seed 2 |
+|---|---|---|
+| agendas to Archives | 15 | 15 |
+| by a discard at hand size (avoidable) | 1 (0) | 3 (0) |
+| steals out of Archives / all steals | 6 / 483 | 8 / 497 |
+| agendas in Archives at the Corp's turn end, over Corp turns | 43 / 2,606 | 29 / 2,678 |
+
+Every agenda discarded at hand size was discarded from an HQ of nothing but agendas. The rest were a card's selection, and where the cards offered were agendas and not:
+
+| card | asked | agenda trashed / mixed choices, seeds 1 + 2 |
+|---|---|---|
+| Hansei Review | the Corp's own action phase, planned | 0 / 41 |
+| AU Co.: The Gold Standard in Clones | its turn start, planned since §37 | 8 / 14 |
+| Ryō "Phoenix" Ōno: Out of the Ashes | the Runner's turn, one ply | 5 / 17 |
+| Longevity Serum | as it is scored, "any number" | 3 / 11 |
+
+(Seed 2 also sent one agenda by an install's trash of the root it replaced and one by a cost's selection.)
+
+**Ryō's is read off the code:** one ply (`planner::one_ply`) applies each legal action and scores the result, and a `ToggleCardSelection` marks a position without moving the card, so every candidate scores alike and `TIE_BREAK_JITTER` chooses — the reason `agent::is_regressive` already gives for skipping a deselect. 5 of 17 is about the share of agendas in those hands. Longevity Serum's three are a choice of "any number", which chooser answered them not traced, followed by "shuffle up to 3 from Archives into R&D", which can put them back; whether it did is not counted. **AU Co.'s is not traced:** its search has been a step of the turn's line since §37, so the line scores the search where it leaves the board. The cases it chose (Sericulture Expansion trashed over Phật Gioan Baotixita, Offworld Office over Spin Doctor or Byte!, Orbital Superiority over Anoetic Void with Offworld Office kept) show the evaluator preferring the other card at a cost of half the agenda's points; the Corp's evaluator gives an agenda held in HQ no worth of its own, which is the lead, unmeasured.
+
+**Not done, and why.** Both are Open: the one-ply selection, first, since it is any one-card selection either chair answers out of its turn; AU Co., traced before any weight moves.
