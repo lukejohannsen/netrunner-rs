@@ -7638,3 +7638,63 @@ as every banned card before it.
   onto `main` at 1c4c134 rather than stacked on the merged commit; #361
   touched only `netrunner_cli`'s diag code among the crates, which was
   tested and linted again on the new base.
+
+#### Stage 2 — Corp, composes (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Calvin B4L3Y, Nanoetching Matrix, CSR
+Campaign, Tiered Subscription, Red Level Clearance, Roughneck Repair
+Squad, Remastered Edition, Architect Deployment Test, Sandstone and SDS
+Drone Deployment. **No new `Effect`, and no change to the engine:** card
+files, decks and tests, and one line in a client test. Downfall 17 of 65;
+`DF_UNIMPLEMENTED` 58 → 48. The survey's "composes" held for all ten.
+
+- **What each is made of.** Calvin B4L3Y and Nanoetching Matrix are a
+  once-per-turn [click] ability and Vaporframe Fabricator's "When the
+  Runner trashes this asset", heard on access (`OnTrashedFromAccess`) and
+  by any other trash the Runner makes (`OnCardTrashed`, `when:
+  Whose(Runner)`), each a "may". CSR Campaign is a turn-start "may".
+  Tiered Subscription is Tributary's first run each turn
+  (`OnRunStart`, `first_each_turn`). Red Level Clearance is Key
+  Performance Indicators' `ResolveSomeOf` two of four, its install
+  Ablative Barrier's non-agenda install from HQ, paying the install cost.
+  Roughneck Repair Squad's bad publicity is Luana Campos's
+  `RemoveBadPublicity`, offered only while there is one to remove.
+  Remastered Edition is Flower Sermon's agenda counter spent by a scored
+  agenda's paid ability, into Key Performance Indicators' advancement
+  counter. Architect Deployment Test is Hiram's look at the top of R&D
+  (`LookAtTopOfDeck`, five) and Eminent Domain's install and rez ignoring
+  all costs, over a selection of the top five that are not operations.
+  Sandstone is Colossus's strength per counter with a −1 (`Strength { per:
+  -1 }`) and a virus counter placed as it is encountered; a purge takes
+  them, since its `counter_kind` is `Virus`. SDS Drone Deployment is the
+  first `steal_cost` that takes a card (`Cost::Trash` over the Runner's
+  installed programs, asked by the payment's replay when there is a
+  choice) and Trust Operation's trash of a Runner install on scoring.
+- **Fidelity limits:** one, under Known limits. Remastered Edition's
+  "an installed card" offers the Corp's own installs, where the printed
+  card admits the Runner's, on which a counter does nothing.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. The deck builder's set test now offers
+  Downfall to both sides.
+- **Decks.** Deterrence takes two Architect Deployment Test for an
+  Offworld Office and a Send a Message (21 points to 20) and two
+  Nanoetching Matrix for two Bran 1.0; Undertow two Calvin B4L3Y for two
+  Active Policing and two Red Level Clearance for two Bran 1.0; Spin Cycle
+  two Remastered Edition for two Freedom of Information, point for point,
+  and two Tiered Subscription for two B-1001; Supply Chain two SDS Drone
+  Deployment for two Send a Message, point for point, two Sandstone for
+  two Kessleroid and two Roughneck Repair Squad for two PAD Campaign;
+  Ground Control two CSR Campaign for two Wall to Wall. Every card given
+  up is still in another deck, and every deck keeps the formats it was
+  pinned to.
+- **DSL ratio** (`pool_status.py`): 15 of 101 `Effect` variants
+  single-use, none unused, over 590 card files, as over 580 at Stage 1.
+- **Measured.** `cargo test --workspace` green and clippy silent, the
+  desktop crate one test target at a time. Both sweeps are green at 256
+  seeds, the card gate included. `coverage_identical.py` against Stage 1
+  (1704593, on `main` at dc1ccb1; 192 games a report): random identical,
+  view and index — no rule moved. The planner moves by the larger prior,
+  more than Stage 1's seven Runner cards moved it: ten Corp cards change
+  what the Runner's samples hold for every card it has not seen — Corp
+  agenda wins 64 → 72, Corp wins by flatline 23 → 20, Runner agenda wins 102 →
+  96, Runner deck-outs 3 → 4.

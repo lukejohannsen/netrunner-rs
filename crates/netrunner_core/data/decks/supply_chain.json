@@ -3,7 +3,7 @@
   "name": "Supply Chain",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ob Superheavy Logistics: Extract. Export. Excel., Midnight Sun's Weyland identity, whose once-per-turn search for a card one credit cheaper than a rezzed card the Corp has just trashed, installed and rezzed free of credits, no other deck can reach. Midnight Sun Stage 8c. Every rez cost from 1 to 5 is stocked twice over, so a trash always has a rung below it: Envelopment trashes itself with its own subroutine (5, finding Stavka or Event Horizon), Regolith Mining License trashes itself when its credits are gone (2, finding Ice Wall or Tithe), Svyatogor Excavator trashes another installed card as the turn begins, Stavka as it is rezzed, Kimberlite Field as it is scored and Azef Protocol to be scored. Weyland and neutral cards only, so no influence. Eternal-legal.",
+  "description": "Not a published list: built so the sweeps reach Ob Superheavy Logistics: Extract. Export. Excel., Midnight Sun's Weyland identity, whose once-per-turn search for a card one credit cheaper than a rezzed card the Corp has just trashed, installed and rezzed free of credits, no other deck can reach. Midnight Sun Stage 8c. Every rez cost from 1 to 5 is stocked twice over, so a trash always has a rung below it: Envelopment trashes itself with its own subroutine (5, finding Stavka or Event Horizon), Regolith Mining License trashes itself when its credits are gone (2, finding Ice Wall or Tithe), Svyatogor Excavator trashes another installed card as the turn begins, Stavka as it is rezzed, Kimberlite Field as it is scored and Azef Protocol to be scored. Weyland and neutral cards only, so no influence. Eternal-legal. Downfall Stage 2: two SDS Drone Deployment for two Send a Message, point for point, a program to steal and a program trashed when scored; two Sandstone for two Kessleroid, a barrier that wears down by a virus counter each encounter; and two Roughneck Repair Squad for two PAD Campaign, six credits for three clicks.",
   "style": [
     "glacier"
   ],
@@ -11,7 +11,11 @@
   "cards": [
     {
       "card": "send_a_message",
-      "count": 3
+      "count": 1
+    },
+    {
+      "card": "sds_drone_deployment",
+      "count": 2
     },
     {
       "card": "kimberlite_field",
@@ -42,7 +46,7 @@
       "count": 2
     },
     {
-      "card": "kessleroid",
+      "card": "sandstone",
       "count": 2
     },
     {
@@ -70,7 +74,7 @@
       "count": 2
     },
     {
-      "card": "pad_campaign",
+      "card": "roughneck_repair_squad",
       "count": 2
     },
     {

@@ -1,0 +1,57 @@
+{
+  "id": "roughneck_repair_squad",
+  "title": "Roughneck Repair Squad",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              6
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "BadPublicity",
+                  1
+                ]
+              },
+              "effect": {
+                "PresentChoice": {
+                  "chooser": "Corp",
+                  "options": [
+                    {
+                      "RemoveBadPublicity": 1
+                    },
+                    {
+                      "Sequence": []
+                    }
+                  ],
+                  "texts": [
+                    "You may remove 1 bad publicity",
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click][click][click]: Gain 6[credit]. You may remove 1 bad publicity."
+    }
+  ],
+  "built_from": 26057,
+  "is_playable": true
+}

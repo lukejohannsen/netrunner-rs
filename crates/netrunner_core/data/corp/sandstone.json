@@ -1,0 +1,43 @@
+{
+  "id": "sandstone",
+  "title": "Sandstone",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 6,
+  "counter_kind": "Virus",
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When the Runner encounters this ice, place 1 virus counter on it."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gets −1 strength for each hosted virus counter."
+    }
+  ],
+  "built_from": 26059,
+  "is_playable": true
+}

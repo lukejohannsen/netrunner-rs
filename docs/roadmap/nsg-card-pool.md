@@ -50,12 +50,13 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 7 | 58 | Stage 1 built (5 October 2026) |
+| 7 | Downfall (`df`) | 65 | 17 | 48 | Stages 1–2 built (5 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
-`Effect` variants single-use, none unused, over 580 card files** (5 October
-2026, with Downfall Stage 1, which added no variant; Uprising Stage 8, at
+`Effect` variants single-use, none unused, over 590 card files** (5 October
+2026, with Downfall Stage 2, which added no variant and changed no engine
+code; Stage 1, at 15 of 101 over 580, added none; Uprising Stage 8, at
 15 of 101 over 573, added none and closed the set;
 Stage 7b, at 16 of 101 over 568, added none and gave Sisyphus
 Protocol's `ForceEncounter` two more cards, Konjin and Ganked!; Stage 7a,
@@ -425,6 +426,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Wall to Wall** (UR 4): "resolve up to 3 in any order" is 3 of the 4, the counter's piece of ice optional, so a Corp that wants neither the draw nor the asset back in HQ must take one of them.
 - **GameNET: Where Dreams are Real** (UR 5): "a Corp card ability causes the Runner to spend or lose" is read as four things, without a ruling to hand (NetrunnerDB's rulings were out of reach): a loss the card's text resolves (Gold Farmer's), the cost of an ability the card prints for the Runner (F2P's 2[credit]), a paid choice it offers ("end the run unless the Runner pays") and a bid in a trace it began (CR 10.8.6d). Credits a Corp card's standing effect makes the Runner pay — a raised cost, an additional cost — are no ability's and are not heard.
 - **Transport Monopoly** (UR 5): "use this ability only during a run" is Proprionegation's `DuringRun`, the run from its initiation to the server's approach; after that the run's success is already decided.
+- **Remastered Edition** (DF 2): "Place 1 advancement counter on an installed card" offers the Corp's own installs, where the printed card admits the Runner's, on which a counter does nothing (as Moon Pool's).
 - **Project Vacheron** (UR 8): "it is worth 0 agenda points" is 3 taken off its printed 3 (`AgendaPoints` of −3 under the `while`); nothing else in the pool changes what an agenda in the Runner's score area is worth but Let Them Dream's own text.
 
 ### Bot debts — cards the heuristic never plays (Phase 5 §25's list)
@@ -950,10 +952,11 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 1. **Runner, composes** (built, 5 October 2026): Isolation, Spec Work,
    Rezeki, Gauss, The Artist, Az McCaffrey, Stargate. Stage 1 is
    complete.
-2. **Corp, composes:** Calvin B4L3Y, Nanoetching Matrix, CSR Campaign,
-   Tiered Subscription, Red Level Clearance, Roughneck Repair Squad,
-   Remastered Edition, Architect Deployment Test, Sandstone, SDS Drone
-   Deployment (a `steal_cost` of `Cost::Trash`).
+2. **Corp, composes** (built, 5 October 2026): Calvin B4L3Y, Nanoetching
+   Matrix, CSR Campaign, Tiered Subscription, Red Level Clearance,
+   Roughneck Repair Squad, Remastered Edition, Architect Deployment Test,
+   Sandstone, SDS Drone Deployment (a `steal_cost` of `Cost::Trash`).
+   Stage 2 is complete.
 3. **Trigger words and bad-publicity removal:** Supercorridor, Fencer
    Fueno, Trickster Taka, Congratulations!, Demolisher, Bukhgalter,
    Storgotic Resonator, Masterwork (v37), Trebuchet, Increased Drop Rates.
@@ -986,6 +989,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 **Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
 
 - **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)
 
