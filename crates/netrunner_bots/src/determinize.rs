@@ -319,6 +319,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.corp.scored_agendas.iter().map(|scored| scored.card.clone()));
     ids.extend(view.corp.removed_from_game.iter().cloned());
     ids.extend(view.corp.set_aside.iter().cloned());
+    ids.extend(view.corp.play_area.iter().map(|played| played.card.clone()));
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
@@ -389,6 +390,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.scored_agendas.len()
                 + view.corp.removed_from_game.len()
                 + view.corp.set_aside.len()
+                + view.corp.play_area.len()
         }
         Side::Runner => {
             view.runner.grip_count
@@ -940,6 +942,10 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         identity_copy: view.corp.identity_copy.unwrap_or(0),
         removed_from_game: view.corp.removed_from_game.clone(),
         set_aside: view.corp.set_aside.clone(),
+        // Public, and carried: a lockdown in play is active, so a sample
+        // without it would steal under NAPD Cordon for nothing and break
+        // NEXT Activation Command's ice at its printed strength.
+        play_area: view.corp.play_area.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
         // is equivalent, since it is only ever consulted for cards that
@@ -1317,7 +1323,7 @@ mod tests {
                 identity_copy: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
-                removed_from_game: Vec::new(), set_aside: Vec::new(), once_per_turn_used: Default::default(),
+                removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -1385,6 +1391,7 @@ mod tests {
                 .chain(state.runner.scored_agendas.iter().map(|s| &s.card))
                 .chain(&state.corp.removed_from_game)
                 .chain(&state.corp.set_aside)
+                .chain(state.corp.play_area.iter().map(|played| &played.card))
                 .cloned(),
         )
     }

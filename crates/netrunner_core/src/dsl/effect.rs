@@ -2008,6 +2008,20 @@ pub enum Amount {
     /// "whenever the Runner takes tags", where taking a number of tags in
     /// one instruction is one aggregated effect (CR 9.12.2c).
     Increased { amount: Box<Amount>, by: Box<Amount> },
+    /// `amount` taken `times` times — NAPD Cordon's "4[credit] plus
+    /// 2[credit] **for each** advancement counter on that agenda",
+    /// `Increased { Fixed(4), Times { AccessedCardAdvancementCounters, 2 } }`.
+    /// Composition didn't work: `Increased` of a count with itself is the
+    /// same number, and reads to a person as two counts where the card
+    /// prints one at a rate.
+    Times { amount: Box<Amount>, times: u32 },
+    /// The advancement counters on the installed card being accessed — the
+    /// agenda NAPD Cordon's additional cost to steal is about ("that
+    /// agenda"), read off the access (`AccessState::pending_install`). 0
+    /// for a card accessed out of HQ, R&D or Archives, which holds none.
+    /// Composition didn't work: `HostedAdvancementTokens` is the acting
+    /// install's, and the card paying is the lockdown.
+    AccessedCardAdvancementCounters,
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
@@ -2258,12 +2272,21 @@ pub enum Prohibition {
     /// follows. Not that kind with a duration: a standing effect is
     /// scanned off an active card and cannot outlive the use that made it.
     DeclaredSuccessful,
+    /// The Runner cannot use **non-icebreaker** cards to break subroutines
+    /// — NEXT Activation Command's, standing while the lockdown is in play
+    /// (`ContinuousKind::Cannot`). Asked by the two break effects of a
+    /// breaker that is not an icebreaker (`ability::breakable_now`), which
+    /// then find nothing to break, so the ability is not offered: Boomerang,
+    /// a bioroid's "Lose [click]: Break 1 subroutine", any card but a
+    /// program with the icebreaker subtype. Not `BreakSubroutines`, which
+    /// binds one install for a duration.
+    BreakWithNonIcebreakers,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 15] = [
+    pub const ALL: [Prohibition; 16] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2279,13 +2302,14 @@ impl Prohibition {
         Prohibition::Rez,
         Prohibition::BreakSubroutinesOnIce,
         Prohibition::DeclaredSuccessful,
+        Prohibition::BreakWithNonIcebreakers,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
         }
     }
 
@@ -2296,7 +2320,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => None,
         }
     }
 }

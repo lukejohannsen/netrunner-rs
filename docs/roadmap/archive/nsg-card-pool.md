@@ -7230,3 +7230,131 @@ card. Uprising 47 of 65, its booster pack 6 of 7; `UR_UNIMPLEMENTED`
   test did: steps 111,460 → 110,565, paid ability windows 33,112 → 32,889,
   Corp agenda wins 63 → 66 and flatlines 23 → 24, Runner agenda wins
   102 → 98.
+
+#### Stage 6 — stealth credits on VP's rule, a remembered choice, set aside (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Mu Safecracker, Afterimage, Penrose,
+Boomerang, Engram Flush and Gachapon. **Two new `Effect`s**
+(`RevealHand`, `Remember`). Uprising 53 of 65, its booster pack 6 of 7.
+(Written into the archive at Stage 7a, from the stage's commit, 3c4fcf5;
+the stage closed without one.)
+
+- **The words.**
+  - `Effect::Remember` (Boomerang, Engram Flush): a choice that makes
+    nothing but itself, read back by another of the card's abilities (CR
+    9.10.3) — Boomerang's ice until it leaves the table (9.10.3c), Engram
+    Flush's card type for the encounter its text names.
+  - `Effect::RevealHand` (Engram Flush): "reveal the grip" reveals every
+    card. A selection over the grip showed only what could be chosen, so a
+    grip with nothing of the named type was never revealed.
+  - Paying a card's own conditional "you may pay" is using that card (CR
+    9.1.6): `pending_choice::resolve_accept` states `Purpose::Ability`, so
+    Mantle's credits pay Mu Safecracker's access. Another player's "unless
+    you pay" stays `Other`.
+  - A run's end says whether it was successful, where "not unsuccessful"
+    admitted a run kept from success (Boomerang).
+  - `CardTarget::SetAside`: what Gachapon leaves after an install and a
+    shuffle is removed from the game; three or fewer are all shuffled back.
+- Afterimage joins the cards whose "once per turn" is spent when its "may"
+  is declined (the recorded CR 9.3.6g deviation); Boomerang breaks two
+  when two are left.
+- **Decks.** Hit List +Mu Safecracker, +2 Afterimage, +2 Boomerang; Spare
+  Parts +2 Penrose; Side Quest +2 Gachapon; Second Site +2 Engram Flush.
+  Every card given up is still in another Sweep deck.
+- **A planner test re-stated.** `a_kill_corp_plays_public_trail_because_
+  the_runners_answer_is_priced` counts the balanced Corp over 180 seeds:
+  over sixty it stood at 27 to 30 against a bar of under 30, and which
+  depended on the build (debug with or without debuginfo, release) on the
+  same source before the stage as after. Over 180 it is 73 before and 78
+  after, in each build.
+- **Measured.** `cargo test --workspace` green (2,452 outside the desktop
+  crate, 251 in it), clippy silent, both sweeps green at 256 seeds with the
+  card gate. `coverage_identical.py` against Stage 5 (3f6beba): random
+  identical, view and index; the planner moves by the larger prior — Corp
+  agenda wins 66 → 65, Corp flatlines 24 → 23, Runner agenda wins
+  98 → 100. Real play (seed 2, random 96 / planner 48): the planner never
+  installs Mu Safecracker or Boomerang and uses Penrose once (bot debts);
+  Afterimage bypasses 4 sentries, Gachapon is used 49 / 49 times, Engram
+  Flush fires 72 / 178 subroutines.
+- **DSL ratio**: 18 of 101 `Effect` variants single-use, none unused,
+  over 561 card files.
+
+#### Stage 7a — lockdown (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: SYNC Rerouting, Argus Crackdown, NAPD
+Cordon, NEXT Activation Command and Hyoubu Precog Manifold — the five
+lockdowns. **No new `Effect`.** Uprising 58 of 65, its booster pack 6 of
+7; `UR_UNIMPLEMENTED` 12 → 7.
+
+- **The words.**
+  - **A lockdown stays in the play area** (CR 3.5.1c, 8.6.6c): "This
+    operation is not trashed until your next turn begins" is a declaration
+    (`CardDefinition::not_trashed_until_your_next_turn`, refused off an
+    operation) that `engine::play_operation_card` reads, filing the card in
+    `CorpState::play_area` with a handle from the install sequence
+    (`PlayedOperation`) instead of Archives. It is active there (CR 1.8.3a:
+    `rules::active` lists it, so its triggers are heard and its standing
+    effects apply), its own "when you play this operation" is that copy's
+    (`listeners::moments` pins the play to the handle), and it is trashed
+    as the Corp's next turn begins — after the window before the turn
+    (5.6.1b), before `TurnStarted` is heard (`turn::begin_turn`), as a
+    trash from the play area. Public, and carried by the view and every
+    bot sample.
+  - **"Play only if there is no active lockdown"** is `ZoneHasAtLeast`
+    over `CardZoneRef::PlayArea`, the zone both players share (CR 4.1.1b),
+    with a subtype filter; nothing chooses from it.
+  - **A server the card chose, and one protected by ice** are two
+    `EventFilter`s on a server moment: `ChosenServer` (Hyoubu Precog
+    Manifold's "a successful run on the chosen server", read off the
+    lingering choice as `Mark` reads the mark) and `ProtectedByIce` (Argus
+    Crackdown's, asked as the moment is heard, rezzed ice or not).
+  - **A choice made as an operation is played lasts while that copy is in
+    play** (CR 9.10.3c, `Until::WhileInPlay`): `ChooseServer`'s duration is
+    the rules', read off where its card is — Tsakhia's, made when a turn
+    begins by an ability that does nothing else, still ends with the turn
+    (9.10.3b). Keyed by the copy's handle, so a second Hyoubu a turn later
+    chooses afresh.
+  - **A steal priced off the agenda's counters**: NAPD Cordon's
+    "4[credit] plus 2[credit] for each advancement counter on that agenda"
+    is `StealCost(CreditsAmount(Increased { Fixed(4), Times {
+    AccessedCardAdvancementCounters, 2 } }))`, reckoned to a number of
+    credits as the agenda is offered (CR 1.16.2b), so the offer the Runner
+    reads is what they pay. `Amount::Times` is new: `Increased` of a count
+    with itself reads as two counts where the card prints one at a rate.
+  - **No card but an icebreaker breaks** (`Prohibition::
+    BreakWithNonIcebreakers`, NEXT Activation Command's, standing as a
+    `ContinuousKind::Cannot`): asked by both break effects of a breaker
+    that is not one (`ability::breakable_now`) — Boomerang, Poison Vial, a
+    bioroid's own "Lose [click]: Break". "Each piece of ice gets +2
+    strength" is a `Strength` about `Scope::Ice(Any)`.
+- **What each is made of.** SYNC Rerouting is Funhouse's "give the Runner
+  1 tag unless they pay 4[credit]" on `OnRunStart`; Argus Crackdown 2 meat
+  damage on `OnSuccessfulRun` when `ProtectedByIce`; Hyoubu Precog
+  Manifold `ChooseServer` on its own `OnPlay` and Adrian Seis's psi game,
+  ending the run when the bids differ.
+- **Client.** The lockdown is a line of `hud::in_effect` in both clients
+  ("in play until the Corp's next turn: …"), the choice's duration reads
+  "while it stays in play", and `prose` reads the new prohibition, zone
+  and amounts. The view ledger names the play area as drawn there.
+- **Decks.** Pay to Win two SYNC Rerouting for two Nonequivalent Exchange;
+  Tag You're It two Argus Crackdown for two Hedge Fund; Retirement Package
+  two NEXT Activation Command and two NAPD Cordon for its two Reverb and two
+  Lycian Multi-Munition; A Thousand Cuts two Hyoubu Precog Manifold for two
+  Vicsek. Every card given up is still in another Sweep deck.
+- **DSL ratio** (`pool_status.py`): 17 of 101 `Effect` variants
+  single-use, none unused, over 566 card files — `ChooseServer` has its
+  second card.
+- **Real play** (`--headless`, each deck against Safety Net, seed 2;
+  random seats 96 games, planner seats 48; each pair random / planner).
+  SYNC Rerouting played 106 / 0, its tax asked 276 times under random;
+  Argus Crackdown played 61 / 1, its damage done 28 times; NEXT Activation
+  Command played 84 / 4; NAPD Cordon 69 / 0; Hyoubu Precog Manifold played
+  41 / 1, its psi game 6 times. The planner's turn ends at its own, and a
+  lockdown pays on the Runner's: the five go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,459 outside the desktop
+  crate, 251 in it) and clippy silent. Both sweeps are green at 256 seeds,
+  the card gate included, so every lockdown was played. `coverage_
+  identical.py` against Stage 6 (3c4fcf5, 192 games a report): random
+  identical, view and index; the planner moves by the larger prior —
+  Corp agenda wins 65 → 66, Runner agenda wins 100 → 99, steps
+  110,002 → 110,068.

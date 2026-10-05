@@ -154,8 +154,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // to ask (`TriggeredEffect::when`), not a second moment: "whenever
         // you play a transaction" is `OnCardPlayed` heard by a card
         // that means transactions.
+        // A lockdown is heard as the copy it is in the play area, where it
+        // stays (CR 3.5.1c): its own "when you play this operation" is
+        // that copy's, and so is the choice it makes.
         GameEvent::OperationPlayed { side, card: played, .. } => {
-            let about = card(played, None);
+            let handle = state.corp.play_area.iter().rev().find(|in_play| &in_play.card == played).map(|in_play| in_play.handle);
+            let about = About::Card { card: played.clone(), install: handle, installed: false };
             vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
         }
 
@@ -315,8 +319,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![Moment { trashed_from: Some(*from), was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
         }
         // The one rules' trash that is a moment: an event leaving the play
-        // area as it finishes resolving (CR 3.7.1), nobody's, so heard by a
-        // card whose trash is passive — Aniccam's "an event is trashed"
+        // area as it finishes resolving (CR 3.7.1), or a lockdown as the
+        // Corp's turn begins (3.5.1c), nobody's, so heard by a card whose
+        // trash is passive — Aniccam's "an event is trashed"
         // (`EventFilter::Anyone`) — and by no "you trash" a filter asks of.
         GameEvent::CardTrashed { card: trashed, from: from @ crate::dsl::TrashedFrom::PlayArea, by: None, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: false };
@@ -681,6 +686,10 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
         (EventFilter::Mark, About::Server(server)) => crate::rules::lingering::mark(state) == Some(*server),
+        (EventFilter::ChosenServer, About::Server(server)) => crate::rules::lingering::chosen_server(state, listener_card) == Some(*server),
+        (EventFilter::ProtectedByIce, About::Server(server)) => {
+            state.corp.installed.iter().any(|card| card.server == *server && card.slot == InstallSlot::Ice)
+        }
         (EventFilter::Damage(kind), About::Damage(dealt)) => kind == dealt,
         (EventFilter::AtLeast(least), About::Cards(count)) => count >= least,
         // `CardDefinition::validate` refuses the mismatch in a card file.

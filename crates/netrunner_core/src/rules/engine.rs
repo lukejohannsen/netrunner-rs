@@ -1645,6 +1645,13 @@ pub(crate) fn play_operation_card(
     if from_archives || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
+    } else if card_def.not_trashed_until_your_next_turn {
+        // A lockdown stays in the play area, active, and is heard there:
+        // its own `OnPlay` resolves as the copy with this handle
+        // (`listeners::moments` pins the play to it), so a choice it makes
+        // lasts while this copy stays (CR 9.10.3c).
+        let handle = next.allocate_install_id();
+        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle });
     } else {
         crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }

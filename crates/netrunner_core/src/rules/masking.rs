@@ -127,6 +127,10 @@ pub struct PublicCorpState {
     /// Never masked: faceup (`CorpState::set_aside`, Deep Dive).
     #[serde(default)]
     pub set_aside: Vec<CardId>,
+    /// Never masked: a played operation is faceup in the play area
+    /// (`CorpState::play_area`, a lockdown).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play_area: Vec<crate::rules::PlayedOperation>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -1427,6 +1431,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         bad_publicity: corp.bad_publicity,
         removed_from_game: corp.removed_from_game.clone(),
         set_aside: corp.set_aside.clone(),
+        play_area: corp.play_area.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),

@@ -104,6 +104,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::RunnerInstalls(filter) => format!("the Runner's installed cards ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Amount::Reduced { amount, by } => format!("{} less {}, at least 0", describe_amount(amount), describe_amount(by)),
         Amount::Increased { amount, by } => format!("{} plus {}", describe_amount(amount), describe_amount(by)),
+        Amount::Times { amount, times } => format!("{times} for each of {}", describe_amount(amount)),
+        Amount::AccessedCardAdvancementCounters => "the advancement counters on the card being accessed".to_string(),
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
@@ -144,6 +146,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OpponentScoreArea => "the opponent's score area",
         CardZoneRef::OwnScoreArea => "your score area",
         CardZoneRef::OpponentRemovedFromGame => "out of the game",
+        CardZoneRef::PlayArea => "the play area",
     }
 }
 
@@ -506,6 +509,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::Rez, _) => "the Corp cannot rez that card",
                 (Prohibition::BreakSubroutinesOnIce, _) => "Runner card abilities cannot break subroutines on that ice",
                 (Prohibition::DeclaredSuccessful, _) => "this run cannot be declared successful",
+                (Prohibition::BreakWithNonIcebreakers, _) => "the Runner cannot use non-icebreaker cards to break subroutines",
             };
             format!("{what} {}", duration(until))
         }
@@ -578,6 +582,8 @@ pub fn humanize(debug: String) -> String {
 fn describe_when(filter: &EventFilter) -> String {
     match filter {
         EventFilter::Mark => "on your mark".to_string(),
+        EventFilter::ChosenServer => "on the chosen server".to_string(),
+        EventFilter::ProtectedByIce => "on a server protected by ice".to_string(),
         EventFilter::Server(servers) => {
             let servers: Vec<String> = servers.iter().map(|server| describe_server(*server)).collect();
             format!("on {}", servers.join(" or "))
@@ -816,6 +822,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Rez => "cannot rez this card",
             Prohibition::BreakSubroutinesOnIce => "cannot break subroutines on this ice with Runner card abilities",
             Prohibition::DeclaredSuccessful => "cannot be declared successful",
+            Prohibition::BreakWithNonIcebreakers => "cannot use non-icebreaker cards to break subroutines",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

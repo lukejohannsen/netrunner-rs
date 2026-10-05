@@ -233,6 +233,12 @@ pub enum Until {
     /// ice. Install handles are never reused, so a card trashed and
     /// installed again is a new install and keeps no earlier choice.
     WhileInstalled(InstallId),
+    /// For as long as this played operation stays in the play area (CR
+    /// 9.10.3c, the source becoming inactive) — Hyoubu Precog Manifold's
+    /// "When you play this operation, choose a server", kept until the
+    /// lockdown is trashed as the Corp's next turn begins
+    /// (`CorpState::play_area`, `PlayedOperation::handle`).
+    WhileInPlay(InstallId),
 }
 
 impl LingeringEffect {
@@ -249,6 +255,7 @@ impl LingeringEffect {
             Until::WhileInstalled(install) => {
                 state.runner.rig.iter().any(|card| card.install_id == install) || state.corp.installed.iter().any(|card| card.install_id == install)
             }
+            Until::WhileInPlay(handle) => state.corp.play_area.iter().any(|played| played.handle == handle),
         }
     }
 }

@@ -295,6 +295,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::Rez => "the Corp cannot rez that card",
         Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
         Prohibition::DeclaredSuccessful => "this run cannot be declared successful",
+        Prohibition::BreakWithNonIcebreakers => "the Runner cannot use non-icebreaker cards to break subroutines",
     }
 }
 
@@ -440,6 +441,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::NextTurnOf(_) => "",
                 Until::WhileRezzed(_) => ", while it remains rezzed",
                 Until::WhileInstalled(_) => ", while it remains installed",
+                Until::WhileInPlay(_) => ", while it stays in play",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))
@@ -481,6 +483,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let names: Vec<String> = view.corp.set_aside.iter().map(&title).collect();
             format!("set aside from R&D: {}", names.join(", "))
         }))
+        // A lockdown in the play area (CR 3.5.1c): faceup, active, and
+        // gone when the Corp's next turn begins, which is the line's to say
+        // because nothing on the board stands for it.
+        .chain(view.corp.play_area.iter().map(|played| format!("in play until the Corp's next turn: {}", title(&played.card))))
         .collect()
 }
 

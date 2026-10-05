@@ -620,6 +620,20 @@ pub enum EventFilter {
     /// `Server` list is written in the card file, and the mark is chosen at
     /// random each turn.
     Mark,
+    /// The server the moment is about is the one the listening card chose
+    /// (`Effect::ChooseServer`, `lingering::chosen_server`) — Hyoubu
+    /// Precog Manifold's "whenever the Runner makes a successful run on
+    /// **the chosen server**". Matching nothing while there is no choice.
+    /// `Mark`'s shape for the same reason: the server is the state's, not
+    /// the card file's. `CardFilter::InChosenServer` says it of a card.
+    ChosenServer,
+    /// The server the moment is about is protected by ice — Argus
+    /// Crackdown's "a successful run on **a server protected by ice**",
+    /// asked as the moment is heard (CR 9.6.5c), rezzed or not (CR 8.1.2:
+    /// unrezzed ice protects its server too). Composition didn't work: a
+    /// `Server` list names servers, and this is a fact about whichever
+    /// server it is.
+    ProtectedByIce,
     /// The card the moment is about matches **and was installed when it
     /// happened** — Aggressive Trendsetting's "the first time the Runner
     /// trashes an **installed** Corp card", against a card trashed out of
@@ -840,6 +854,8 @@ pub enum TrashedFrom {
     /// event is the only card that leaves the play area this way and the
     /// listeners that would hear it ask what it is. An operation is filed
     /// in Archives as it resolves with no trash recorded: no card hears it.
+    /// A lockdown, which stays in the play area (CR 3.5.1c), is trashed
+    /// from it as the Corp's next turn begins, and that trash is recorded.
     PlayArea,
 }
 

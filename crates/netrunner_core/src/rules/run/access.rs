@@ -1585,7 +1585,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

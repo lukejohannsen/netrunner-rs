@@ -512,6 +512,9 @@ impl Occurrences {
             Some(EventFilter::InstalledIn(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without the server it went into, so \"the first\" cannot be narrowed by it"));
             }
+            Some(EventFilter::ChosenServer | EventFilter::ProtectedByIce) => {
+                return Err(format!("the turn counts a {trigger:?} by the kind of server, not which one or what protects it, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::AtLeast(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
             }

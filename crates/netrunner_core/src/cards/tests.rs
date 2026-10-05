@@ -24281,4 +24281,142 @@ mod uprising {
         assert_eq!(declined.runner.stack.len(), 3, "shuffled back");
         assert!(declined.runner.removed_from_game.is_empty());
     }
+
+    // ---- Stage 7a: lockdown ----
+
+    fn play_op(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) })
+    }
+
+    /// The Corp's turn with `card` played and then the Runner's turn.
+    fn locked_down(card: &str, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = vec![id(card)];
+        let (mut played, _) = play_op(&state, registry, card).expect("play the lockdown");
+        played.phase = GamePhase::Action(Side::Runner);
+        played.runner.grip = vec![id("sure_gamble"); 4];
+        played
+    }
+
+    #[test]
+    fn a_lockdown_stays_in_play_until_the_corps_next_turn_begins_and_bars_a_second_lockdown() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("sync_rerouting"), id("napd_cordon")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let (played, _) = play_op(&state, &registry, "sync_rerouting").expect("play");
+        assert_eq!(played.corp.play_area.iter().map(|in_play| in_play.card.clone()).collect::<Vec<_>>(), [id("sync_rerouting")], "not trashed");
+        assert!(played.corp.archives.is_empty());
+        assert!(play_op(&played, &registry, "napd_cordon").is_err(), "play only if there is no active lockdown");
+        assert!(!crate::rules::legal_actions_for(&played, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("napd_cordon") }));
+        let view = crate::view::build_client_view(&played, &registry, Side::Runner);
+        assert_eq!(view.corp.play_area.len(), 1, "faceup in the play area, so the Runner sees it");
+
+        // Through the Runner's turn, and gone as the Corp's next one begins.
+        let mut runner_turn = played;
+        runner_turn.phase = GamePhase::Action(Side::Runner);
+        let next = corp_turn_begins(runner_turn, &registry);
+        assert!(next.corp.play_area.is_empty(), "trashed as the Corp's turn begins");
+        assert!(next.corp.archives.iter().any(|archived| archived.card == id("sync_rerouting") && !archived.facedown));
+        assert!(play_op(&next, &registry, "napd_cordon").is_ok(), "no active lockdown now");
+    }
+
+    #[test]
+    fn sync_rerouting_gives_a_tag_as_each_run_begins_unless_the_runner_pays_four() {
+        let registry = registry();
+        let state = locked_down("sync_rerouting", &registry);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        assert!(asked.pending_paid_choice.is_some(), "whenever a run begins");
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(declined.runner.tags, 1);
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("pay 4");
+        assert_eq!((paid.runner.tags, paid.runner.resources.credits), (0, Credits(6)));
+    }
+
+    #[test]
+    fn argus_crackdown_does_two_meat_damage_on_a_successful_run_on_a_server_protected_by_ice() {
+        let registry = registry();
+        let mut state = locked_down("argus_crackdown", &registry);
+        let mut ice = ice_at_hq("ice_wall", 0);
+        ice.rezzed = false;
+        state.corp.installed = vec![ice];
+        let (unprotected, _) = run_to_completion(state.clone(), &registry, ServerId::Archives);
+        assert_eq!(unprotected.runner.grip.len(), 4, "Archives has no ice");
+        let (protected, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(protected.runner.grip.len(), 2, "HQ is protected by ice, rezzed or not");
+    }
+
+    #[test]
+    fn napd_cordon_adds_four_credits_and_two_per_advancement_counter_to_stealing_an_agenda() {
+        let registry = registry();
+        let mut state = locked_down("napd_cordon", &registry);
+        let mut agenda = root_at("hostile_takeover", 0);
+        agenda.advancement_tokens = 1;
+        state.corp.installed = vec![agenda];
+        state.runner.resources.credits = Credits(10);
+        let (accessing, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        let pending = accessing.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone());
+        assert!(
+            matches!(pending, Some(crate::rules::AccessPhase::PendingChoice { steal_cost: Some(crate::dsl::Cost::Credits(6)), .. })),
+            "4 plus 2 for the one counter: {pending:?}"
+        );
+        let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        assert_eq!(stolen.runner.resources.credits, Credits(4), "paid 6");
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
+    }
+
+    #[test]
+    fn next_activation_command_gives_ice_two_strength_and_bars_breaking_with_non_icebreakers() {
+        let registry = registry();
+        let mut state = locked_down("next_activation_command", &registry);
+        state.corp.installed = vec![ice_at_hq("ansel_2_0", 0)];
+        let encountering = to_the_encounter(&state, &registry);
+        let run = encountering.active_run.as_ref().expect("a run");
+        assert_eq!(crate::rules::continuous::ice_strength(&encountering, &registry, &run.ice[run.position]), 7, "5, +2");
+        let ansel = install_of(&encountering, "ansel_2_0");
+        let breaks_with_ansel = |state: &GameState| {
+            crate::rules::legal_actions_for(state, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::ActivateAbility { target, .. } if *target == ansel))
+        };
+        assert!(!breaks_with_ansel(&encountering), "a bioroid is not an icebreaker");
+        let mut free = encountering.clone();
+        free.corp.play_area.clear();
+        assert!(breaks_with_ansel(&free), "without the lockdown, Lose [click][click]: break");
+    }
+
+    #[test]
+    fn hyoubu_precog_manifold_plays_a_psi_game_on_a_successful_run_on_the_chosen_server_and_ends_it_if_the_bids_differ() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hyoubu_precog_manifold"), id("hedge_fund")];
+        let (asked, _) = play_op(&state, &registry, "hyoubu_precog_manifold").expect("play");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseServer { .. })), "choose a server");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let mut runner = chosen;
+        runner.phase = GamePhase::Action(Side::Runner);
+        let bid = |state: &GameState, amount: u32| apply_action(state, &registry, PlayerAction::ChooseNumber { amount }).expect("bid").0;
+
+        let (elsewhere, _) = run_to_completion(runner.clone(), &registry, ServerId::RnD);
+        assert!(!matches!(elsewhere.pending_decision, Some(PendingDecision::PsiGame { .. })), "R&D was not chosen");
+
+        let (psi, _) = run_to_completion(runner.clone(), &registry, ServerId::Hq);
+        assert!(matches!(psi.pending_decision, Some(PendingDecision::PsiGame { .. })), "{:?}", psi.pending_decision);
+        let (differ, events) = apply_action(&bid(&psi, 0), &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert!(differ.active_run.is_none(), "the run ends");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "nothing accessed: {events:?}");
+        let (_, events) = apply_action(&bid(&psi, 1), &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "the bids match: the breach, and Hedge Fund accessed: {events:?}");
+
+        // A second copy, a turn later, chooses afresh: the first copy's
+        // server went with it.
+        let mut later = corp_turn_begins(runner, &registry);
+        assert!(later.lingering.iter().all(|effect| !effect.holds(&later) || !matches!(effect.what, crate::rules::lingering::Lingering::ChosenServer(_))), "the choice lasted while the copy was in play");
+        later.corp.hq.push(id("hyoubu_precog_manifold"));
+        later.phase = GamePhase::Action(Side::Corp);
+        let (asked, _) = play_op(&later, &registry, "hyoubu_precog_manifold").expect("play again");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        let mut runner = chosen;
+        runner.phase = GamePhase::Action(Side::Runner);
+        let (not_hq, _) = run_to_completion(runner, &registry, ServerId::Hq);
+        assert!(!matches!(not_hq.pending_decision, Some(PendingDecision::PsiGame { .. })), "HQ was the first copy's");
+    }
 }

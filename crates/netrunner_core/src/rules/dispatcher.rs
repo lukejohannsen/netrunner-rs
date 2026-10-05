@@ -530,6 +530,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
             state.runner.rig.iter().any(|c| c.install_id == install)
                 || state.corp.installed.iter().any(|c| c.install_id == install)
                 || state.corp.find_scored(install).is_some()
+                || state.corp.play_area.iter().any(|played| played.handle == install)
         }
         _ => true,
     };

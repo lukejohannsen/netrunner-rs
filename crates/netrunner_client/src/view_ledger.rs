@@ -84,6 +84,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         points_to_win: _,       // drawn: hud::readouts ("3/5"), the score sheet's caption, the terminal's status line
         removed_from_game: _,   // drawn: under Archives' sheet; the terminal's identity line and card picker
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients, as the Runner's is; the access pop-up draws the ones offered
+        play_area: _,           // drawn: hud::in_effect ("in play until the Corp's next turn: …"), both clients: a lockdown, faceup and active (CR 3.5.1c)
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
         identity_flipped: _,    // drawn: hud::identity_side — the avatar chip, the identity sheet, the terminal's identity line
         identity_copy: _,       // drawn: hud::identity_side ("Side 2")

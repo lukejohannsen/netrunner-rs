@@ -83,6 +83,14 @@ pub enum CardZoneRef {
     /// Corp: Ansel 2.0's "remove 1 card in the heap from the game" — and
     /// the Corp's when the chooser is the Runner. A destination only.
     OpponentRemovedFromGame,
+    /// The operations in the play area that stay there after resolving
+    /// (`CorpState::play_area`) — the zone is both players' (CR 4.1.1b), so
+    /// neither "own" nor "opponent": every lockdown's "Play only if there
+    /// is no active **lockdown**" (CR 3.5.1c), counted by
+    /// `EffectRequirement::ZoneHasAtLeast` with a subtype filter. A source
+    /// for a count only. A run's event is in the play area too and is not
+    /// listed: no card counts one there.
+    PlayArea,
 }
 
 impl CardZoneRef {
@@ -107,7 +115,8 @@ impl CardZoneRef {
             | CardZoneRef::HostedOnSource
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
-            | CardZoneRef::OpponentRemovedFromGame => false,
+            | CardZoneRef::OpponentRemovedFromGame
+            | CardZoneRef::PlayArea => false,
         }
     }
 
@@ -130,6 +139,7 @@ impl CardZoneRef {
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
             | CardZoneRef::OpponentRemovedFromGame => TrashedFrom::Elsewhere,
+            CardZoneRef::PlayArea => TrashedFrom::PlayArea,
         }
     }
 }

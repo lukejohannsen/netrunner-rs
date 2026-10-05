@@ -4506,6 +4506,13 @@ fn breakable_now(
     if breaker.is_some_and(|definition| definition.side == Side::Runner) && !continuous::runner_cards_may_break(state, registry, ice.install_id) {
         return Vec::new();
     }
+    // NEXT Activation Command: a card that is not an icebreaker — either
+    // side's, since the Runner uses a bioroid's break too — breaks nothing.
+    if breaker.is_some_and(|definition| !card_matches_filter(definition, &CardFilter::Icebreaker))
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::BreakWithNonIcebreakers)
+    {
+        return Vec::new();
+    }
     let mut left = continuous::breaks_left(state, registry, ice, breaker);
     let mut breakable = Vec::new();
     for subroutine in ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker)) {
@@ -4581,6 +4588,14 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
             _ => 0,
         },
+        Amount::Times { amount, times } => resolve_amount(amount, ctx, state, registry).saturating_mul(*times),
+        Amount::AccessedCardAdvancementCounters => state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .and_then(|access| access.pending_install)
+            .and_then(|install| state.find_corp_install(install))
+            .map_or(0, |card| card.advancement_tokens),
         Amount::AccessedCardPrintedCost => state
             .active_run
             .as_ref()

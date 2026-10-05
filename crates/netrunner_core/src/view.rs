@@ -77,6 +77,10 @@ pub struct CorpClientView {
     /// Public — see `CorpState::set_aside`.
     #[serde(default)]
     pub set_aside: Vec<CardId>,
+    /// Public — see `CorpState::play_area`: the lockdown in play, which a
+    /// client draws beside the Corp's identity and a bot's sample copies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play_area: Vec<crate::rules::PlayedOperation>,
     /// Power counters on the Corp's identity (AU Co.) — public, and
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
@@ -395,6 +399,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         points_to_win: crate::rules::continuous::points_to_win(state, registry, Side::Corp),
         removed_from_game: public.corp.removed_from_game,
         set_aside: public.corp.set_aside,
+        play_area: public.corp.play_area,
     };
 
     let runner = RunnerClientView {

@@ -626,6 +626,18 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub removed_after_play: bool,
 
+    /// "This operation is not trashed until your next turn begins." — what
+    /// every lockdown prints (CR 3.5.1c). Filed by `engine::
+    /// play_operation_card` in `CorpState::play_area` instead of Archives,
+    /// active there, and trashed as the Corp's next turn begins, before
+    /// anything that turn hears (`turn::enter_start_of_turn`; CR 8.6.6c's
+    /// lingering effect, expiring as the turn begins). A declaration beside
+    /// `removed_after_play`, for the same reason: the play files the card,
+    /// so the play is where it can be filed elsewhere. `validate` keeps it
+    /// to operations.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub not_trashed_until_your_next_turn: bool,
+
 
 
     /// What this card's hosted credits (`counters`, with `counter_kind:
@@ -1013,6 +1025,8 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: \"not trashed until your next turn begins\" is an operation's (a lockdown's, CR 3.5.1c); `engine::play_operation_card` is what reads it")]
+    NotTrashedOffAnOperation(CardId),
     #[error("card {0:?}: \"install only if\" (`install_requirement`) is asked as a Runner card goes into the rig — a program, hardware or resource")]
     InstallRequirementOffTheRig(CardId),
     #[error("card {0:?}: a selection of \"that many\" (`count`) writes `min` and `max` 0 — the count is both bounds")]
@@ -1120,6 +1134,7 @@ impl Default for CardDefinition {
             dividends: None,
             playable_from_archives: false,
             removed_after_play: false,
+            not_trashed_until_your_next_turn: false,
             pays_for: Vec::new(),
             trash_when_empty: false,
             may_install_agendas_faceup: false,
@@ -1201,7 +1216,7 @@ impl CardDefinition {
             // A trash does not say whether the card was installed.
             EventFilter::InstalledCard(_) if triggered.trigger == Trigger::OnCardTrashed => false,
             EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
-            EventFilter::Server(_) | EventFilter::Mark => about == TriggerAbout::Server,
+            EventFilter::Server(_) | EventFilter::Mark | EventFilter::ChosenServer | EventFilter::ProtectedByIce => about == TriggerAbout::Server,
             EventFilter::Damage(_) => about == TriggerAbout::Damage,
             EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
             // Only a moment that names a player can be made one's.
@@ -1249,6 +1264,9 @@ impl CardDefinition {
         }
         if !self.deck_rules.is_empty() && self.card_type != CardType::Identity {
             return Err(CardValidationError::DeckRuleOffAnIdentity(self.id.clone()));
+        }
+        if self.not_trashed_until_your_next_turn && self.card_type != CardType::Operation {
+            return Err(CardValidationError::NotTrashedOffAnOperation(self.id.clone()));
         }
         // Asked by the one door into the rig (`engine::install_into_rig`);
         // a Corp card's install has no such question, and none prints one.

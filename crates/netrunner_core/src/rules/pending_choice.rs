@@ -104,6 +104,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OpponentSetAside => state.corp.set_aside.clone(),
+        CardZoneRef::PlayArea => state.corp.play_area.iter().map(|played| played.card.clone()).collect(),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
             Side::Runner => state.runner.heap.clone(),
@@ -611,6 +612,9 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         // only through `ability::add_agenda_to_score_area` (Kingmaking).
         CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
+        // Counted, never chosen from: a played operation is no list of
+        // card ids (`PlayedOperation`).
+        CardZoneRef::PlayArea => None,
         CardZoneRef::OpponentRemovedFromGame => match owner {
             Side::Corp => Some(&mut state.corp.removed_from_game),
             Side::Runner => Some(&mut state.runner.removed_from_game),
@@ -1639,14 +1643,22 @@ pub(crate) fn resolve_choose_server(
         return Err(RulesError::ServerNotAllowedForChoice { server });
     }
 
-    // The remembered choice (Tsakhia): the server is the card's for the
-    // rest of the turn, and nothing else happens.
+    // The remembered choice: the server is the card's, and nothing else
+    // happens. How long is the rules' (CR 9.10.3): Tsakhia's, made when a
+    // turn begins by an ability that does nothing else, until the turn
+    // ends (9.10.3b); a lockdown's, made as it is played, while that copy
+    // stays in the play area (9.10.3c: until the source is inactive).
     if remember {
         let card = source_card.ok_or(RulesError::UnresolvedCardTarget)?;
+        let in_play = source_install.filter(|handle| state.corp.play_area.iter().any(|played| played.handle == *handle));
+        let until = match in_play {
+            Some(handle) => crate::rules::lingering::Until::WhileInPlay(handle),
+            None => crate::rules::lingering::Until::EndOfTurn(state.turn),
+        };
         state.lingering.push(crate::rules::lingering::LingeringEffect {
             what: crate::rules::lingering::Lingering::ChosenServer(server),
             on: crate::rules::lingering::On::Player(chooser),
-            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            until,
             source: card,
         });
         return Ok(vec![GameEvent::PendingChoiceResolved { chooser, option_index: 0 }]);

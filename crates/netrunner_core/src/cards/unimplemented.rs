@@ -53,16 +53,11 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
-    ("next_activation_command", "NEXT Activation Command"),
     ("konjin", "Konjin"),
-    ("hyoubu_precog_manifold", "Hyoubu Precog Manifold"),
-    ("sync_rerouting", "SYNC Rerouting"),
     ("ganked", "Ganked!"),
     ("earth_station_sea_headquarters", "Earth Station: SEA Headquarters"),
     ("akhet", "Akhet"),
     ("winchester", "Winchester"),
-    ("argus_crackdown", "Argus Crackdown"),
-    ("napd_cordon", "NAPD Cordon"),
 ];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.

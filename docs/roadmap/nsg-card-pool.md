@@ -49,13 +49,15 @@ cards each stage takes.
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
-| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 53 + 6 | 12 + 1 | Stages 1–6 built (4 October 2026) |
+| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 58 + 6 | 7 + 1 | Stages 1–6 and 7a built (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **18 of 101
-`Effect` variants single-use, none unused, over 561 card files** (4 October
-2026, with Uprising Stage 6, which added `RevealHand`, Engram Flush's alone,
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 101
+`Effect` variants single-use, none unused, over 566 card files** (5 October
+2026, with Uprising Stage 7a, which added no variant and gave `ChooseServer`
+its second card, Hyoubu Precog Manifold; Stage 6, at 18 of 101 over 561,
+added `RevealHand`, Engram Flush's alone,
 and `Remember`, which Boomerang and Engram Flush share; Stage 5 added no
 variant and gave `Trace`, the last unused one, its first card, Scapenet, at
 17 of 99 over 555; Stage 4 added
@@ -318,13 +320,13 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e; PH 7 |
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
 | Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | PH 8 (`ContinuousKind::LosesAbilities`, `Lingering::LosesAbilities`; one question, `active::lost_abilities`); MS 8b (the root of the attacked server, read when asked: `lingering::On::RootOfAttackedServer`) |
-| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | RWR 5b (Hammer's, standing); PH 8 (for a duration, `Lingering::BreakLimit`; one Runner card's, `Prohibition::BreakSubroutines`); MS 8b (one piece of ice, against Runner cards only: `Prohibition::BreakSubroutinesOnIce`) |
+| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | RWR 5b (Hammer's, standing); PH 8 (for a duration, `Lingering::BreakLimit`; one Runner card's, `Prohibition::BreakSubroutines`); MS 8b (one piece of ice, against Runner cards only: `Prohibition::BreakSubroutinesOnIce`); UR 7a (no card but an icebreaker breaks, standing: `Prohibition::BreakWithNonIcebreakers`) |
 | Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | PH 6a (composes: a selection of `HostsCounters(Power)`) |
 | Mark | PH: Tunnel Vision, Info Bounty | MS Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso, Backstitching | CR 10.11 | PH 6b (`Lingering::Mark`, `Effect::IdentifyMark`) |
 | An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); PH 3a (requirement, a card's own) |
-| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a; PH 8 (a server, for the turn: Tsakhia's `Effect::ChooseServer`); MS 8b (a piece of ice, while the chooser is rezzed: `EffectDuration::WhileRezzed`); UR 6 (a card while the chooser is installed, a card type for the encounter: `Effect::Remember`) |
+| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush, Hyoubu Precog Manifold; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a; PH 8 (a server, for the turn: Tsakhia's `Effect::ChooseServer`); MS 8b (a piece of ice, while the chooser is rezzed: `EffectDuration::WhileRezzed`); UR 6 (a card while the chooser is installed, a card type for the encounter: `Effect::Remember`); UR 7a (a server while a lockdown is in play: `Until::WhileInPlay`) |
 | A triggered ability created by a card that resolved ("when your next run ends…") | DF: In the Groove, Climactic Showdown, Always Have a Backup Plan | reprints Inside Job, Test Run | CR 9.10 | RWR 5d in part (a delayed conditional ability); DF's cards — |
-| Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c | — |
+| Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c | UR 7a (`CorpState::play_area`, active there; trashed as the Corp's next turn begins; "no active lockdown" is `ZoneHasAtLeast` over `CardZoneRef::PlayArea`) |
 
 Two more mechanics, each first needed by a single card:
 - **Méliès U's secret, three-sided identity** (CR 1.5.2b). Built in VP
@@ -448,6 +450,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **An identity's ability** — paid, Phase 5 §33 (2 October 2026): samples carried no identity, so no identity's ability was a step of any plan. **Still owed:** LEO Construction's end-the-run is used, and trades a bioroid too cheaply — 9 of 14 uses before the run met any ice, 2 on Archives, 10 of them Mercia B4LL4RD, whose turn-by-turn barrier install the evaluator does not read — because ending a run returns the Corp's active-run term and the run's stakes whatever the run would have reached (Phase 5 Open).
 - **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
 - **Uprising Stage 5's cards it barely plays** (each edited deck, seed 2, 48 planner games): Scapenet never played (Pay to Win against Safety Net; random seats 44 times in 96 games) — a trace's bid is a contest no line prices, so the operation is a card for nothing; Gold Farmer's break trigger never heard by either seat in that matchup, whose Runner never broke it (its subroutines fired 87 / 110 times); Transport Monopoly used once in each Corp deck (scored 4 and 12 times), its counters otherwise left on the agenda.
+- **Uprising Stage 7a's lockdowns it barely plays** (each edited deck against Safety Net, seed 2, random 96 / planner 48 games): SYNC Rerouting and NAPD Cordon never played (random 106 and 69 times), Argus Crackdown and Hyoubu Precog Manifold once (61 and 41), NEXT Activation Command 4 times (84) — a lockdown pays on the Runner's turn, past the end of the turn the planner plans, so its play is priced as a click and nothing.
 - **Uprising Stage 6's cards it barely plays** (each edited deck, seed 2, random 96 / planner 48 games): the planner never installs Mu Safecracker or Boomerang in Hit List against Hostile Bid (random seats 14 and 22 times; Mu Safecracker's access offered 49 times), and uses Penrose once in Spare Parts (installed 28 times; random once in 14) — a bypass and a remembered ice are worth nothing to a line that prices only breaks. Afterimage is installed 9 times and bypasses 4 sentries for the planner; Gachapon is installed and used 49 times under both seats, with 150 cards removed from the game; Engram Flush fires 178 subroutines for the planner's Corp in Second Site against Safety Net (72 for random).
 - **Uprising Stage 4's cards it barely plays** (each edited Corp deck against Safety Net, seed 2, 48 planner games): Kakurenbo and Digital Rights Management never played (random seats 11 and 73 times in 96 games) — a turn spent setting up a fast advance is priced as the turn it costs; False Lead scored 10 times and forfeited once, since a forfeit's two clicks are a term no line reads; Cayambe Grid rezzed 2 of 44 installs and La Costa Grid 5 of 37; Cyberdex Sandbox never scored by either seat.
 - **Uprising Stage 3's cards it barely plays** (Hit List, Safety Net and Burn Rate against Hostile Bid, seed 2, 48 planner games): Bravado never played (random seats 13 times in 96 games) — its credits come when the run ends, which no line prices before it; The Back installed once and never charged; Cordyceps installed once, its swap never offered; Buffer Drive never installed.
@@ -887,9 +890,13 @@ The stage order below stands.
 6. **Stealth credits on VP's rule, a remembered choice, set aside** (built,
    4 October 2026): Mu Safecracker, Afterimage, Penrose, Boomerang, Engram
    Flush, Gachapon. Stage 6 is complete.
-7. **Lockdown, then psi, then forced encounters:** SYNC Rerouting, Argus
-   Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold,
-   Konjin, Ganked!.
+7. **Lockdown, then psi, then forced encounters**, in two halves:
+   - 7a. **Lockdown** (built, 5 October 2026): SYNC Rerouting, Argus
+     Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog
+     Manifold. Stage 7a is complete.
+   - 7b. **An encounter away from the run's position** (CR 6.5.9a): Konjin
+     (from inside another encounter, CR 6.1.3c) and Ganked! (from inside an
+     access).
 8. **Points, subroutine lists and run costs that change mid-game:**
    Megaprix Qualifier, Project Vacheron, Winchester, Akhet, Earth Station.
 
@@ -897,7 +904,7 @@ The stage order below stands.
 - Project Vacheron: a replacement on entering the Runner's score area, with
   points read off its counters.
 - Konjin: an encounter nested inside an encounter (CR 6.1.3c).
-- Lockdown operations: they stay in play across turns.
+- ~~Lockdown operations: they stay in play across turns.~~ Built in UR 7a.
 - Earth Station: SEA Headquarters: an additional cost to run (CR 6.3.2b) that changes when the
   identity flips.
 - ~~Stealth credits, if VP's rule has not already built them.~~ Built in VP 6b.
@@ -913,6 +920,7 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 - **Stage 4** — nine Corp cards and one new `Effect` (`TurnArchivesFacedown`): the first install each turn into the root of this server, counted on the copies in that root; a cost that forfeits its own agenda, and a window for a scored agenda's ability; "this server" in a count of installs; an install barred from the root of the server a trashed card was in; and a Corp install added to HQ by its own text (`claude/serene-einstein-6bhlig`, 4 October 2026).
 - **Stage 5** — break triggers and the first trace: seven cards and GameNET's Sweep deck, Pay to Win, with no new `Effect` and none left unused (Scapenet's trace is `Trace`'s first card): a card's ability making a player spend or lose credits is a moment, a break says whether the subroutine was printed, and a run can be kept from being declared successful by a card used during it (`claude/serene-einstein-6bhlig`, 4 October 2026).
 - **Stage 6** — four Criminal and Shaper cards on stealth credits, Boomerang's and Engram Flush's remembered choices and Gachapon's set-aside six, with two new `Effect`s (`RevealHand`, `Remember`): a card remembers a card or a card type it chose, reads it back as the ice it may be used on or the type its subroutines may trash, paying a card's own "you may pay" is using it, a run's end knows whether it was successful, and what is left set aside can leave the game (`claude/serene-einstein-6bhlig`, 4 October 2026).
+- **Stage 7a** — lockdown: five operations that stay in the play area, active, until the Corp's next turn begins, with no new `Effect`: "no active lockdown" counted over the play area, a successful run on the chosen server or on one protected by ice, a steal priced off the agenda's counters, and a standing bar on breaking with anything but an icebreaker (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 7. Downfall — 65 cards (C 19 / V 28 / M 18)
 
