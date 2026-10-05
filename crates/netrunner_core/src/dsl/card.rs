@@ -1854,7 +1854,13 @@ impl CardDefinition {
                     return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`)");
                 }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
-                (ContinuousKind::Cannot(_), _) => return misfit("Cannot", "a prohibition is about the player it binds (`Player`)"),
+                // An agenda about its own score (Vulnerability Audit's "You
+                // cannot score this agenda if it was installed this
+                // turn"), asked of the install by `continuous::cannot_install`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::ScoreAgendas), Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::Cannot(_), _) => {
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), or an agenda's about its own score (`This`)");
+                }
             }
         }
         Ok(())

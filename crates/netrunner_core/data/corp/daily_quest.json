@@ -1,0 +1,41 @@
+{
+  "id": "daily_quest",
+  "title": "Daily Quest",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "rez_requirement": "DuringYourActionPhase",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on this server, they gain 2[credit]."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": "RunnerSucceededOnThisServerLastTurn"
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "When your turn begins, if the Runner did not make a successful run on this server during their last turn, gain 3[credit]."
+    }
+  ],
+  "built_from": 26048,
+  "is_playable": true
+}

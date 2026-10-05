@@ -7780,3 +7780,118 @@ Standard-banned and built anyway.
   five words move nothing the sample decks reach. The planner moves by
   the larger prior: Corp agenda wins 72 → 71, Corp wins by flatline 20 →
   21, Runner agenda wins 96 → 95, Runner deck-outs 4 → 5.
+
+#### Stage 4 — amount, requirement and subtype words (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Lat: Ethical Freelancer, Sting!, Daily
+Quest, Fully Operational, Focus Group, Hagen, Vulnerability Audit, The
+Nihilist and Blueberry!™ Diesel, and Lat's Sweep deck, Level Pegging.
+**One new `Effect`** (`Repeat`). Downfall 36 of 65; `DF_UNIMPLEMENTED`
+38 → 29. Sting! is Standard-banned and built anyway.
+
+- **Game Over moved to Stage 6.** "Trash all installed non-icebreaker
+  cards of the chosen type. For each card that would be trashed this way,
+  the Runner may pay 3[credit] to prevent that card from being trashed"
+  is one trash per card, each with its own payment, and nothing in the
+  DSL loops over cards with a decision in each; Stage 6 is the stage of
+  interrupts and costs to prevent, where the loop belongs.
+- **The words.**
+  - **`Effect::Repeat`** (Fully Operational's "Repeat this process for
+    each remote server that has a card in its root and is protected by
+    ice"): the count read once and the effect rewritten into a `Sequence`
+    of that many copies, so each choice is made after the last one has
+    resolved. A number chosen up front (`ChooseNumber`) would have decided
+    every repetition before the first draw could inform the next.
+  - **`Amount::InZone { zone, filter }`** (Focus Group's "the number of
+    revealed cards of the chosen type"): `ZoneHasAtLeast`'s count as a
+    number.
+  - **`Amount::CopiesInScoreArea(side)`** (Sting!'s "copies of Sting! in
+    the other player's score area"): by card, because its subtype, Ambush,
+    is printed on other agendas.
+  - **`Amount::CountersOnOwnInstalls(kind)`** (The Nihilist's "remove any
+    2 virus counters from your installed cards", offered only when there
+    are 2).
+  - **`EffectRequirement::DuringYourActionPhase`** (Daily Quest's "Rez
+    only during your action phase", a `rez_requirement`): not
+    `DuringYourTurn`, which holds through the turn's first windows and its
+    discard phase.
+  - **`EffectRequirement::RunnerSucceededOnThisServerLastTurn`** and
+    **`RunnerState::servers_run_successfully`** (Daily Quest's "if the
+    Runner did not make a successful run on this server during their last
+    turn"): a list beside `servers_run_this_turn`, cleared with it as the
+    Runner's turn begins, so through the Corp's turn it is the Runner's
+    last — the Turn History Rule's "which servers is a list", because the
+    log counts the remotes as one class. Public, in the view, and copied
+    by `determinize`.
+  - **A selection's number reaches its `then`'s selection**
+    (`with_chosen_number` over `PromptChooseCards::then`): Focus Group's
+    X advancement counters on the card chosen after X. The gate
+    `a_chosen_number_reaches_every_amount_a_card_writes` found it.
+  - **An agenda can forbid its own score** (`ContinuousKind::Cannot(
+    ScoreAgendas)` on `This`, `while: ActingCardMatches(InstalledThisTurn)`,
+    asked by `continuous::cannot_install` of the install's own text):
+    Vulnerability Audit. `validate` admits that one prohibition on `This`,
+    and only on an agenda.
+  - **`AddToDeck` from the stack** (Blueberry!™ Diesel's "add 1 of those
+    cards to the bottom of your stack"), only for a card a selection chose
+    there (`ResolutionContext::selected_in_stack`), so a copy in the grip
+    or the heap is never taken in its place.
+- **What composes.** Lat is Supercorridor's "same number" (two `MoreThan`s
+  under `Not`) over the two hands, as the discard phase ends. Hagen is
+  Sandstone's negative strength over `InstalledIcebreakerCount` and a
+  trash filtered by `Not(AnyOf([Decoder, Fracter, Killer]))`. The
+  Nihilist's first virus program each turn is Avgustina Ivanovskaya's
+  column; its "unless the Corp trashes the top card of R&D" is a paid
+  choice of `Cost::Trash` over the top of R&D. Focus Group is a choice of
+  type, `RevealHand` (its second card, after Engram Flush), and
+  `ChooseNumber` capped by `InZone` and the Corp's credits.
+- **Fidelity limits:** one, under Known limits. Focus Group's "you may
+  pay X[credit]" loses X from the credit pool rather than paying it, and
+  "1 installed card" offers the Corp's own installs, as Remastered
+  Edition's does.
+- **Client.** The new view field is an engine's line on the ledger
+  (`servers_run_successfully`: Daily Quest's gain, which the engine and a
+  sample ask; every success is in the log). The new words are read out in
+  `prose`. No ledger row.
+- **Decks.** Level Pegging is Safety Net's frame with Lat for Kate and two
+  Blueberry!™ Diesel for two of its three Net Shield. Pay As You Go takes
+  two The Nihilist for two Tsakhia; A Thousand Cuts three Sting! for a
+  Fujii Asset Retrieval and two Snare!, three points for three; Paid
+  Content two Daily Quest for two B-1001 and two Focus Group for two
+  Nonequivalent Exchange; Deterrence two Hagen for two Bumi 1.0; Undertow
+  two Fully Operational for two Perfect Recall; Retirement Package two
+  Vulnerability Audit for two Salvo Testing, point for point. Every card
+  given up is still in another deck, and every deck keeps its formats.
+- **Two fixes the schedule found.** Level Pegging moved every pairing of
+  the sweep schedule, and two of the new pairings found latent bugs.
+  - **A card's run offered only a server the Runner could not pay to
+    run.** At seed 183 of the 256-seed view sweep (Ground Control against
+    Shootin' n' Lootin'), Transfer of Wealth parked a choice of servers
+    limited to HQ. Earth Station: SEA Headquarters' 1[credit] to run HQ
+    could not be paid, so the Runner had no legal action. This had been
+    reachable since Uprising Stage 8. `PromptChooseServer` now offers
+    only servers whose additional cost can be paid
+    (`run::may_pay_run_cost`, which `start_run` asks too). With none left
+    it is refused the way a server-less offer is, so a "you may run"
+    keeps its other option (CR 1.16.10a).
+  - **The bots' pricing of a parked payment overflowed a debug stack.**
+    Game 19 of the index sweep (Not So Subtle against Sabbatical) parked
+    a rez whose payment asked four times in a row.
+    `eval::fundamentals::through_parked_payment` held a `GameState` by
+    value in every iterator adapter, about 350 KB of stack per question,
+    so it overflowed the test thread's 2 MB. It is now a loop over boxed
+    states, and it makes the same choice: the payer's best, the last of
+    equals.
+- **Measured.** `cargo test --workspace` is green and clippy is silent,
+  with the desktop crate run one test target at a time. Both sweeps are
+  green at 256 seeds, the card gate included. `coverage_identical.py`
+  against Stage 3 (2863e18; 192 games a report) has random identical, by
+  view and by index: the new words move nothing the sample decks reach.
+  The planner moves because `determinize` samples the new cards: Corp
+  agenda wins 71 → 65, Corp wins by flatline 21 → 22, Runner agenda wins
+  95 → 102, Runner deck-outs 5 → 3.
+  The purge test's Runner virus roster names The Nihilist, which hosts
+  virus counters.
+- **DSL ratio** (`pool_status.py`): 15 of 102 `Effect` variants
+  single-use, none unused, over 609 card files — `Repeat` is single-use
+  and `RevealHand` has its second card.

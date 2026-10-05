@@ -817,8 +817,13 @@ pub fn cannot_about(state: &GameState, registry: &CardRegistry, what: Prohibitio
 
 /// [`cannot`] about one install: also what binds only it (Warm
 /// Reception). A score asks this, of the agenda scored.
-pub fn cannot_install(state: &GameState, _registry: &CardRegistry, what: Prohibition, install: InstallId) -> bool {
+pub fn cannot_install(state: &GameState, registry: &CardRegistry, what: Prohibition, install: InstallId) -> bool {
     lingering::prohibits_install(state, what, install)
+        // What the card says about itself (Vulnerability Audit's "You
+        // cannot score this agenda if it was installed this turn"), read off
+        // the copy, whose `while` asks whether it was.
+        || Target::corp_install(state, registry, install)
+            .is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::Cannot(what)))
 }
 
 /// What the table adds to the cost of trashing the accessed Corp card

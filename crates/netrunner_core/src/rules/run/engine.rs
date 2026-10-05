@@ -153,6 +153,31 @@ mod run_precondition_tests {
     }
 }
 
+/// What running `server` costs beside the click, all at once (CR
+/// 1.16.10b), or `None` — Earth Station: SEA Headquarters' 1[credit] to run
+/// HQ (`continuous::run_costs`).
+fn run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> Option<crate::dsl::Cost> {
+    match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
+        [] => None,
+        [one] => Some(one.clone()),
+        many => Some(crate::dsl::Cost::AllOf(many.to_vec())),
+    }
+}
+
+/// Whether the Runner could pay what running `server` costs beside the
+/// click — what `start_run` refuses a run over (CR 1.16.10a: a run that
+/// cannot pay is not made), asked by every offer of a run so the offer and
+/// the run agree. A card's "Run HQ" whose choice of server was parked with
+/// no server left it could pay for was a decision nothing could resolve
+/// (Transfer of Wealth against Earth Station, a deadlock the 256-seed
+/// sweep found).
+pub(crate) fn may_pay_run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
+    run_cost(state, registry, server).is_none_or(|cost| {
+        let ctx = crate::rules::ability::ResolutionContext::for_card(None);
+        crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx)
+    })
+}
+
 /// Begins a run on `server`, paying its additional costs (CR 6.3.2b) as the
 /// server is announced. Returns what the payment emitted, for the caller to
 /// put ahead of `RunInitiated` and to dispatch after it
@@ -184,15 +209,10 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     // announced as the attacked server" (CR 6.3.2b) — before the run's bad
     // publicity credits exist (6.3.3), which cannot pay them. All at once
     // (1.16.10b), and a run that cannot pay is not made.
-    let paid = match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
-        [] => Vec::new(),
-        costs => {
-            let cost = match costs {
-                [one] => one.clone(),
-                many => crate::dsl::Cost::AllOf(many.to_vec()),
-            };
-            let ctx = crate::rules::ability::ResolutionContext::for_card(None);
-            if !crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx) {
+    let paid = match run_cost(state, registry, server) {
+        None => Vec::new(),
+        Some(cost) => {
+            if !may_pay_run_cost(state, registry, server) {
                 return Err(RulesError::CannotAffordRunCost { server });
             }
             crate::rules::ability::pay_cost(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None)?

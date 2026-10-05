@@ -112,6 +112,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         scored_worth: _,        // drawn: hud::score_area, each row's points
         points_to_win: _,       // drawn: as the Corp's
         servers_run_this_turn: _, // engine's: Red Team's legality and the evaluator; each run is in the log
+        servers_run_successfully: _, // engine's: Daily Quest's turn-start gain, asked by the engine and a sample; each success is in the log
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
         identity_flipped: _,    // drawn: hud::identity_side
         once_per_turn_used: _,  // engine's: as the Corp's

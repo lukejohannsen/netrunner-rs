@@ -371,7 +371,10 @@ pub(crate) fn enter_start_of_turn(
         // earlier turn — Seamless Launch's "did not install this turn"
         // eligibility.
         Side::Corp => next.corp.installed.iter_mut().for_each(|installed| installed.installed_this_turn = false),
-        Side::Runner => next.runner.servers_run_this_turn.clear(),
+        Side::Runner => {
+            next.runner.servers_run_this_turn.clear();
+            next.runner.servers_run_successfully.clear();
+        }
     }
 
     events.push(paid_ability::open_window_for(next, next_side, WindowCheckpoint::TurnBeginning { side: next_side }));

@@ -1,0 +1,53 @@
+{
+  "id": "fully_operational",
+  "title": "Fully Operational",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "Increased": {
+                "amount": {
+                  "Fixed": 1
+                },
+                "by": "ProtectedRemotesWithRootCards"
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      2
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      2
+                    ]
+                  }
+                ],
+                "texts": [
+                  "Gain 2[credit]",
+                  "draw 2 cards"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Gain 2[credit] or draw 2 cards. Repeat this process for each remote server that has a card in its root and is protected by ice."
+    }
+  ],
+  "built_from": 26036,
+  "is_playable": true
+}

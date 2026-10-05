@@ -1581,6 +1581,7 @@ pub(crate) fn resolve_confirm_card_selection(
             if side == Side::Corp && is_corp_archives(side, &source) && destination.is_none() {
                 ctx.selected_facedown = positions.first().and_then(|p| state.corp.archives.get(*p)).map(|archived| archived.facedown);
             }
+            ctx.selected_in_stack = side == Side::Runner && matches!(source, CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack) && destination.is_none();
             // The `then` acts *as* the selection (above) but *is* still the
             // prompting card's text, so anything it parks is attributed to
             // that card — see `ResolutionContext::prompting_card`.

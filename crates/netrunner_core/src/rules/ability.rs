@@ -151,6 +151,13 @@ pub struct ResolutionContext<'a> {
     /// `then`. On the context because the install it picks for parks its
     /// choice of server with the copy's position already found.
     pub selected_facedown: Option<bool>,
+    /// Whether the card a selection's `then` acts as was chosen in the
+    /// Runner's stack and is still there — Blueberry!™ Diesel's "add 1 of
+    /// those cards to the bottom of your stack", where the card's name
+    /// alone would find a copy in the grip or the heap first
+    /// (`Effect::AddToDeck`). On the context, as `selected_facedown` is,
+    /// because the effect it is for resolves in the same call.
+    pub selected_in_stack: bool,
     /// The cards a nested cost just trashed, for what it pays for (CR
     /// 1.16.11a) — Kimberlite Field's "trash 1 installed Runner card with a
     /// printed install cost equal to or less than the printed rez cost of
@@ -226,6 +233,11 @@ fn this_server_even_if_gone(state: &GameState, ctx: &ResolutionContext<'_>) -> O
 fn acting_install_has_left(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
     ctx.acting_install.is_some() && acting_corp_position(state, ctx).is_none() && acting_rig_position(state, ctx).is_none()
 }
+
+/// The most times an `Effect::Repeat` resolves its effect: no count in the
+/// pool comes near it (Fully Operational's remotes), and a runaway amount
+/// should not unroll without end.
+const MAX_REPEATS: u32 = 32;
 
 /// The key `ctx`'s use limits are kept under: the card, which copy, and
 /// which of its paid abilities (`OncePerTurnKey`).
@@ -1367,6 +1379,16 @@ pub fn evaluate_effect(
                 place(&mut state.runner.stack, card_id.clone());
                 return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Runner, card: card_id, top, revealed: true }]);
             }
+            // A card chosen on top of the stack (Blueberry!™ Diesel's "add 1
+            // of those cards to the bottom of your stack"): the copy nearest
+            // the top, which is the one looked at.
+            if ctx.selected_in_stack
+                && let Some(position) = state.runner.stack.iter().rposition(|c| c == &card_id)
+            {
+                let card = state.runner.stack.remove(position);
+                place(&mut state.runner.stack, card.clone());
+                return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: false }]);
+            }
             for (zone, revealed) in [(&mut state.runner.heap, true), (&mut state.runner.grip, false)] {
                 if let Some(position) = zone.iter().position(|c| c == &card_id) {
                     zone.remove(position);
@@ -1734,6 +1756,17 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::PresentChoice { chooser: *chooser, options: expanded, texts: expanded_texts }, ctx, registry)
         }
 
+        // Rewritten into the `Sequence` it is shorthand for, its count read
+        // once, now: each copy resolves in full, a choice in one parking
+        // the rest behind it as any `Sequence` does.
+        Effect::Repeat { times, effect } => {
+            let times = resolve_amount(times, ctx, state, registry).min(MAX_REPEATS) as usize;
+            if times == 0 {
+                return Ok(Vec::new());
+            }
+            evaluate_effect(state, &Effect::Sequence(vec![(**effect).clone(); times]), ctx, registry)
+        }
+
         Effect::LoseClicks(amount) => {
             state.runner.resources.clicks =
                 Clicks(state.runner.resources.clicks.0.saturating_sub(*amount));
@@ -2002,6 +2035,26 @@ pub fn evaluate_effect(
                 Some(offered)
             } else {
                 allowed_servers.clone()
+            };
+            // A server whose additional cost to run cannot be paid is not
+            // offered, as `start_run` would refuse it (Earth Station's HQ
+            // with no credit to pay); none left, and nothing is parked.
+            let every_server = || {
+                let existing = crate::rules::legal_actions::existing_remote_ids(state);
+                let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+                servers.extend(existing.iter().copied().map(ServerId::Remote));
+                servers.push(ServerId::Remote(crate::rules::legal_actions::fresh_remote_id(&existing)));
+                servers
+            };
+            let candidates = allowed_servers.clone().unwrap_or_else(every_server);
+            let allowed_servers = if candidates.iter().all(|server| run::may_pay_run_cost(state, registry, *server)) {
+                allowed_servers
+            } else {
+                let payable: Vec<ServerId> = candidates.into_iter().filter(|server| run::may_pay_run_cost(state, registry, *server)).collect();
+                if payable.is_empty() {
+                    return Err(RulesError::NoServerLeftToRun);
+                }
+                Some(payable)
             };
             state.pending_decision = Some(PendingDecision::ChooseServer {
                 chooser: *chooser,
@@ -4088,6 +4141,13 @@ pub fn check_requirement(
             let matches = faction.is_some() && card.and_then(|card| registry.get(&card)).and_then(|card| card.faction) == faction;
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::DuringYourActionPhase => {
+            if state.phase == crate::rules::GamePhase::Action(side) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::RunnerSucceededOnThisServerLastTurn => {
+            let server = acting_server(state, ctx).ok_or(RulesError::RequirementNotMet)?;
+            if state.runner.servers_run_successfully.contains(&server) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::IdentityCopy(copy) => {
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4689,6 +4749,26 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             _ => 0,
         },
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
+        Amount::InZone { zone, filter } => {
+            let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Corp, |card| card.side);
+            crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len() as u32
+        }
+        Amount::CopiesInScoreArea(side) => {
+            let Some(card) = ctx.acting_card else { return 0 };
+            let area = match side {
+                Side::Corp => &state.corp.scored_agendas,
+                Side::Runner => &state.runner.scored_agendas,
+            };
+            area.iter().filter(|scored| &scored.card == card).count() as u32
+        }
+        Amount::CountersOnOwnInstalls(kind) => {
+            let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
+            let holds = |card: &CardId| registry.get(card).and_then(|definition| definition.counter_kind) == Some(*kind);
+            match side {
+                Side::Runner => state.runner.rig.iter().filter(|c| holds(&c.card)).map(|c| c.counters).sum(),
+                Side::Corp => state.corp.installed.iter().filter(|c| holds(&c.card)).map(|c| c.counters).sum(),
+            }
+        }
         Amount::TimesThisTurnWhen { trigger, when } => {
             let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
             state.this_turn.times_when(*trigger, when, controller)
@@ -4864,6 +4944,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::IdentityMatches(_)
         | EffectRequirement::TriggeringCardOfRunnersFaction
+        | EffectRequirement::DuringYourActionPhase
+        | EffectRequirement::RunnerSucceededOnThisServerLastTurn
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::Breaching(_)

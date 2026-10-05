@@ -6575,7 +6575,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "conduit", "cordyceps", "fermenter", "hantu", "leech", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "conduit", "cordyceps", "fermenter", "hantu", "leech", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -25545,5 +25545,198 @@ mod downfall {
         assert_eq!((tagged.runner.tags, tagged.corp.bad_publicity), (1, 2));
         let declined = pass_until_settled(apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0, &registry).0;
         assert_eq!((declined.runner.tags, declined.corp.bad_publicity), (0, 1));
+    }
+
+    // ---- Stage 4: amount, requirement and subtype words ----
+
+    #[test]
+    fn lat_may_draw_as_the_discard_phase_ends_when_grip_and_hq_are_level() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("lat_ethical_freelancer"));
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.hq = vec![id("hedge_fund"); 2];
+        let asked = end_the_runners_turn(&state, &registry);
+        assert!(choosing(&asked), "2 and 2: you may draw 1 card");
+        assert_eq!(pass_until_settled(choose(&asked, &registry, 0), &registry).0.runner.grip.len(), 3);
+        state.corp.hq.pop();
+        assert!(!choosing(&end_the_runners_turn(&state, &registry)), "2 and 1");
+    }
+
+    #[test]
+    fn sting_does_one_net_damage_plus_one_per_copy_in_the_other_players_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("sting", 0) }];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sting"))];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sting") }).expect("score");
+        let scored = pass_until_settled(scored, &registry).0;
+        assert_eq!(scored.runner.grip.len(), 2, "1 plus the copy in the Runner's score area");
+
+        let mut steal = runner_turn();
+        steal.runner.grip = vec![id("sure_gamble"); 4];
+        steal.corp.installed = vec![root_at("sting", 0)];
+        steal.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sting")), crate::rules::ScoredAgenda::plain(id("sting"))];
+        let accessed = accessing_remote(&steal, &registry, 0);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("sting") }).expect("steal");
+        let stolen = pass_until_settled(stolen, &registry).0;
+        assert_eq!(stolen.runner.grip.len(), 1, "1 plus the two in the Corp's score area");
+    }
+
+    #[test]
+    fn daily_quest_rezzes_only_in_the_action_phase_pays_the_runner_and_pays_the_corp_unless_run() {
+        let registry = registry();
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("daily_quest") };
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("daily_quest", 0)];
+        let (rezzed, _) = apply_action(&state, &registry, rez.clone()).expect("rez in the Corp's action phase");
+        assert!(rezzed.corp.installed[0].rezzed);
+        let mut runners = state.clone();
+        runners.phase = GamePhase::Action(Side::Runner);
+        let (run, _) = apply_action(&runners, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let run = crate::rules::test_support::through_movement(&run, &registry).map(|(s, _)| s).unwrap_or(run);
+        assert!(!crate::rules::legal_actions_for(&run, &registry, Side::Corp).contains(&rez), "not during the Runner's turn");
+
+        state.corp.installed[0].rezzed = true;
+        let mut quiet = state.clone();
+        quiet.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut quiet, &registry, Side::Corp);
+        let quiet = close_all_windows(quiet, &registry).0;
+        assert_eq!(quiet.corp.resources.credits, Credits(13), "no successful run on this server last turn: gain 3[credit]");
+
+        let mut runner_turn_state = state.clone();
+        runner_turn_state.phase = GamePhase::Action(Side::Runner);
+        let accessed = accessing_remote(&runner_turn_state, &registry, 0);
+        assert_eq!(accessed.runner.resources.credits, Credits(12), "they gain 2[credit]");
+        let mut after = pass_until_settled(accessed, &registry).0;
+        after.active_run = None;
+        after.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut after, &registry, Side::Corp);
+        let after = close_all_windows(after, &registry).0;
+        assert_eq!(after.corp.resources.credits, Credits(10), "the Runner ran it last turn");
+    }
+
+    #[test]
+    fn fully_operational_gains_or_draws_once_and_again_for_each_protected_remote_with_a_root() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("fully_operational")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 4];
+        state.corp.installed = vec![
+            root_at("pad_campaign", 0),
+            crate::rules::InstalledCard { install_id: InstallId(90), card: id("ice_wall"), server: ServerId::Remote(0), slot: InstallSlot::Ice, ..Default::default() },
+            root_at("hostile_takeover", 1),
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("fully_operational") }).expect("play");
+        assert!(choosing(&asked), "gain 2[credit] or draw 2 cards");
+        let again = choose(&asked, &registry, 0);
+        assert!(choosing(&again), "repeat for the one protected remote with a root card; the unprotected one does not count");
+        let done = choose(&again, &registry, 1);
+        assert!(done.pending_decision.is_none(), "twice, and no more");
+        assert_eq!((done.corp.resources.credits, done.corp.hq.len()), (Credits(10 - 1 + 2), 2));
+    }
+
+    #[test]
+    fn focus_group_reveals_the_grip_and_places_up_to_the_count_of_a_type_for_as_many_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("focus_group")];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        state.runner.grip = vec![id("corroder"), id("gordian_blade"), id("sure_gamble")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("focus_group") }).is_err(), "no successful run last turn");
+        state.last_turn = {
+            let mut runner = runner_turn();
+            runner.corp.installed.clear();
+            let mut ended = run_to_completion(runner, &registry, ServerId::Hq).0;
+            crate::rules::turn_log::rotate(&mut ended);
+            ended.last_turn
+        };
+        let (types, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("focus_group") }).expect("play");
+        let numbers = choose(&types, &registry, 2);
+        let offered: Vec<u32> = crate::rules::legal_actions_for(&numbers, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0, 1, 2], "two programs revealed");
+        let (picking, _) = apply_action(&numbers, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        let (placed, _) = pick(&picking, &registry, 0);
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 2);
+        assert_eq!(placed.corp.resources.credits, Credits(10 - 3 - 2), "3 to play and X");
+    }
+
+    #[test]
+    fn hagen_loses_strength_per_icebreaker_and_trashes_only_a_program_that_breaks_nothing() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("hagen", ServerId::Hq)];
+        state.runner.rig = vec![rig("corroder", 2001), rig("gordian_blade", 2002), rig("rezeki", 2003)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let run = at.active_run.as_ref().expect("encountering");
+        assert_eq!(crate::rules::continuous::ice_strength(&at, &registry, &run.ice[0]), 4, "6, less two icebreakers");
+        let (asked, _) = pass_until_settled(at, &registry);
+        assert_eq!(toggles(&asked, &registry, Side::Corp), vec![2], "Rezeki alone: Corroder is a fracter and Gordian Blade a decoder");
+    }
+
+    #[test]
+    fn vulnerability_audit_cannot_be_scored_the_turn_it_was_installed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, installed_this_turn: true, ..root_at("vulnerability_audit", 0) }];
+        let score = PlayerAction::ScoreAgenda { target: fixture_install_id("vulnerability_audit") };
+        assert!(apply_action(&state, &registry, score.clone()).is_err(), "installed this turn");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&score));
+        state.corp.installed[0].installed_this_turn = false;
+        let (scored, _) = apply_action(&state, &registry, score).expect("a later turn");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(3));
+    }
+
+    #[test]
+    fn the_nihilist_loads_on_the_first_virus_each_turn_and_trades_two_counters_for_two_cards() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_nihilist", 2001)];
+        state.runner.grip = vec![id("leech"), id("leech")];
+        let (one, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let one = pass_until_settled(one, &registry).0;
+        assert_eq!(counters_on(&one, "the_nihilist"), Some(2), "the first virus program this turn");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let two = pass_until_settled(two, &registry).0;
+        assert_eq!(counters_on(&two, "the_nihilist"), Some(2), "only the first");
+
+        let mut turn = runner_turn();
+        turn.runner.rig = vec![holding("the_nihilist", 2001, 2)];
+        turn.runner.stack = vec![id("sure_gamble"); 3];
+        turn.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        crate::rules::test_support::enter_start_of_turn(&mut turn, &registry, Side::Runner);
+        let asked = close_all_windows(turn, &registry).0;
+        assert!(choosing(&asked), "you may remove any 2 virus counters");
+        let first = choose(&asked, &registry, 0);
+        let (first, _) = pick(&first, &registry, 0);
+        let (second, _) = pick(&first, &registry, 0);
+        assert_eq!(counters_on(&second, "the_nihilist"), Some(0));
+        assert!(second.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "unless the Corp trashes the top card of R&D");
+        let drew = pass_until_settled(apply_action(&second, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0, &registry).0;
+        assert_eq!(drew.runner.grip.len(), 2, "draw 2 cards");
+        let trashed = pass_until_settled(apply_action(&second, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash").0, &registry).0;
+        assert_eq!((trashed.runner.grip.len(), trashed.corp.r_and_d.clone()), (0, vec![id("hedge_fund")]));
+    }
+
+    #[test]
+    fn blueberry_diesel_may_send_one_of_the_top_two_to_the_bottom_then_draws_two() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("blueberry_diesel"), id("corroder")];
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("diesel"), id("sure_gamble"), id("corroder"), id("rezeki")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("blueberry_diesel") }).expect("play");
+        assert_eq!(toggles(&asked, &registry, Side::Runner), vec![2, 3], "the top 2");
+        let (done, _) = pick(&asked, &registry, 2);
+        assert_eq!(done.runner.stack, vec![id("corroder"), id("diesel")], "Corroder to the bottom, the stack's Corroder and not the grip's");
+        assert_eq!(done.runner.grip, vec![id("corroder"), id("rezeki"), id("sure_gamble")], "draw 2 cards");
     }
 }

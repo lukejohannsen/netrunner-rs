@@ -1381,6 +1381,9 @@ fn complete_run(
     if let Some(run) = next.active_run.as_mut() {
         run.declared_successful = true;
     }
+    if !next.runner.servers_run_successfully.contains(&server) {
+        next.runner.servers_run_successfully.push(server);
+    }
     let succeeded = GameEvent::RunSucceeded { server };
     let mut events = vec![succeeded.clone()];
     events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);

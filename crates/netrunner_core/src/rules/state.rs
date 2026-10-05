@@ -762,6 +762,16 @@ pub struct RunnerState {
     /// same as a click. Public — both players watched the runs happen.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// Every server the Runner has made a successful run on during their
+    /// most recent turn, reset as their next turn starts with
+    /// `servers_run_this_turn` — so through the Corp's turn it is the
+    /// Runner's last turn's: Daily Quest's "if the Runner did not make a
+    /// successful run on this server during their last turn"
+    /// (`EffectRequirement::RunnerSucceededOnThisServerLastTurn`). A list
+    /// beside the turn log, as `servers_run_this_turn` is, because the log
+    /// counts remotes as one class (the Turn History Rule). Public.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub servers_run_successfully: Vec<ServerId>,
 }
 
 impl RunnerState {

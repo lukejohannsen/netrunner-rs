@@ -50,13 +50,14 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 27 | 38 | Stages 1–3 built (5 October 2026) |
+| 7 | Downfall (`df`) | 65 | 36 | 29 | Stages 1–4 built (5 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
-`Effect` variants single-use, none unused, over 600 card files** (5 October
-2026, with Downfall Stage 3, which added no variant and five words beside
-it; Stage 2, at 15 of 101 over 590, added none and changed no engine
+`Effect` variants single-use, none unused, over 609 card files** (5 October
+2026, with Downfall Stage 4, which added `Repeat` and gave `RevealHand` its
+second card; Stage 3, at 15 of 101 over 600, added no variant and five
+words beside it; Stage 2, at 15 of 101 over 590, added none and changed no engine
 code; Stage 1, at 15 of 101 over 580, added none; Uprising Stage 8, at
 15 of 101 over 573, added none and closed the set;
 Stage 7b, at 16 of 101 over 568, added none and gave Sisyphus
@@ -427,6 +428,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Wall to Wall** (UR 4): "resolve up to 3 in any order" is 3 of the 4, the counter's piece of ice optional, so a Corp that wants neither the draw nor the asset back in HQ must take one of them.
 - **GameNET: Where Dreams are Real** (UR 5): "a Corp card ability causes the Runner to spend or lose" is read as four things, without a ruling to hand (NetrunnerDB's rulings were out of reach): a loss the card's text resolves (Gold Farmer's), the cost of an ability the card prints for the Runner (F2P's 2[credit]), a paid choice it offers ("end the run unless the Runner pays") and a bid in a trace it began (CR 10.8.6d). Credits a Corp card's standing effect makes the Runner pay — a raised cost, an additional cost — are no ability's and are not heard.
 - **Transport Monopoly** (UR 5): "use this ability only during a run" is Proprionegation's `DuringRun`, the run from its initiation to the server's approach; after that the run's success is already decided.
+- **Focus Group** (DF 4): "you may pay X[credit]" loses X from the credit pool rather than paying it (no Corp pool pays for an operation's effect), and "1 installed card" offers the Corp's own installs, where the printed card admits the Runner's, on which a counter does nothing.
 - **Storgotic Resonator** (DF 3): "the first time each turn you trash a card that matches the faction of the Runner's identity" is a use limit spent as the trigger resolves (`And(TriggeringCardOfRunnersFaction, OncePerTurn)`), because the turn log has no faction to narrow a first time by — the third card deferred on it, after Ryō "Phoenix" Ōno and The Back — so a Resonator installed after the turn's first such trash hears the next.
 - **Remastered Edition** (DF 2): "Place 1 advancement counter on an installed card" offers the Corp's own installs, where the printed card admits the Runner's, on which a counter does nothing (as Moon Pool's).
 - **Project Vacheron** (UR 8): "it is worth 0 agenda points" is 3 taken off its printed 3 (`AgendaPoints` of −3 under the `while`); nothing else in the pool changes what an agenda in the Runner's score area is worth but Let Them Dream's own text.
@@ -678,7 +680,7 @@ Division.
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
 **Decks:** Sweep decks on its four identities (Az McCaffrey's,
-Moonlighting, at Stage 1).
+Moonlighting, at Stage 1; Lat's, Level Pegging, at Stage 4).
 
 **Stages:**
 1. **Corp, composes:** Salvo Testing, Fujii Asset Retrieval, Jaguarundi, Attini,
@@ -963,14 +965,17 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
    Supercorridor, Fencer Fueno, Trickster Taka, Congratulations!,
    Demolisher, Bukhgalter, Storgotic Resonator, Masterwork (v37),
    Trebuchet, Increased Drop Rates. Stage 3 is complete.
-4. **Amount, requirement and subtype words:** Lat, Sting!, Daily Quest,
-   Fully Operational, Focus Group, Game Over, Hagen, Vulnerability Audit,
-   The Nihilist, Blueberry!™ Diesel.
+4. **Amount, requirement and subtype words** (built, 5 October 2026): Lat,
+   Sting!, Daily Quest, Fully Operational, Focus Group, Hagen,
+   Vulnerability Audit, The Nihilist, Blueberry!™ Diesel. Game Over moved
+   to Stage 6: its "for each card … the Runner may pay 3[credit] to
+   prevent" is a loop of decisions over cards. Stage 4 is complete.
 5. **Encounter and ice-state words:** Chisel, “Baklan” Bochkin, Pelangi,
    Afshar, Rime, Loot Box, Public Health Portal, Secure and Protect, Rejig,
    Divested Trust.
 6. **Triggers created by a played card, costs to run, interrupts:** In the
-   Groove, Climactic Showdown, Cold Site Server, Reduced Service, Utae (X),
+   Groove, Climactic Showdown, Cold Site Server, Reduced Service, Game Over
+   (a cost to prevent each trash, moved from Stage 4), Utae (X),
    Lucky Charm (an interrupt on "end the run"), Flip Switch (a jack-out as
    an effect, and a lower trace base).
 7. **Hidden information and new zones:** Hyoubu Institute, Khusyuk, The
@@ -993,6 +998,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 
 - **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 4** — nine cards and Lat's Sweep deck, Level Pegging, with one new `Effect` (`Repeat`): three amounts, an action-phase rez, the Runner's successful servers last turn, an agenda that forbids its own score, and a card returned to the bottom of the stack (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 3** — ten cards with no new `Effect`: a trash cost asked of any card being accessed, a surcharge on an install, hosted credits for the rest of a successful run and for programs during runs, and a requirement on the trashed card's faction (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)

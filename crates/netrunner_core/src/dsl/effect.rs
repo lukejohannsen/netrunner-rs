@@ -994,6 +994,17 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         texts: Vec<String>,
     },
+    /// `effect`, `times` times over, each resolved in full before the next
+    /// begins — Fully Operational's "Gain 2[credit] or draw 2 cards. Repeat
+    /// this process for each remote server that has a card in its root and
+    /// is protected by ice". `times` is read once, as it resolves, and the
+    /// effect is rewritten into a `Sequence` of that many copies, so a
+    /// choice inside one parks and the rest wait behind it
+    /// (`evaluate_sequence`). Composition didn't work: a `Sequence` is as
+    /// long as the card file writes it, and a number chosen up front
+    /// (`ChooseNumber`) would decide every repetition before the first
+    /// draw could inform the next.
+    Repeat { times: Amount, effect: Box<Effect> },
     /// `chooser` names a number from `min` to `max` and `then` resolves
     /// with it as `Amount::ChosenNumber` — "remove **any number of** tags"
     /// (Bigger Picture), "lose **up to 5** credits" (Account Siphon),
@@ -2041,6 +2052,26 @@ pub enum Amount {
     /// which is relative to the actor: the sentence names both hands. No
     /// amount counted a hand.
     CardsInHand(Side),
+    /// The cards in `zone`, as the acting card's controller names it, that
+    /// `filter` admits — Focus Group's "the number of revealed cards of the
+    /// chosen type" in the Runner's grip (`OpponentHand`, `CardType`).
+    /// `EffectRequirement::ZoneHasAtLeast`'s count, as a number. Composition
+    /// didn't work: `CardsInHand` counts every card, and no amount read a
+    /// zone through a filter.
+    InZone { zone: crate::dsl::CardZoneRef, filter: crate::dsl::CardFilter },
+    /// Copies of the acting card in `side`'s score area — Sting!'s "the
+    /// number of copies of Sting! in the other player's score area", one
+    /// trigger for a score (the Runner's) and one for a steal (the Corp's).
+    /// By card, so a copy added there "as an agenda" under another name is
+    /// not one. Composition didn't work: `InScoreAreaWithSubtype` counts a
+    /// subtype, and Sting!'s, Ambush, is printed on other agendas.
+    CopiesInScoreArea(Side),
+    /// The counters of this kind on the acting card's controller's
+    /// installed cards, all of them — The Nihilist's "remove any 2 virus
+    /// counters from your installed cards", which is not offered unless
+    /// there are 2 to remove. Composition didn't work: `HostedCounters` is
+    /// one card's, and `RunnerInstalls(HostsCounters(..))` counts cards.
+    CountersOnOwnInstalls(crate::dsl::CounterKind),
     /// The credits in a player's credit pool — Valentão's "End the run if
     /// you have more credits than the Runner", through
     /// `EffectRequirement::MoreThan`, as `CardsInHand` names both hands.
@@ -2364,6 +2395,7 @@ impl Effect {
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
+            Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_those_trashed(cards)) },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)) },
             other => other,
         }
@@ -2400,12 +2432,18 @@ impl Effect {
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
             Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
+            // Focus Group's "place X advancement counters on 1 installed
+            // card": the number rides into the card chosen.
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+            }
             Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to } => {
                 Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(number), restrict_to }
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
+            Effect::Repeat { times, effect } => Effect::Repeat { times: amount(times), effect: boxed(effect) },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
@@ -2515,6 +2553,7 @@ impl Effect {
             | Effect::SetRunEndedEffect(effect)
             | Effect::WhenThisTurnEnds(effect)
             | Effect::ChooseNumber { then: effect, .. }
+            | Effect::Repeat { effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
                 if_paid.for_each_effect(f);

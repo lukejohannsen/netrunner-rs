@@ -119,6 +119,9 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
+        Amount::InZone { zone, filter } => format!("the cards in {} ({})", describe_zone(zone), humanize(format!("{filter:?}")).to_lowercase()),
+        Amount::CopiesInScoreArea(side) => format!("the copies of this card in the {side:?}'s score area"),
+        Amount::CountersOnOwnInstalls(kind) => format!("the {} counters on your installed cards", humanize(format!("{kind:?}")).to_lowercase()),
         Amount::Credits(Side::Corp) => "the Corp's credits".to_string(),
         Amount::Credits(Side::Runner) => "the Runner's credits".to_string(),
         Amount::ThisCardStrength => "this program's strength".to_string(),
@@ -356,6 +359,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             of.as_ref().map(|of| format!(" (at most {})", describe_amount(of))).unwrap_or_default(),
             describe_effect(then, registry)
         ),
+        Effect::Repeat { times, effect } => format!("{}, as many times as {}", describe_effect(effect, registry), describe_amount(times)),
         Effect::ResolveSomeOf { chooser, count, options, .. } => format!(
             "{} chooses {} of: {}",
             who(*chooser),

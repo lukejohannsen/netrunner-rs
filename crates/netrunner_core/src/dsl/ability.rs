@@ -293,6 +293,20 @@ pub enum EffectRequirement {
     /// Runner's identity in, and `IdentityMatches` reads the controller's
     /// identity, not the card that was trashed.
     TriggeringCardOfRunnersFaction,
+    /// It is the controller's action phase — Daily Quest's "Rez only during
+    /// your action phase" (`CardDefinition::rez_requirement`). Not
+    /// `DuringYourTurn`, which holds through the windows as the turn begins
+    /// and in the discard phase.
+    DuringYourActionPhase,
+    /// The Runner made a successful run on the server the acting card is
+    /// installed in during their last turn — Daily Quest's "if the Runner
+    /// did not make a successful run on this server during their last
+    /// turn", asked as the Corp's turn begins. Read off
+    /// `RunnerState::servers_run_successfully`, which holds the Runner's
+    /// most recent turn's until their next begins. Composition didn't work:
+    /// the turn log counts the remotes as one class, and "this server" is
+    /// one of them.
+    RunnerSucceededOnThisServerLastTurn,
     /// The controller's identity is copy `n` of itself (`CorpState::
     /// identity_copy`, set by `Effect::SetIdentityCopy`) — the gate on
     /// each of Méliès U's three reverse sides ("Side 1: When you flip this
