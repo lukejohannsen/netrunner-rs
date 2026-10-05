@@ -208,6 +208,9 @@ struct Plan {
     steps: Vec<Step>,
     next: usize,
     turn: u32,
+    /// The cards a parked selection showed the seat when the line was
+    /// made (`ClientView::selection`) — see `follow`.
+    shown: Vec<netrunner_core::view::SelectionCandidate>,
 }
 
 /// How the planner has been deciding — what a measurement quotes beside
@@ -348,7 +351,19 @@ impl PlanningAgent {
             return None;
         }
         let step = &plan.steps[plan.next];
-        if step.expected != view.legal_actions {
+        // A selection out of a zone the seat could not see shows it the
+        // cards as it is asked, and the line was played on the sample's
+        // guesses: the toggles are positions, so the legal actions match
+        // and the line would go on choosing among cards it never saw. AU
+        // Co.'s search was planned at its offer, before the top 3 cards
+        // of R&D were looked at, and the trash was the plan's (Phase 5
+        // §40). Planned again, `determinize::seat_selection` puts the
+        // cards shown where the view names them.
+        let reveals = matches!(
+            &view.pending_decision,
+            Some(PendingDecision::ChooseCards { source, .. }) if source.shows_the_chooser_hidden_cards()
+        );
+        if step.expected != view.legal_actions || (reveals && view.selection != plan.shown) {
             self.plan = None;
             self.stats.diverged += 1;
             return None;
@@ -387,7 +402,7 @@ impl PlanningAgent {
         self.stats.applications += search.applications as u64;
         let steps = steps?;
         let first = steps[0].action.clone();
-        self.plan = Some(Plan { steps, next: 1, turn });
+        self.plan = Some(Plan { steps, next: 1, turn, shown: view.selection.clone() });
         self.stats.planned += 1;
         Some(first)
     }
@@ -1236,6 +1251,7 @@ mod tests {
             steps: vec![Step { expected: vec![PlayerAction::EndTurn], action: PlayerAction::EndTurn }],
             next: 0,
             turn: after.turn,
+            shown: Vec::new(),
         });
         let view = build_client_view(&after, &registry, Side::Corp);
         assert_ne!(view.legal_actions, vec![PlayerAction::EndTurn]);
@@ -2556,6 +2572,74 @@ mod positions {
             }
         }
         assert_eq!(taken, 4, "the search is taken");
+    }
+
+    /// AU Co.'s search is planned at its offer, before the Corp has looked
+    /// at the top 3 cards of R&D, and the trash is chosen among them (§40):
+    /// with an agenda among the three, it is kept on every seed that takes
+    /// the search. Before, the sample's guesses stood at those positions
+    /// and the plan made at the offer was followed into the selection, so
+    /// the trash fell where the guesses put it: the agenda went in 4 of 7,
+    /// and either half of the repair alone — re-planning on the guesses,
+    /// or seating the cards in a plan already made — left it at 4 of 7.
+    #[test]
+    fn au_cos_search_trashes_a_card_it_looked_at_and_keeps_the_agenda() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let (mut trashed, mut taken) = (Vec::new(), 0);
+        for seed in 0..12 {
+            let mut state = GameState::new(seed);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+            state.corp.identity_counters = 2;
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+            state.corp.hq = vec![CardId("hedge_fund".to_string())];
+            // R&D's top is its last card: the search looks at the agenda
+            // and two cards that are not, with the deck's other agendas
+            // and assets below them.
+            let top = ["offworld_office", "hedge_fund", "pad_campaign"].map(|card| CardId(card.to_string()));
+            let below = ["send_a_message", "pad_campaign", "offworld_office", "hedge_fund", "send_a_message", "pad_campaign"].map(|card| CardId(card.to_string()));
+            state.corp.r_and_d = [below.to_vec(), top.to_vec()].concat();
+            state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+            state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+            state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+            for _ in 0..10 {
+                if state.pending_paid_choice.is_some() {
+                    break;
+                }
+                let Some(actor) = current_actor(&state) else { break };
+                let legal = netrunner_core::rules::legal_actions_for(&state, &registry, actor);
+                let action = legal.iter().find(|action| matches!(action, PlayerAction::EndTurn | PlayerAction::PassPriority { .. })).cloned().expect("a pass");
+                state = apply_action(&state, &registry, action).expect("the turn moves on").0;
+            }
+            assert!(state.pending_paid_choice.is_some(), "the premise: AU Co. offers its search");
+            let deck = netrunner_core::rules::Deck {
+                identity: CardId("au_co_the_gold_standard_in_clones".to_string()),
+                cards: vec![
+                    (CardId("hedge_fund".to_string()), 3),
+                    (CardId("offworld_office".to_string()), 2),
+                    (CardId("send_a_message".to_string()), 2),
+                    (CardId("pad_campaign".to_string()), 3),
+                ],
+            };
+            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck)));
+            let archived = state.corp.archives.len();
+            for _ in 0..10 {
+                if state.pending_paid_choice.is_none() && state.pending_decision.is_none() {
+                    break;
+                }
+                let view = build_client_view(&state, &registry, Side::Corp);
+                agent.observe(&view);
+                let action = agent.select_action(&view, &registry);
+                state = apply_action(&state, &registry, action).expect("the agent's action applies").0;
+            }
+            if state.corp.identity_counters == 0 {
+                taken += 1;
+                trashed.extend(state.corp.archives[archived..].iter().map(|card| card.card.0.clone()));
+            }
+        }
+        assert!(taken >= 4, "the search is taken: {taken} of 12");
+        assert!(!trashed.iter().any(|card| card == "offworld_office"), "the agenda is kept: {trashed:?}");
     }
 
     /// Poétrï Luxury Brands' "whenever an agenda is stolen, you may install

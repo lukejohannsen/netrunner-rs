@@ -1136,6 +1136,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
     };
     let mut state = state;
     seat_revealed(&mut state);
+    seat_selection(&mut state, view);
     debug_assert_strengths_agree(&state, view, registry);
     state
 }
@@ -1149,6 +1150,55 @@ fn sample_decision(view: &ClientView, rng: &mut impl Rng) -> Option<PendingDecis
         *corp_bid = PsiBid::Bid(rng.random_range(0..=*corp_max));
     }
     Some(decision)
+}
+
+/// Puts each card a parked selection shows its chooser out of a zone
+/// they cannot otherwise see (`CardZoneRef::shows_the_chooser_hidden_cards`:
+/// their own R&D or stack, the other side's hand or deck) at the position
+/// the view names it by (`ClientView::selection`). The zone itself is
+/// drawn from the pool, so before this the sample's cards at those
+/// positions were guesses: AU Co.'s "look at the top 3 cards of R&D. Trash
+/// 1 of those cards" was decided on three cards the Corp was not looking
+/// at, and trashed an agenda 8 times in 14 where it could have kept it
+/// (Phase 5 §40). A copy of the card already elsewhere in the zone is
+/// swapped into place, so the sample keeps its count of each card; one
+/// that is not is written over the guess, as `seat_revealed` does.
+fn seat_selection(state: &mut GameState, view: &ClientView) {
+    use netrunner_core::dsl::CardZoneRef;
+    let Some(PendingDecision::ChooseCards { side: chooser, source, .. }) = &view.pending_decision else { return };
+    if !source.shows_the_chooser_hidden_cards() || view.selection.is_empty() {
+        return;
+    }
+    let opponent = match chooser {
+        Side::Corp => Side::Runner,
+        Side::Runner => Side::Corp,
+    };
+    let zone = match (source, opponent) {
+        (CardZoneRef::OwnRAndD, _) | (CardZoneRef::OpponentDeck, Side::Corp) => &mut state.corp.r_and_d,
+        (CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack, _) | (CardZoneRef::OpponentDeck, Side::Runner) => &mut state.runner.stack,
+        (CardZoneRef::OpponentHand, Side::Corp) => &mut state.corp.hq,
+        (CardZoneRef::OpponentHand, Side::Runner) => &mut state.runner.grip,
+        _ => return,
+    };
+    // `TopOfOwnStack`'s one position is the stack's top, its last card
+    // (`pending_choice::zone_card_ids`); every other zone is indexed as
+    // it is stored.
+    let index = |position: usize, len: usize| match source {
+        CardZoneRef::TopOfOwnStack => len.checked_sub(1 + position),
+        _ => (position < len).then_some(position),
+    };
+    let shown: Vec<(usize, &CardId)> =
+        view.selection.iter().filter_map(|candidate| Some((index(candidate.position, zone.len())?, candidate.card.as_ref()?))).collect();
+    let pinned: HashSet<usize> = shown.iter().map(|(at, _)| *at).collect();
+    for (at, card) in shown {
+        if zone[at] == *card {
+            continue;
+        }
+        match (0..zone.len()).find(|&other| !pinned.contains(&other) && zone[other] == *card) {
+            Some(other) => zone.swap(at, other),
+            None => zone[at] = card.clone(),
+        }
+    }
 }
 
 /// Puts each card revealed in a hand the viewer cannot see
@@ -1977,11 +2027,11 @@ mod tests {
     /// the sample. This asserts that directly, which is why the repair
     /// function is gone rather than merely unused.
     ///
-    /// Note what is deliberately *not* asserted: that the sampled card at
-    /// that position matches the decision's `CardFilter`. It generally will
-    /// not — the stack is resampled — so the sample may still judge the
-    /// action illegal. That is a search-quality gap, not a crash, and it is
-    /// the residual documented where `reseat_selectable_cards` used to be.
+    /// The card at that position is the one the view shows there, too
+    /// (`seat_selection`, Phase 5 §40). Before, the stack was resampled
+    /// around the position, so the sample judged a toggle on a card the
+    /// chooser was not looking at — and AU Co.'s search trashed agendas by
+    /// it.
     #[test]
     fn a_parked_selections_targets_stay_addressable_after_determinization() {
         use netrunner_core::dsl::{CardFilter, CardZoneRef};
@@ -2046,6 +2096,7 @@ mod tests {
                     "seed {seed}: offered position {position} addresses nothing in the sample"
                 );
             }
+            assert_eq!(sampled.runner.stack[0], target, "seed {seed}: the card shown at the position is the one sampled there");
         }
     }
 
