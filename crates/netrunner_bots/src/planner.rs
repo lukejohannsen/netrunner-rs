@@ -965,7 +965,22 @@ fn one_ply(
         if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
             continue;
         }
-        let Ok((next, _events)) = apply_action(sample, registry, action.clone()) else { continue };
+        let Ok((mut next, _events)) = apply_action(sample, registry, action.clone()) else { continue };
+        // A toggle marks a position and moves no card, so every candidate
+        // of a selection scored where it stands alike and the jitter
+        // chose: Ryō "Phoenix" Ōno's "the Corp trashes 1 card from HQ",
+        // answered in the Runner's turn, sent an agenda to Archives 5 of
+        // 17 times HQ held something else (Phase 5 §40). Scored where the
+        // selection would leave the board once confirmed — exact for one
+        // card, and greedy for "up to" or "any number", whose Confirm is
+        // already a candidate to beat. A selection that cannot be
+        // confirmed yet (two or more cards still owed) is scored as
+        // before; the beam's own lines are not this function's.
+        if matches!(action, PlayerAction::ToggleCardSelection { .. })
+            && let Ok((confirmed, _)) = apply_action(&next, registry, PlayerAction::ConfirmCardSelection)
+        {
+            next = confirmed;
+        }
         let score = evaluate_state_with(&next, side, registry, weights) + rng.random::<f64>() * TIE_BREAK_JITTER;
         if best.is_none_or(|(best_score, _)| score > best_score) {
             best = Some((score, index));
@@ -1118,6 +1133,40 @@ mod tests {
             state = apply_action(&state, registry, action).expect("the plan's action applies").0;
         }
         (played, state)
+    }
+
+    /// One ply chooses the card a one-card selection sends where it is
+    /// scored to go, not by the jitter (§40): Hansei Review's "trash 1
+    /// card from HQ" out of an agenda and two Hedge Funds keeps the
+    /// agenda on every seed. Before, a toggle was scored on a board it had
+    /// not changed, and seed 1 trashed the agenda.
+    #[test]
+    fn one_ply_keeps_the_agenda_a_one_card_selection_could_trash() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        for seed in 0..16 {
+            let mut state = GameState::new(seed);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.corp.hq = ["hansei_review", "offworld_office", "hedge_fund", "hedge_fund"].map(|card| CardId(card.to_string())).to_vec();
+            state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+            state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+            let play = PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) };
+            state = apply_action(&state, &registry, play).expect("Hansei Review is played").0;
+            assert!(state.pending_decision.is_some(), "the premise: its trash is a selection");
+            let mut rng = StdRng::seed_from_u64(seed);
+            for _ in 0..4 {
+                if state.pending_decision.is_none() {
+                    break;
+                }
+                let view = build_client_view(&state, &registry, Side::Corp);
+                let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+                let action = one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng);
+                state = apply_action(&state, &registry, action).expect("one ply's action applies").0;
+            }
+            assert!(state.pending_decision.is_none(), "seed {seed}: the selection is made");
+            assert!(state.corp.hq.iter().any(|card| card.0 == "offworld_office"), "seed {seed}: the agenda is kept: {:?}", state.corp.archives);
+        }
     }
 
     /// The line the one-ply chooser never finds (§25 Stage 1: a score in
