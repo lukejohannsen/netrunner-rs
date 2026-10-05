@@ -24564,4 +24564,264 @@ mod uprising {
         assert_eq!(done.corp.r_and_d, vec![id("hedge_fund")], "Ganked! left R&D, and nothing else was accessed");
         assert!(done.last_completed_run.is_some());
     }
+
+    // ---- Stage 8: points, subroutine lists and run costs that change mid-game ----
+
+    /// From the encounter's window, both players pass and the subroutines
+    /// fire (or the first thing they park asks).
+    fn fire_subroutines(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        for _ in 0..4 {
+            let Some(window) = &state.paid_ability_window else { return state };
+            let side = window.active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    fn bid(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: corp }).expect("corp bids");
+        apply_action(&state, registry, PlayerAction::SubmitRunnerTraceBid { amount: runner }).expect("runner bids").0
+    }
+
+    fn subroutine_count(state: &GameState) -> usize {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.len()
+    }
+
+    #[test]
+    fn akhet_gets_three_strength_and_a_break_limit_at_three_advancement_counters() {
+        let registry = registry();
+        for (counters, strength, limited) in [(2, 2, None), (3, 5, Some(1))] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice_at_hq("akhet", counters)];
+            let state = to_the_encounter(&state, &registry);
+            assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), strength, "{counters} counters");
+            let run = state.active_run.as_ref().unwrap();
+            assert_eq!(crate::rules::continuous::breaks_left(&state, &registry, &run.ice[0], None), limited, "{counters} counters");
+        }
+    }
+
+    #[test]
+    fn akhets_first_subroutine_gains_a_credit_and_places_an_advancement_counter_on_any_installed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("akhet", 0), root_at("pad_campaign", 0)];
+        let state = fire_subroutines(&to_the_encounter(&state, &registry), &registry);
+        assert_eq!(state.corp.resources.credits, Credits(11), "gain 1");
+        assert!(choosing_cards(&state), "{:?}", state.pending_decision);
+        let campaign = state.corp.installed.iter().position(|card| card.card == id("pad_campaign")).unwrap();
+        assert_eq!(toggles(&state, &registry, Side::Corp).len(), 2, "an installed card, advanceable or not");
+        let placed = pick(&state, &registry, campaign);
+        assert_eq!(placed.corp.installed[campaign].advancement_tokens, 1);
+        let (ended, _) = close_all_windows(placed, &registry);
+        assert!(ended.active_run.is_none(), "then end the run");
+    }
+
+    #[test]
+    fn akhet_can_be_advanced() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice_at_hq("akhet", 0)];
+        let advance = PlayerAction::AdvanceCard { target: install_of(&state, "akhet") };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&advance), "you can advance this ice");
+    }
+
+    #[test]
+    fn winchester_gains_its_third_subroutine_only_while_protecting_hq_and_each_is_a_trace() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("winchester", 0)];
+        state.runner.rig = vec![rig("mayfly", 1), rig("carmen", 2), rig("t400_memory_diamond", 3)];
+        let at_hq = to_the_encounter(&state, &registry);
+        assert_eq!(subroutine_count(&at_hq), 3, "two printed, one gained after them");
+
+        let first = fire_subroutines(&at_hq, &registry);
+        assert!(first.active_trace.is_some(), "Trace[4]");
+        let choosing = bid(&first, &registry, 0, 0);
+        assert!(choosing_cards(&choosing), "two programs: the Corp chooses");
+        let carmen = choosing.runner.rig.iter().position(|card| card.card == id("carmen")).unwrap();
+        let trashed = pick(&choosing, &registry, carmen);
+        assert!(trashed.runner.heap.contains(&id("carmen")));
+        assert!(trashed.active_trace.is_some(), "the subroutines go on: Trace[3] for hardware");
+        let hardware = bid(&trashed, &registry, 0, 3);
+        assert!(hardware.runner.rig.iter().any(|card| card.card == id("t400_memory_diamond")), "3 against 3: avoided");
+        assert!(hardware.active_trace.is_some(), "and the gained Trace[3]");
+        let (ended, _) = close_all_windows(bid(&hardware, &registry, 1, 0), &registry);
+        assert!(ended.active_run.is_none(), "end the run");
+
+        state.corp.installed = vec![crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("winchester", 0) }];
+        let (at_rd, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let at_rd = drive(at_rd, &registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce));
+        assert_eq!(subroutine_count(&at_rd), 2, "not protecting HQ");
+    }
+
+    fn advanced_root_at(card: &str, remote: u32, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { advancement_tokens: tokens, ..root_at(card, remote) }
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ScoreAgenda { target: install_of(state, card) }).expect("score");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn megaprix_qualifier_is_worth_one_more_when_another_copy_was_already_in_a_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![advanced_root_at("megaprix_qualifier", 0, 3)];
+        let first = score(&state, &registry, "megaprix_qualifier");
+        assert_eq!(first.corp.scored_agendas[0].agenda_counters, 0, "no other copy");
+        assert_eq!(first.corp.resources.agenda_points.0, 1);
+
+        // Another copy in the Corp's own score area.
+        let mut second = first.clone();
+        second.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(91), ..advanced_root_at("megaprix_qualifier", 1, 3) }];
+        let second = score(&second, &registry, "megaprix_qualifier");
+        assert_eq!(second.corp.scored_agendas.iter().map(|scored| scored.agenda_counters).collect::<Vec<_>>(), vec![0, 1], "only the copy just scored");
+        assert_eq!(crate::rules::score(&second, &registry, Side::Corp), 3, "1 and 2");
+        assert_eq!(second.corp.resources.agenda_points.0, 3, "and the tally agrees");
+
+        // Or in the Runner's.
+        let mut stolen = state.clone();
+        stolen.runner.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(90), ..crate::rules::ScoredAgenda::plain(id("megaprix_qualifier")) }];
+        let stolen = score(&stolen, &registry, "megaprix_qualifier");
+        assert_eq!(stolen.corp.scored_agendas[0].agenda_counters, 1);
+        assert_eq!(stolen.corp.resources.agenda_points.0, 2);
+        assert_eq!(crate::rules::score(&stolen, &registry, Side::Runner), 1, "the Runner's copy has no counter");
+    }
+
+    fn steal(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = run_to_completion(state.clone(), registry, server);
+        let (state, _) = apply_action(&state, registry, PlayerAction::StealAgenda { card_id: id("project_vacheron") }).expect("steal");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn project_vacheron_is_stolen_with_four_counters_and_worth_nothing_until_they_are_gone() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root_at("project_vacheron", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        // Six points already: a Vacheron worth 3 would win it.
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(80), ..crate::rules::ScoredAgenda::plain(id("hostile_takeover")) }; 6];
+        let stolen = steal(&state, &registry, ServerId::Remote(0));
+        assert!(!stolen.is_over(), "worth 0 as it lands: the checkpoint before the steal's triggers reads it with its counters");
+        let vacheron = stolen.runner.scored_agendas.last().unwrap();
+        assert_eq!(vacheron.agenda_counters, 4);
+        assert_eq!(crate::rules::score(&stolen, &registry, Side::Runner), 6);
+        assert_eq!(stolen.runner.resources.agenda_points.0, 6);
+
+        // Each of the Runner's turns takes one; the Corp's take none.
+        let mut turns = stolen.clone();
+        crate::rules::test_support::enter_start_of_turn(&mut turns, &registry, Side::Corp);
+        let (mut turns, _) = close_all_windows(turns, &registry);
+        assert_eq!(turns.runner.scored_agendas.last().unwrap().agenda_counters, 4, "not on the Corp's turn");
+        for left in [3, 2, 1] {
+            crate::rules::test_support::enter_start_of_turn(&mut turns, &registry, Side::Runner);
+            turns = close_all_windows(turns, &registry).0;
+            assert_eq!(turns.runner.scored_agendas.last().unwrap().agenda_counters, left);
+            assert_eq!(crate::rules::score(&turns, &registry, Side::Runner), 6, "still worth nothing");
+        }
+        crate::rules::test_support::enter_start_of_turn(&mut turns, &registry, Side::Runner);
+        let (turns, _) = close_all_windows(turns, &registry);
+        assert_eq!(turns.runner.scored_agendas.last().unwrap().agenda_counters, 0);
+        assert_eq!(crate::rules::score(&turns, &registry, Side::Runner), 9, "worth 3 once the last is gone");
+    }
+
+    #[test]
+    fn project_vacheron_stolen_from_archives_lands_with_no_counters() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("project_vacheron"), facedown: false }];
+        let stolen = steal(&state, &registry, ServerId::Archives);
+        assert_eq!(stolen.runner.scored_agendas[0].agenda_counters, 0);
+        assert_eq!(stolen.runner.resources.agenda_points.0, 3);
+    }
+
+    fn runs_offered(state: &GameState, registry: &CardRegistry) -> Vec<ServerId> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::InitiateRun { server } => Some(server),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn earth_station() -> GameState {
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("earth_station_sea_headquarters"));
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = vec![root_at("pad_campaign", 0)];
+        state
+    }
+
+    #[test]
+    fn earth_station_taxes_a_run_on_hq_one_credit_as_it_is_announced() {
+        let registry = registry();
+        let state = earth_station();
+        let (running, events) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert_eq!(running.runner.resources.credits, Credits(9), "1[credit] beside the click");
+        let paid = events.iter().position(|event| matches!(event, GameEvent::CreditsSpent { .. }));
+        let initiated = events.iter().position(|event| matches!(event, GameEvent::RunInitiated { .. }));
+        assert!(paid.is_some() && paid < initiated, "paid as the server is announced: {events:?}");
+        let (remote, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+        assert_eq!(remote.runner.resources.credits, Credits(10), "a remote is free on this side");
+
+        let mut broke = state.clone();
+        broke.runner.resources.credits = Credits(0);
+        let offered = runs_offered(&broke, &registry);
+        assert!(!offered.contains(&ServerId::Hq), "a run that cannot pay is not offered");
+        assert!(offered.contains(&ServerId::RnD) && offered.contains(&ServerId::Remote(0)));
+        assert!(matches!(
+            apply_action(&broke, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }),
+            Err(RulesError::CannotAffordRunCost { server: ServerId::Hq })
+        ));
+    }
+
+    #[test]
+    fn earth_station_flips_for_a_click_to_tax_remotes_six_and_flips_back_on_a_successful_run_on_hq() {
+        let registry = registry();
+        let mut corp = earth_station();
+        corp.phase = GamePhase::Action(Side::Corp);
+        let flip = crate::rules::legal_actions_for(&corp, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { .. }))
+            .expect("[click]: Flip this identity.");
+        let (flipped, _) = apply_action(&corp, &registry, flip).expect("flip");
+        let (flipped, _) = close_all_windows(flipped, &registry);
+        assert!(flipped.corp.identity_flipped);
+        assert_eq!(flipped.corp.resources.clicks, Clicks(2));
+        assert!(
+            !crate::rules::legal_actions_for(&flipped, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::ActivateAbility { .. })),
+            "the flip side has no click ability"
+        );
+
+        let mut state = flipped.clone();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        let offered = runs_offered(&state, &registry);
+        assert!(!offered.contains(&ServerId::Remote(0)), "6[credit] to run a remote, and 5 cannot pay");
+        state.runner.resources.credits = Credits(10);
+        let (remote, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+        assert_eq!(remote.runner.resources.credits, Credits(4));
+
+        let (hq, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (hq, _) = close_all_windows(hq, &registry);
+        assert_eq!(hq.runner.resources.credits, Credits(10), "HQ is free on the flip side");
+        assert!(!hq.corp.identity_flipped, "a successful run on HQ flips it back");
+    }
+
+    #[test]
+    fn earth_station_allows_one_remote_server() {
+        let registry = registry();
+        let mut state = earth_station();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.hq = vec![id("pad_campaign")];
+        let into_new_remote = crate::rules::legal_actions_for(&state, &registry, Side::Corp).into_iter().any(|action| {
+            matches!(action, PlayerAction::InstallCard { zone: ServerId::Remote(n), .. } if n != 0)
+        });
+        assert!(!into_new_remote, "limit 1 remote server: {:?}", crate::rules::legal_actions_for(&state, &registry, Side::Corp));
+    }
 }

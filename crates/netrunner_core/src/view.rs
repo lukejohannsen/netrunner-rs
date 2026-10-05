@@ -230,6 +230,15 @@ pub struct ClientView {
     /// is in the view already.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standing_cannot: Vec<StandingProhibition>,
+    /// What a run on each server costs beyond its click, where a card's
+    /// standing effect adds to it — Earth Station: SEA Headquarters' 1[c]
+    /// to run HQ, or 6[c] to run a remote once it has flipped
+    /// (`continuous::run_costs`, CR 6.3.2b). The engine's answer, as
+    /// `standing_cannot` is, so a client says what a run will take without
+    /// reading the identity's face; the identity is public, and so is
+    /// which face is up. Only servers that cost something are listed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_costs: Vec<(crate::rules::ServerId, crate::dsl::Cost)>,
     /// `PublicGameState::revealed` verbatim — the cards revealed in a hand
     /// that an ability still resolving has not moved yet (Burner's).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -460,10 +469,34 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
                     .map(move |source| StandingProhibition { what, source: source.clone() })
             })
             .collect(),
+        run_costs: run_costs(state, registry),
         revealed: public.revealed,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
     }
+}
+
+/// Each existing server whose run costs something beyond the click, with
+/// what it costs ([`ClientView::run_costs`]).
+fn run_costs(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::ServerId, crate::dsl::Cost)> {
+    use crate::rules::ServerId;
+    let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+    for installed in &state.corp.installed {
+        if matches!(installed.server, ServerId::Remote(_)) && !servers.contains(&installed.server) {
+            servers.push(installed.server);
+        }
+    }
+    servers
+        .into_iter()
+        .filter_map(|server| {
+            let mut costs = crate::rules::continuous::run_costs(state, registry, server);
+            match costs.len() {
+                0 => None,
+                1 => costs.pop().map(|cost| (server, cost)),
+                _ => Some((server, crate::dsl::Cost::AllOf(costs))),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

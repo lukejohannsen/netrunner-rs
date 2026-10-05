@@ -153,6 +153,11 @@ pub enum RulesError {
     #[error("a run cannot be made on {server:?} now")]
     RunProhibited { server: crate::rules::run::ServerId },
 
+    /// The additional cost to run the server (CR 6.3.2b: Earth Station: SEA
+    /// Headquarters) cannot be paid, so the run cannot be made.
+    #[error("the additional cost to run {server:?} cannot be paid")]
+    CannotAffordRunCost { server: crate::rules::run::ServerId },
+
     #[error("{side:?} has no card {card:?} in the rig")]
     CardNotInRig { side: Side, card: CardId },
 

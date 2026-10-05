@@ -1,0 +1,72 @@
+{
+  "id": "megaprix_qualifier",
+  "title": "Megaprix Qualifier",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": 1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          1
+        ]
+      },
+      "text": "While this agenda has a hosted agenda counter, it is worth 1 more agenda point."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "And": [
+            {
+              "Not": {
+                "ZoneHasAtLeast": {
+                  "zone": "OwnScoreArea",
+                  "count": 2,
+                  "filter": {
+                    "AmongCards": [
+                      "megaprix_qualifier"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "Not": {
+                "ZoneHasAtLeast": {
+                  "zone": "OpponentScoreArea",
+                  "count": 1,
+                  "filter": {
+                    "AmongCards": [
+                      "megaprix_qualifier"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you score this agenda, if there is another copy of Megaprix Qualifier in either playerʼs score area, place 1 agenda counter on this agenda."
+    }
+  ],
+  "built_from": 26096,
+  "is_playable": true
+}

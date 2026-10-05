@@ -1,0 +1,54 @@
+{
+  "id": "project_vacheron",
+  "title": "Project Vacheron",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "stolen_with_agenda_counters": 4,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": -3
+        }
+      },
+      "applies_to": {
+        "ScoreArea": "Runner"
+      },
+      "while": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          1
+        ]
+      },
+      "text": "While this agenda is in the Runnerʼs score area with 1 or more hosted agenda counters, it is worth 0 agenda points"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Runner"
+      },
+      "from_runner_score_area": true,
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runnerʼs turn begins, remove 1 hosted agenda counter."
+    }
+  ],
+  "built_from": 26097,
+  "is_playable": true
+}

@@ -410,8 +410,30 @@ fn assert_no_concealed_card_is_named(
     let actions = format!("{:?}", view.legal_actions);
     let decision = format!("{:?}", view.pending_decision);
     // Deliberately not in `visible_card_ids`: a selection names cards
-    // *because* the viewer may see them, so it is checked, never trusted.
-    let selection = format!("{:?}", view.selection);
+    // *because* the viewer may see them, so it is checked, never trusted —
+    // per candidate. One on an install the board masks must name no card
+    // (Tāo Salonga's swap offered an unrezzed ice by name). One at a place
+    // in a zone names the card the effect lets the chooser see there, and
+    // a facedown install of the same title is not given away by it:
+    // Cataloguer's look at the top of R&D named a Tithe while another sat
+    // facedown on the table (seed 221, once Uprising Stage 8's Ground
+    // Control moved the schedule).
+    let masked_installs: Vec<netrunner_core::rules::InstallId> = view
+        .corp
+        .servers
+        .iter()
+        .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+        .filter(|card| card.card.is_none())
+        .map(|card| card.install_id)
+        .collect();
+    for candidate in &view.selection {
+        assert!(
+            candidate.install.is_none_or(|install| !masked_installs.contains(&install)) || candidate.card.is_none(),
+            "seed {seed} ({matchup}): {side:?}'s selection names {:?} on an install their own view masks — {:?}",
+            candidate.card,
+            view.selection
+        );
+    }
     for id in masked {
         let quoted = format!("\"{id}\"");
         assert!(
@@ -421,10 +443,6 @@ fn assert_no_concealed_card_is_named(
         assert!(
             !decision.contains(&quoted),
             "seed {seed} ({matchup}): {side:?}'s pending_decision names {id}, which their own view masks — {decision}"
-        );
-        assert!(
-            !selection.contains(&quoted),
-            "seed {seed} ({matchup}): {side:?}'s selection names {id}, which their own view masks — {selection}"
         );
     }
 }

@@ -153,7 +153,11 @@ mod run_precondition_tests {
     }
 }
 
-pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
+/// Begins a run on `server`, paying its additional costs (CR 6.3.2b) as the
+/// server is announced. Returns what the payment emitted, for the caller to
+/// put ahead of `RunInitiated` and to dispatch after it
+/// (`ability::dispatch_cost_events`, the payer's half of the Payment Rule).
+pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
     // A run a card's text starts as the Runner's turn begins — Alarm
     // Clock's "When your turn begins, you may run HQ" (CR 5.7.1d, before
     // the action phase) — is run in the action phase's shape, which is the
@@ -176,6 +180,24 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     if matches!(server, ServerId::Remote(_)) && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote) {
         return Err(RulesError::RunProhibited { server });
     }
+    // "Any costs to run a server must be paid at the time that server is
+    // announced as the attacked server" (CR 6.3.2b) — before the run's bad
+    // publicity credits exist (6.3.3), which cannot pay them. All at once
+    // (1.16.10b), and a run that cannot pay is not made.
+    let paid = match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
+        [] => Vec::new(),
+        costs => {
+            let cost = match costs {
+                [one] => one.clone(),
+                many => crate::dsl::Cost::AllOf(many.to_vec()),
+            };
+            let ctx = crate::rules::ability::ResolutionContext::for_card(None);
+            if !crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx) {
+                return Err(RulesError::CannotAffordRunCost { server });
+            }
+            crate::rules::ability::pay_cost(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None)?
+        }
+    };
     // Every run, however it was started — see `RunnerState::servers_run_this_turn`.
     state.runner.servers_run_this_turn.push(server);
 
@@ -219,7 +241,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         cards_accessed_count: 0, bonus_run_credits: 0, run_credits_pay_for: None,
         begun_as_the_turn_began,
     });
-    Ok(())
+    Ok(paid)
 }
 
 /// A breach of `server` with no run — Cataloguer's "Breach R&D" (CR

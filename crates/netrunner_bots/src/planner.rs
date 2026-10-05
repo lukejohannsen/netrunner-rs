@@ -2894,7 +2894,7 @@ mod positions {
         use netrunner_core::dsl::{DamageType, Effect, Trigger, TriggeredEffect};
         let mut def = blank_card(id, CardType::Asset);
         def.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 2)],

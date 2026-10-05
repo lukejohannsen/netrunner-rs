@@ -369,6 +369,18 @@ pub struct TriggeredEffect {
     /// only: no pool card prints one for Archives.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_heap: bool,
+    /// Active while this agenda is in the Runner's score area, and only
+    /// there — CR 4.5.4: "Agendas in the Runner's score area are inactive
+    /// unless stated otherwise", and Project Vacheron states it: "While
+    /// this agenda is in the Runner's score area with 1 or more hosted
+    /// agenda counters, it … gains “When the Runner's turn begins, remove 1
+    /// hosted agenda counter.”" The Corp's ability (CR 1.14.4a), heard by
+    /// the copy there (`listeners`, `Heard::FromRunnerScoreArea`), and by
+    /// nothing else. `from_heap`'s shape: a zone a card listens from that
+    /// is not the table. Composition didn't work: no listener reached the
+    /// Runner's score area, which is right for every other agenda.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_runner_score_area: bool,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
@@ -599,6 +611,20 @@ pub struct CardDefinition {
     /// gone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dividends: Option<u32>,
+    /// "When this agenda would be added to the Runner's score area from
+    /// anywhere except Archives, instead it is added to their score area
+    /// with N hosted agenda counters" — Project Vacheron's interrupt, a
+    /// replacement (CR 9.9.9c's own example). Read once, by the steal
+    /// (`run::access::resolve_steal`, the one way into the Runner's score
+    /// area), which puts the counters on the copy as it lands, so the
+    /// checkpoint before the steal's triggers already reads the agenda's
+    /// worth with them. `dividends`' shape, for the same reason: what
+    /// lands is decided at the moment of landing. Composition didn't work:
+    /// an `OnAgendaStolen` trigger places its counters after that
+    /// checkpoint, so a steal to 7 points would win on an agenda that is
+    /// worth nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stolen_with_agenda_counters: Option<u32>,
     /// This operation may be played from Archives, and is removed from the
     /// game after it resolves when it was — Petty Cash's "[click]: Play
     /// this operation from Archives. After it resolves, remove it from the
@@ -1035,6 +1061,8 @@ pub enum CardValidationError {
     OtherIsNotAnIceType(CardId, &'static str),
     #[error("card {0:?}: a trigger active in the heap (`from_heap`) is the Runner's — the heap is the only zone listened to")]
     HeapTriggerOnCorpCard(CardId),
+    #[error("card {0:?}: a trigger active in the Runner's score area (`from_runner_score_area`) is an agenda's")]
+    ScoreAreaTriggerOffAnAgenda(CardId),
     #[error("card {0:?}: `GainIceSubtype` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on")]
     SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
@@ -1132,6 +1160,7 @@ impl Default for CardDefinition {
             hosted_cards_playable_from_grip: false,
             hosts_facedown: false,
             dividends: None,
+            stolen_with_agenda_counters: None,
             playable_from_archives: false,
             removed_after_play: false,
             not_trashed_until_your_next_turn: false,
@@ -1624,6 +1653,9 @@ impl CardDefinition {
         if self.side == Side::Corp && self.triggers.iter().any(|triggered| triggered.from_heap) {
             return Err(CardValidationError::HeapTriggerOnCorpCard(self.id.clone()));
         }
+        if self.card_type != CardType::Agenda && self.triggers.iter().any(|triggered| triggered.from_runner_score_area) {
+            return Err(CardValidationError::ScoreAreaTriggerOffAnAgenda(self.id.clone()));
+        }
         // "This ice gains the chosen subtypes" acts on the acting install,
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
@@ -1734,8 +1766,15 @@ impl CardDefinition {
                 (ContinuousKind::BasicTrashCost(_), _) => {
                     return misfit("BasicTrashCost", "the basic action trashes a resource: this one's own, or one being `Trashing`");
                 }
-                (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_)) if self.card_type == CardType::Agenda => {}
-                (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
+                // Megaprix Qualifier's "while this agenda has a hosted agenda
+                // counter, it is worth 1 more": in either score area (`This`).
+                (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_) | Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::AgendaPoints(_), _) => {
+                    return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
+                }
+                (ContinuousKind::RunCost(_), Scope::Runs(_)) => {}
+                (ContinuousKind::RunCost(_), _) => return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`)"),
+                (_, Scope::Runs(_)) => return misfit("Runs", "only an additional cost to run is about the runs on a kind of server"),
                 (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AdvancementRequirement(_), _) => {
                     return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2), and it says so of itself (`This`)");
@@ -1829,7 +1868,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1851,7 +1890,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -2017,7 +2056,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -2082,7 +2121,7 @@ mod tests {
             when,
             acts_on_subject: false,
             first_each_turn: true, first_each_encounter: false, granted: false,
-            from_heap: false,
+            from_heap: false, from_runner_score_area: false,
             text: None,
             effects: vec![],
             requirement,
@@ -2132,7 +2171,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -2318,7 +2357,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype(subtype)],
                 requirement: None,
@@ -2343,7 +2382,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -2400,7 +2439,7 @@ mod tests {
                 when: None,
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_heap: false,
+                from_heap: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2427,7 +2466,7 @@ mod tests {
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_heap: false,
+                from_heap: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2453,7 +2492,7 @@ mod tests {
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_heap: false,
+                from_heap: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2480,7 +2519,7 @@ mod tests {
                 when: Some(EventFilter::InRootOfThisServer),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_heap: false,
+                from_heap: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()

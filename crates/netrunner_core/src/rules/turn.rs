@@ -544,7 +544,7 @@ mod tests {
             side: Side::Corp,
             card_type: crate::dsl::CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
                 effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],

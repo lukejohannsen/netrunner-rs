@@ -761,6 +761,12 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),
+        Scope::Runs(kind) => format!("each run against {}", match kind {
+            netrunner_core::dsl::ServerKind::Hq => "HQ",
+            netrunner_core::dsl::ServerKind::RnD => "R&D",
+            netrunner_core::dsl::ServerKind::Central => "a central server",
+            netrunner_core::dsl::ServerKind::Remote => "a remote server",
+        }),
         Scope::Trashing(filter) => format!("a resource the Corp trashes with the basic action ({})", lower(format!("{filter:?}"))),
         Scope::Player(side) => format!("the {side:?}"),
     };
@@ -784,6 +790,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
+        ContinuousKind::RunCost(cost) => format!("costs the Runner \"{}\" to make, as the server is announced", describe_cost(cost)),
         ContinuousKind::AdditionalTrashCost(cost) => format!("to trash it, also {}", describe_cost(cost)),
         ContinuousKind::RemoteServerLimit(n) => format!("may have no more than {}", plural(*n, "remote server", "remote servers")),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),

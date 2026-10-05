@@ -45,18 +45,10 @@ pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
-pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("megaprix_qualifier", "Megaprix Qualifier"),
-];
+pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising* (`uprising`): tranche 6 of the NSG plan.
-pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("megaprix_qualifier", "Megaprix Qualifier"),
-    ("project_vacheron", "Project Vacheron"),
-    ("earth_station_sea_headquarters", "Earth Station: SEA Headquarters"),
-    ("akhet", "Akhet"),
-    ("winchester", "Winchester"),
-];
+pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.
 pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[

@@ -46,7 +46,7 @@ pub(crate) fn end_game(state: &mut GameState, winner: Side) -> Vec<GameEvent> {
 /// one number for a scored or stolen agenda — the win check, the stored
 /// tally, a forfeit and a card that counts points all read it.
 pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &CardId, side: Side) -> u32 {
-    registry.get(card_id).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side))
+    registry.get(card_id).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side, None))
 }
 
 /// What one entry in `side`'s score area is worth: an agenda's
@@ -56,7 +56,10 @@ pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &Car
 pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredAgenda, side: Side) -> i32 {
     match scored.as_agenda {
         Some(as_agenda) => as_agenda.points,
-        None => agenda_value_in(state, registry, &scored.card, side) as i32,
+        // The copy, whose counters its own text may read: Megaprix
+        // Qualifier is worth 1 more while it hosts one, a stolen Project
+        // Vacheron nothing while it hosts any.
+        None => registry.get(&scored.card).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side, Some(scored.install_id).filter(|install| *install != crate::rules::state::InstallId::PLACEHOLDER))) as i32,
     }
 }
 
@@ -70,6 +73,20 @@ pub fn score(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
         Side::Corp => state.corp.scored_agendas.iter().map(|scored| scored_value(state, registry, scored, side)).sum(),
         Side::Runner => state.runner.scored_agendas.iter().map(|scored| scored_value(state, registry, scored, side)).sum(),
     }
+}
+
+/// Writes each side's [`score`] into its stored tally
+/// (`PlayerResources::agenda_points`, which the view, the bots and the
+/// tempo report read). The tally is added to as an agenda lands, at what
+/// it is worth then, and that was all it ever was; an agenda whose worth
+/// moves after it landed left it behind — Megaprix Qualifier's counter
+/// is placed by its score's own trigger, and a stolen Project Vacheron is
+/// worth 3 again once its last counter is gone. Run by the checkpoint
+/// beside the win check, which has always read the score itself, so the
+/// two never disagree after an action.
+pub(crate) fn refresh_tallies(state: &mut GameState, registry: &CardRegistry) {
+    state.corp.resources.agenda_points = crate::rules::state::AgendaPoints(score(state, registry, Side::Corp));
+    state.runner.resources.agenda_points = crate::rules::state::AgendaPoints(score(state, registry, Side::Runner));
 }
 
 /// Checks whether either side's score area has reached the winning

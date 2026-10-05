@@ -1786,7 +1786,7 @@ pub(crate) fn resolve_choose_server(
         return Ok(events);
     }
 
-    run::start_run(state, registry, server)?;
+    let paid = run::start_run(state, registry, server)?;
     // "During that run, the rez cost of each piece of ice is increased by
     // 3[credit]" (Tread Lightly): an effect with a duration, so an entry on
     // `GameState::lingering` that holds while the run does. It was a number
@@ -1817,8 +1817,10 @@ pub(crate) fn resolve_choose_server(
     }
 
     let run_initiated_event = GameEvent::RunInitiated { server };
-    let mut events = start_events;
+    let mut events = paid.clone();
+    events.extend(start_events);
     crate::rules::dispatcher::emit(state, registry, &mut events, run_initiated_event)?;
+    events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

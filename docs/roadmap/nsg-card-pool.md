@@ -49,13 +49,14 @@ cards each stage takes.
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
-| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 60 + 6 | 5 + 1 | Stages 1–7 built (5 October 2026) |
+| 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 101
-`Effect` variants single-use, none unused, over 568 card files** (5 October
-2026, with Uprising Stage 7b, which added no variant and gave Sisyphus
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
+`Effect` variants single-use, none unused, over 573 card files** (5 October
+2026, with Uprising Stage 8, which added no variant and closed the set;
+Stage 7b, at 16 of 101 over 568, added none and gave Sisyphus
 Protocol's `ForceEncounter` two more cards, Konjin and Ganked!; Stage 7a,
 at 17 of 101 over 566, added none and gave `ChooseServer` its second card,
 Hyoubu Precog Manifold; Stage 6, at 18 of 101 over 561,
@@ -369,6 +370,7 @@ PR that made this list (29 September 2026).
 - **Hush, Klevetnik** (PH 8): CR 9.12.1d's order of dependent effects is not built; a card's loss is read off the cards hosted on it and the lingering list directly, which is the order 9.12.1e gives hosted objects and all the pool needs.
 
 - **Prāna Condenser** (UR 1): "whenever **you** would do net damage" hears every net damage about to be suffered, because `EventFilter::Damage` reads the kind and not who does it; a Runner card that does net damage to its own Runner would be offered to the Corp to prevent.
+- **Earth Station: SEA Headquarters** (UR 8): its additional cost to run is paid as the server is announced, before the run's own pools exist, so neither bad publicity's credits (rightly, CR 6.3.3) nor a run event's (Overclock's, placed as its run begins here) nor a card's "during runs" credits pay it. GameNET's "causes the Runner to spend" does not hear it, as it hears no standing effect's price.
 - **Hoshiko Shiro: Untold Protagonist** (UR 2): the catalog folds the flip side's text into the front's and keeps none of its other numbers, so a flipped Hoshiko has the front's subtypes (Natural) and link (0). DreamNet's "if your identity is digital" reads her front either way (`EffectRequirement::IdentityMatches`).
 
 ### Recorded deviations from the Comprehensive Rules
@@ -382,6 +384,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Hosted cards are a list in the order hosted**, not "distinct groups … freely arranged" (CR 1.13.7d): Read-Write Share.
 - **Baker's credit is paid in the last paid-ability window before the approach** (CR 6.9.4e), not at it, so the Corp acts in that window after the Runner has chosen.
 - **A breach with no run that ends the game mid-access** still records a `RunCompleted`, pushed and not dispatched (Cataloguer); the breach is shown with the run's panel and trail.
+- **A run a card's text makes is refused when its additional cost cannot be paid** (CR 1.16.10a says the run simply does not happen), and a Runner who can pay is never offered to decline (Earth Station: SEA Headquarters, UR 8). A run event that cannot pay is not offered; a "you may run" keeps its other option. The 6.3 row carries it.
 
 ### Approximations whose outcome is the printed one
 
@@ -420,6 +423,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Wall to Wall** (UR 4): "resolve up to 3 in any order" is 3 of the 4, the counter's piece of ice optional, so a Corp that wants neither the draw nor the asset back in HQ must take one of them.
 - **GameNET: Where Dreams are Real** (UR 5): "a Corp card ability causes the Runner to spend or lose" is read as four things, without a ruling to hand (NetrunnerDB's rulings were out of reach): a loss the card's text resolves (Gold Farmer's), the cost of an ability the card prints for the Runner (F2P's 2[credit]), a paid choice it offers ("end the run unless the Runner pays") and a bid in a trace it began (CR 10.8.6d). Credits a Corp card's standing effect makes the Runner pay — a raised cost, an additional cost — are no ability's and are not heard.
 - **Transport Monopoly** (UR 5): "use this ability only during a run" is Proprionegation's `DuringRun`, the run from its initiation to the server's approach; after that the run's success is already decided.
+- **Project Vacheron** (UR 8): "it is worth 0 agenda points" is 3 taken off its printed 3 (`AgendaPoints` of −3 under the `while`); nothing else in the pool changes what an agenda in the Runner's score area is worth but Let Them Dream's own text.
 
 ### Bot debts — cards the heuristic never plays (Phase 5 §25's list)
 
@@ -856,7 +860,8 @@ Excavator.
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 
 **Decks:** Sweep decks on its three identities (Hoshiko Shiro's, Side
-Quest, at Stage 2; GameNET's, Pay to Win, at Stage 5).
+Quest, at Stage 2; GameNET's, Pay to Win, at Stage 5; Earth Station's,
+Ground Control, at Stage 8).
 
 **Re-read at Stage 1** (3 October 2026, against the DSL at Midnight Sun's
 close). Most of what the survey called vocabulary is now built: the turn's
@@ -900,16 +905,17 @@ The stage order below stands.
    - 7b. **An encounter away from the run's position** (built, 5 October
      2026; CR 6.5.9a): Konjin (from inside another encounter, CR 6.1.3c)
      and Ganked! (from inside an access). Stage 7 is complete.
-8. **Points, subroutine lists and run costs that change mid-game:**
-   Megaprix Qualifier, Project Vacheron, Winchester, Akhet, Earth Station.
+8. **Points, subroutine lists and run costs that change mid-game** (built,
+   5 October 2026): Megaprix Qualifier, Project Vacheron, Winchester,
+   Akhet, Earth Station. Uprising is complete.
 
 **Riskiest:**
-- Project Vacheron: a replacement on entering the Runner's score area, with
-  points read off its counters.
+- ~~Project Vacheron: a replacement on entering the Runner's score area, with
+  points read off its counters.~~ Built in UR 8.
 - ~~Konjin: an encounter nested inside an encounter (CR 6.1.3c).~~ Built in UR 7b.
 - ~~Lockdown operations: they stay in play across turns.~~ Built in UR 7a.
-- Earth Station: SEA Headquarters: an additional cost to run (CR 6.3.2b) that changes when the
-  identity flips.
+- ~~Earth Station: SEA Headquarters: an additional cost to run (CR 6.3.2b) that changes when the
+  identity flips.~~ Built in UR 8.
 - ~~Stealth credits, if VP's rule has not already built them.~~ Built in VP 6b.
 
 **Banned:** Bellona, Cayambe Grid, Cyberdex Sandbox, Engram Flush, Gold
@@ -925,6 +931,7 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 - **Stage 6** — four Criminal and Shaper cards on stealth credits, Boomerang's and Engram Flush's remembered choices and Gachapon's set-aside six, with two new `Effect`s (`RevealHand`, `Remember`): a card remembers a card or a card type it chose, reads it back as the ice it may be used on or the type its subroutines may trash, paying a card's own "you may pay" is using it, a run's end knows whether it was successful, and what is left set aside can leave the game (`claude/serene-einstein-6bhlig`, 4 October 2026).
 - **Stage 7a** — lockdown: five operations that stay in the play area, active, until the Corp's next turn begins, with no new `Effect`: "no active lockdown" counted over the play area, a successful run on the chosen server or on one protected by ice, a steal priced off the agenda's counters, and a standing bar on breaking with anything but an icebreaker (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 7b** — an encounter away from the run's position: Konjin and Ganked!, with no new `Effect` — `ForceEncounter` from inside an encounter or an access keeps what it interrupted on the run and returns to it, and an access ends when its card leaves by a card's text resolved above its decision (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 8** — five cards and Earth Station's Sweep deck, Ground Control, with no new `Effect`, closing the set: an agenda's worth is asked of the copy and the stored score is the score; a replacement lands a stolen agenda with counters; a trigger heard in the Runner's score area; an additional cost to run, paid as the server is announced; and a trace's success that parks a choice resumes the subroutines after it (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 7. Downfall — 65 cards (C 19 / V 28 / M 18)
 
