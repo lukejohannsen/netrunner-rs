@@ -626,6 +626,18 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub removed_after_play: bool,
 
+    /// "This operation is not trashed until your next turn begins." — what
+    /// every lockdown prints (CR 3.5.1c). Filed by `engine::
+    /// play_operation_card` in `CorpState::play_area` instead of Archives,
+    /// active there, and trashed as the Corp's next turn begins, before
+    /// anything that turn hears (`turn::enter_start_of_turn`; CR 8.6.6c's
+    /// lingering effect, expiring as the turn begins). A declaration beside
+    /// `removed_after_play`, for the same reason: the play files the card,
+    /// so the play is where it can be filed elsewhere. `validate` keeps it
+    /// to operations.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub not_trashed_until_your_next_turn: bool,
+
 
 
     /// What this card's hosted credits (`counters`, with `counter_kind:
@@ -1013,6 +1025,8 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: \"not trashed until your next turn begins\" is an operation's (a lockdown's, CR 3.5.1c); `engine::play_operation_card` is what reads it")]
+    NotTrashedOffAnOperation(CardId),
     #[error("card {0:?}: \"install only if\" (`install_requirement`) is asked as a Runner card goes into the rig — a program, hardware or resource")]
     InstallRequirementOffTheRig(CardId),
     #[error("card {0:?}: a selection of \"that many\" (`count`) writes `min` and `max` 0 — the count is both bounds")]
@@ -1120,6 +1134,7 @@ impl Default for CardDefinition {
             dividends: None,
             playable_from_archives: false,
             removed_after_play: false,
+            not_trashed_until_your_next_turn: false,
             pays_for: Vec::new(),
             trash_when_empty: false,
             may_install_agendas_faceup: false,
@@ -1201,7 +1216,7 @@ impl CardDefinition {
             // A trash does not say whether the card was installed.
             EventFilter::InstalledCard(_) if triggered.trigger == Trigger::OnCardTrashed => false,
             EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
-            EventFilter::Server(_) | EventFilter::Mark => about == TriggerAbout::Server,
+            EventFilter::Server(_) | EventFilter::Mark | EventFilter::ChosenServer | EventFilter::ProtectedByIce => about == TriggerAbout::Server,
             EventFilter::Damage(_) => about == TriggerAbout::Damage,
             EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
             // Only a moment that names a player can be made one's.
@@ -1215,6 +1230,9 @@ impl CardDefinition {
             EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
             // Only an install is in a root or not.
             EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
+            // Only a Corp card is in a root, and only the Corp installs
+            // into one.
+            EventFilter::InRootOfThisServer => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
             // Only a trash says which pile the card left.
             EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
             // Only a trash says where a card was trashed from, and only a
@@ -1246,6 +1264,9 @@ impl CardDefinition {
         }
         if !self.deck_rules.is_empty() && self.card_type != CardType::Identity {
             return Err(CardValidationError::DeckRuleOffAnIdentity(self.id.clone()));
+        }
+        if self.not_trashed_until_your_next_turn && self.card_type != CardType::Operation {
+            return Err(CardValidationError::NotTrashedOffAnOperation(self.id.clone()));
         }
         // Asked by the one door into the rig (`engine::install_into_rig`);
         // a Corp card's install has no such question, and none prints one.
@@ -1348,7 +1369,14 @@ impl CardDefinition {
             // "The first time each turn **this program** fully breaks…" is
             // counted on the copy that did it (`InstalledRunnerCard::
             // this_turn`), not on the turn, whose log counts the ice.
-            if triggered.when == Some(EventFilter::ByThis) {
+            // "The first time each turn you install a card in the root of
+            // **this server**" is counted on the copies in that root
+            // (`EventFilter::InRootOfThisServer`), which only an install is.
+            if triggered.when == Some(EventFilter::InRootOfThisServer) {
+                if triggered.trigger != Trigger::OnInstall {
+                    return Err(self.first_time_misfit(format!("a root's copies count only the installs into it; a {:?} is not counted", triggered.trigger)));
+                }
+            } else if triggered.when == Some(EventFilter::ByThis) {
                 if !crate::rules::turn_log::CopyTurn::counts_by(triggered.trigger) {
                     return Err(self.first_time_misfit(format!("the copy that did it counts only what a card asks of it, which is fully breaking ice; a {:?} by this card is not counted", triggered.trigger)));
                 }
@@ -1384,7 +1412,10 @@ impl CardDefinition {
             }
         }
         // One printed ability counts on one thing: the copy, or the turn.
-        let about_this = first_time.iter().filter(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)).count();
+        let about_this = first_time
+            .iter()
+            .filter(|triggered| triggered.subject == Some(Subject::This) || matches!(triggered.when, Some(EventFilter::ByThis | EventFilter::InRootOfThisServer)))
+            .count();
         if about_this > 0 && about_this < first_time.len() {
             return Err(self.first_time_misfit("a card's first-time entries share one count, and it is either this copy's or the turn's".to_string()));
         }
@@ -1577,7 +1608,7 @@ impl CardDefinition {
                 && match duration {
                     EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
                     EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
-                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed => false,
+                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed | EffectDuration::WhileInstalled => false,
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
@@ -2429,6 +2460,35 @@ mod tests {
         };
         assert_eq!(hears(Trigger::OnInstall).validate(), Ok(()));
         assert_eq!(hears(Trigger::OnRez).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("lago_paranoa_shelter".to_string()), Trigger::OnRez)));
+    }
+
+    /// "The first time each turn you install a card in the root of **this
+    /// server**" is counted on the copies in the root, so it fits a Corp
+    /// card's install and nothing else — and never a Runner card, which is
+    /// in no root.
+    #[test]
+    fn validate_admits_in_the_root_of_this_server_only_on_a_corp_install() {
+        let hears = |side, trigger| CardDefinition {
+            id: CardId("tranquility_home_grid".to_string()),
+            side,
+            card_type: CardType::Upgrade,
+            triggers: vec![TriggeredEffect {
+                trigger,
+                subject: Some(Subject::Any),
+                requirement: None,
+                effects: vec![Effect::GainCredits(Side::Corp, 2)],
+                when: Some(EventFilter::InRootOfThisServer),
+                acts_on_subject: false,
+                first_each_turn: true, first_each_encounter: false, granted: false,
+                from_heap: false,
+                text: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(hears(Side::Corp, Trigger::OnInstall).validate(), Ok(()));
+        let id = CardId("tranquility_home_grid".to_string());
+        assert_eq!(hears(Side::Corp, Trigger::OnRez).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(id.clone(), Trigger::OnRez)));
+        assert_eq!(hears(Side::Runner, Trigger::OnInstall).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(id, Trigger::OnInstall)));
     }
 
     /// `Amount::ChosenNumber` means something only inside the `then` of the

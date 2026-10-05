@@ -1,0 +1,32 @@
+{
+  "id": "gamenet_where_dreams_are_real",
+  "title": "GameNET: Where Dreams are Real",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAbilityTookCredits",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "requirement": "RunInProgress",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever a Corp card ability causes the Runner to spend or lose at least 1[credit] during a run, gain 1[credit]."
+    }
+  ],
+  "built_from": 26113,
+  "is_playable": true
+}

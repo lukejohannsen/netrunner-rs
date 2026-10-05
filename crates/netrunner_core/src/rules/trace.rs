@@ -55,7 +55,14 @@ pub(crate) fn submit_runner_bid(
         return Err(RulesError::TraceNotAwaitingRunnerBid);
     }
 
-    let paid = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
+    let mut paid = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
+    // The Runner's bid is spent at the trace's asking (CR 10.8.6d), so the
+    // card that began it made them spend (GameNET).
+    if let Some(card) = state.active_trace.as_ref().and_then(|trace| trace.initiating_card.clone())
+        && let Some(took) = ability::took_credits(&paid, Side::Runner, Some(&card))
+    {
+        paid.push(took);
+    }
     let mut events = paid.clone();
 
     let trace = state.active_trace.take().expect("checked Some above");

@@ -1,0 +1,85 @@
+{
+  "id": "afterimage",
+  "title": "Afterimage",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "IceOfType": "Sentry"
+        }
+      },
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "CreditsFrom": {
+                "amount": {
+                  "Fixed": 2
+                },
+                "from": {
+                  "HasSubtype": "Stealth"
+                }
+              }
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to bypass it"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a sentry, you may pay 2[credit] to bypass it. Spend credits only from stealth cards to use this ability."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break up to 2 sentry subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +2 strength. Spend credits only from stealth cards to use this ability.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 26079,
+  "is_playable": true
+}

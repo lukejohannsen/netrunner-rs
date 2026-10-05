@@ -389,6 +389,18 @@ pub struct CorpState {
     /// the rest back into R&D.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
+    /// Operations the Corp played that are still in the play area — a
+    /// **lockdown**, which "is not trashed until your next turn begins"
+    /// (CR 3.5.1c, 8.6.6c: a lingering effect instead of the trash at step
+    /// 8.6.7g). Active there (CR 1.8.3a: "events and operations in the play
+    /// area"), so `rules::active` lists each: its triggers are heard, its
+    /// standing effects apply, and a lockdown's "Play only if there is no
+    /// active lockdown" counts them (`CardZoneRef::OwnPlayArea`). Trashed as
+    /// the Corp's next turn begins, before anything that turn hears
+    /// (`turn::enter_start_of_turn`). Faceup, so public, and carried whole
+    /// by the view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play_area: Vec<PlayedOperation>,
     /// Ids of the cards in this deck that can be *played from Archives*
     /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
     /// Play this operation from Archives"). Seeded once by
@@ -400,6 +412,20 @@ pub struct CorpState {
     /// deck-wide list is seeded at setup instead of per entry.
     #[serde(default)]
     pub playable_from_archives: Vec<CardId>,
+}
+
+/// An operation in the play area after it resolved — see
+/// `CorpState::play_area`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayedOperation {
+    pub card: CardId,
+    /// A handle from the install sequence, as a scored agenda keeps one: a
+    /// trigger is pinned to the copy that heard it (`DeferredTrigger::
+    /// install`), and a choice the card remembers lasts while this copy is
+    /// here (`lingering::Until::WhileInPlay`) — Hyoubu Precog Manifold's
+    /// "choose a server", which a second copy played a turn later must not
+    /// inherit. Handles are never reused, so the two never meet.
+    pub handle: InstallId,
 }
 
 /// One agenda in the Corp's score area — see `CorpState::scored_agendas`.
@@ -1382,6 +1408,12 @@ pub struct CompletedRun {
     /// `snapshot` alone.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsuccessful: bool,
+    /// Whether the run was declared successful (CR 6.9.5a,
+    /// `RunState::declared_successful`) — Boomerang's "if it was
+    /// successful" (`EffectRequirement::LastRunSuccessful`). Not
+    /// `!unsuccessful`: a run can be neither (6.8.4a, 6.8.4b).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub successful: bool,
     /// `RunState::breached` at conclusion: the server breached during the
     /// run, if any — the run's own, or another a replacement breached
     /// instead (`EffectRequirement::BreachedLastRunsServer`, Info Bounty).
@@ -1417,6 +1449,7 @@ impl CompletedRun {
             on_end: run.on_end.clone(),
             run_credits_left: run.bonus_run_credits,
             unsuccessful: false,
+            successful: run.declared_successful,
             breached: run.breached,
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,

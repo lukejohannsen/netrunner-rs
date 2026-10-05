@@ -3,8 +3,10 @@
   "name": "Second Site",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 3b: two Simulation Reset for two of its three Mindscaping.",
-  "style": ["traps"],
+  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 3b: two Simulation Reset for two of its three Mindscaping. Uprising Stage 6: two Engram Flush for Urtica Cipher and Retribution, a card type chosen on encounter and the grip revealed.",
+  "style": [
+    "traps"
+  ],
   "identity": "a_teia_ip_recovery",
   "cards": [
     {
@@ -20,16 +22,8 @@
       "count": 3
     },
     {
-      "card": "urtica_cipher",
-      "count": 1
-    },
-    {
       "card": "the_red_room",
       "count": 2
-    },
-    {
-      "card": "retribution",
-      "count": 1
     },
     {
       "card": "vicsek",
@@ -101,6 +95,10 @@
     },
     {
       "card": "simulation_reset",
+      "count": 2
+    },
+    {
+      "card": "engram_flush",
       "count": 2
     }
   ]

@@ -193,7 +193,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -352,6 +352,11 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
     // The encounter is complete before the ice is passed (CR 6.9.3e, then
     // 6.9.4a).
     let mut events: Vec<GameEvent> = encounter_ends(run).into_iter().collect();
+    // A forced encounter away from the Runner's position ends by returning
+    // to what it interrupted, which passes nothing (CR 6.5.9a).
+    if resume_suspended(run) {
+        return events;
+    }
     // A forced encounter's end is a return to the movement phase it was
     // forced from, the ice already passed there (CR 6.5.9a).
     if std::mem::take(&mut run.forced_encounter) {
@@ -363,6 +368,94 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
     run.ice_passed += 1;
     enter_movement(run, position + 1);
     events
+}
+
+/// `Effect::ForceEncounter` from inside an encounter or an access: the
+/// Runner encounters `install`, a rezzed piece of ice anywhere, without
+/// moving and without the run's timing point changing (CR 6.1.3c, 6.5.9a)
+/// — Konjin's "The Runner encounters that ice. (When that encounter ends,
+/// if the run has not ended, finish encountering this ice.)" and Ganked!'s
+/// from the access of Ganked!. What it interrupts is kept on
+/// `RunState::suspended` while the run stands on the one piece of ice, and
+/// comes back when the encounter ends (`resume_suspended`); "end the run"
+/// ends both (6.5.9b), as it ends the run. The encounter is a new one, with
+/// its own tally, and the interrupted encounter's lingering effects do not
+/// hold during it (they are about that encounter). Nothing for ice that is
+/// not installed and rezzed.
+///
+/// Not the movement phase's path (`force_encounter` below, Sisyphus
+/// Protocol's), which encounters ice at its own position on the run's list
+/// and leaves into the movement phase it was forced from: that one has a
+/// position to stand on, and this one does not — Konjin's choice may
+/// protect another server, and an access stands past every piece of ice.
+fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install && c.slot == InstallSlot::Ice) else { return Ok(Vec::new()) };
+    if !installed.rezzed {
+        return Ok(Vec::new());
+    }
+    let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
+    let may_gain = crate::rules::active::may_have_granted(state, registry, install);
+    let own = continuous::own_subroutines(state, registry, install);
+    let run = state.active_run.as_mut().expect("checked by force_encounter");
+    run.suspended.push(crate::rules::run::SuspendedEncounter {
+        phase: run.phase,
+        ice: std::mem::replace(&mut run.ice, vec![fresh]),
+        position: run.position,
+        jack_out_permitted: run.jack_out_permitted,
+        forced_encounter: run.forced_encounter,
+        ice_bypassed: run.ice_bypassed,
+        fully_broken: run.fully_broken,
+        this_encounter: std::mem::take(&mut run.this_encounter),
+    });
+    run.position = 0;
+    run.phase = RunPhase::EncounterIce;
+    run.forced_encounter = true;
+    run.jack_out_permitted = false;
+    run.fully_broken = false;
+    run.ice_bypassed = false;
+    run.encounters += 1;
+    add_own_subroutines(run, 0, own);
+    add_gained_for_the_run(run, 0, may_gain);
+    let nothing_to_break = fully_broken_with_nothing_to_break(run, 0);
+    // The interrupted encounter's window belonged to its step.
+    if state.paid_ability_window.as_ref().is_some_and(|window| window.checkpoint == crate::rules::state::WindowCheckpoint::Run) {
+        state.paid_ability_window = None;
+    }
+    let ice = &state.active_run.as_ref().expect("checked above").ice[0];
+    let encountered = GameEvent::IceEncountered {
+        card_id: ice.card_id.clone(),
+        strength: continuous::ice_strength(state, registry, ice),
+        subroutine_count: ice.subroutines.len(),
+    };
+    let mut events = Vec::new();
+    crate::rules::dispatcher::emit(state, registry, &mut events, encountered)?;
+    if let Some(fully_broken) = nothing_to_break {
+        crate::rules::dispatcher::emit(state, registry, &mut events, fully_broken)?;
+    }
+    events.extend(crate::rules::paid_ability::open_window_if_at_checkpoint(state, registry));
+    Ok(events)
+}
+
+/// Ends the innermost forced encounter away from the Runner's position by
+/// putting back what it interrupted (`RunState::suspended`): the run's ice,
+/// its position and the encounter or access it was in. `false`, and nothing
+/// touched, when no such encounter is under way. Konjin's own encounter goes
+/// on from here ("finish encountering this ice"), its window opened by
+/// whoever took the step (`paid_ability::open_window_if_at_checkpoint`);
+/// an access goes on at the end of the action (`engine::resume_run`), past
+/// the card if it left while it was being accessed (Ganked!, trashed to
+/// start the encounter).
+fn resume_suspended(run: &mut RunState) -> bool {
+    let Some(suspended) = run.suspended.pop() else { return false };
+    run.phase = suspended.phase;
+    run.ice = suspended.ice;
+    run.position = suspended.position;
+    run.jack_out_permitted = suspended.jack_out_permitted;
+    run.forced_encounter = suspended.forced_encounter;
+    run.ice_bypassed = suspended.ice_bypassed;
+    run.fully_broken = suspended.fully_broken;
+    run.this_encounter = suspended.this_encounter;
+    true
 }
 
 /// `Effect::ForceEncounter`: the Runner encounters `install` again without
@@ -378,6 +471,9 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
 /// Runner does nothing").
 pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if matches!(run.phase, RunPhase::EncounterIce | RunPhase::AccessingCard) {
+        return force_encounter_elsewhere(state, registry, install);
+    }
     let Some(position) = run.ice.iter().position(|ice| ice.install_id == install) else { return Ok(Vec::new()) };
     let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install) else { return Ok(Vec::new()) };
     if run.phase != RunPhase::Movement || !installed.rezzed {
@@ -518,6 +614,28 @@ pub(crate) fn reconcile_ice(
     let Some(run) = state.active_run.as_ref() else { return Ok(None) };
     if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
         return Ok(None);
+    }
+    // A forced encounter away from the Runner's position stands on its one
+    // piece of ice, which no server's list is: the run's own list waits in
+    // `suspended` and is brought back into step after it. The encounter
+    // ends here if its ice has left the table or been derezzed.
+    if !run.suspended.is_empty() {
+        let standing = run.ice.first().is_some_and(|ice| state.corp.installed.iter().any(|c| c.install_id == ice.install_id && c.rezzed));
+        if standing {
+            return Ok(None);
+        }
+        let mut run = state.active_run.take().expect("checked Some above");
+        let ended: Vec<GameEvent> = encounter_ends(&run).into_iter().collect();
+        resume_suspended(&mut run);
+        state.active_run = Some(run);
+        let mut events = ended.clone();
+        for event in ended {
+            events.extend(dispatcher::dispatch_event(state, registry, &event)?);
+        }
+        if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+            state.paid_ability_window = None;
+        }
+        return Ok(Some(events));
     }
 
     let mut rebuilt = Vec::new();
@@ -1131,7 +1249,15 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .and_then(|run| run.ice.get(run.position))
         .map_or(0, |ice| continuous::ice_strength(state, registry, ice));
     let (card_id, _) = transition_subroutine(state, registry, index, SubroutineStatus::Broken)?;
-    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
+    // Printed on the ice, not gained (Gold Farmer's "a **printed**
+    // subroutine on this ice"), carried for what is heard of the break.
+    let printed = state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.ice.get(run.position))
+        .and_then(|ice| ice.subroutines.get(index))
+        .is_some_and(|subroutine| !subroutine.gained);
+    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength, printed }];
     // What kind of icebreaker broke it, when it was printed (Virtual
     // Service Agent's "its printed subroutine with a decoder"): the
     // subtypes of the card whose ability it was, read before the run is
@@ -1145,7 +1271,6 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
     run.subroutine_broken = true;
     run.this_encounter.subroutines_broken += 1;
     run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
-    let printed = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(index)).is_some_and(|subroutine| !subroutine.gained);
     if printed {
         run.this_encounter.printed_broken_with = run.this_encounter.printed_broken_with.with(&breaker_subtypes);
     }
@@ -1177,7 +1302,13 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
 /// Returns the run it ended, for callers that still need to read it
 /// (`access_server`'s `RunCompleted`, `jack_out`'s event lookup).
 pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
-    let run = state.active_run.take();
+    let mut run = state.active_run.take();
+    // A run ended inside a forced encounter away from the Runner's position
+    // ends both (CR 6.5.9b); what it snapshots is the run's own ice and
+    // position, which wait under the encounters it interrupted.
+    if let Some(run) = run.as_mut() {
+        while resume_suspended(run) {}
+    }
     // A breach with no run leaves the last run the last run: Cataloguer's
     // breach is no "run on R&D" for anything that asks about the last.
     if let Some(run) = run.as_ref().filter(|run| !run.breach_only) {
@@ -1718,7 +1849,7 @@ mod tests {
         );
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }]
         );
     }
 

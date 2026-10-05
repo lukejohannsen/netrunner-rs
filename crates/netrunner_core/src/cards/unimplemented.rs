@@ -47,47 +47,15 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
 pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("megaprix_qualifier", "Megaprix Qualifier"),
-    ("la_costa_grid", "La Costa Grid"),
-    ("digital_rights_management", "Digital Rights Management"),
-    ("cayambe_grid", "Cayambe Grid"),
 ];
 
 /// *Uprising* (`uprising`): tranche 6 of the NSG plan.
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("gachapon", "Gachapon"),
-    ("boomerang", "Boomerang"),
-    ("mu_safecracker", "Mu Safecracker"),
-    ("afterimage", "Afterimage"),
-    ("makler", "Makler"),
-    ("penrose", "Penrose"),
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
-    ("vaporframe_fabricator", "Vaporframe Fabricator"),
-    ("tyr", "Týr"),
-    ("next_activation_command", "NEXT Activation Command"),
-    ("scapenet", "Scapenet"),
-    ("tranquility_home_grid", "Tranquility Home Grid"),
-    ("engram_flush", "Engram Flush"),
-    ("konjin", "Konjin"),
-    ("hyoubu_precog_manifold", "Hyoubu Precog Manifold"),
-    ("kakurenbo", "Kakurenbo"),
-    ("la_costa_grid", "La Costa Grid"),
-    ("gamenet_where_dreams_are_real", "GameNET: Where Dreams are Real"),
-    ("f2p", "F2P"),
-    ("gold_farmer", "Gold Farmer"),
-    ("digital_rights_management", "Digital Rights Management"),
-    ("sync_rerouting", "SYNC Rerouting"),
-    ("ganked", "Ganked!"),
     ("earth_station_sea_headquarters", "Earth Station: SEA Headquarters"),
-    ("transport_monopoly", "Transport Monopoly"),
-    ("wall_to_wall", "Wall to Wall"),
     ("akhet", "Akhet"),
     ("winchester", "Winchester"),
-    ("argus_crackdown", "Argus Crackdown"),
-    ("cayambe_grid", "Cayambe Grid"),
-    ("cyberdex_sandbox", "Cyberdex Sandbox"),
-    ("false_lead", "False Lead"),
-    ("napd_cordon", "NAPD Cordon"),
 ];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.

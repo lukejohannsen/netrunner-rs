@@ -127,6 +127,10 @@ pub struct PublicCorpState {
     /// Never masked: faceup (`CorpState::set_aside`, Deep Dive).
     #[serde(default)]
     pub set_aside: Vec<CardId>,
+    /// Never masked: a played operation is faceup in the play area
+    /// (`CorpState::play_area`, a lockdown).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play_area: Vec<crate::rules::PlayedOperation>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -370,7 +374,25 @@ pub struct PublicAccessState {
     /// and what its printed text resolves after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outside_breach: Option<crate::rules::run::OutsideBreach>,
+    /// `AccessState::left`, never masked: both players watched the card go.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub left: bool,
     pub phase: PublicAccessPhase,
+}
+
+/// `run::SuspendedEncounter` as seen by a viewer — what a forced encounter
+/// away from the Runner's position interrupted, its ice masked as the run's
+/// own is (`mask_run_ice`). Public otherwise, as what forced it was, and
+/// carried so a sample returns where the real game will.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicSuspendedEncounter {
+    pub phase: RunPhase,
+    pub ice: Vec<PublicRunIce>,
+    pub position: usize,
+    pub jack_out_permitted: bool,
+    pub forced_encounter: bool,
+    pub fully_broken: bool,
+    pub this_encounter: crate::rules::run::EncounterTally,
 }
 
 /// `run::RunState` as seen by a particular viewer. Drops
@@ -397,6 +419,10 @@ pub struct PublicRunState {
     /// `RunState::forced_encounter`: public, as what forced it was.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forced_encounter: bool,
+    /// `RunState::suspended`: what each forced encounter away from the
+    /// Runner's position interrupted, innermost last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suspended: Vec<PublicSuspendedEncounter>,
     /// `RunState::event_counters`: public, as counters on a card are.
     #[serde(default)]
     pub event_counters: u32,
@@ -976,6 +1002,18 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::TriggerFired { card, trigger } if concealed(card) => {
             (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
         }
+        // A facedown card can ask for credits — an ambush accessed in HQ
+        // (Esca) or in its root (Cerebral Overwriter) — and the credits are
+        // in the log beside this; which card asked is withheld from whoever
+        // its own view conceals it from, as its trigger is.
+        GameEvent::AbilityTookCredits { card, .. } if concealed(card) => None,
+        // Accessed in HQ or R&D, as `TriggerFired`'s access is: the Runner
+        // saw it, a spectator did not (Esca, seed 28).
+        GameEvent::AbilityTookCredits { card, .. }
+            if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
+        {
+            None
+        }
         // The one card-bearing field that can be struck out in place.
         GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
@@ -1090,6 +1128,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // An agenda out of HQ into the score area, where it is public.
         | GameEvent::AgendaAddedToScoreArea { .. }
         | GameEvent::AbilityGainedCredits { .. }
+        | GameEvent::AbilityTookCredits { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
@@ -1164,7 +1203,20 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
             *source_card = conceal(source_card);
             *prompting_card = conceal(prompting_card);
         }
-        PendingDecision::ChooseTriggerOrder { .. } => {}
+        // Who orders and how many are public; what each heard is masked as
+        // the log masks it. A Corp install heard by two of the Corp's cards
+        // (Engineering the Future and Tranquility Home Grid) parks an order
+        // whose entries both carry the install's event, card and all —
+        // found by the session sweep's masking invariant at Uprising Stage
+        // 4, seed 89. The event a trigger heard names what the queued card
+        // reacts to, so it is masked exactly as that event is in the log.
+        PendingDecision::ChooseTriggerOrder { pending, .. } => {
+            for trigger in pending.iter_mut() {
+                trigger.event = trigger.event.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
+                trigger.announce = trigger.announce.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
+                trigger.target = conceal(&trigger.target);
+            }
+        }
         // The Corp's bid is the Corp's until the Runner has bid, which
         // resolves the game (CR 10.14.2); that one has been made is public.
         PendingDecision::PsiGame { corp_bid, source_card, prompting_card, .. } => {
@@ -1252,6 +1304,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, v
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
         outside_breach: access.outside_breach.clone(),
+        left: access.left,
         phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
     }
 }
@@ -1277,6 +1330,19 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
+        suspended: run
+            .suspended
+            .iter()
+            .map(|suspended| PublicSuspendedEncounter {
+                phase: suspended.phase,
+                ice: suspended.ice.iter().map(|ice| mask_run_ice(state, registry, ice, viewer.is(Side::Corp))).collect(),
+                position: suspended.position,
+                jack_out_permitted: suspended.jack_out_permitted,
+                forced_encounter: suspended.forced_encounter,
+                fully_broken: suspended.fully_broken,
+                this_encounter: suspended.this_encounter.clone(),
+            })
+            .collect(),
         event_counters: run.event_counters,
         gained_for_the_run: run.gained_for_the_run.clone(),
         bad_publicity_credits: run.bad_publicity_credits,
@@ -1401,6 +1467,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         bad_publicity: corp.bad_publicity,
         removed_from_game: corp.removed_from_game.clone(),
         set_aside: corp.set_aside.clone(),
+        play_area: corp.play_area.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),
@@ -1606,6 +1673,68 @@ mod tests {
         let accessed = GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: crate::dsl::Trigger::OnAccessed };
         assert_eq!(mask_event_for_player(&accessed, &state, Side::Runner), Some(accessed.clone()));
         assert_eq!(mask_event_for_player(&accessed, &state, Viewer::Spectator), None, "a spectator never learns what fired face down");
+    }
+
+    /// A facedown card can ask for credits — an ambush accessed in its
+    /// root — and which card asked is withheld from whoever its own view
+    /// conceals it from; the credits themselves are in the log beside it
+    /// (Uprising Stage 5, seeds 26 and 28); one accessed in HQ is named to
+    /// the Runner who accessed it and to no spectator.
+    #[test]
+    fn a_facedown_card_that_took_credits_is_not_named_to_whoever_it_is_concealed_from() {
+        let mut corp = corp_state_with_cards();
+        // The fixture's R&D holds an Enigma too, which a spectator would
+        // take this one for.
+        corp.r_and_d.retain(|card| card.0 != "enigma");
+        let state = game_state(corp);
+        let took = GameEvent::AbilityTookCredits { side: Side::Corp, card: CardId("ice_wall".to_string()) };
+        assert_eq!(mask_event_for_player(&took, &state, Side::Corp), Some(took.clone()));
+        assert_eq!(mask_event_for_player(&took, &state, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&took, &state, Side::Runner), None, "never accessed or rezzed");
+        let rezzed = GameEvent::AbilityTookCredits { side: Side::Runner, card: CardId("enigma".to_string()) };
+        assert_eq!(mask_event_for_player(&rezzed, &state, Viewer::Spectator), Some(rezzed.clone()), "a rezzed card is on the table");
+
+        let mut in_hq = state.clone();
+        in_hq.corp.hq.push(CardId("esca".to_string()));
+        let accessed = GameEvent::AbilityTookCredits { side: Side::Runner, card: CardId("esca".to_string()) };
+        assert_eq!(mask_event_for_player(&accessed, &in_hq, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&accessed, &in_hq, Side::Corp), Some(accessed.clone()));
+    }
+
+    /// A trigger-order prompt is the Corp's, and each entry carries the
+    /// event its card heard: a facedown install heard by two Corp cards
+    /// named the card to the Runner and a spectator until the entries were
+    /// masked as the log masks the event (Uprising Stage 4, seed 89).
+    #[test]
+    fn a_trigger_order_prompt_names_no_card_its_events_conceal() {
+        let mut state = game_state(corp_state_with_cards());
+        let install = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1069), card: Some(CardId("ice_wall".to_string())), server: ServerId::Hq, from_hq: true };
+        let heard = |card: &str| crate::rules::state::DeferredTrigger {
+            card: CardId(card.to_string()),
+            trigger: crate::dsl::Trigger::OnInstall,
+            target: None,
+            install: None,
+            target_install: None,
+            event: Some(install.clone()),
+            continuation: None,
+            heard: Default::default(),
+            not_the_first_this_turn: false,
+            fired: 0,
+            announce: None,
+        };
+        state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![heard("haas_bioroid_engineering_the_future"), heard("tranquility_home_grid")],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let events = |viewer: Viewer| match mask_state_for_player(&state, viewer).pending_decision {
+            Some(PendingDecision::ChooseTriggerOrder { pending, .. }) => pending.into_iter().map(|trigger| trigger.event).collect::<Vec<_>>(),
+            other => panic!("still the order: {other:?}"),
+        };
+        let struck = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1069), card: None, server: ServerId::Hq, from_hq: true };
+        assert_eq!(events(Viewer::Player(Side::Runner)), vec![Some(struck.clone()), Some(struck.clone())]);
+        assert_eq!(events(Viewer::Spectator), vec![Some(struck.clone()), Some(struck)]);
+        assert_eq!(events(Viewer::Player(Side::Corp)), vec![Some(install.clone()), Some(install)], "the Corp orders its own");
     }
 
     #[test]

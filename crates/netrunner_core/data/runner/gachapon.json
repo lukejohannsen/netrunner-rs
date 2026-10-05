@@ -1,0 +1,123 @@
+{
+  "id": "gachapon",
+  "title": "Gachapon",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "text": "[trash]: Set aside the top 6 cards of your stack faceup. You may install 1 program or virtual resource from among those cards, paying 2[credit] less. Shuffle 3 of the remaining cards into your stack, then remove the rest from the game.",
+      "effect": {
+        "Sequence": [
+          {
+            "SetAsideFromTopUntil": {
+              "filter": "Any",
+              "count": 6
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnSetAside",
+              "filter": {
+                "All": [
+                  {
+                    "AnyOf": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "All": [
+                          {
+                            "CardType": "Resource"
+                          },
+                          {
+                            "HasSubtype": "Virtual"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "InstallableRunnerCardWithDiscount": {
+                      "Credits": 2
+                    }
+                  }
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "CardsSelected",
+                      1
+                    ]
+                  },
+                  "effect": {
+                    "InstallRunnerCardFromZone": {
+                      "from": "OwnSetAside",
+                      "discount": {
+                        "Credits": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OwnSetAside",
+                    "count": 4
+                  }
+                }
+              },
+              "effect": {
+                "ShuffleIntoDeck": [
+                  "OwnSetAside"
+                ]
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ZoneHasAtLeast": {
+                  "zone": "OwnSetAside",
+                  "count": 4
+                }
+              },
+              "effect": {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnSetAside",
+                  "filter": "Any",
+                  "min": 3,
+                  "max": 3,
+                  "reveal": false,
+                  "shuffle_after": true,
+                  "destination": "OwnStack"
+                }
+              }
+            }
+          },
+          {
+            "RemoveFromGame": "SetAside"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 26069,
+  "is_playable": true
+}

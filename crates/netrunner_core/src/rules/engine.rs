@@ -1413,6 +1413,9 @@ fn resume_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Game
         // A breach whose beginning parked something waits here too, a
         // breach with no run included (`run::access::access_server`).
         RunPhase::Success if run.declared_successful || run.breached.is_some() => run::breach(state, registry),
+        // A card that left while it was being accessed (Ganked!) ended its
+        // access; the breach goes on once what it began is over.
+        RunPhase::AccessingCard => run::move_on_if_left(state, registry),
         _ => Ok(Vec::new()),
     }
 }
@@ -1645,6 +1648,13 @@ pub(crate) fn play_operation_card(
     if from_archives || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
+    } else if card_def.not_trashed_until_your_next_turn {
+        // A lockdown stays in the play area, active, and is heard there:
+        // its own `OnPlay` resolves as the copy with this handle
+        // (`listeners::moments` pins the play to it), so a choice it makes
+        // lasts while this copy stays (CR 9.10.3c).
+        let handle = next.allocate_install_id();
+        next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle });
     } else {
         crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }
@@ -2510,6 +2520,12 @@ fn activate_ability(
     // 9.5.7b), so the use is heard with the cost's events, after the effect
     // — the Payment Rule's order for every cost — rather than dispatched
     // into the middle of the resolution it announces.
+    // What the cost took, heard with it (F2P's 2[credit], which GameNET
+    // hears as a Corp card's ability making the Runner spend).
+    if let Some(took) = ability::took_credits(&cost_events, side, Some(&card_id)) {
+        events.push(took.clone());
+        cost_events.push(took);
+    }
     let activated = GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index, install: (!is_identity).then_some(target), action: ability.is_action() };
     events.push(activated.clone());
     cost_events.push(activated);
@@ -4573,7 +4589,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -5364,7 +5380,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
             ]
         );
     }
@@ -5599,6 +5615,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::IceStrengthModified {
                     card_id: CardId("ice_wall".to_string()),
@@ -5645,6 +5662,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::StrengthBoosted {
                     card_id,
@@ -5732,8 +5750,9 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
                 // Corroder broke every subroutine, so it fully broke the ice
                 // too (CR 6.5.7b).
                 GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: Some(install_of(&state, &card_id.0)) },
@@ -7260,6 +7279,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },

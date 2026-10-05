@@ -3,7 +3,7 @@
   "name": "Encore",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both.",
+  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both. Uprising Stage 5: two Makler for its two Marjanah, a fracter that pays a credit the first time each turn it fully breaks a piece of ice; Picket Line keeps Marjanah.",
   "style": [
     "pressure"
   ],
@@ -54,10 +54,6 @@
       "count": 2
     },
     {
-      "card": "marjanah",
-      "count": 2
-    },
-    {
       "card": "buzzsaw",
       "count": 2
     },
@@ -92,6 +88,10 @@
     {
       "card": "pinhole_threading",
       "count": 3
+    },
+    {
+      "card": "makler",
+      "count": 2
     }
   ]
 }

@@ -42,8 +42,11 @@ pub enum GameEvent {
     /// (`continuous::ice_strength`), carried because what a card hears
     /// about the break is read off the event (`EventFilter::Ice`, The
     /// Tungsten Tailor's "a piece of ice with 0 or less strength") and a
-    /// strength read later could have moved.
-    SubroutineBroken { card_id: CardId, index: usize, strength: i32 },
+    /// strength read later could have moved. `printed` is whether the
+    /// subroutine was printed on the ice rather than gained (Gold Farmer's
+    /// "a printed subroutine"), carried for the same reason: the run has
+    /// moved on by the time a parked trigger is asked again.
+    SubroutineBroken { card_id: CardId, index: usize, strength: i32, printed: bool },
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
     /// The ice being encountered gained a subroutine ahead of the others
     /// for the rest of the encounter (`Effect::GainSubroutine`); `text` is
@@ -445,6 +448,15 @@ pub enum GameEvent {
     /// card. The Zwicky Group: Invisible Hands draws off it. Carries no
     /// amount: no reader needs one, and `CreditsGained` has it.
     AbilityGainedCredits { side: Side, card: CardId },
+    /// `side` spent or lost at least 1[credit] because `card`'s ability
+    /// made them — a loss its text resolved, the cost of the ability, a
+    /// paid choice it offered or a bid in the trace it began — announced
+    /// after what it paid for or with the loss (`ability::took_credits`).
+    /// GameNET: Where Dreams are Real draws off it. `AbilityGainedCredits`'s
+    /// mirror, and for its reason a separate event: no spend or loss event
+    /// names a card. Withheld from a viewer whose view conceals the card
+    /// (`masking`): an ambush asks for credits face down.
+    AbilityTookCredits { side: Side, card: CardId },
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
     /// `install` is the copy used, `None` for an identity or a card used
@@ -774,7 +786,7 @@ impl GameEvent {
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
             | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } | GameEvent::CardAddedToHand { .. }
-            | GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. }
+            | GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityTookCredits { .. } | GameEvent::RunEndedByEffect { .. }
             | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
             | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::AdvancementCountersRemoved { .. }
             | GameEvent::PaidAbilityWindowOpened { .. }

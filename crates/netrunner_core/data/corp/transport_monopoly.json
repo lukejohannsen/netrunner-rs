@@ -1,0 +1,44 @@
+{
+  "id": "transport_monopoly",
+  "title": "Transport Monopoly",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you score this agenda, place 2 agenda counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "DuringRun"
+        ]
+      },
+      "effect": {
+        "Prohibit": {
+          "what": "DeclaredSuccessful",
+          "until": "Run"
+        }
+      },
+      "text": "Once per turn → Hosted agenda counter: This run cannot be declared successful. (This effect does not cause the run to become unsuccessful.) Use this ability only during a run."
+    }
+  ],
+  "built_from": 26121,
+  "is_playable": true
+}

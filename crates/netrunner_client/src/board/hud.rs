@@ -294,6 +294,8 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::BioroidIceAbilities => "the Runner cannot use paid abilities printed on bioroid ice",
         Prohibition::Rez => "the Corp cannot rez that card",
         Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
+        Prohibition::DeclaredSuccessful => "this run cannot be declared successful",
+        Prohibition::BreakWithNonIcebreakers => "the Runner cannot use non-icebreaker cards to break subroutines",
     }
 }
 
@@ -333,10 +335,24 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), title);
         Some(format!("This run: the {} [credit] on {event} may be spent only {}", run.bonus_run_credits, crate::prose::describe_pays_for(word)))
     });
+    // Konjin, Ganked!: a forced encounter away from the Runner's position
+    // returns to what it interrupted (`suspended`), which nothing else on
+    // the board says while the run stands on the forced ice.
+    let returns_to = view.active_run.as_ref().and_then(|run| run.suspended.last()).map(|suspended| {
+        let to = match suspended.phase {
+            netrunner_core::rules::RunPhase::EncounterIce => {
+                let ice = suspended.ice.get(suspended.position).and_then(|ice| ice.identity.as_ref()).map_or_else(|| "the ice".to_string(), |identity| title(&identity.card));
+                format!("the encounter with {ice}")
+            }
+            netrunner_core::rules::RunPhase::AccessingCard => "the breach".to_string(),
+            _ => "the run".to_string(),
+        };
+        format!("This run: after this encounter, back to {to}")
+    });
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -413,6 +429,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
                 }
                 (Lingering::Mark(server), _) => format!("the Runner's mark is {}", crate::board::action_map::server_name(*server)),
+                // Boomerang: the ice it is used against.
+                (Lingering::ChosenCard(chosen), _) => {
+                    let ice = super::facts::card_of(view, *chosen).map_or_else(|| "a piece of ice".to_string(), |card| title(&card));
+                    format!("the chosen ice is {ice}")
+                }
+                // Engram Flush: the type its subroutines may trash.
+                (Lingering::ChosenCardType(card_type), _) => format!("the chosen card type is {}", format!("{card_type:?}").to_lowercase()),
                 (Lingering::AllottedClicks(n), on) => {
                     let side = who(on, Side::Runner);
                     let clicks = n.unsigned_abs();
@@ -431,6 +454,8 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 },
                 Until::NextTurnOf(_) => "",
                 Until::WhileRezzed(_) => ", while it remains rezzed",
+                Until::WhileInstalled(_) => ", while it remains installed",
+                Until::WhileInPlay(_) => ", while it stays in play",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))
@@ -472,6 +497,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let names: Vec<String> = view.corp.set_aside.iter().map(&title).collect();
             format!("set aside from R&D: {}", names.join(", "))
         }))
+        // A lockdown in the play area (CR 3.5.1c): faceup, active, and
+        // gone when the Corp's next turn begins, which is the line's to say
+        // because nothing on the board stands for it.
+        .chain(view.corp.play_area.iter().map(|played| format!("in play until the Corp's next turn: {}", title(&played.card))))
         .collect()
 }
 

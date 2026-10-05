@@ -140,6 +140,15 @@ pub enum Cost {
     /// game, and "when you forfeit this" hears it (Greenmail), dispatched
     /// by the payer.
     Forfeit(u32),
+    /// The Corp forfeits the agenda whose ability this is — False Lead's
+    /// "**Forfeit this agenda:** If the Runner has 2 or more [click]
+    /// remaining, they lose [click][click]". Affordable while the agenda is
+    /// in the Corp's score area and may be forfeited; paid as `Forfeit`
+    /// pays, so the agenda leaves the game with its points and "when you
+    /// forfeit this" hears it. Composition didn't work: `Forfeit` asks
+    /// which agenda, and the printed cost names one, as `TrashSelf` names
+    /// the card that prints it.
+    ForfeitSelf,
     Trash {
         from: CardZoneRef,
         filter: CardFilter,

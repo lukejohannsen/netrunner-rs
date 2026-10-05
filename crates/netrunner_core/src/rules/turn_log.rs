@@ -293,6 +293,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // (Tocsin, from HQ).
         | Trigger::OnActionTaken
         | Trigger::OnAbilityUsed => false,
+        // An ambush asks for credits face down (Cerebral Overwriter, Esca),
+        // seen by the Runner who accessed it and by no spectator.
+        Trigger::OnAbilityTookCredits => true,
         // An unrezzed piece of ice is passed without being seen. The log
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.
@@ -345,8 +348,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 /// a trashed card of a kind only the Runner has (`Kind::is_runners`) went
 /// faceup to the heap, whoever trashed it and from wherever — Boi-tatá's
 /// "if you trashed any of your installed cards this turn" is a count by
-/// type and place, and the Corp saw both. And a piece of ice the Corp
-/// installs is seen to be ice.
+/// type and place, and the Corp saw both. A piece of ice the Corp
+/// installs is seen to be ice, and a Runner card whose ability took
+/// credits was faceup.
 fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
     match trigger {
         Trigger::OnCardTrashed => kind.is_runners(),
@@ -355,6 +359,9 @@ fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
         // So the log can tell the Corp's root installs from its ice
         // (`EventFilter::InRoot`).
         Trigger::OnInstall => kind == Kind::Ice,
+        // Only a Corp card asks for credits face down; a Runner card that
+        // did was on the table faceup.
+        Trigger::OnAbilityTookCredits => kind.is_runners(),
         _ => false,
     }
 }
@@ -478,6 +485,9 @@ impl Occurrences {
             Some(EventFilter::Host) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }
+            Some(EventFilter::InRootOfThisServer) => {
+                return Err(format!("the turn counts a {trigger:?} without which server it went into; the copies in a root count those"));
+            }
             Some(EventFilter::ByThis) => {
                 return Err(format!("the turn counts a {trigger:?} without which object did it, so \"the first\" cannot be narrowed to this card's"));
             }
@@ -501,6 +511,9 @@ impl Occurrences {
             }
             Some(EventFilter::InstalledIn(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without the server it went into, so \"the first\" cannot be narrowed by it"));
+            }
+            Some(EventFilter::ChosenServer | EventFilter::ProtectedByIce) => {
+                return Err(format!("the turn counts a {trigger:?} by the kind of server, not which one or what protects it, so \"the first\" cannot be narrowed by it"));
             }
             Some(EventFilter::AtLeast(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
@@ -645,7 +658,10 @@ impl CopyTurn {
     /// asks of one copy, which is advancing it (Sacrifice Zone Expansion's
     /// "the first time each turn") and rezzing it (Cloud Eater's "if it was
     /// rezzed this turn", `Amount::TimesThisTurnOnThisCopy`) and, so far,
-    /// nothing else. A card leaves the table when it is scored, stolen or
+    /// nothing else. A Corp install's `OnInstall` is counted apart, and
+    /// means the installs into the root it is in (`record`, for
+    /// `EventFilter::InRootOfThisServer`), never its own alone. A card
+    /// leaves the table when it is scored, stolen or
     /// trashed, so its copy could never count those; `validate` refuses the
     /// rest until a card prints one.
     pub(crate) fn counts(trigger: Trigger) -> bool {
@@ -1000,6 +1016,23 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             if let Some(installed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install) {
                 installed.this_turn.bump(turn, moment.trigger);
                 copy = Some((install, installed.this_turn));
+            }
+        }
+        // And on every card in the root a Corp card went into, the card
+        // itself included: the installs into a root this turn, which
+        // Tranquility Home Grid's first time reads off its own copy
+        // (`EventFilter::InRootOfThisServer`). The copies in the root are
+        // the ones that can hear it, and a card installed later saw its
+        // own install, which is all "the first" needs of the ones before.
+        if moment.trigger == Trigger::OnInstall
+            && moment.of == Some(crate::rules::Side::Corp)
+            && let Some(server) = moment.installed_in
+            && let About::Card { card, .. } = &moment.about
+            && registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_)))
+        {
+            let turn = state.turn;
+            for installed in state.corp.installed.iter_mut().filter(|installed| installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root) {
+                installed.this_turn.bump(turn, Trigger::OnInstall);
             }
         }
         // And on the rig install it is about, for what a rig copy is

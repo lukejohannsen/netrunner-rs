@@ -561,6 +561,7 @@ fn present_card_for_access(
     if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
         access.pending_install = install;
         access.pending_install_rezzed = rezzed;
+        access.left = false;
     }
     let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server, install }];
     // "They must reveal it" (CR 1.21.7): the Corp is shown which of its
@@ -776,6 +777,7 @@ pub fn access_server(
         pending_install: None,
         pending_install_rezzed: false,
         outside_breach: None,
+        left: false,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
     events.extend(offer_next(state, registry, server)?);
@@ -915,7 +917,28 @@ fn advance_or_finish(
     let access = run.access_state.as_mut().expect("advance_or_finish called mid-access");
     access.resolved_cards.push(resolved_card);
     access.pending_install = None;
+    access.left = false;
     offer_next(state, registry, server)
+}
+
+/// Moves the breach on past the card at its access decision if that card
+/// has left its place since the decision was presented (CR 7.1.7) — by a
+/// card's text that resolved above the decision (`AccessState::left`; an
+/// install, by having left the table). Asked by `engine::resume_run` at the
+/// end of every action once nothing stands in the way, so it waits for
+/// whatever the leaving began: Ganked!'s encounter, its choice of ice.
+/// Nothing in any other access phase.
+pub(crate) fn move_on_if_left(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(access) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::AccessingCard).and_then(|run| run.access_state.as_ref()) else {
+        return Ok(Vec::new());
+    };
+    let AccessPhase::PendingChoice { card_id, .. } = &access.phase else { return Ok(Vec::new()) };
+    let install_gone = access.pending_install.is_some_and(|install| state.find_corp_install(install).is_none());
+    if !(access.left || install_gone) {
+        return Ok(Vec::new());
+    }
+    let (card_id, server) = (card_id.clone(), access.server);
+    advance_or_finish(state, registry, server, card_id)
 }
 
 /// Resolves `PlayerAction::StealAgenda`. See its doc comment for the error
@@ -1585,7 +1608,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

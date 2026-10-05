@@ -1,0 +1,38 @@
+{
+  "id": "argus_crackdown",
+  "title": "Argus Crackdown",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "Not": {
+      "ZoneHasAtLeast": {
+        "zone": "PlayArea",
+        "count": 1,
+        "filter": {
+          "HasSubtype": "Lockdown"
+        }
+      }
+    }
+  },
+  "not_trashed_until_your_next_turn": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": "ProtectedByIce",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on a server protected by ice, do 2 meat damage."
+    }
+  ],
+  "trash_cost": 4,
+  "built_from": 26126,
+  "is_playable": true
+}

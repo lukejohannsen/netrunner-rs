@@ -367,7 +367,7 @@ mod tests {
             jack_out_permitted: true,
             declared_successful: false,
             breach_only: false,
-            forced_encounter: false,
+            forced_encounter: false, suspended: Vec::new(),
             event_counters: 0,
             gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,
@@ -469,7 +469,7 @@ mod tests {
         let mut view = view();
         view.phase = GamePhase::Action(Side::Runner);
         let mut breaching = run(RunPhase::AccessingCard);
-        let access = |phase| PublicAccessState { server: ServerId::Hq, candidates: Vec::new(), from_zone: 0, resolved_cards: MaskedZone::Hidden { count: 0 }, pending_install: None, outside_breach: None, phase };
+        let access = |phase| PublicAccessState { server: ServerId::Hq, candidates: Vec::new(), from_zone: 0, resolved_cards: MaskedZone::Hidden { count: 0 }, pending_install: None, outside_breach: None, left: false, phase };
         breaching.access_state = Some(access(PublicAccessPhase::SelectNextCard { selectable_cards: Vec::new() }));
         view.active_run = Some(breaching.clone());
         assert_eq!(lit_steps(&view), ["CR 5.7.1f", "CR 6.9.5b", "CR 7.5.4"]);

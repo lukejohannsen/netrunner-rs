@@ -104,6 +104,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OpponentSetAside => state.corp.set_aside.clone(),
+        CardZoneRef::PlayArea => state.corp.play_area.iter().map(|played| played.card.clone()).collect(),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
             Side::Runner => state.runner.heap.clone(),
@@ -611,6 +612,9 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         // only through `ability::add_agenda_to_score_area` (Kingmaking).
         CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
+        // Counted, never chosen from: a played operation is no list of
+        // card ids (`PlayedOperation`).
+        CardZoneRef::PlayArea => None,
         CardZoneRef::OpponentRemovedFromGame => match owner {
             Side::Corp => Some(&mut state.corp.removed_from_game),
             Side::Runner => Some(&mut state.runner.removed_from_game),
@@ -907,13 +911,27 @@ pub(crate) fn resolve_accept(
     // Taken before the cost, which may trash the card `if_paid` reads
     // (Clearinghouse): see `ResolutionContext::last_known`.
     let last_known = ability::last_known(state, &payer, registry);
-    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &payer)?;
+    // Paying for the optional part of one's own card's ability is using
+    // that card (CR 9.1.6): Mu Safecracker's "you may pay 1[credit]" is
+    // paid with Mantle's "use hardware and programs" credits. Another
+    // player's "unless you pay" (Gold Farmer's) uses nothing of theirs.
+    let purpose = match pending.source_card.as_ref().and_then(|card| registry.get(card)) {
+        Some(definition) if definition.side == pending.side => Purpose::Ability(definition),
+        _ => Purpose::Other,
+    };
+    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, purpose, &payer)?;
     // Dispatched after `if_paid`: see `ability::dispatch_cost_events`.
     // A tag paid as a cost (Funhouse's "end the run unless the Runner
     // takes 1 tag") is still the Runner taking a tag, and NBN: Reality
     // Plus hears it.
-    let paid = cost_events.clone();
+    let mut paid = cost_events.clone();
     let mut events = cost_events;
+    // "End the run unless the Runner pays 3[credit]" is the card's ability
+    // making them spend (GameNET), heard with the cost.
+    if let Some(took) = ability::took_credits(&paid, pending.side, pending.prompting_card.as_ref().or(pending.source_card.as_ref())) {
+        events.push(took.clone());
+        paid.push(took);
+    }
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
     // The cards the cost trashed, for "the card you trashed" in what it
     // paid for (`ResolutionContext::paid_with`).
@@ -1148,8 +1166,20 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
         state.deferred_triggers.splice(0..0, remaining);
     }
 
-    if resume == PendingChoiceResume::ResumeSubroutines && !state.resolution_halted() {
-        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    if resume == PendingChoiceResume::ResumeSubroutines {
+        // The chosen trigger may have parked a decision of its own —
+        // Tranquility Home Grid's "gain 2[credit] or draw 1 card", heard
+        // beside Engineering the Future as Ansel 1.0's subroutine installs
+        // into the grid's root — and the rest of the encounter's
+        // subroutines wait behind it, as `resolve_choice` carries the
+        // intent onto what its effect parks. Without this the order was
+        // the last thing that knew, and the encounter stood with a
+        // subroutine pending and no player able to act (Uprising Stage 4,
+        // Retirement Package against Safety Net, planner seats).
+        mark_parked_resume_subroutines(state);
+        if !state.resolution_halted() {
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
     }
     Ok(events)
 }
@@ -1613,14 +1643,22 @@ pub(crate) fn resolve_choose_server(
         return Err(RulesError::ServerNotAllowedForChoice { server });
     }
 
-    // The remembered choice (Tsakhia): the server is the card's for the
-    // rest of the turn, and nothing else happens.
+    // The remembered choice: the server is the card's, and nothing else
+    // happens. How long is the rules' (CR 9.10.3): Tsakhia's, made when a
+    // turn begins by an ability that does nothing else, until the turn
+    // ends (9.10.3b); a lockdown's, made as it is played, while that copy
+    // stays in the play area (9.10.3c: until the source is inactive).
     if remember {
         let card = source_card.ok_or(RulesError::UnresolvedCardTarget)?;
+        let in_play = source_install.filter(|handle| state.corp.play_area.iter().any(|played| played.handle == *handle));
+        let until = match in_play {
+            Some(handle) => crate::rules::lingering::Until::WhileInPlay(handle),
+            None => crate::rules::lingering::Until::EndOfTurn(state.turn),
+        };
         state.lingering.push(crate::rules::lingering::LingeringEffect {
             what: crate::rules::lingering::Lingering::ChosenServer(server),
             on: crate::rules::lingering::On::Player(chooser),
-            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            until,
             source: card,
         });
         return Ok(vec![GameEvent::PendingChoiceResolved { chooser, option_index: 0 }]);

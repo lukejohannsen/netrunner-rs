@@ -452,10 +452,13 @@ impl Coverage {
 /// Add an entry only with a reason a reader can check against the card
 /// pool. The bar is the one `SG_UNIMPLEMENTED` sets for card coverage: an
 /// exclusion is a claim, not a silence.
-pub const ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS: &[(&str, &str)] = &[
-    ("SubmitCorpTraceBid", "no System Gateway card carries a Trace, so no trace is ever initiated"),
-    ("SubmitRunnerTraceBid", "no System Gateway card carries a Trace, so no trace is ever initiated"),
-];
+///
+/// Empty since Uprising Stage 5. Its last two entries were the trace bids,
+/// "no System Gateway card carries a Trace": Scapenet (Pay to Win) is the
+/// first card in the pool to start one, so both bids moved to
+/// `ACTIONS_RARE_WITH_SAMPLE_DECKS`, and the index-path sweep, which plays
+/// System Gateway alone, names them among what its decks cannot produce.
+pub const ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS: &[(&str, &str)] = &[];
 
 /// `PlayerAction` variants that real play on the sample decks reaches, but
 /// rarely: `(name, why it is rare, games before the gate demands it)`.
@@ -471,6 +474,14 @@ pub const ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS: &[(&str, &str)] = &[
 /// AGENTS.md's Testing Rule runs the sweeps deep before merging engine work.
 pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     ("TrashResource", "needs a tagged Runner with a resource installed, on the Corp's turn", 512),
+    // Scapenet (Uprising Stage 5) is the pool's first card to start a
+    // trace, and it is in one Corp list, Pay to Win, playable only the
+    // turn after a successful run. Measured: 7 traces, each bid on both
+    // sides, in the 768-game deep view sweep, none in the default 96. So
+    // both are demanded only at the deep seed count; the card test holds
+    // the mechanism (`scapenet_traces_seven_after_a_successful_run_…`).
+    ("SubmitCorpTraceBid", "needs Scapenet, in one Corp list (Pay to Win), played the turn after a successful run", 512),
+    ("SubmitRunnerTraceBid", "needs Scapenet, in one Corp list (Pay to Win), played the turn after a successful run", 512),
     // Measured 10 in one 192-game random sample and 0 in another of 96: a
     // random Corp seldom holds the 6[c] a bioroid rezzes for, and while the
     // free `BreakSubroutine` exists (Rules Audit T1) it dilutes the random
@@ -729,6 +740,24 @@ fn pool_card_ids<'d>(registry: &CardRegistry, decks: impl Iterator<Item = &'d De
 pub const PROMPT_ACTIONS_GATE: u64 = 32;
 
 impl Coverage {
+    /// The entries of `unreachable` that were applied after all: an
+    /// exclusion is a claim, and a claim the batch disproves is named so it
+    /// is taken out. A function of the list so the check is tested on a
+    /// list of its own while `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS` is
+    /// empty.
+    fn stale_exclusions(&self, unreachable: &[(&str, &str)], absent_from_these_decks: &[&str]) -> Vec<String> {
+        unreachable
+            .iter()
+            .filter(|(name, _)| !absent_from_these_decks.contains(name) && self.actions.get(*name).copied().unwrap_or(0) > 0)
+            .map(|(name, _)| {
+                format!(
+                    "PlayerAction::{name} is listed as unreachable but was applied — remove it from \
+                     ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS"
+                )
+            })
+            .collect()
+    }
+
     /// Every gate at once: the failures, empty when all pass. Both sweeps
     /// call this so a failure reads identically whichever agent shape found
     /// it. Each line names what was never reached, so the fix — engine bug,
@@ -783,17 +812,7 @@ impl Coverage {
                 failures.push(format!("PlayerAction::{name} was never applied in {} games", self.games));
             }
         }
-        for (name, _) in ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS {
-            if absent_from_these_decks.contains(name) {
-                continue;
-            }
-            if self.actions.get(*name).copied().unwrap_or(0) > 0 {
-                failures.push(format!(
-                    "PlayerAction::{name} is listed as unreachable but was applied — remove it from \
-                     ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS"
-                ));
-            }
-        }
+        failures.extend(self.stale_exclusions(ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS, absent_from_these_decks));
 
         for card in card_universe {
             let allowed = UNREACHED_IN_SAMPLE_PLAY.iter().any(|(id, _)| *id == card.0)
@@ -882,7 +901,7 @@ mod tests {
     fn a_click_break_is_counted_separately_from_a_breaker_break() {
         let mut coverage = Coverage::default();
         let ice = CardId("bran_1_0".to_string());
-        let broken = |i| GameEvent::SubroutineBroken { card_id: ice.clone(), index: i, strength: 1 };
+        let broken = |i| GameEvent::SubroutineBroken { card_id: ice.clone(), index: i, strength: 1, printed: true };
         coverage.absorb_entry(
             &entry(
                 Side::Runner,
@@ -1130,9 +1149,10 @@ mod tests {
         let failures = coverage.gate_failures(&[]);
         assert!(failures.iter().any(|f| f.contains("PlayerAction::InstallProgram was never applied")), "{failures:?}");
         assert!(
-            failures.iter().any(|f| f.contains("SubmitCorpTraceBid is listed as unreachable but was applied")),
+            coverage.stale_exclusions(&[("SubmitCorpTraceBid", "a claim the batch disproves")], &[]).iter().any(|f| f.contains("SubmitCorpTraceBid is listed as unreachable but was applied")),
             "{failures:?}"
         );
+        assert!(coverage.stale_exclusions(&[("SubmitCorpTraceBid", "absent here")], &["SubmitCorpTraceBid"]).is_empty(), "not a claim about decks that cannot produce it");
         assert!(!failures.iter().any(|f| f.contains("PayAccessTrigger was never")), "{failures:?}");
         let _ = registry;
     }

@@ -287,7 +287,7 @@ mod tests {
             jack_out_permitted: true,
             declared_successful: false,
             breach_only: false,
-            forced_encounter: false,
+            forced_encounter: false, suspended: Vec::new(),
             event_counters: 0,
             gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,

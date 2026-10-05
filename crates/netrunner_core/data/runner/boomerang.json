@@ -1,0 +1,78 @@
+{
+  "id": "boomerang",
+  "title": "Boomerang",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": "Ice",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Remember": {
+                "what": "SelectedCard",
+                "until": "WhileInstalled"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you install this hardware, choose 1 installed piece of ice. Use this hardware only during encounters with that ice."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Break up to 2 subroutines. When this run ends, if it was successful, you may shuffle 1 copy of Boomerang from your heap into your stack.",
+      "cost": "TrashSelf",
+      "requirement": "EncounteringChosenIce",
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutinesUnconditionally": {
+              "count": {
+                "Fixed": 2
+              }
+            }
+          },
+          {
+            "SetRunEndedEffect": {
+              "EffectIf": {
+                "condition": "LastRunSuccessful",
+                "effect": {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OwnHeap",
+                    "filter": {
+                      "AmongCards": [
+                        "boomerang"
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": true,
+                    "destination": "OwnStack"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 26075,
+  "is_playable": true
+}

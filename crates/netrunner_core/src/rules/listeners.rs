@@ -154,8 +154,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // to ask (`TriggeredEffect::when`), not a second moment: "whenever
         // you play a transaction" is `OnCardPlayed` heard by a card
         // that means transactions.
+        // A lockdown is heard as the copy it is in the play area, where it
+        // stays (CR 3.5.1c): its own "when you play this operation" is
+        // that copy's, and so is the choice it makes.
         GameEvent::OperationPlayed { side, card: played, .. } => {
-            let about = card(played, None);
+            let handle = state.corp.play_area.iter().rev().find(|in_play| &in_play.card == played).map(|in_play| in_play.handle);
+            let about = About::Card { card: played.clone(), install: handle, installed: false };
             vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
         }
 
@@ -233,6 +237,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AbilityGainedCredits { side, card: source } => {
             vec![moment(Trigger::OnAbilityGainedCredits, &card(source, None), Some(*side))]
         }
+        GameEvent::AbilityTookCredits { side, card: source } => {
+            vec![moment(Trigger::OnAbilityTookCredits, &card(source, None), Some(*side))]
+        }
 
         GameEvent::TurnStarted { side, .. } => vec![moment(Trigger::OnTurnStart, &About::Nothing, Some(*side))],
         GameEvent::ActionPhaseEnded { side } => vec![moment(Trigger::OnActionPhaseEnd, &About::Nothing, Some(*side))],
@@ -264,9 +271,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
                 ..IceFacts::default()
             },
         )],
-        GameEvent::SubroutineBroken { strength, .. } => {
+        GameEvent::SubroutineBroken { strength, printed, .. } => {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
-            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, ..IceFacts::default() })]
+            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, printed_subroutine: *printed, ..IceFacts::default() })]
         }
         // Only an encountered piece of ice resolves a subroutine here: a
         // card that resolves one by its text (Nanisivik Grid) announces
@@ -312,8 +319,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![Moment { trashed_from: Some(*from), was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
         }
         // The one rules' trash that is a moment: an event leaving the play
-        // area as it finishes resolving (CR 3.7.1), nobody's, so heard by a
-        // card whose trash is passive — Aniccam's "an event is trashed"
+        // area as it finishes resolving (CR 3.7.1), or a lockdown as the
+        // Corp's turn begins (3.5.1c), nobody's, so heard by a card whose
+        // trash is passive — Aniccam's "an event is trashed"
         // (`EventFilter::Anyone`) — and by no "you trash" a filter asks of.
         GameEvent::CardTrashed { card: trashed, from: from @ crate::dsl::TrashedFrom::PlayArea, by: None, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: false };
@@ -563,6 +571,14 @@ pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility
 /// other.
 fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener: &Listener, as_of: &AsOf) -> bool {
     let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
+    // Installs into a root are counted on the copies in it, the listener
+    // among them (`turn_log::record`), as of this install.
+    if first_time.clone().any(|triggered| triggered.when == Some(EventFilter::InRootOfThisServer)) {
+        return listener
+            .install
+            .and_then(|install| state.find_corp_install(install))
+            .is_some_and(|installed| installed.this_turn.count(state.turn, Trigger::OnInstall) == 1);
+    }
     if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)) {
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
@@ -630,6 +646,14 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         return moment.of == Some(Side::Corp)
             && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
     }
+    // "You install a card in the root of **this server**": the same, into
+    // the listener's own server.
+    if let EventFilter::InRootOfThisServer = filter {
+        return moment.of == Some(Side::Corp)
+            && here.is_some()
+            && moment.installed_in == here
+            && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
+    }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
     }
@@ -662,6 +686,10 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
         (EventFilter::Mark, About::Server(server)) => crate::rules::lingering::mark(state) == Some(*server),
+        (EventFilter::ChosenServer, About::Server(server)) => crate::rules::lingering::chosen_server(state, listener_card) == Some(*server),
+        (EventFilter::ProtectedByIce, About::Server(server)) => {
+            state.corp.installed.iter().any(|card| card.server == *server && card.slot == InstallSlot::Ice)
+        }
         (EventFilter::Damage(kind), About::Damage(dealt)) => kind == dealt,
         (EventFilter::AtLeast(least), About::Cards(count)) => count >= least,
         // `CardDefinition::validate` refuses the mismatch in a card file.

@@ -649,7 +649,7 @@ pub fn narrate_event(
         GameEvent::CardAddedToDeck { revealed: false, .. } | GameEvent::CardHosted { .. } |
         GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
         } | GameEvent::TagsCleared { .. } | GameEvent::CardRemovedFromGame { .. } |
-        GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityActivated { .. } |
+        GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityTookCredits { .. } | GameEvent::AbilityActivated { .. } |
         GameEvent::CardTrashedFromAccess { .. } | GameEvent::AccessPassed { .. } |
         GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed { .. } |
         GameEvent::PaidAbilityWindowClosed | GameEvent::StrengthBoosted { .. } |

@@ -530,6 +530,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
             state.runner.rig.iter().any(|c| c.install_id == install)
                 || state.corp.installed.iter().any(|c| c.install_id == install)
                 || state.corp.find_scored(install).is_some()
+                || state.corp.play_area.iter().any(|played| played.handle == install)
         }
         _ => true,
     };
@@ -1330,7 +1331,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
-            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0,
+            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

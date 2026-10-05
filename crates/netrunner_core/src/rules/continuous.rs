@@ -292,9 +292,12 @@ pub(crate) fn any(state: &GameState, registry: &CardRegistry, target: Target<'_>
 
 /// Whether the run against `server` may be declared successful (CR 6.9.5a):
 /// no active card — and no persistent upgrade trashed this run — says runs
-/// there cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`).
+/// there cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`), and
+/// nothing used during it said this one cannot (`Prohibition::
+/// DeclaredSuccessful`, Transport Monopoly).
 pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
     !any(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
+        && !cannot(state, registry, Prohibition::DeclaredSuccessful)
 }
 
 /// The most remote servers the Corp may have (A Teia: IP Recovery), or
@@ -638,12 +641,18 @@ pub fn steal_price(state: &GameState, registry: &CardRegistry, card: &CardDefini
 
 /// The costs the table adds to stealing the agenda `card` (Magistrate
 /// Revontulet's credits, Daniela Jorge Inácio's grip cards), in the order
-/// their cards are asked.
+/// their cards are asked. A number of credits the state decides (NAPD
+/// Cordon's "plus 2[credit] for each advancement counter on that agenda")
+/// is reckoned here, as the agenda is offered (CR 1.16.2b), so the offer
+/// the Runner reads is the price they pay.
 pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Vec<Cost> {
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::StealCost(_)), |effect, _, _| {
+    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::StealCost(_)), |effect, _, ctx| {
         if let ContinuousKind::StealCost(cost) = &effect.kind {
-            costs.push(cost.clone());
+            costs.push(match cost {
+                Cost::CreditsAmount(amount) => Cost::Credits(ability::resolve_amount(amount, ctx, state, registry)),
+                other => other.clone(),
+            });
         }
     });
     costs

@@ -201,6 +201,18 @@ fn acting_server(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<Serve
     acting_corp_install(state, ctx).map(|installed| installed.server).or_else(|| remembered(state, ctx).and_then(|known| known.server))
 }
 
+/// `acting_server`, or — for a card heard as it is trashed off the table —
+/// the server it was trashed out of, which the trash states: a card text's
+/// trash on the event, an access trash on the run that accessed it.
+/// Vaporframe Fabricator's "the root of this server", read as it is trashed.
+fn this_server_even_if_gone(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<ServerId> {
+    acting_server(state, ctx).or_else(|| match ctx.triggering_event {
+        Some(GameEvent::CardTrashed { card, install: Some(trashed), .. }) if Some(card) == ctx.acting_card => Some(trashed.server),
+        Some(GameEvent::CardTrashedFromAccess { card, install: Some(_), .. }) if Some(card) == ctx.acting_card => state.active_run.as_ref().map(|run| run.server),
+        _ => None,
+    })
+}
+
 /// Whether `ctx`'s install was named and is no longer on the table — the
 /// one case `last_known` is read in.
 fn acting_install_has_left(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
@@ -521,7 +533,48 @@ pub fn evaluate_effect(
             removed.push(card.clone());
             Ok(vec![GameEvent::CardRemovedFromGame { side: *side, card }])
         }
+        // Gachapon's "remove the rest from the game": what the controller
+        // still has set aside, in the order it was set aside.
+        Effect::RemoveFromGame(CardTarget::SetAside) => {
+            let side = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
+            let (set_aside, removed) = match side {
+                Side::Runner => (&mut state.runner.set_aside, &mut state.runner.removed_from_game),
+                Side::Corp => (&mut state.corp.set_aside, &mut state.corp.removed_from_game),
+            };
+            let cards = std::mem::take(set_aside);
+            removed.extend(cards.iter().cloned());
+            Ok(cards.into_iter().map(|card| GameEvent::CardRemovedFromGame { side, card }).collect())
+        }
         Effect::RemoveFromGame(_) => Err(RulesError::UnresolvedCardTarget),
+
+        // Every card in the hand, revealed as `RevealAtRandom` reveals one.
+        Effect::RevealHand(side) => {
+            let hand = match side {
+                Side::Corp => state.corp.hq.clone(),
+                Side::Runner => state.runner.grip.clone(),
+            };
+            let mut events = Vec::new();
+            for card in hand {
+                state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
+                events.push(GameEvent::CardRevealed { side: *side, card });
+            }
+            Ok(events)
+        }
+
+        // About the chooser: the selection's prompter inside its `then`,
+        // the acting install otherwise.
+        Effect::Remember { what, until } => {
+            let chooser = ctx.prompting_install.or(ctx.acting_install).ok_or(RulesError::MissingActingCardContext)?;
+            let source = ctx.prompting_card.or(acting_card).ok_or(RulesError::MissingActingCardContext)?.clone();
+            let controller = registry.get(&source).map(|definition| definition.side).ok_or(RulesError::MissingActingCardContext)?;
+            let what = match what {
+                crate::dsl::Remembered::SelectedCard => Lingering::ChosenCard(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
+                crate::dsl::Remembered::CardType(card_type) => Lingering::ChosenCardType(card_type.clone()),
+            };
+            let until = crate::rules::lingering::until(state, *until, controller, Some(chooser))?;
+            state.lingering.push(LingeringEffect { what, on: crate::rules::lingering::On::Install(chooser), until, source });
+            Ok(Vec::new())
+        }
 
         Effect::TrashCard(target) => {
             // Hosted, uninstalled cards (Bling's) have no prevention
@@ -1297,6 +1350,15 @@ pub fn evaluate_effect(
 
         Effect::AddToHand => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // A Corp install goes to HQ as `Cost::AddSelfToHq` takes it
+            // (Wall to Wall's "Add this asset to HQ").
+            if let Some(installed) = acting_corp_install(state, ctx).filter(|installed| installed.card == card_id) {
+                let install = installed.install_id;
+                let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
+                state.corp.hq.push(removed.card.clone());
+                events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install, faceup: removed.rezzed });
+                return Ok(events);
+            }
             let Some(install) = ctx.acting_install.filter(|install| state.runner.rig.iter().any(|c| c.install_id == *install && c.card == card_id)) else {
                 return Ok(Vec::new());
             };
@@ -1574,7 +1636,13 @@ pub fn evaluate_effect(
             let lost = if locked { 0 } else { (*amount).min(before) };
             state.resources_mut(*side).credits = Credits(before - lost);
             ctx.credits_lost = lost;
-            Ok(vec![GameEvent::CreditsLost { side: *side, amount: lost }])
+            let mut events = vec![GameEvent::CreditsLost { side: *side, amount: lost }];
+            // The card whose text it is, as for a gain (Gold Farmer's "they
+            // lose 1[credit]", which GameNET hears).
+            if let Some(took) = took_credits(&events, *side, ctx.prompting_card.or(acting_card)) {
+                dispatcher::emit(state, registry, &mut events, took)?;
+            }
+            Ok(events)
         }
 
         Effect::LoseCreditsAmount(side, amount) => {
@@ -1599,6 +1667,13 @@ pub fn evaluate_effect(
                 dispatcher::emit(state, registry, &mut events, GameEvent::ArchivesTurnedFaceup { count: 1 })?;
             }
             Ok(events)
+        }
+
+        Effect::TurnArchivesFacedown => {
+            for archived in &mut state.corp.archives {
+                archived.facedown = true;
+            }
+            Ok(Vec::new())
         }
 
         // Rewritten into the `PresentChoice` it is shorthand for: each option
@@ -1766,6 +1841,7 @@ pub fn evaluate_effect(
             let filter = &filter
                 .clone()
                 .with_this_server(acting_server(state, ctx))
+                .with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)))
                 .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref());
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
             // An installed Runner card trashed by the text of ice whose
@@ -1789,6 +1865,12 @@ pub fn evaluate_effect(
                 }
                 return Ok(Vec::new());
             }
+            // "This server" in the continuation is written in now: the
+            // continuation keeps no triggering event to read it from.
+            let then = match (then, this_server_even_if_gone(state, ctx)) {
+                (Some(then), Some(server)) => Some(Box::new((**then).clone().with_this_server(server))),
+                (then, _) => then.clone(),
+            };
             state.pending_decision = Some(PendingDecision::ChooseCards {
                 side: *side,
                 source: source.clone(),
@@ -1798,7 +1880,7 @@ pub fn evaluate_effect(
                 reveal: *reveal,
                 shuffle_after: *shuffle_after,
                 destination: destination.clone(),
-                then: then.clone(),
+                then,
                 selected: Vec::new(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -1941,7 +2023,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -1980,6 +2062,20 @@ pub fn evaluate_effect(
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
                 allowed.retain(|server| Some(*server) != own);
+            }
+            // Not in that root, while it is a server: a remote nothing is
+            // left in has ceased to exist (CR 4.6.8e) and its number may be
+            // the new remote's. Ice is never in a root.
+            let barred = match not_in_root_of {
+                Some(crate::dsl::ThisServer::Server(server)) => Some(*server),
+                Some(crate::dsl::ThisServer::This) => this_server_even_if_gone(state, ctx),
+                None => None,
+            };
+            if let Some(barred) = barred
+                && !matches!(card_def.card_type, crate::dsl::CardType::Ice(_))
+                && (!matches!(barred, ServerId::Remote(_)) || state.corp.installed.iter().any(|installed| installed.server == barred))
+            {
+                allowed.retain(|server| *server != barred);
             }
             // The destinations hold the fresh remote only while the Corp
             // may create one (`corp_install_destinations`).
@@ -2630,7 +2726,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
         CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
         // Many cards, trashed one after another by `trash_card`: no Corp
         // card in the pool prevents a trash, so nobody would be asked.
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside => None,
     }
 }
 
@@ -2714,7 +2810,12 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(install).ok_or(RulesError::UnresolvedCardTarget)?;
             Ok((install, installed.card.clone(), installed.server))
         }
-        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot => {
+        CardTarget::RunnerRig(_)
+        | CardTarget::TopOfStack { .. }
+        | CardTarget::HostedOnThisCard
+        | CardTarget::RandomFromHand(_)
+        | CardTarget::AttackedServerRoot
+        | CardTarget::SetAside => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -2755,6 +2856,30 @@ pub(crate) fn dispatch_damage_taken(
         dispatcher::emit(state, registry, &mut fired, batch)?;
     }
     Ok(fired)
+}
+
+/// `GameEvent::AbilityTookCredits` for what `paid` took from `side`, when
+/// it took at least 1[credit] and a card asked for it: the one test of
+/// whether a card's ability made a player spend or lose credits, for every
+/// site that announces one — a cost of a card's ability (`engine::
+/// activate_ability`), a paid choice a card offered (`pending_choice::
+/// resolve_accept`), a bid in a card's trace (`trace::submit_runner_bid`)
+/// and a loss a card's text resolved (`Effect::LoseCredits`). A payment
+/// site pushes it among the cost events it dispatches after the effect,
+/// so it is heard where the Payment Rule hears every cost.
+///
+/// "At least 1": a payment reports its credit pool's share even at 0, and
+/// a loss from an empty pool is a loss of 0 (CR 9.12.2b), so any share
+/// above 0 from any pool is the test, never the event's presence.
+pub(crate) fn took_credits(paid: &[GameEvent], side: Side, card: Option<&CardId>) -> Option<GameEvent> {
+    let card = card?;
+    let took = paid.iter().any(|event| match event {
+        GameEvent::CreditsSpent { side: spender, amount } | GameEvent::CreditsLost { side: spender, amount } => *spender == side && *amount > 0,
+        GameEvent::CreditsSpentFromOutsidePool { side: spender, amount, .. } => *spender == side && *amount > 0,
+        GameEvent::BadPublicityCreditsSpent { amount } | GameEvent::BonusRunCreditsSpent { amount } => side == Side::Runner && *amount > 0,
+        _ => false,
+    });
+    took.then(|| GameEvent::AbilityTookCredits { side, card: card.clone() })
 }
 
 /// Credits gained by a resolving card, as opposed to by a click or a
@@ -2881,7 +3006,7 @@ pub(crate) fn trash_card(
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
-        CardTarget::HostedOnThisCard => Err(RulesError::UnresolvedCardTarget),
+        CardTarget::HostedOnThisCard | CardTarget::SetAside => Err(RulesError::UnresolvedCardTarget),
 
         // Each by its handle, the root read once before the first goes, so
         // what a trash's own consequences install there is not taken too.
@@ -3049,6 +3174,17 @@ fn orient(card: CardId, seen_by_runner: bool) -> ArchivedCard {
     if seen_by_runner { ArchivedCard::faceup(card) } else { ArchivedCard::facedown(card) }
 }
 
+/// Marks the access of `card_id` as ended by its leaving, when it is the
+/// card at its access decision (`AccessState::left`).
+fn mark_left_while_accessed(state: &mut GameState, card_id: &CardId) {
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut())
+        && access.pending_install.is_none()
+        && matches!(&access.phase, AccessPhase::PendingChoice { card_id: pending, .. } if pending == card_id)
+    {
+        access.left = true;
+    }
+}
+
 /// Whether the Runner is currently accessing `card_id` (it's the pending
 /// choice, or already resolved earlier in this same access). Such a card has
 /// been seen even if it was never rezzed — e.g. an unrezzed ambush that
@@ -3120,6 +3256,32 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
         .collect()
 }
 
+/// Where the agenda whose ability is being paid for sits in the Corp's
+/// score area, if it may be forfeited — `Cost::ForfeitSelf`'s
+/// affordability and its payment.
+fn forfeitable_self(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
+    let install = ctx.acting_install?;
+    forfeitable(state).into_iter().find(|&position| state.corp.scored_agendas[position].install_id == install)
+}
+
+/// Forfeits the agenda at `position` in the Corp's score area: out of the
+/// game with its points and counters. The events are returned, not
+/// dispatched: the payer dispatches (`dispatch_cost_events`), which is how
+/// Greenmail hears its own forfeit.
+fn forfeit_at(state: &mut GameState, registry: &CardRegistry, position: usize) -> Vec<GameEvent> {
+    let forfeited = state.corp.scored_agendas.remove(position);
+    // "The sum of all agenda points on agendas in a player's score area is
+    // that player's score" (CR 1.17.1), so a forfeited agenda takes its
+    // points with it. The win check recounts the score area and was right;
+    // this is the number the view, the HUD and the bots read, which kept
+    // the forfeited points.
+    let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
+    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
+    // Out of the game rather than to Archives (it was never on the table).
+    state.corp.removed_from_game.push(forfeited.card.clone());
+    vec![GameEvent::AgendaForfeited { card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
+}
+
 /// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
 /// (Spin Doctor, Malandragem) and `Effect::RemoveFromGame(ThisCard)`
 /// (Malandragem's "when it is empty", and Nanuq's from the heap its trash
@@ -3182,6 +3344,10 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         // See the matching guard below the rig arm.
         return Ok(Vec::new());
     }
+    // The card at its access decision trashing itself from HQ or R&D ends
+    // that access (`AccessState::left`): an install says so by leaving the
+    // table, and a card in a zone by this.
+    mark_left_while_accessed(state, card_id);
     if let Some(position) = state.corp.hq.iter().position(|c| c == card_id) {
         // Trashed straight out of the Corp's hand — facedown, unless the
         // Runner is accessing it right now (an HQ ambush that trashes
@@ -3279,6 +3445,7 @@ pub(crate) fn cost_is_affordable(
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
         Cost::Forfeit(count) => side == Side::Corp && forfeitable(state).len() >= *count as usize,
+        Cost::ForfeitSelf => side == Side::Corp && forfeitable_self(state, ctx).is_some(),
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
@@ -3539,24 +3706,16 @@ pub(crate) fn pay_cost_ctx(
             let mut events = Vec::new();
             for install in installs {
                 let Some(position) = state.corp.scored_agendas.iter().position(|s| s.install_id == install) else { continue };
-                let forfeited = state.corp.scored_agendas.remove(position);
-                // "The sum of all agenda points on agendas in a player's
-                // score area is that player's score" (CR 1.17.1), so a
-                // forfeited agenda takes its points with it. The win check
-                // recounts the score area and was right; this is the
-                // number the view, the HUD and the bots read, which kept
-                // the forfeited points.
-                let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
-                state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
-                // Out of the game rather than to Archives (it was never on
-                // the table), taking its counters with it. Returned, not
-                // dispatched: the payer dispatches (`dispatch_cost_events`),
-                // which is how Greenmail hears its own forfeit.
-                state.corp.removed_from_game.push(forfeited.card.clone());
-                events.push(GameEvent::AgendaForfeited { card: forfeited.card.clone() });
-                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card });
+                events.extend(forfeit_at(state, registry, position));
             }
             Ok(events)
+        }
+
+        Cost::ForfeitSelf => {
+            let card = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            let position = forfeitable_self(state, ctx).filter(|_| side == Side::Corp).ok_or(RulesError::NotEnoughAgendasToForfeit { required: 1, available: 0 })?;
+            debug_assert_eq!(&state.corp.scored_agendas[position].card, card);
+            Ok(forfeit_at(state, registry, position))
         }
 
         Cost::Trash { from, filter, count, reveal } => {
@@ -3861,6 +4020,9 @@ pub fn check_requirement(
         EffectRequirement::LastRunUnsuccessful => {
             if state.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::LastRunSuccessful => {
+            if state.last_completed_run.as_ref().is_some_and(|run| run.successful) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::BreachedLastRunsServer => {
             let breached = state.last_completed_run.as_ref().is_some_and(|run| run.breached == Some(run.server));
             if breached { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4034,6 +4196,15 @@ pub fn check_requirement(
             };
             let matches = state.active_run.as_ref().is_some_and(|run| {
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
+            });
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::EncounteringChosenIce => {
+            let chosen = ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card(state, this));
+            let matches = chosen.is_some_and(|chosen| {
+                state.active_run.as_ref().is_some_and(|run| {
+                    run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == chosen)
+                })
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -4350,6 +4521,13 @@ fn breakable_now(
     if breaker.is_some_and(|definition| definition.side == Side::Runner) && !continuous::runner_cards_may_break(state, registry, ice.install_id) {
         return Vec::new();
     }
+    // NEXT Activation Command: a card that is not an icebreaker — either
+    // side's, since the Runner uses a bioroid's break too — breaks nothing.
+    if breaker.is_some_and(|definition| !card_matches_filter(definition, &CardFilter::Icebreaker))
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::BreakWithNonIcebreakers)
+    {
+        return Vec::new();
+    }
     let mut left = continuous::breaks_left(state, registry, ice, breaker);
     let mut breakable = Vec::new();
     for subroutine in ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker)) {
@@ -4425,6 +4603,14 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
             _ => 0,
         },
+        Amount::Times { amount, times } => resolve_amount(amount, ctx, state, registry).saturating_mul(*times),
+        Amount::AccessedCardAdvancementCounters => state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .and_then(|access| access.pending_install)
+            .and_then(|install| state.find_corp_install(install))
+            .map_or(0, |card| card.advancement_tokens),
         Amount::AccessedCardPrintedCost => state
             .active_run
             .as_ref()
@@ -4523,7 +4709,11 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::IceProtecting(server) => {
             state.corp.installed.iter().filter(|c| c.server == *server && c.slot == InstallSlot::Ice).count() as u32
         }
+        // "This server" is the counting card's, as a selection's is
+        // (Cayambe Grid's "for each advanced piece of ice protecting this
+        // server").
         Amount::CorpInstalls(filter) => {
+            let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
         Amount::RunnerInstalls(filter) => {
@@ -4645,6 +4835,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::SubroutineBrokenThisRun
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
+        | EffectRequirement::LastRunSuccessful
         | EffectRequirement::BreachedLastRunsServer
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
@@ -4665,6 +4856,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
+        | EffectRequirement::EncounteringChosenIce
         | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
@@ -5884,8 +6076,8 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true },
             ]
         );
     }
@@ -5996,7 +6188,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -6014,7 +6206,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
     }
 
     fn ice_encounter_state_of_type(
@@ -6050,7 +6242,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
     }
 
@@ -6093,7 +6285,7 @@ mod tests {
 
             assert_eq!(
                 events,
-                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
             );
         }
     }
@@ -6241,7 +6433,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
 
         let events = evaluate_effect(
             &mut state,
@@ -6424,13 +6616,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

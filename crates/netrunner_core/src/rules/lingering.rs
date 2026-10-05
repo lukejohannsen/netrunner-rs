@@ -110,7 +110,7 @@ pub enum On {
 }
 
 /// What changes. Only what a card in the pool does for a duration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Lingering {
     Strength(i32),
     /// Tread Lightly's "During that run, the rez cost of each piece of ice
@@ -182,6 +182,19 @@ pub enum Lingering {
     /// "[subroutine] Do 1 net damage." (`Effect::ReplaceSubroutines`,
     /// read by `run::transition_subroutine`).
     SubroutinesReplaced,
+    /// The install a card chose and refers back to (`Effect::Remember`,
+    /// `Remembered::SelectedCard`) — Boomerang's "choose 1 installed piece
+    /// of ice. Use this hardware only during encounters with that ice",
+    /// about the chooser's install, read with [`chosen_card`]. Public: the
+    /// rules make the choice open, and an install handle rides in a view
+    /// unmasked.
+    ChosenCard(InstallId),
+    /// The card type a card chose and refers back to (`Effect::Remember`,
+    /// `Remembered::CardType`) — Engram Flush's "choose a card type. For the
+    /// remainder of the encounter…", about the chooser's install, read with
+    /// [`chosen_card_type`]. Public: the Runner is told the type before
+    /// anything is revealed.
+    ChosenCardType(crate::dsl::CardType),
 }
 
 /// The Runner's mark this turn, if one has been identified (CR 10.11.1a:
@@ -215,6 +228,17 @@ pub enum Until {
     /// inside one action, with no checkpoint to sweep between, would carry
     /// its last choice into the next.
     WhileRezzed(InstallId),
+    /// For as long as this install stays on the table, rezzed or not —
+    /// a rig card's "while it is active" (CR 9.10.3c): Boomerang's chosen
+    /// ice. Install handles are never reused, so a card trashed and
+    /// installed again is a new install and keeps no earlier choice.
+    WhileInstalled(InstallId),
+    /// For as long as this played operation stays in the play area (CR
+    /// 9.10.3c, the source becoming inactive) — Hyoubu Precog Manifold's
+    /// "When you play this operation, choose a server", kept until the
+    /// lockdown is trashed as the Corp's next turn begins
+    /// (`CorpState::play_area`, `PlayedOperation::handle`).
+    WhileInPlay(InstallId),
 }
 
 impl LingeringEffect {
@@ -228,6 +252,10 @@ impl LingeringEffect {
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
+            Until::WhileInstalled(install) => {
+                state.runner.rig.iter().any(|card| card.install_id == install) || state.corp.installed.iter().any(|card| card.install_id == install)
+            }
+            Until::WhileInPlay(handle) => state.corp.play_area.iter().any(|played| played.handle == handle),
         }
     }
 }
@@ -253,6 +281,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::Run => run.map(|_| Until::EndOfRun).ok_or(RulesError::NoActiveRun),
         EffectDuration::Turn => Ok(Until::EndOfTurn(state.turn)),
         EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
+        EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
     }
 }
 
@@ -264,7 +293,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
         })
         .sum()
 }
@@ -281,7 +310,7 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
             .filter(|effect| effect.on == On::EachIce && effect.holds(state))
             .map(|effect| match effect.what {
                 Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
             })
             .sum::<i32>()
 }
@@ -295,7 +324,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
         })
         .sum()
 }
@@ -366,6 +395,24 @@ pub fn break_limit(state: &GameState, install: InstallId) -> Option<u32> {
 pub fn chosen_server(state: &GameState, card: &CardId) -> Option<crate::rules::ServerId> {
     state.lingering.iter().filter(|effect| &effect.source == card && effect.holds(state)).find_map(|effect| match effect.what {
         Lingering::ChosenServer(server) => Some(server),
+        _ => None,
+    })
+}
+
+/// The install the install `chooser` chose and refers back to
+/// (`Effect::Remember`), while the choice holds — Boomerang's ice.
+pub fn chosen_card(state: &GameState, chooser: InstallId) -> Option<InstallId> {
+    state.lingering.iter().filter(|effect| effect.on == On::Install(chooser) && effect.holds(state)).find_map(|effect| match effect.what {
+        Lingering::ChosenCard(chosen) => Some(chosen),
+        _ => None,
+    })
+}
+
+/// The card type the install `chooser` chose (`Effect::Remember`), while
+/// the choice holds — Engram Flush's, for the encounter.
+pub fn chosen_card_type(state: &GameState, chooser: InstallId) -> Option<&crate::dsl::CardType> {
+    state.lingering.iter().filter(|effect| effect.on == On::Install(chooser) && effect.holds(state)).find_map(|effect| match &effect.what {
+        Lingering::ChosenCardType(card_type) => Some(card_type),
         _ => None,
     })
 }
@@ -457,7 +504,7 @@ pub fn rig_strength(state: &GameState, card: &InstalledRunnerCard) -> i32 {
 /// off the list: the turn they were for has begun.
 pub(crate) fn take_allotted_clicks(state: &mut GameState, side: Side) -> i32 {
     let mut total = 0;
-    state.lingering.retain(|effect| match (effect.what, &effect.until) {
+    state.lingering.retain(|effect| match (&effect.what, &effect.until) {
         (Lingering::AllottedClicks(delta), Until::NextTurnOf(whose)) if *whose == side => {
             total += delta;
             false

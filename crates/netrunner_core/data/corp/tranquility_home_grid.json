@@ -1,0 +1,47 @@
+{
+  "id": "tranquility_home_grid",
+  "title": "Tranquility Home Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 4,
+  "install_only_in": [
+    "Remote"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": "InRootOfThisServer",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              }
+            ],
+            "texts": [
+              "gain 2[credit]",
+              "draw 1 card"
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn you install a card in the root of this server, gain 2[credit] or draw 1 card."
+    }
+  ],
+  "built_from": 26105,
+  "is_playable": true
+}

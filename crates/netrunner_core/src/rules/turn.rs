@@ -402,6 +402,21 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
     // abilities meet their trigger conditions for your turn beginning".
     let mut events = crate::rules::payment::refill(state, registry, side)?;
 
+    // A lockdown is not trashed "until the start of the Corp's next turn
+    // after the operation is played. Once the Corp's turn begins, this
+    // effect expires and the operation is trashed during the next
+    // checkpoint, before any conditional abilities marked pending at that
+    // time can be triggered" (CR 3.5.1c). So it is gone before the turn's
+    // own moment is heard, and still in play through the window before it
+    // (5.6.1b), when the turn has not yet begun.
+    if side == Side::Corp {
+        for played in std::mem::take(&mut state.corp.play_area) {
+            crate::rules::turn_log::file_in_archives(state, crate::rules::ArchivedCard::faceup(played.card.clone()));
+            let trashed = GameEvent::CardTrashed { side: Side::Corp, card: played.card, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
+            dispatcher::emit(state, registry, &mut events, trashed)?;
+        }
+    }
+
     // "The Corp's turn formally begins. Conditions related to the turn
     // beginning are met" (CR 5.6.1d) — PAD Campaign's "gain 1 credit".
     let clicks = state.resources(side).clicks.0;

@@ -1,0 +1,62 @@
+{
+  "id": "konjin",
+  "title": "Konjin",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 3,
+  "strength": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          "Rezzed",
+                          "NotSourceCard"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": "ForceEncounter"
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may choose another rezzed piece of ice",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, play a Psi Game."
+    }
+  ],
+  "subroutines": [],
+  "built_from": 26109,
+  "is_playable": true
+}

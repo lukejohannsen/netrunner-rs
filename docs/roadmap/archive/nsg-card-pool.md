@@ -6767,7 +6767,7 @@ Excavator was.
   29 / 99 times and its trash ability 11 / 14. Bellona scored 0 / 28 times
   and stolen 10 / 8. Colossus rezzed 4 / 20 times, its subroutines firing
   22 / 77 times. Bass and Flower Sermon go on the bot debts.
-- **Measured.** `cargo test --workspace` green and clippy silent. Both
+- **Measured.** `cargo test --workspace` green (2,698) and clippy silent. Both
   sweeps are green at 256 seeds, the card gate included, so every new card
   was seen in play. `coverage_identical.py` against `origin/main`
   (95a6097, 192 games a report): random identical, view and index alike,
@@ -6980,3 +6980,451 @@ booster pack 3 of 7 (Swift is reprinted there); `UR_UNIMPLEMENTED` 44 →
   a `CardTrashed` (2,028 → 2,506, each event's `trashed` count with it) and
   270 `CardsTrashedFromGripOrStack` — view and index alike; the planner
   seatings drift by the larger prior with every end reason unchanged.
+
+#### Stage 4 — Corp server and advancement words (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: La Costa Grid, Cayambe Grid, Tranquility
+Home Grid, Digital Rights Management, Vaporframe Fabricator, Wall to Wall,
+Kakurenbo, False Lead and Cyberdex Sandbox — nine Corp cards. **One new
+`Effect`** (`TurnArchivesFacedown`, Kakurenbo's), and one fewer
+single-use (`AddToHand`, now Wall to Wall's too). Uprising 40 of 65, its
+booster pack 6 of 7 (La Costa Grid, Digital Rights Management and Cayambe
+Grid are reprinted there); `UR_UNIMPLEMENTED` 34 → 25,
+`URBP_UNIMPLEMENTED` 4 → 1.
+
+- **The words.**
+  - **"The first time each turn you install a card in the root of this
+    server"** (`EventFilter::InRootOfThisServer`, Tranquility Home Grid),
+    **counted on the copies in that root**: `turn_log::record` bumps
+    `OnInstall` on every card in the root a Corp card went into, the one
+    installed included (`CopyTurn`), and the listener scan reads the
+    listener's own copy. Exact, because a card in the root all turn saw
+    every install into it, and one installed this turn saw its own, which
+    already makes any later install the second. The turn log counts kinds
+    of card and never a server, so `first_each_turn` could not narrow to
+    one; a board read (`installed_this_turn` in the root) would have made a
+    fast-advanced agenda's replacement the "first" again once the agenda
+    left for the score area.
+  - **A cost that forfeits its own agenda** (`Cost::ForfeitSelf`, False
+    Lead): paid as `Forfeit` pays — out of the game with its points
+    (CR 8.2.5, 4.9.3) — and its effect resolves with the agenda gone.
+  - **A scored agenda's ability opens a window** (`paid_ability::
+    active_cards_of` now lists the Corp's scored agendas, CR 1.8.3a,
+    4.5.4): `legal_actions` already offered their abilities, but the
+    window between the Runner's actions opened only for a rezzed install's,
+    so False Lead could be forfeited during a run and never between the
+    Runner's actions, where it is played.
+  - **"This server" in a count of installs** (`Amount::CorpInstalls` writes
+    the counting card's server in, as a selection already did): Cayambe
+    Grid's "2[credit] for each advanced piece of ice protecting this
+    server" is `CreditsAmount(Increased { n, n })` over `All([Ice,
+    InThisServer, Advanced])`.
+  - **"You cannot install that card in the root of this server"**
+    (`PromptInstallCorpCard::not_in_root_of`, `dsl::ThisServer`,
+    Vaporframe Fabricator): bars that root alone — ice may still protect
+    the server — and only while the server exists (CR 4.6.8e: a remote
+    nothing is left in has ceased to exist, and its number may be the new
+    remote's). Heard as the asset is trashed, so "this server" is the one
+    the trash names (on `CardTrashed`, or the run for an access), written
+    into the install (`Effect::with_this_server`) as the selection ahead of
+    it parks: a continuation keeps no triggering event. `another_server`
+    would have barred the ice too and reads an install already gone.
+  - **"Add this asset to HQ"** is `AddToHand` on a Corp install (Wall to
+    Wall's fourth option), which moves the card as `Cost::AddSelfToHq`
+    does.
+  - **"Turn all cards in Archives facedown"** (`Effect::
+    TurnArchivesFacedown`, Kakurenbo): nothing turned a card in Archives
+    facedown — a card goes there faceup or facedown as it is trashed (CR
+    4.4.6b), and the breach and `TurnFaceupInArchives` turn them the other
+    way. No event: no card hears it, and the view is the record.
+- **Two bugs the stage reached, fixed.** Tranquility Home Grid is the
+  first card to hear a Corp install beside Engineering the Future, so the
+  first to park a trigger order on one, and both bugs were in that order:
+  - **An order parked inside an encounter finished nothing after a trigger
+    that asked** (`pending_choice::resolve_choose_trigger_to_resolve`):
+    Ansel 1.0's install into the grid's root parked the order, the grid's
+    own "gain 2[credit] or draw 1 card" parked behind it with no word of
+    the subroutines still to fire, and the encounter stood with its last
+    subroutine pending and no player able to act — a planner game of
+    Retirement Package against Safety Net, seed 2, the one stall in 48.
+    The order now carries the intent onto what its trigger parks, as a
+    resolved choice already did (`mark_parked_resume_subroutines`).
+    Neither sweep had found it at 256 seeds; the real-play pass below did.
+  - **A trigger order named a facedown card to the Runner and a
+    spectator** (`masking::mask_pending_decision`): each queued entry
+    carries the event it heard, and the install's event named the card.
+    The entries' events are now masked as the log masks them. Found by
+    the session sweep's fog gate at 256 seeds (seed 89, Retirement Package
+    against Planning Ahead).
+- **What each is made of.** La Costa Grid is a turn-start selection
+  `InRootOfThisServer`; Cayambe Grid one over its ice and an approach
+  offer asked only when some ice protecting it is advanced (paying 0 is
+  always taken); Digital Rights Management is `TimesLastTurnWhen(
+  OnSuccessfulRun, Server[Hq])` as its play requirement, Pivot's search
+  for an agenda, Peer Review's remote-root install and `Prohibit(
+  ScoreAgendas, Turn)`; Vaporframe Fabricator a once-per-turn [click]
+  install from HQ ignoring all costs and the same install on its trash,
+  heard both from an access (`OnTrashedFromAccess`) and from a Runner
+  card's text (`OnCardTrashed`, `Whose(Runner)`); Wall to Wall is two
+  `ResolveSomeOf`s on complementary conditions — at least two rezzed
+  assets, itself among them, or not — the "otherwise" first, because
+  adding itself to HQ is one of the options and would otherwise flip the
+  condition between the two; Kakurenbo is Longevity Serum's trash from HQ,
+  the facedown turn and a selection from Archives into a remote root with
+  two counters (`if_installed`), removed from the game; Cyberdex Sandbox
+  is `OnVirusCountersPurged` with `first_each_turn` and Mavirus's "you may
+  purge" on its score.
+- **Fidelity limits:** under Known limits. Wall to Wall's "up to 3" is 3 of
+  the 4, the counter's ice optional.
+- **Client.** Nothing added to the view or a decision. False Lead is used
+  from the score area's sheet, where scored agendas' abilities already
+  were; the server prompt for Vaporframe's trash leaves out its old root.
+  `prose` reads the new words.
+- **Decks.** Retirement Package takes two Tranquility Home Grid for its
+  two Brasília Government Grid and two Vaporframe Fabricator for its two
+  Active Policing; Hostile Bid two Cayambe Grid for its two Flagship, two
+  Wall to Wall for its two Cybersand Harvester and two False Lead for two
+  of its three Greenmail; A Thousand Cuts two La Costa Grid for its two
+  The Red Room, two Kakurenbo for its two Bring Them Home and two Cyberdex
+  Sandbox for its two Lotus Haze; Paid Content two Digital Rights
+  Management for its two Sudden Commandment. Every card given up is still
+  in another deck.
+- **DSL ratio** (`pool_status.py`): 16 of 99 `Effect` variants single-use,
+  1 unused (`Trace`), over 548 card files — one variant more, the same
+  single-use count.
+- **Real play** (`--headless`, each edited Corp deck against Safety Net,
+  seed 2; random seats 96 games, planner seats 48; each pair random /
+  planner). Tranquility Home Grid installed 104 / 50, its first install
+  heard 44 / 70 times; Vaporframe Fabricator installed 104 / 50, its
+  [click] used 96 / 69, its trash heard 10 / 0 times; Cayambe Grid
+  installed 94 / 44 and rezzed 51 / 2, its approach asked 59 / 0 times;
+  Wall to Wall installed 160 / 60, resolved 121 / 130 times; La Costa Grid
+  installed 52 / 37 and rezzed 26 / 5; Kakurenbo played 11 / 0; Digital
+  Rights Management played 73 / 0; False Lead scored 1 / 10 and forfeited
+  1 / 1; Cyberdex Sandbox installed 53 / 10 and never scored (stolen
+  41 / 33). Kakurenbo, Digital Rights Management, False Lead's forfeit and
+  Cayambe Grid's rez go on the bot debts. Before the subroutine fix one of
+  the 48 planner games of Retirement Package stalled; none does now.
+- **Measured.** `cargo test --workspace` green (2,690) and clippy silent.
+  Both sweeps are green at 256 seeds, the card gate and the fog gate
+  included. `coverage_identical.py` against Stage 3 (b22bf2b, 192 games a
+  report): every seating differs, and the random seatings by one thing —
+  the scored-agenda window, which Proprionegation's "use this ability only
+  during a run" now gets before the jack-out decision (6.9.4b): paid
+  ability windows 20,312 → 20,344, its uses unchanged at 2, view and index
+  alike; one game's end moved (Runner agenda wins 114 → 113, deck-outs
+  4 → 5). The planner seatings 32,500 → 33,112 windows, Proprionegation
+  used 6 → 7, and the end reasons drift by the larger sample (Corp agenda
+  wins 65 → 63, Runner 96 → 102). The subroutine fix moved no report: the
+  four hashes before and after it are the same.
+
+#### Stage 5 — break triggers, and the first card to start a trace (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Gold Farmer, Makler, Týr, F2P, GameNET:
+Where Dreams are Real, Scapenet and Transport Monopoly — six Corp cards
+and one Runner card — and GameNET's Sweep deck, Pay to Win. **No new
+`Effect`, and none left unused:** Scapenet's trace is `Trace`'s first
+card. Uprising 47 of 65, its booster pack 6 of 7; `UR_UNIMPLEMENTED`
+25 → 18.
+
+- **The words.**
+  - **A card's ability making a player spend or lose credits is a moment**
+    (`Trigger::OnAbilityTookCredits`, `GameEvent::AbilityTookCredits`,
+    GameNET's "whenever a Corp card ability causes the Runner to spend or
+    lose at least 1[credit] during a run"): `AbilityGainedCredits`'s mirror,
+    announced by one test (`ability::took_credits`, "at least 1" from any
+    pool) at the four places a card asks: the cost of its ability
+    (`engine::activate_ability` — F2P's 2[credit], paid by the Runner), a
+    paid choice it offers (`pending_choice::resolve_accept` — "end the run
+    unless the Runner pays 3[credit]"), a bid in the trace it began
+    (`trace::submit_runner_bid`, CR 10.8.6d) and a loss its text resolves
+    (`Effect::LoseCredits` — Gold Farmer's). Pushed among the cost events,
+    so it is heard after what it paid for, where the Payment Rule hears
+    every cost. GameNET names whose card and whose credits with
+    `EventFilter::OwnedBy { owner: Corp, whose: Runner }`, and "during a
+    run" is `RunInProgress`. The moment is generic, so every breaker's
+    paid use now records one.
+  - **A break says whether the subroutine was printed** (`GameEvent::
+    SubroutineBroken::printed`, `IceFacts::printed_subroutine`, Gold
+    Farmer's "whenever the Runner breaks a printed subroutine on this
+    ice"): read off the event, as the strength is, because a parked
+    trigger is asked again after the run has moved on. A fifth fact
+    doubles the ice facts to 32 columns, which the turn log's 36 hold.
+  - **A run can be kept from being declared successful by a card used
+    during it** (`Prohibition::DeclaredSuccessful` for `Run`, Transport
+    Monopoly's "This run cannot be declared successful"), asked by
+    `continuous::may_be_declared_successful` beside Flagship's standing
+    word, so the breach still follows (CR 6.9.5b) and the run is not
+    unsuccessful (6.8.4a). A standing kind with a duration would have had
+    to outlive the agenda's use that made it.
+- **The first trace in play.** Scapenet is the pool's first card to start
+  one, so `rules/trace.rs` was read against CR 10.8 (conformance row):
+  10.8.1–10.8.4 and 10.8.6 match; 10.8.5's "if unsuccessful" and
+  10.8.6a's "when a trace is initiated" are unbuilt and no built card
+  prints them. The trace bids left `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS`,
+  which is now empty, for `ACTIONS_RARE_WITH_SAMPLE_DECKS` at 512 games;
+  the index-path sweep, which plays System Gateway alone, names them among
+  what its decks cannot produce. The gate's stale-exclusion check is a
+  function of the list now (`Coverage::stale_exclusions`), tested on a
+  list of its own.
+- **One leak the stage reached, fixed.** The fog gate at the default seed
+  count named a facedown ambush to a spectator through the new moment —
+  Cerebral Overwriter paid from its root (seed 26) and Esca accessed in HQ
+  (seed 28) — because an ambush asks for credits face down. The event is
+  withheld from whoever the card is concealed from, and from a spectator
+  when the card is in HQ or R&D, as an access's `TriggerFired` is; the
+  turn log counts the moment `Unseen` unless the card is the Runner's.
+- **What each is made of.** Gold Farmer is two "end the run unless the
+  Runner pays 3[credit]" and the break trigger; Makler a fracter with
+  `OnIceFullyBroken`, `ByThis` and `first_each_turn` (Lobisomem's words);
+  Týr Hákarl 1.0's Runner-only "Lose [click]" break with Aggressive
+  Trendsetting's `AllottedClicksNextTurn` after it, and Ansel 1.0's trash
+  with 3[credit]; F2P N-Pot's Runner-only paid break with `Not(IsTagged)`
+  and Lethe's bounce; Scapenet `TimesLastTurn(OnSuccessfulRun)` as its
+  play requirement and a selection of an installed chip or virtual card
+  into the Runner's removed-from-game pile as `on_success`; Transport
+  Monopoly Proprionegation's counters and window with `OncePerTurn`.
+- **Fidelity limits:** under Known limits — GameNET's reading of
+  "causes", and Transport Monopoly's `DuringRun`.
+- **Client.** Nothing added to the view or a decision: F2P's and Týr's
+  breaks are on the encountered ice as N-Pot's and Hákarl's are, a trace's
+  bids were already actions, and Transport Monopoly is used from the score
+  area's sheet. `prose` reads the new prohibition (in both its lists and
+  the board's In effect line) and the printed-subroutine fact.
+- **Decks.** Pay to Win is Paid Content's frame on GameNET: three Gold
+  Farmer for its two Grubber and a Hype Machine, three F2P for its two
+  Magistrate Revontulet and the other Hype Machine, two Scapenet for its
+  two The Powers That Be (4 of 17 influence, 20 points). Retirement
+  Package takes Týr for its Sleipnir; Hostile Bid and Tag You're It each a
+  Transport Monopoly for their Orbital Superiority; Encore two Makler for
+  its two Marjanah. Every card given up is still in another deck.
+- **A planner test re-stated.** Five more Corp cards in the prior re-drew
+  every R&D sample, and the kill Corp tagged a full grip with Public Trail
+  on seed 2 of the twenty `a_kill_corp_plays_public_trail…` counts. Over
+  sixty seeds it is 0 before the stage and 2 after (seeds 2 and 35), so
+  that claim is now counted over sixty, as the balanced Corp's was at
+  Stage 1; against three cards it is still twenty of twenty.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, none unused, over 555 card files — `Trace` moved from unused
+  to single-use.
+- **Real play** (`--headless`, seed 2; random seats 96 games, planner
+  seats 48; each pair random / planner). Pay to Win against Safety Net:
+  GameNET paid 40 / 44 times; Gold Farmer installed 174 / 64 and rezzed
+  26 / 50, its subroutines fired 87 / 110 and none broken, so its break
+  trigger was never heard; F2P rezzed 19 / 34, its break bought 5 / 16
+  times; Scapenet played 44 / 0, its trace successful 43 times and avoided
+  once. Retirement Package against Safety Net: Týr rezzed 4 / 5 and its
+  click break used 4 / 5 times. Transport Monopoly (Hostile Bid and Tag
+  You're It against Safety Net) scored 0 / 4 and 1 / 12, used 0 / 1 and
+  2 / 1 times, and kept a run from being declared successful in three of
+  those games. Makler (Encore against Hostile Bid) installed 15 / 13, used
+  2 / 48 times, its credit for a full break 1 / 23. Scapenet, Gold
+  Farmer's trigger and Transport Monopoly's counters go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,698) and clippy silent. Both
+  sweeps are green at 256 seeds, the card gate and the fog gate included;
+  the view sweep's 768 games bid in 7 traces. `coverage_identical.py`
+  against Stage 4 (63dee5f, 192 games a report): the random seatings are
+  identical but for the new moment itself (`AbilityTookCredits` 382, view
+  and index alike) — no game moved, since the pool pass plays no Sweep
+  deck. The planner seatings move by the larger prior, as the Public Trail
+  test did: steps 111,460 → 110,565, paid ability windows 33,112 → 32,889,
+  Corp agenda wins 63 → 66 and flatlines 23 → 24, Runner agenda wins
+  102 → 98.
+
+#### Stage 6 — stealth credits on VP's rule, a remembered choice, set aside (4 October 2026)
+
+`claude/serene-einstein-6bhlig`: Mu Safecracker, Afterimage, Penrose,
+Boomerang, Engram Flush and Gachapon. **Two new `Effect`s**
+(`RevealHand`, `Remember`). Uprising 53 of 65, its booster pack 6 of 7.
+(Written into the archive at Stage 7a, from the stage's commit, 3c4fcf5;
+the stage closed without one.)
+
+- **The words.**
+  - `Effect::Remember` (Boomerang, Engram Flush): a choice that makes
+    nothing but itself, read back by another of the card's abilities (CR
+    9.10.3) — Boomerang's ice until it leaves the table (9.10.3c), Engram
+    Flush's card type for the encounter its text names.
+  - `Effect::RevealHand` (Engram Flush): "reveal the grip" reveals every
+    card. A selection over the grip showed only what could be chosen, so a
+    grip with nothing of the named type was never revealed.
+  - Paying a card's own conditional "you may pay" is using that card (CR
+    9.1.6): `pending_choice::resolve_accept` states `Purpose::Ability`, so
+    Mantle's credits pay Mu Safecracker's access. Another player's "unless
+    you pay" stays `Other`.
+  - A run's end says whether it was successful, where "not unsuccessful"
+    admitted a run kept from success (Boomerang).
+  - `CardTarget::SetAside`: what Gachapon leaves after an install and a
+    shuffle is removed from the game; three or fewer are all shuffled back.
+- Afterimage joins the cards whose "once per turn" is spent when its "may"
+  is declined (the recorded CR 9.3.6g deviation); Boomerang breaks two
+  when two are left.
+- **Decks.** Hit List +Mu Safecracker, +2 Afterimage, +2 Boomerang; Spare
+  Parts +2 Penrose; Side Quest +2 Gachapon; Second Site +2 Engram Flush.
+  Every card given up is still in another Sweep deck.
+- **A planner test re-stated.** `a_kill_corp_plays_public_trail_because_
+  the_runners_answer_is_priced` counts the balanced Corp over 180 seeds:
+  over sixty it stood at 27 to 30 against a bar of under 30, and which
+  depended on the build (debug with or without debuginfo, release) on the
+  same source before the stage as after. Over 180 it is 73 before and 78
+  after, in each build.
+- **Measured.** `cargo test --workspace` green (2,452 outside the desktop
+  crate, 251 in it), clippy silent, both sweeps green at 256 seeds with the
+  card gate. `coverage_identical.py` against Stage 5 (3f6beba): random
+  identical, view and index; the planner moves by the larger prior — Corp
+  agenda wins 66 → 65, Corp flatlines 24 → 23, Runner agenda wins
+  98 → 100. Real play (seed 2, random 96 / planner 48): the planner never
+  installs Mu Safecracker or Boomerang and uses Penrose once (bot debts);
+  Afterimage bypasses 4 sentries, Gachapon is used 49 / 49 times, Engram
+  Flush fires 72 / 178 subroutines.
+- **DSL ratio**: 18 of 101 `Effect` variants single-use, none unused,
+  over 561 card files.
+
+#### Stage 7a — lockdown (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: SYNC Rerouting, Argus Crackdown, NAPD
+Cordon, NEXT Activation Command and Hyoubu Precog Manifold — the five
+lockdowns. **No new `Effect`.** Uprising 58 of 65, its booster pack 6 of
+7; `UR_UNIMPLEMENTED` 12 → 7.
+
+- **The words.**
+  - **A lockdown stays in the play area** (CR 3.5.1c, 8.6.6c): "This
+    operation is not trashed until your next turn begins" is a declaration
+    (`CardDefinition::not_trashed_until_your_next_turn`, refused off an
+    operation) that `engine::play_operation_card` reads, filing the card in
+    `CorpState::play_area` with a handle from the install sequence
+    (`PlayedOperation`) instead of Archives. It is active there (CR 1.8.3a:
+    `rules::active` lists it, so its triggers are heard and its standing
+    effects apply), its own "when you play this operation" is that copy's
+    (`listeners::moments` pins the play to the handle), and it is trashed
+    as the Corp's next turn begins — after the window before the turn
+    (5.6.1b), before `TurnStarted` is heard (`turn::begin_turn`), as a
+    trash from the play area. Public, and carried by the view and every
+    bot sample.
+  - **"Play only if there is no active lockdown"** is `ZoneHasAtLeast`
+    over `CardZoneRef::PlayArea`, the zone both players share (CR 4.1.1b),
+    with a subtype filter; nothing chooses from it.
+  - **A server the card chose, and one protected by ice** are two
+    `EventFilter`s on a server moment: `ChosenServer` (Hyoubu Precog
+    Manifold's "a successful run on the chosen server", read off the
+    lingering choice as `Mark` reads the mark) and `ProtectedByIce` (Argus
+    Crackdown's, asked as the moment is heard, rezzed ice or not).
+  - **A choice made as an operation is played lasts while that copy is in
+    play** (CR 9.10.3c, `Until::WhileInPlay`): `ChooseServer`'s duration is
+    the rules', read off where its card is — Tsakhia's, made when a turn
+    begins by an ability that does nothing else, still ends with the turn
+    (9.10.3b). Keyed by the copy's handle, so a second Hyoubu a turn later
+    chooses afresh.
+  - **A steal priced off the agenda's counters**: NAPD Cordon's
+    "4[credit] plus 2[credit] for each advancement counter on that agenda"
+    is `StealCost(CreditsAmount(Increased { Fixed(4), Times {
+    AccessedCardAdvancementCounters, 2 } }))`, reckoned to a number of
+    credits as the agenda is offered (CR 1.16.2b), so the offer the Runner
+    reads is what they pay. `Amount::Times` is new: `Increased` of a count
+    with itself reads as two counts where the card prints one at a rate.
+  - **No card but an icebreaker breaks** (`Prohibition::
+    BreakWithNonIcebreakers`, NEXT Activation Command's, standing as a
+    `ContinuousKind::Cannot`): asked by both break effects of a breaker
+    that is not one (`ability::breakable_now`) — Boomerang, Poison Vial, a
+    bioroid's own "Lose [click]: Break". "Each piece of ice gets +2
+    strength" is a `Strength` about `Scope::Ice(Any)`.
+- **What each is made of.** SYNC Rerouting is Funhouse's "give the Runner
+  1 tag unless they pay 4[credit]" on `OnRunStart`; Argus Crackdown 2 meat
+  damage on `OnSuccessfulRun` when `ProtectedByIce`; Hyoubu Precog
+  Manifold `ChooseServer` on its own `OnPlay` and Adrian Seis's psi game,
+  ending the run when the bids differ.
+- **Client.** The lockdown is a line of `hud::in_effect` in both clients
+  ("in play until the Corp's next turn: …"), the choice's duration reads
+  "while it stays in play", and `prose` reads the new prohibition, zone
+  and amounts. The view ledger names the play area as drawn there.
+- **Decks.** Pay to Win two SYNC Rerouting for two Nonequivalent Exchange;
+  Tag You're It two Argus Crackdown for two Hedge Fund; Retirement Package
+  two NEXT Activation Command and two NAPD Cordon for its two Reverb and two
+  Lycian Multi-Munition; A Thousand Cuts two Hyoubu Precog Manifold for two
+  Vicsek. Every card given up is still in another Sweep deck.
+- **DSL ratio** (`pool_status.py`): 17 of 101 `Effect` variants
+  single-use, none unused, over 566 card files — `ChooseServer` has its
+  second card.
+- **Real play** (`--headless`, each deck against Safety Net, seed 2;
+  random seats 96 games, planner seats 48; each pair random / planner).
+  SYNC Rerouting played 106 / 0, its tax asked 276 times under random;
+  Argus Crackdown played 61 / 1, its damage done 28 times; NEXT Activation
+  Command played 84 / 4; NAPD Cordon 69 / 0; Hyoubu Precog Manifold played
+  41 / 1, its psi game 6 times. The planner's turn ends at its own, and a
+  lockdown pays on the Runner's: the five go on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,459 outside the desktop
+  crate, 251 in it) and clippy silent. Both sweeps are green at 256 seeds,
+  the card gate included, so every lockdown was played. `coverage_
+  identical.py` against Stage 6 (3c4fcf5, 192 games a report): random
+  identical, view and index; the planner moves by the larger prior —
+  Corp agenda wins 65 → 66, Runner agenda wins 100 → 99, steps
+  110,002 → 110,068.
+
+#### Stage 7b — an encounter away from the run's position (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Konjin and Ganked!. **No new
+`Effect`**: both say "The Runner encounters that ice" with Sisyphus
+Protocol's `ForceEncounter`, which now has three cards. Uprising 60 of 65,
+its booster pack 6 of 7; `UR_UNIMPLEMENTED` 7 → 5. Stage 7 is complete.
+
+- **The words.**
+  - **A forced encounter away from the Runner's position** (CR 6.1.3c,
+    6.5.9a–c): `ForceEncounter` from inside an encounter or an access
+    (`run::engine::force_encounter_elsewhere`) encounters a rezzed piece of
+    ice anywhere without moving. What it interrupted — the run's ice, its
+    position and the encounter or access it was in — waits on
+    `RunState::suspended` while the run stands on a list of the one forced
+    piece of ice, so every reader of "the ice being encountered" (fifty of
+    them across the engine, the bots and the clients) reads it with no
+    change. Its end puts the interrupted state back
+    (`run::engine::resume_suspended`, from the pass that would have been
+    and from `reconcile_ice` when the ice leaves or is derezzed), passing
+    nothing: Konjin's encounter finishes, its window opened by whoever took
+    the step. "End the run" ends both (6.5.9b); `end_run` restores the
+    run's own ice before it snapshots the run. A list, because a forced
+    encounter can force another (Ganked! into Konjin). Sisyphus
+    Protocol's encounter from the movement phase keeps its own path.
+  - **An access ends when its card leaves by a card's text resolved above
+    its decision** (CR 7.1.7): Ganked! is trashed as the cost of the
+    Corp's "you may", which resolves above the access decision already
+    presented. `AccessState::left` says so for a card in HQ or R&D (an
+    install says so by leaving the table), set in `ability::
+    trash_this_card` and cleared at each presentation, and the breach moves
+    on once nothing stands in the way (`access::move_on_if_left`, asked by
+    `engine::resume_run`) — after the encounter the trash began.
+  - Public: the suspended state (its ice masked as the run's is,
+    `PublicSuspendedEncounter`) and `left` ride in the view, and every bot
+    sample carries both, so a sample returns where the real game will.
+- **What each is made of.** Konjin is Adrian Seis's psi game on its own
+  `OnEncounter`, with "you may choose another rezzed piece of ice" a
+  `PresentChoice` over a selection of `Ice`, `Rezzed`, `NotSourceCard`
+  whose `then` is `ForceEncounter`; it has no subroutines, so it is fully
+  broken as it is encountered (CR 6.5.7c). Ganked! is Mavirus's reveal in
+  R&D and an `OnAccessed` `OfferPaidChoice` costing `TrashSelf`, its
+  selection `Ice`, `Rezzed`, `InAttackedServer`. A known limit, on the
+  conformance row: an effect lasting "the remainder of this encounter"
+  made in the interrupted encounter before the forced one is swept during
+  it; nothing in the pool makes one before Konjin's psi game resolves.
+- **Client.** `hud::in_effect` says where a forced encounter returns to
+  ("This run: after this encounter, back to the encounter with Konjin" /
+  "to the breach"), in both clients; the view ledger names `suspended`
+  drawn there and `left` the engine's. Ganked! joins the traps whose rez
+  gains nothing (`board::rez`).
+- **Decks.** A Thousand Cuts takes Konjin for its Ezam; Pay to Win two
+  Ganked! for two Your Digital Life. Every card given up is still in
+  another Sweep deck.
+- **DSL ratio** (`pool_status.py`): 16 of 101 `Effect` variants
+  single-use, none unused, over 568 card files.
+- **Real play** (`--headless`, each deck against Safety Net, seed 2;
+  random seats 96 games, planner seats 48; each pair random / planner).
+  Ganked! installed 99 / 51 and accessed 200 / 149 times; Konjin installed
+  36 / 20, rezzed 10 / 10, its psi game played 23 / 46 times. The planner
+  rezzes Ganked! (51 of 51 installs), a trap whose rez gains it nothing:
+  on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,464 outside the desktop
+  crate, 251 in it) and clippy silent. Both sweeps are green at 256 seeds,
+  the card gate included, so Konjin and Ganked! were played. `coverage_
+  identical.py` against Stage 7a (6b2aca3, 192 games a report): random
+  identical, view and index — the encounter's new path is reached by no
+  game the pool pass plays; the planner moves by the larger prior — Corp
+  agenda wins 66 → 70, Runner agenda wins 99 → 95, steps 110,068 →
+  112,214.

@@ -1,0 +1,82 @@
+{
+  "id": "tyr",
+  "title": "Týr",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 10,
+  "strength": 7,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutinesUnconditionally": {
+              "count": {
+                "Fixed": 1
+              }
+            }
+          },
+          {
+            "AllottedClicksNextTurn": [
+              "Corp",
+              1
+            ]
+          }
+        ]
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. The Corp gets +1 allotted [click] for their next turn. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 2 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Trash 1 installed Runner card. Gain 3[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": "Any",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          },
+          {
+            "GainCredits": [
+              "Corp",
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 26102,
+  "is_playable": true
+}

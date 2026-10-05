@@ -108,6 +108,13 @@ pub enum CardTarget {
     /// of everything, and trash prevention is offered only for a single
     /// selected card.
     AttackedServerRoot,
+    /// Every card the acting card's controller has set aside (CR 4.8) —
+    /// Gachapon's "Shuffle 3 of the remaining cards into your stack, then
+    /// remove the rest from the game". Only meaningful for `Effect::
+    /// RemoveFromGame`. Composition didn't work, for `AttackedServerRoot`'s
+    /// reason: a `PromptChooseCards` with a `count` of every set-aside card
+    /// parks a choice of everything, and no `Amount` counts the zone.
+    SetAside,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -793,6 +800,18 @@ pub enum Effect {
         /// discount of everything, so the rez's alternatives are still met.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignore_credit_costs: bool,
+        /// "You cannot install that card **in the root of this server**" —
+        /// Vaporframe Fabricator's, heard as it is trashed. A card that is
+        /// not ice is not offered that root while the server still exists;
+        /// ice may still protect it, and once the server is gone a new
+        /// remote is another server. `This` is written as the server
+        /// (`Effect::with_this_server`) when a selection ahead of the
+        /// install parks, while the resolution still knows where the card
+        /// was: a continuation keeps no triggering event. A field for the
+        /// reason `another_server` is one, which excludes ice too and reads
+        /// the acting install, gone by the time a trash is heard.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        not_in_root_of: Option<ThisServer>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -943,6 +962,13 @@ pub enum Effect {
     /// facedown any more. Composition didn't work: nothing turned a card in
     /// Archives over but the breach (CR 7.3.2), which turns them all.
     TurnFaceupInArchives,
+    /// Every card in Archives is turned facedown — Kakurenbo's "Turn all
+    /// cards in Archives facedown". Composition didn't work: nothing turned
+    /// a card in Archives facedown at all — a card goes there faceup or
+    /// facedown as it is trashed (CR 4.4.6b), and `TurnFaceupInArchives` and
+    /// the breach only turn them over the other way. Announced by nothing:
+    /// no card hears a card turned facedown, and the view is the record.
+    TurnArchivesFacedown,
     /// "Resolve `count` of the following in any order" — Key Performance
     /// Indicators. `chooser` picks one of `options`; it resolves, then the
     /// remaining options are offered again with `count - 1`, until the
@@ -1046,8 +1072,10 @@ pub enum Effect {
     /// Adds the acting install to its owner's grip — Pichação's "add this
     /// program to your grip". The install is the "if", as it is for
     /// `AddToDeck`: gone, or reinstalled under another handle, nothing
-    /// moves. The Runner's alone: the one Corp card that adds itself to HQ
-    /// does so as a cost (`Cost::AddSelfToHq`). Composition didn't work:
+    /// moves. A Corp install goes to HQ — Wall to Wall's "Add this asset to
+    /// HQ", one option of several, where Descent and Janaína add themselves
+    /// as a cost (`Cost::AddSelfToHq`), which moves the card the same way.
+    /// Composition didn't work:
     /// `PromptChooseCards` cannot say "this install", and `AddToDeck` moves
     /// only into a deck.
     AddToHand,
@@ -1601,6 +1629,44 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_ice: bool,
     },
+    /// Reveals every card in `side`'s hand — Engram Flush's "[subroutine]
+    /// Reveal the grip." Each is public (CR 1.21.3) and stays revealed
+    /// until it moves or the ability has finished (`GameState::revealed`),
+    /// so what follows can choose among them (`CardFilter::Revealed`).
+    /// Composition didn't work: `RevealAtRandom` reveals a printed number
+    /// drawn at random, and a selection over the hand (Vera Ivanovna
+    /// Shuyskaya's, Touch-ups') shows its chooser only the cards it may
+    /// choose, so a grip with none of the chosen type was never revealed
+    /// at all.
+    RevealHand(crate::rules::Side),
+    /// The card whose text this is remembers a choice for `until` (CR
+    /// 9.10.3) — Boomerang's "choose 1 installed piece of ice. Use this
+    /// hardware only during encounters with that ice" (`Remembered::
+    /// SelectedCard`, inside its selection's `then`, for as long as
+    /// Boomerang is installed: 9.10.3c), and Engram Flush's "choose a card
+    /// type. For the remainder of the encounter…" (`Remembered::CardType`,
+    /// one under each option of the `PresentChoice` that is the choice).
+    /// A `rules::lingering::LingeringEffect` about the chooser's install
+    /// (`Lingering::ChosenCard`, `Lingering::ChosenCardType`), read back by
+    /// `EffectRequirement::EncounteringChosenIce` and `CardFilter::
+    /// OfChosenCardType`. The chooser is `ResolutionContext::
+    /// prompting_install`, since inside a selection's `then` the acting
+    /// install is the card chosen. Composition didn't work: Trieste Model
+    /// Bioroids' choice is kept by the prohibition it makes, and Tsakhia's
+    /// (`ChooseServer`) is a server parked as a decision of its own; these
+    /// two make nothing but the choice, which another of the card's
+    /// abilities reads.
+    Remember { what: Remembered, until: EffectDuration },
+}
+
+/// What `Effect::Remember` keeps. Only what a card in the pool chooses
+/// and refers back to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Remembered {
+    /// The card a selection just chose — Boomerang's ice.
+    SelectedCard,
+    /// A card type — Engram Flush's.
+    CardType(crate::dsl::CardType),
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -1909,7 +1975,10 @@ pub enum Amount {
     /// (`Rezzed`) is asked of each copy and a type of the definition.
     /// Composition didn't work: every count of installs was one sentence's
     /// (`OtherUnrezzedIce`, `IceProtectingThisServer`), and a filter is
-    /// what an `Amount` could not hold while it was `Copy`.
+    /// what an `Amount` could not hold while it was `Copy`. "This server"
+    /// (`InThisServer`, `InRootOfThisServer`) is the counting card's, as in
+    /// a selection — Cayambe Grid's "2[credit] for each **advanced piece of
+    /// ice protecting this server**".
     CorpInstalls(crate::dsl::CardFilter),
     /// The Runner's installed cards the filter admits — Tremolo's "for each
     /// installed piece of **cybernetic** hardware", `All([CardType(Hardware),
@@ -1939,6 +2008,20 @@ pub enum Amount {
     /// "whenever the Runner takes tags", where taking a number of tags in
     /// one instruction is one aggregated effect (CR 9.12.2c).
     Increased { amount: Box<Amount>, by: Box<Amount> },
+    /// `amount` taken `times` times — NAPD Cordon's "4[credit] plus
+    /// 2[credit] **for each** advancement counter on that agenda",
+    /// `Increased { Fixed(4), Times { AccessedCardAdvancementCounters, 2 } }`.
+    /// Composition didn't work: `Increased` of a count with itself is the
+    /// same number, and reads to a person as two counts where the card
+    /// prints one at a rate.
+    Times { amount: Box<Amount>, times: u32 },
+    /// The advancement counters on the installed card being accessed — the
+    /// agenda NAPD Cordon's additional cost to steal is about ("that
+    /// agenda"), read off the access (`AccessState::pending_install`). 0
+    /// for a card accessed out of HQ, R&D or Archives, which holds none.
+    /// Composition didn't work: `HostedAdvancementTokens` is the acting
+    /// install's, and the card paying is the lockdown.
+    AccessedCardAdvancementCounters,
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
@@ -2012,6 +2095,12 @@ pub enum EffectDuration {
     /// Lycian Multi-Munition's `WhileRezzed` is its own, hard-wired into
     /// `GainIceSubtype`, and every duration here was a span of the game.
     WhileRezzed,
+    /// For as long as the card that made it stays installed — the Runner's
+    /// twin of `WhileRezzed`, since a rig card is active while installed
+    /// (CR 9.10.3c): Boomerang's chosen ice. Resolved to `Until::
+    /// WhileInstalled` of the card whose text this is, as `WhileRezzed`
+    /// is. Not `WhileRezzed`, which a Runner card is never.
+    WhileInstalled,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -2172,12 +2261,32 @@ pub enum Prohibition {
     /// Corp card abilities. Not `BreakSubroutines`, which is about the
     /// breaking install, never the broken one.
     BreakSubroutinesOnIce,
+    /// The run cannot be declared successful — Transport Monopoly's
+    /// "Hosted agenda counter: This run cannot be declared successful",
+    /// for the run it is used in (`EffectDuration::Run`). Asked where the
+    /// declaration is made (CR 6.9.5a, `continuous::
+    /// may_be_declared_successful`), beside the standing word Flagship
+    /// prints about its server (`ContinuousKind::
+    /// CannotBeDeclaredSuccessful`), so the run is withheld its success and
+    /// nothing else: it is not unsuccessful (CR 6.8.4a), and the breach
+    /// follows. Not that kind with a duration: a standing effect is
+    /// scanned off an active card and cannot outlive the use that made it.
+    DeclaredSuccessful,
+    /// The Runner cannot use **non-icebreaker** cards to break subroutines
+    /// — NEXT Activation Command's, standing while the lockdown is in play
+    /// (`ContinuousKind::Cannot`). Asked by the two break effects of a
+    /// breaker that is not an icebreaker (`ability::breakable_now`), which
+    /// then find nothing to break, so the ability is not offered: Boomerang,
+    /// a bioroid's "Lose [click]: Break 1 subroutine", any card but a
+    /// program with the icebreaker subtype. Not `BreakSubroutines`, which
+    /// binds one install for a duration.
+    BreakWithNonIcebreakers,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 14] = [
+    pub const ALL: [Prohibition; 16] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2192,13 +2301,15 @@ impl Prohibition {
         Prohibition::BioroidIceAbilities,
         Prohibition::Rez,
         Prohibition::BreakSubroutinesOnIce,
+        Prohibition::DeclaredSuccessful,
+        Prohibition::BreakWithNonIcebreakers,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
         }
     }
 
@@ -2209,7 +2320,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => None,
         }
     }
 }
@@ -2330,6 +2441,40 @@ impl Effect {
         }
     }
 
+    /// This effect with "this server" in an install's `not_in_root_of`
+    /// written as `server`, through what a selection's continuation can
+    /// hold — the server the card that prints it is in, or was, written in
+    /// while the resolution still knows it (`ability`'s `PromptChooseCards`).
+    pub fn with_this_server(self, server: ServerId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
+        match self {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+                Effect::PromptInstallCorpCard {
+                    not_in_root_of: Some(ThisServer::Server(server)),
+                    origin_zone,
+                    ignore_costs,
+                    discount,
+                    then,
+                    remote_only,
+                    another_server,
+                    new_remote,
+                    rez,
+                    if_rezzed,
+                    if_installed,
+                    ignore_credit_costs,
+                }
+            }
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            other => other,
+        }
+    }
+
     /// Calls `f` on this effect and then on every effect nested inside it,
     /// depth-first in authoring order.
     ///
@@ -2428,6 +2573,7 @@ impl Effect {
             | Effect::BypassEncounteredIce
             | Effect::PurgeVirusCounters
             | Effect::TurnFaceupInArchives
+            | Effect::TurnArchivesFacedown
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
@@ -2436,6 +2582,8 @@ impl Effect {
             | Effect::AddToDeck(_)
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
+            | Effect::RevealHand(_)
+            | Effect::Remember { .. }
             | Effect::PlaceRunCredits { .. }
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
@@ -2703,4 +2851,14 @@ mod tests {
             ]
         );
     }
+}
+
+/// The server a card names as "this server" — the one the card that prints
+/// it is in — as a card file writes it (`This`), and as it is written in
+/// once a resolution knows which (`Server`). `PromptInstallCorpCard::
+/// not_in_root_of`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThisServer {
+    This,
+    Server(ServerId),
 }

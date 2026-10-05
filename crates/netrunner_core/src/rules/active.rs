@@ -35,7 +35,9 @@ pub(crate) enum Place {
     /// The event that started the active run, active in the play area for
     /// as long as the run lasts (CR 8.6.5, `run::run_event`): Eye for an
     /// Eye's "If successful" and its "Access →" are its own text, heard and
-    /// used during that run and never after.
+    /// used during that run and never after. And an operation that is not
+    /// trashed after it resolves (CR 8.6.6c: a lockdown,
+    /// `CorpState::play_area`), active there until it is.
     PlayArea,
 }
 
@@ -80,7 +82,16 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         server: Some(installed.server),
         place: Place::Installed,
     });
-    identity.chain(scored).chain(installed)
+    // A lockdown in the play area (CR 1.8.3a), after the table: it was
+    // played after anything installed there.
+    let in_play = state.corp.play_area.iter().map(|played| ActiveCard {
+        side: Side::Corp,
+        card: &played.card,
+        install: Some(played.handle),
+        server: None,
+        place: Place::PlayArea,
+    });
+    identity.chain(scored).chain(installed).chain(in_play)
 }
 
 pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
