@@ -320,6 +320,7 @@ mod tests {
             used_by: None,
             access: false,
             from_hand: false,
+            part_of: None,
         }];
         let registry = CardRegistry::from_cards(vec![trasher, card("an_event", CardType::Event), card("a_program", CardType::Program)]);
         let mut state = GameState::new(0);

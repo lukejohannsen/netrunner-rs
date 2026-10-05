@@ -295,7 +295,8 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
         // `Cost::RemoveCounters` is affordable by the copy that holds the
         // counters, and `OncePerTurn` is spent per copy.
         let ctx = ability::ResolutionContext::for_install(install, &card_id);
-        card.abilities.iter().any(|ability| {
+        card.abilities.iter().enumerate().any(|(index, ability)| {
+            let ctx = ctx.clone().using(card, index);
             // An interrupt is not something to do in a window of one's own
             // choosing (`rules::prevention` says when): counting it opened
             // a window after every action for a player whose only move in
@@ -489,7 +490,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..Default::default()
         });
         let mut state = base_state();

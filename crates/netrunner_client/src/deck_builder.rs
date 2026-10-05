@@ -1080,7 +1080,9 @@ mod tests {
             assert_eq!(eternal.first().map(String::as_str), Some("vantage_point"), "{eternal:?}");
             assert_eq!(eternal.last().map(String::as_str), Some("core_set"), "{eternal:?}");
             assert!(eternal.contains(&"system_update_2021".to_string()), "a reprint puts its set on the list: {eternal:?}");
-            assert!(!eternal.contains(&"downfall".to_string()), "no Downfall card is built yet: {eternal:?}");
+            // Downfall Stage 1 built Runner cards alone: the Corp's builder
+            // is not offered a set with nothing behind it.
+            assert_eq!(eternal.contains(&"downfall".to_string()), side == Side::Runner, "{side:?}: {eternal:?}");
             // Midnight Sun is complete, and Uprising Stage 1 built cards of
             // both sides, so both are offered both sets.
             assert!(eternal.contains(&"midnight_sun".to_string()), "{side:?}: {eternal:?}");

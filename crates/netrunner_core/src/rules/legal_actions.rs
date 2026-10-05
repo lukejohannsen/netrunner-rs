@@ -1222,7 +1222,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
-            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }];
         registry.insert(breaker);
 
         // Phase stays `Action(Runner)` throughout a run regardless of who
@@ -1556,7 +1556,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::GainCredits(Side::Runner, 1),
-            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }];
         registry.insert(breaker);
 
         let mut state = runner_state(3, 5);

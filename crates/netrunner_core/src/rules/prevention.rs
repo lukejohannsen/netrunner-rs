@@ -97,7 +97,8 @@ pub(crate) fn could_prevent(state: &GameState, registry: &CardRegistry, what: &W
                 return false;
             }
             let ctx = ResolutionContext::for_install(install, &card_id);
-            card.abilities.iter().any(|ability| {
+            card.abilities.iter().enumerate().any(|(index, ability)| {
+                let ctx = ctx.clone().using(card, index);
                 let user = ability.used_by.unwrap_or(side);
                 ability.trigger == Trigger::Paid
                     && ability.effect.prevents().is_some_and(|word| matches(&word, what, state, registry))
@@ -489,7 +490,7 @@ mod tests {
             title: card.to_string(),
             side,
             card_type,
-            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             is_playable: true,
             ..Default::default()
         }

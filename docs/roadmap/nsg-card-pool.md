@@ -50,12 +50,13 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
+| 7 | Downfall (`df`) | 65 | 7 | 58 | Stage 1 built (5 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
-`Effect` variants single-use, none unused, over 573 card files** (5 October
-2026, with Uprising Stage 8, which added no variant and closed the set;
+`Effect` variants single-use, none unused, over 580 card files** (5 October
+2026, with Downfall Stage 1, which added no variant; Uprising Stage 8, at
+15 of 101 over 573, added none and closed the set;
 Stage 7b, at 16 of 101 over 568, added none and gave Sisyphus
 Protocol's `ForceEncounter` two more cards, Konjin and Ganked!; Stage 7a,
 at 17 of 101 over 566, added none and gave `ChooseServer` its second card,
@@ -371,6 +372,7 @@ PR that made this list (29 September 2026).
 
 - **Prāna Condenser** (UR 1): "whenever **you** would do net damage" hears every net damage about to be suffered, because `EventFilter::Damage` reads the kind and not who does it; a Runner card that does net damage to its own Runner would be offered to the Corp to prevent.
 - **Earth Station: SEA Headquarters** (UR 8): its additional cost to run is paid as the server is announced, before the run's own pools exist, so neither bad publicity's credits (rightly, CR 6.3.3) nor a run event's (Overclock's, placed as its run begins here) nor a card's "during runs" credits pay it. GameNET's "causes the Runner to spend" does not hear it, as it hears no standing effect's price.
+- **Stargate** (DF 1): "reveal the top 3 cards of R&D" shows them to the Runner as the selection's candidates, and the Corp is shown only the card trashed (`CardsSelected { revealed }`, faceup in Archives); the two left on R&D are not announced to the Corp. No card in the pool reads a reveal of R&D.
 - **Hoshiko Shiro: Untold Protagonist** (UR 2): the catalog folds the flip side's text into the front's and keeps none of its other numbers, so a flipped Hoshiko has the front's subtypes (Natural) and link (0). DreamNet's "if your identity is digital" reads her front either way (`EffectRequirement::IdentityMatches`).
 
 ### Recorded deviations from the Comprehensive Rules
@@ -671,7 +673,8 @@ Division.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
-**Decks:** Sweep decks on its four identities.
+**Decks:** Sweep decks on its four identities (Az McCaffrey's,
+Moonlighting, at Stage 1).
 
 **Stages:**
 1. **Corp, composes:** Salvo Testing, Fujii Asset Retrieval, Jaguarundi, Attini,
@@ -937,9 +940,16 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 
 **Decks:** Sweep decks on its four identities.
 
+**Re-read at Stage 1** (5 October 2026, against the DSL at Uprising's
+close). Of the seven "composes", three needed a word each and no `Effect`:
+a use limit per printed ability (The Artist, CR 9.3.6g), job and
+connection columns in the turn log (Az McCaffrey), and a revealed card
+trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
+
 **Stages:**
-1. **Runner, composes:** Isolation, Spec Work, Rezeki, Gauss, The Artist,
-   Az McCaffrey, Stargate.
+1. **Runner, composes** (built, 5 October 2026): Isolation, Spec Work,
+   Rezeki, Gauss, The Artist, Az McCaffrey, Stargate. Stage 1 is
+   complete.
 2. **Corp, composes:** Calvin B4L3Y, Nanoetching Matrix, CSR Campaign,
    Tiered Subscription, Red Level Clearance, Roughneck Repair Squad,
    Remastered Edition, Architect Deployment Test, Sandstone, SDS Drone
@@ -972,6 +982,10 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 - The Class Act: the first replacement that is not a prevention.
 
 **Banned:** Bukhgalter, Rezeki, Sting!.
+
+**Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
+
+- **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)
 

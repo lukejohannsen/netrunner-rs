@@ -74,7 +74,7 @@ pub(crate) fn breaker(id: &str, restrict_to: Option<IceType>) -> CardDefinition 
             cost: None,
             requirement: None,
             effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to },
-            cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
         is_playable: true,
         ..Default::default()
     }
@@ -164,7 +164,7 @@ pub(crate) fn priced_breaker(
         cost: Some(Cost::Credits(pump_cost)),
         requirement: None,
         effect: Effect::BoostStrength { amount: pump_amount, duration: EffectDuration::Encounter },
-        cost_discount_if: None, used_by: None, access: false, from_hand: false });
+        cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None });
     def
 }
 

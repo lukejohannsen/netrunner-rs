@@ -1,0 +1,58 @@
+{
+  "id": "gauss",
+  "title": "Gauss",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "BoostStrength": {
+            "amount": 3,
+            "duration": "Turn"
+          }
+        }
+      ],
+      "text": "When you install this program, it gets +3 strength for the remainder of the turn."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "2[credit]: +2 strength."
+    }
+  ],
+  "built_from": 26024,
+  "is_playable": true
+}

@@ -7539,3 +7539,102 @@ Station's Sweep deck, Ground Control. **No new `Effect`.** Uprising 65 of
   against `main` (d1d3857, 192 games a report): random identical, view and
   index; the planner moves by the larger prior — Corp agenda wins 63 → 64,
   Runner agenda wins 103 → 102, flatlines 22 → 23.
+
+### 7. Downfall — 65 cards (C 19 / V 28 / M 18)
+
+#### Stage 1 — Runner, composes (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Isolation, Spec Work, Rezeki, Gauss, The
+Artist, Az McCaffrey: Mechanical Prodigy and Stargate, and Az McCaffrey's
+Sweep deck, Moonlighting. **No new `Effect`.** Downfall 7 of 65;
+`DF_UNIMPLEMENTED` 65 → 58. Rezeki is Standard-banned and built anyway,
+as every banned card before it.
+
+- **The survey re-read first.** It called all seven "composes"; four
+  are, and three needed one small word each, none of them an `Effect`:
+  - **A use limit is the printed ability's** (CR 9.3.6g: "**an ability**
+    with this flag can only be used once per turn"). The Artist prints two
+    once-per-turn [click] abilities, and `OncePerTurnKey` was the card and
+    which copy, so a use of one spent both — `validate` refused the card
+    file for exactly that reason ("would share one use"). The key now
+    names the printed paid ability too (`OncePerTurnKey::ability`, from
+    `ResolutionContext::ability`, which every site that asks or spends an
+    ability's requirement sets: `engine::activate_ability` and
+    `activate_hand_ability`, `paid_ability::has_usable_paid_ability`,
+    `prevention::could_prevent`). A card's triggers still share the card's
+    one use (`ability: None`). Pauleʼs Café was the one card whose two
+    entries are one printed ability — its plain install reads the
+    discounted one's `OncePerTurn` through a `Not` — and it says so with
+    `AbilityDef::part_of`, which `validate` holds to an earlier entry that
+    names a `OncePerTurn`. The old refusal became two: two *triggers* that
+    each spend the card's use, and two entries of one printed ability that
+    each spend it. The alternative, a gate read off the turn log
+    (`SameAction::Ability` counts each ability's actions), would have
+    needed the ability's index on the context all the same, and would
+    have left the key wrong for the next card with two limits that are
+    not actions.
+  - **The turn log counts job and connection resources apart**
+    (`Kind::JobResource`, `Kind::ConnectionResource`, the sixth and seventh
+    subtypes given a column; `Kind::COUNT` 18 → 20), and a first time can
+    be narrowed by "A, B or C" (`kinds` reads `CardFilter::AnyOf` as the
+    union of its parts). Az's "the first job resource, connection
+    resource, or piece of hardware you install each turn costs 1[credit]
+    less" is then Kate McCaffrey's `InstallCost` on an `Installing` scope
+    with `first_each_turn`. No resource in the catalog is both a job and a
+    connection, or either and a companion, so a card has one column. The
+    installed columns' indices moved by two, which only a serialized log
+    from before the change would misread; a match record replays its
+    actions.
+  - **A card a selection revealed lands in Archives faceup** (CR 4.4.6b:
+    "visible to the Runner when it is trashed"). Stargate's "reveal the
+    top 3 cards of R&D. Trash 1 of the revealed cards" is Cataloguer's
+    selection of the Corp's R&D (`OpponentDeck`, `TopOfZone(3)`) with
+    `reveal` and the Corp's discard as its destination, inside Chastushka's
+    access replacement; `resolve_confirm_card_selection` filed it facedown,
+    reading only whether the card was public before it moved. A cost's
+    trash (`trash_as_cost`) already read `reveal`. No card before Stargate
+    revealed a card into Archives by a selection.
+- **What composes.** Isolation and Spec Work are Sell Out's additional
+  cost (`Cost::Trash` over `OwnInstalled`) with a resource and with a
+  program. Rezeki is a turn-start gain. Gauss is Living Mural's "+3
+  strength for the remainder of the turn" on its own install and Rising
+  Tide's barrier break, with a 2[credit] pump. The Artist's install is
+  Topan's discounted install from the grip, narrowed to a program or a
+  piece of hardware with `All`. Stargate's run is Conduit's [click] run
+  of R&D with a once-per-turn limit.
+- **Fidelity limits:** one, under Known limits. Stargate's three cards
+  are shown to the Runner as the selection's candidates, and the Corp is
+  shown only the card trashed.
+- **Client.** Nothing added to the view, the log or a decision but the
+  key's `ability`, which rides inside `once_per_turn_used` (an engine's
+  line on the ledger already: the action list honours the limit, and
+  `board::rig` tells copies apart by the install). No ledger row. The deck
+  builder's set test offered Downfall to neither side; it is now offered
+  to the Runner, and not to the Corp until Stage 2.
+- **Decks.** Moonlighting is Picket Line's frame with Az for Mercury: Red
+  Team a job; Smartware Distributor, Debbie “Downtown” Moreira and Hannah
+  “Wheels” Pilintra connections; five kinds of hardware; and two Isolation
+  for its two Strike Fund. Safety Net takes two The Artist for two Spree
+  and two Gauss for two Aircheck; Dead Reckoning two Spec Work for two
+  Lobisomem; Street Gallery two Rezeki for two Stowaway; Pay As You Go two
+  Stargate for two Raindrops Cut Stone. Every card given up is still in
+  another deck. Moonlighting is pinned Standard, Eternal and Casual, as
+  Picket Line is.
+- **DSL ratio** (`pool_status.py`): 15 of 101 `Effect` variants
+  single-use, none unused, over 580 card files, as at Uprising's close
+  over 573.
+- **Measured.** `cargo test --workspace` green and clippy silent, the
+  desktop crate included (its nine test targets built and run one at a
+  time, because the container's disk could not hold them all at once). Both
+  sweeps are green at 256 seeds, the card gate included, so every card of
+  the five edited decks and Moonlighting was seen in play.
+  `coverage_identical.py` against `main` (1c4c134, 192 games a report):
+  random identical, view and index — the three engine words move nothing
+  the sample decks reach; the planner moves by the larger prior, as at
+  Uprising's close — Corp agenda wins 64 → 65, Runner agenda wins 102 →
+  101, no other end reason.
+- **The branch restarted from `main`.** Uprising Stage 8's PR was
+  squash-merged (#360) and #361 landed after it, so the stage was carried
+  onto `main` at 1c4c134 rather than stacked on the merged commit; #361
+  touched only `netrunner_cli`'s diag code among the crates, which was
+  tested and linted again on the new base.

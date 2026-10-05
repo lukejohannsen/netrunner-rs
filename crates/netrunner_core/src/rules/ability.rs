@@ -161,6 +161,14 @@ pub struct ResolutionContext<'a> {
     /// context because the effect that reads it reads it before anything
     /// parks: a selection's filter is resolved as the selection is offered.
     pub paid_with: Vec<CardId>,
+    /// Which printed paid ability of the acting card is being used or
+    /// offered, for its use limit (`OncePerTurnKey::ability`, CR 9.3.6g)
+    /// — set by the payer and by every site that asks whether it could be
+    /// used (`engine::activate_ability`, `paid_ability`, `prevention`), so
+    /// the offer and the use read one key. `None` for a trigger. On the
+    /// context because a requirement is read and spent within the one
+    /// resolution that uses the ability.
+    pub ability: Option<u8>,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -219,9 +227,22 @@ fn acting_install_has_left(state: &GameState, ctx: &ResolutionContext<'_>) -> bo
     ctx.acting_install.is_some() && acting_corp_position(state, ctx).is_none() && acting_rig_position(state, ctx).is_none()
 }
 
+/// The key `ctx`'s use limits are kept under: the card, which copy, and
+/// which of its paid abilities (`OncePerTurnKey`).
+fn use_key(ctx: &ResolutionContext<'_>) -> OncePerTurnKey {
+    OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install, ability: ctx.ability }
+}
+
 impl<'a> ResolutionContext<'a> {
     /// The common case: a resolution attributed to `acting_card`, with no
     /// triggering event and nothing accumulated yet.
+    /// This context, using `definition`'s paid ability `index` — the use
+    /// limit's key names the printed ability (`ResolutionContext::ability`).
+    pub fn using(mut self, definition: &crate::dsl::CardDefinition, index: usize) -> Self {
+        self.ability = Some(definition.printed_ability(index));
+        self
+    }
+
     pub fn for_card(acting_card: Option<&'a CardId>) -> Self {
         ResolutionContext { acting_card, ..ResolutionContext::default() }
     }
@@ -4083,20 +4104,20 @@ pub fn check_requirement(
                 Side::Corp => &state.corp.once_per_turn_used,
                 Side::Runner => &state.runner.once_per_turn_used,
             };
-            if used.contains(&OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install }) {
+            if used.contains(&use_key(ctx)) {
                 return Err(RulesError::RequirementNotMet);
             }
             Ok(())
         }
         EffectRequirement::OncePerRun => {
-            let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
+            let key = use_key(ctx);
             match state.run_in_progress() {
                 Some(run) if !run.once_per_run_used.contains(&key) => Ok(()),
                 _ => Err(RulesError::RequirementNotMet),
             }
         }
         EffectRequirement::OncePerEncounter => {
-            let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
+            let key = use_key(ctx);
             match state.run_in_progress() {
                 Some(run) if run.phase == RunPhase::EncounterIce && !run.this_encounter.once_per_encounter_used.contains(&key) => Ok(()),
                 _ => Err(RulesError::RequirementNotMet),
@@ -4809,16 +4830,16 @@ pub(crate) fn consume_requirement(
                 Side::Corp => &mut state.corp.once_per_turn_used,
                 Side::Runner => &mut state.runner.once_per_turn_used,
             };
-            used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
+            used.insert(use_key(ctx));
         }
         EffectRequirement::OncePerRun => {
             if let Some(run) = state.active_run.as_mut() {
-                run.once_per_run_used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
+                run.once_per_run_used.insert(use_key(ctx));
             }
         }
         EffectRequirement::OncePerEncounter => {
             if let Some(run) = state.active_run.as_mut() {
-                run.this_encounter.once_per_encounter_used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
+                run.this_encounter.once_per_encounter_used.insert(use_key(ctx));
             }
         }
         EffectRequirement::And(a, b) => {
@@ -5241,7 +5262,7 @@ mod tests {
         let mut state = game_state();
         state.phase = GamePhase::Action(Side::Runner);
         let requirement = EffectRequirement::OncePerTurn;
-        state.runner.once_per_turn_used.insert(OncePerTurnKey { card: None, install: None });
+        state.runner.once_per_turn_used.insert(OncePerTurnKey { card: None, install: None, ability: None });
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::RequirementNotMet));
 
         crate::rules::turn::enter_start_of_turn(&mut state, &CardRegistry::new(), &mut Vec::new(), Side::Runner).unwrap();

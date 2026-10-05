@@ -2325,6 +2325,13 @@ fn ability_ctx<'a>(is_identity: bool, target: InstallId, card_id: &'a CardId) ->
     }
 }
 
+/// `ability_ctx` for asking and spending paid ability `index`'s
+/// requirement: its use limit is keyed by the printed ability
+/// (`OncePerTurnKey::ability`).
+fn use_ctx<'a>(is_identity: bool, target: InstallId, card_id: &'a CardId, card: &crate::dsl::CardDefinition, index: usize) -> ability::ResolutionContext<'a> {
+    ability_ctx(is_identity, target, card_id).using(card, index)
+}
+
 fn activate_ability(
     state: &GameState,
     registry: &CardRegistry,
@@ -2478,7 +2485,7 @@ fn activate_ability(
         return Err(RulesError::NotInActionPhase { actual: state.phase });
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, &ability_ctx(is_identity, target, &card_id), registry)?;
+        ability::check_requirement(state, requirement, side, &use_ctx(is_identity, target, &card_id, card_def, ability_index), registry)?;
     }
 
     let mut next = state.clone();
@@ -2547,7 +2554,7 @@ fn activate_ability(
     // activated any number of times per turn. Mirrors
     // `process_card_triggers`'s own check-then-consume ordering.
     if let Some(requirement) = &ability.requirement {
-        ability::consume_requirement(&mut next, requirement, side, &ability_ctx(is_identity, target, &card_id));
+        ability::consume_requirement(&mut next, requirement, side, &use_ctx(is_identity, target, &card_id, card_def, ability_index));
     }
     if interrupting {
         paid_ability::note_interrupt(&mut next, side);
@@ -2588,7 +2595,7 @@ fn activate_hand_ability(
     }
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
-    let ctx = ability::ResolutionContext::for_card(Some(&card_id));
+    let ctx = ability::ResolutionContext::for_card(Some(&card_id)).using(card_def, ability_index);
     if let Some(requirement) = &ability.requirement {
         ability::check_requirement(state, requirement, side, &ctx, registry)?;
     }
@@ -5576,7 +5583,7 @@ mod tests {
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -6855,7 +6862,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
 
@@ -6891,7 +6898,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
         registry.insert(CardDefinition {
@@ -6901,7 +6908,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("corp_bank", Side::Corp, CardType::Asset, 0, None)
         });
         let mut state = runner_state(3, 5, 0);
@@ -7443,7 +7450,7 @@ mod tests {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
             },
-            cost_discount_if: None, used_by: None, access: false, from_hand: false });
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None });
         registry.insert(card);
 
         // Runner boosts; priority passes to Corp.

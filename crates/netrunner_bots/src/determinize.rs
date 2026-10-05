@@ -2221,9 +2221,9 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![install(1, true), install(2, false)];
-        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)) };
+        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)), ability: Some(0) };
         state.corp.once_per_turn_used = [used(1), used(2)].into_iter().collect();
-        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)) };
+        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)), ability: Some(0) };
         state.runner.once_per_turn_used = [telework.clone()].into_iter().collect();
 
         for side in [Side::Corp, Side::Runner] {

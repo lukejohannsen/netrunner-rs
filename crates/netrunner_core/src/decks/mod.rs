@@ -526,6 +526,9 @@ mod tests {
             // Uprising Stage 8: Earth Station's deck, on Hostile Bid's
             // frame, whose Core Set cards keep it out of Standard.
             ("ground_control", &neither),
+            // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
+            // frame, which holds no Core Set card, so it is Standard too.
+            ("moonlighting", &not_startup),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
             // (Net Shield among them), as Safety Net does.
             ("spare_parts", &neither),

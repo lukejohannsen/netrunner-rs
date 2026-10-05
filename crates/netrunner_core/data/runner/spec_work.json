@@ -1,0 +1,38 @@
+{
+  "id": "spec_work",
+  "title": "Spec Work",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "CardType": "Program"
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 26022,
+  "is_playable": true
+}

@@ -1399,8 +1399,12 @@ pub(crate) fn resolve_confirm_card_selection(
                     // The Corp trashing its own cards out of HQ/R&D (Longevity
                     // Serum, Hansei Review, Anoetic Void) lands them facedown —
                     // the Runner has not seen them. A rezzed install it trashes
-                    // was on the table and stays faceup.
-                    crate::rules::turn_log::file_in_archives(state, if was_public {
+                    // was on the table and stays faceup, and so does a card
+                    // the selection revealed (CR 4.4.6b: "visible to the
+                    // Runner when it is trashed") — Stargate's "reveal the
+                    // top 3 cards of R&D. Trash 1 of the revealed cards", as
+                    // `trash_as_cost` already read it.
+                    crate::rules::turn_log::file_in_archives(state, if was_public || reveal {
                         ArchivedCard::faceup(card_id.clone())
                     } else {
                         ArchivedCard::facedown(card_id.clone())

@@ -1929,7 +1929,7 @@ mod positions {
             cost: None,
             requirement: None,
             effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
-            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }];
         registry.insert(cleaver);
 
         let mut state = GameState::new(0);
@@ -2092,7 +2092,7 @@ mod positions {
                 cost: None,
                 requirement: None,
                 effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(subtype) },
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }];
             registry.insert(breaker);
         }
         let filler = || vec![CardId("madani".to_string()); 3];
@@ -2924,6 +2924,7 @@ mod positions {
             used_by: None,
             access: false,
             from_hand: false,
+            part_of: None,
         }];
         assert_eq!(choose(cleaver), PlayerAction::DrawCardClick { side: Side::Runner }, "a breaker on top is worth the draw");
         assert_eq!(

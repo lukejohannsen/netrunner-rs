@@ -294,10 +294,20 @@ pub struct RevealedCard {
 ///
 /// `card` is `None` only where a requirement is checked with no card in
 /// hand, which no card file can do.
+///
+/// **And which of its paid abilities**, because the limit is the
+/// ability's, not the card's (CR 9.3.6g: "An ability with this flag can
+/// only be used once per turn"): The Artist prints two once-per-turn
+/// [click] abilities, and a use of one left the other unspent only once
+/// `ability` was part of the key. `None` for a trigger, which is the
+/// card's one use of its own; a printed ability written as two entries
+/// says so (`AbilityDef::part_of`, Pauleʼs Café) and is one index here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OncePerTurnKey {
     pub card: Option<CardId>,
     pub install: Option<InstallId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability: Option<u8>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorpState {

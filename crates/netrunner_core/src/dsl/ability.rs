@@ -77,6 +77,17 @@ pub struct AbilityDef {
     /// and `validate` holds it to that.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_hand: bool,
+    /// This entry is the same printed ability as the earlier entry at this
+    /// index, written as two because the card prices its first use apart —
+    /// Pauleʼs Café's "1[credit]: Install 1 hosted card. The first card you
+    /// install this way during each of your turns costs … less", whose
+    /// plain install reads the discounted one's `OncePerTurn`. A use limit
+    /// is the printed ability's (CR 9.3.6g, `OncePerTurnKey::ability`), so
+    /// the two entries share one. `None`, the common case, is an ability of
+    /// its own; `validate` holds the index to an earlier entry that names a
+    /// `OncePerTurn`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_of: Option<usize>,
 }
 
 impl AbilityDef {
@@ -824,7 +835,7 @@ mod tests {
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }
         );
         assert_eq!(
             bundle.abilities[1],
@@ -834,7 +845,7 @@ mod tests {
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
                 effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }
         );
         assert_eq!(
             bundle.subroutines[0],
