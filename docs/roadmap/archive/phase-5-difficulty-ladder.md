@@ -3233,3 +3233,31 @@ Tests: `tao_salonga_swaps_the_piece_the_rig_cannot_break_off_rnd_and_never_onto_
 - **The "may" ahead of an identity's selection of its own cards** stays one ply (above).
 
 **Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
+
+## 39. The "may" ahead of an identity's selection of its own cards is planned: Barry "Baz" Wong installs from the grip while the run can still break — and his deck loses games for it, recorded — DONE (`feat/identity-may-planned`, 4 October 2026)
+
+**The last of the identities' owed text** (§38's Open item). §38 planned the "may" ahead of a selection only when its yes selects the other side's installed cards, Tāo Salonga's swap, because the first cut — every identity's "may" ahead of a selection — moved the Startup pass toward the Corp (+15 / −4 over two seeds, z +2.52) and why was not traced. The other five stayed one ply: Haas-Bioroid: Precision Design's add from Archives, Méliès U.'s, Barry "Baz" Wong's install from the grip when the Corp rezzes a piece of ICE, Magdalene Keino-Chemutai's install from her discards and Sebastião Souza Pessoa's connection install. One ply prices a parked selection at its worst resolution, choosing nothing (`fundamentals::pending_decision_upside`), so the yes never beat the no: on `main`, with the planner in both chairs, **Barry took his install 0 times in 596 offers** over 96 games against Agency, Brick Stack, Gimbatul and Hidden Funds.
+
+**What it is now.** `planner::its_identitys_choice` admits a choice whose yes selects any zone the evaluator prices where it leaves the board (`priced_zone`, the list `its_identitys_selection` already used), so the yes is the selection's best line and the no is the no. Barry's yes is priced against the run it comes in: the line stands mid-run once the install is made, and the run's leaf reads what is left to break with. Test: `barry_installs_from_the_grip_while_the_run_can_still_break` — Corroder against a freshly rezzed Ice Wall, Open Market in the grip: installed at 3[c] and 4[c], declined at 2[c] where it would spend the breaking credit, the run successful every time, over four seeds; under §38's rule it is never installed.
+
+**Tracing §38's cost.** Reproduced first, one binary with the widening behind a switch, the same games both ways:
+- Startup pass, 90 games, seeds 1–3: **+5 / −1 toward the Corp** (z +1.63), four of the six discordant games Professional Opportunities (Barry) losing — 12 → 8 Runner wins of its 27. Magdalene's deck did not move: her decision was already planned as the turn's end (§35), so the widening adds nothing there.
+- Barry against Agency, Brick Stack, Gimbatul and Hidden Funds, 24 games each, seed 2, planner both chairs, paired by game: **Corp 35 → 46 of 96, +21 / −10, z +1.98**; Barry's install 0 → 144 times in 587 offers. The extra Corp wins are mostly agendas (32 → 40; flatlines 3 → 6), steals down 0.3–0.6 a game against Gimbatul and Hidden Funds.
+
+What it is not, each checked on the records:
+- **Not the card file.** Barry's `when` is `CardType(Ice(Barrier))`, which matches any piece of ICE (`card_matches_filter` ignores the subtype); §38's "rezzes a barrier" was a misreading.
+- **Not the run the install comes in.** After a yes the run succeeds 0.37 of the time, after a no 0.41 (137 and 184 runs); 55% of offers come at ICE that ends the run anyway. A later rez in the same run follows 5 of 142 yeses, so the leaf charging only rezzed ICE is not where the credits go.
+- **Not the decision itself, as far as eight seeds can see.** A scratch tool replayed each record to the first planned yes of each game, applied the yes and the no, and played the rest out with the planner in both chairs over eight seeds: **the Corp won 175 of 352 playouts after the yes and 166 after the no** (Gimbatul 107 vs 96, Hidden Funds 68 vs 70) — inside the noise, about ±13. A pass over every yes (up to three a game) was stopped unread.
+- **Part of the trajectory is drift.** In seed 6 of the Startup pass the games part at a planned *no*, the answer one ply gave: planning draws its own sample from the seat's generator, so every later sample re-rolls.
+
+What the yeses buy: about 3[c] a game — Maglectric Rapid 41 times (1[c], never used to derez, a blind-list card), Side Hustle 31, Open Market 24, Red Team 15, Madani 14, DZMZ Optimizer 8, Docklands Pass 6, Fransofia Ward 5; hardware installs +0.6–0.9 a game, draws up in two pairings. Each install read in a record is a sound play — Open Market for no click at Flyswatter, which ended the run anyway; Open Market for 2[c] with Ping still broken after — so no rule here excludes one. **Shipped planned, with the cost recorded and owed**: the decision is the identity's printed text taken where it is worth taking, the self-pairing does not move, and the loss is one deck's over a game, not a decision's.
+
+**Measured** (pinned binaries, `main` at `ac3a517`):
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.435 → 0.438** (seed 1, +0.003, z +0.38, 7 discordant) and **0.443 → 0.443** (seed 2, 10 discordant) — 13 of the 17 discordant games Professional Opportunities, 8 to the Corp and 5 to the Runner.
+- `diag precepts --deck-styles` (planner both chairs): casual, 192 games, Corp share **0.422 → 0.422** (seed 1, +1 / −1) and **0.427 → 0.438** (seed 2, +3 / −1); startup, seeds 1–3, Corp share 0.567 / 0.556 / 0.522 → 0.589 / 0.578 / 0.522 (+5 / −1, above).
+
+**Not done, and why.**
+- **Why Barry's planned install costs his deck over a game** is not traced (Open). The per-decision playout says the first yes is not the mistake; a pass over every yes, or one per card, is the next instrument.
+- **Maglectric Rapid** is installed and never used; its derez is a blind-list debt of its own (Open, the blind list).
+
+**Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
