@@ -1040,6 +1040,20 @@ pub enum PaysFor {
     /// server list on `DuringRuns`, which every card that prints it would
     /// then have to write out.
     DuringRunsOnCentralServers,
+    /// Anything, for the remainder of a run once it has been declared
+    /// successful — Fencer Fueno's "Whenever you make a successful run, you
+    /// can spend hosted credits for the remainder of that run" (the trash
+    /// costs and steal costs of its breach). `DuringRuns` narrowed by
+    /// `RunState::declared_successful`, and as broad as the credit pool
+    /// then, as `DuringRuns` is during any.
+    DuringSuccessfulRuns,
+    /// The cost of a paid ability on a card the filter admits, while a run
+    /// is in progress — Trickster Taka's "You can spend hosted credits to
+    /// use programs during runs". Composition didn't work: a card's words
+    /// are alternatives, any one of which covers a payment, and this is
+    /// `Using` *and* `DuringRuns`; a program's ability used outside a run
+    /// (Stargate's, Self-modifying Code's) is not covered.
+    UsingDuringRuns(crate::dsl::CardFilter),
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1760,8 +1774,9 @@ impl CardDefinition {
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice(_) | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
-                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
-                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
+                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}
+                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root, or that of a card being accessed"),
+                (_, Scope::Accessing(_)) => return misfit("Accessing", "only a trash cost is asked of a card being accessed"),
                 (ContinuousKind::GainSubtype(IceType::Other), _) => {
                     return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
                 }

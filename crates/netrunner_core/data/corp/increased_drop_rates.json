@@ -1,0 +1,44 @@
+{
+  "id": "increased_drop_rates",
+  "title": "Increased Drop Rates",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "RemoveBadPublicity": 1
+            },
+            "text": "remove 1 bad publicity unless they take 1 tag"
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade, remove 1 bad publicity unless they take 1 tag."
+    }
+  ],
+  "built_from": 26054,
+  "is_playable": true
+}

@@ -4077,6 +4077,17 @@ pub fn check_requirement(
             let matches = identity.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter));
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::TriggeringCardOfRunnersFaction => {
+            let faction = state.runner.identity.as_ref().and_then(|card| registry.get(card)).and_then(|identity| identity.faction);
+            let card = ctx.triggering_event.and_then(|event| {
+                crate::rules::listeners::moments(state, event).into_iter().find_map(|moment| match moment.about {
+                    crate::rules::listeners::About::Card { card, .. } => Some(card),
+                    _ => None,
+                })
+            });
+            let matches = faction.is_some() && card.and_then(|card| registry.get(&card)).and_then(|card| card.faction) == faction;
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::IdentityCopy(copy) => {
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4613,14 +4624,16 @@ pub fn amount_on_table(amount: &Amount, state: &GameState, registry: &CardRegist
 }
 
 /// The credits a `Discount` takes off an install cost — all of any cost
-/// for `AllCosts`. One reading for the offer
+/// for `AllCosts`, and a negative number for a surcharge (Masterwork's
+/// "paying 1[credit] more"). One reading for the offer
 /// (`CardFilter::InstallableRunnerCardWithDiscount`) and the install, so
 /// the two agree.
-pub(crate) fn discount_credits(discount: &crate::dsl::Discount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
+pub(crate) fn discount_credits(discount: &crate::dsl::Discount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> i32 {
     match discount {
-        crate::dsl::Discount::Credits(credits) => *credits,
-        crate::dsl::Discount::AllCosts => u32::MAX,
-        crate::dsl::Discount::Amount(amount) => resolve_amount(amount, ctx, state, registry),
+        crate::dsl::Discount::Credits(credits) => i32::try_from(*credits).unwrap_or(i32::MAX),
+        crate::dsl::Discount::AllCosts => i32::MAX,
+        crate::dsl::Discount::Amount(amount) => i32::try_from(resolve_amount(amount, ctx, state, registry)).unwrap_or(i32::MAX),
+        crate::dsl::Discount::Surcharge(credits) => -i32::try_from(*credits).unwrap_or(i32::MAX),
     }
 }
 
@@ -4850,6 +4863,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::DuringYourTurn
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::IdentityMatches(_)
+        | EffectRequirement::TriggeringCardOfRunnersFaction
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::Breaching(_)

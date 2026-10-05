@@ -409,7 +409,7 @@ fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRe
     // is in no server's root, and the field this replaced taxed it anyway
     // whenever the grid was in that central's root.
     let install = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.pending_install);
-    let table = install.map_or(0, |install| continuous::trash_cost_delta(state, registry, install));
+    let table = card_def.map_or(0, |card| continuous::trash_cost_delta(state, registry, card, install));
     // A card in the discard pile has no trash cost to pay, so the basic
     // trash ability is never offered on it (`accessing_in_the_discard_pile`).
     let trash_cost = card_def

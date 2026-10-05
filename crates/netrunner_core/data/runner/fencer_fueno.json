@@ -1,0 +1,59 @@
+{
+  "id": "fencer_fueno",
+  "title": "Fencer Fueno",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "DuringSuccessfulRuns"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "TrashCard": "ThisCard"
+            },
+            "text": "you must pay 1[credit] or trash this resource"
+          }
+        }
+      ],
+      "text": "When your turn ends, if there are 3 or more hosted credits, you must pay 1[credit] or trash this resource."
+    }
+  ],
+  "built_from": 26007,
+  "is_playable": true
+}

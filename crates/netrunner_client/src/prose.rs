@@ -390,6 +390,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(amount) } => {
             format!("install a card from {}, paying 1 less for each of {}", describe_zone(from), describe_amount(amount))
         }
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Surcharge(n) } => format!("install a card from {}, paying {n} more", describe_zone(from)),
         Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
         Effect::SetAsideFromTopUntil { filter, count, deck } => {
             let from = if *deck == Side::Corp { "R&D" } else { "the stack" };
@@ -400,6 +401,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Amount(amount)) => {
             format!("install a card from the grip, paying 1 less for each of {}", describe_amount(amount))
         }
+        Effect::InstallRunnerCardFromGripWithDiscount(Discount::Surcharge(n)) => format!("install a card from the grip, paying {n} more"),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
@@ -734,6 +736,8 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::DuringRuns => "during runs".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),
         PaysFor::DuringRunsOnCentralServers => "during runs on central servers".to_string(),
+        PaysFor::DuringSuccessfulRuns => "for the remainder of a successful run".to_string(),
+        PaysFor::UsingDuringRuns(filter) => format!("to use a card matching {} during runs", humanize(format!("{filter:?}"))),
     }
 }
 
@@ -758,6 +762,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
         Scope::StealingFromThisServer => "an agenda the Runner steals from this server".to_string(),
+        Scope::Accessing(CardFilter::Any) => "each card the Runner accesses".to_string(),
+        Scope::Accessing(filter) => format!("each card the Runner accesses ({})", lower(format!("{filter:?}"))),
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),

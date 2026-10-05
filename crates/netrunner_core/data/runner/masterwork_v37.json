@@ -1,0 +1,76 @@
+{
+  "id": "masterwork_v37",
+  "title": "Masterwork (v37)",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Hardware"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you install a piece of hardware, draw 1 card."
+    },
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Hardware"
+                },
+                {
+                  "InstallableRunnerCardWithDiscount": {
+                    "Surcharge": 1
+                  }
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "InstallRunnerCardFromGripWithDiscount": {
+                "Surcharge": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever a run begins, you may install 1 piece of hardware from your grip, paying 1[credit] more."
+    }
+  ],
+  "built_from": 26015,
+  "is_playable": true
+}

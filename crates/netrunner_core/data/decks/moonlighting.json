@@ -3,7 +3,7 @@
   "name": "Moonlighting",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Az McCaffrey: Mechanical Prodigy, Downfall's Criminal identity, whose first job resource, connection resource or piece of hardware installed each turn is a credit cheaper. On Picket Line's frame, its identity swapped: Red Team a job; Smartware Distributor, Debbie “Downtown” Moreira and Hannah “Wheels” Pilintra connections; Docklands Pass, Pennyshaver, T400 Memory Diamond, Capybara and Zenit Chip JZ-2MJ hardware; and two Isolation for its two Strike Fund, seven credits for a resource the deck has already cashed. Picket Line keeps every card given up here.",
+  "description": "Not a published list: built so the sweeps reach Az McCaffrey: Mechanical Prodigy, Downfall's Criminal identity, whose first job resource, connection resource or piece of hardware installed each turn is a credit cheaper. On Picket Line's frame, its identity swapped: Red Team a job; Smartware Distributor, Debbie “Downtown” Moreira and Hannah “Wheels” Pilintra connections; Docklands Pass, Pennyshaver, T400 Memory Diamond, Capybara and Zenit Chip JZ-2MJ hardware; and two Isolation for its two Strike Fund, seven credits for a resource the deck has already cashed. Picket Line keeps every card given up here. Downfall Stage 3: two Masterwork (v37) for two Pennyshaver, a console that draws on the turn's first hardware and installs another as a run begins for a credit more.",
   "style": [
     "pressure"
   ],
@@ -46,7 +46,7 @@
       "count": 2
     },
     {
-      "card": "pennyshaver",
+      "card": "masterwork_v37",
       "count": 2
     },
     {

@@ -1837,6 +1837,12 @@ pub(crate) fn can_install_runner_card_from_zone(
     can_install_runner_card_from_zone_with_discount(state, registry, card_id, source, 0)
 }
 
+/// `cost` less an effect's `discount`, never below 0; a negative discount
+/// is a surcharge (Masterwork (v37)'s "paying 1[credit] more").
+fn discounted(cost: u32, discount: i32) -> u32 {
+    (i64::from(cost) - i64::from(discount)).clamp(0, i64::from(u32::MAX)) as u32
+}
+
 /// `can_install_runner_card_from_zone` with an effect-granted discount off
 /// the price (Illumination's "paying 1[c] less"); 0 for every other install.
 pub(crate) fn can_install_runner_card_from_zone_with_discount(
@@ -1844,7 +1850,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
     registry: &CardRegistry,
     card_id: &CardId,
     source: RunnerCardSource,
-    discount: u32,
+    discount: i32,
 ) -> bool {
     if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
@@ -1863,7 +1869,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
         CardType::Hardware | CardType::Resource => {}
         _ => return false,
     }
-    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
+    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= discounted(preview_runner_install_cost(state, registry, card_def), discount)
 }
 
 /// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
@@ -1903,7 +1909,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     registry: &CardRegistry,
     card_id: CardId,
     source: RunnerCardSource,
-    discount: u32,
+    discount: i32,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
     let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
@@ -1919,8 +1925,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             events.extend(crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?);
-            let cost = continuous::install_cost_of(next, registry, &card_def)
-                .saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
@@ -1928,7 +1933,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
-            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
@@ -1936,7 +1941,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
-            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);

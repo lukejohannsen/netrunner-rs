@@ -392,6 +392,14 @@ pub enum Scope {
     /// `Installing`: both price a card from the hand, and `first_each_turn`
     /// counts plays here as it counts installs there.
     Playing(CardFilter),
+    /// A card the Runner is accessing, matching the filter — Demolisher's
+    /// "The trash cost of each Corp card is lowered by 1[credit]", in HQ
+    /// and R&D as much as in a root. Asked about the accessed card itself
+    /// (`continuous::Target::Card`), beside the install's own question that
+    /// `RootOfThisServer` answers (`continuous::trash_cost_delta`).
+    /// Composition didn't work: every other scope that reaches a Corp card
+    /// reaches an install, and a card accessed out of HQ is none.
+    Accessing(CardFilter),
     /// An agenda the Runner is stealing, matching the filter — Magistrate
     /// Revontulet's "an agenda".
     Stealing(CardFilter),

@@ -1,0 +1,68 @@
+{
+  "id": "demolisher",
+  "title": "Demolisher",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "TrashCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Accessing": "Any"
+      },
+      "text": "The trash cost of each Corp card is lowered by 1[credit]."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you trash a Corp card, gain 1[credit]."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you trash a Corp card, gain 1[credit]."
+    }
+  ],
+  "built_from": 26002,
+  "is_playable": true
+}

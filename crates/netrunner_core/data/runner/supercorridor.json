@@ -1,0 +1,86 @@
+{
+  "id": "supercorridor",
+  "title": "Supercorridor",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 maximum hand size."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "MoreThan": [
+                {
+                  "Credits": "Runner"
+                },
+                {
+                  "Credits": "Corp"
+                }
+              ]
+            }
+          },
+          {
+            "Not": {
+              "MoreThan": [
+                {
+                  "Credits": "Corp"
+                },
+                {
+                  "Credits": "Runner"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 2[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, if you and the Corp have the same number of credits, you may gain 2[credit]."
+    }
+  ],
+  "built_from": 26023,
+  "is_playable": true
+}

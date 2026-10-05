@@ -41,6 +41,14 @@ pub enum Discount {
     /// (`ContinuousKind::InstallCost`) is about every install of a kind,
     /// never the one card a card's own text installs.
     Amount(Box<Amount>),
+    /// "Paying 1[credit] **more**" — Masterwork (v37)'s "you may install 1
+    /// piece of hardware from your grip, paying 1[credit] more". A discount
+    /// below nothing, read through the same door as every other
+    /// (`ability::discount_credits`, signed), so the offer and the install
+    /// agree on the price. Composition didn't work: a discount was a
+    /// number taken off, and an extra credit paid first as its own cost
+    /// could be spent on an install the Runner then could not afford.
+    Surcharge(u32),
 }
 
 /// Which end of a deck `Effect::AddToDeck` puts a card on. The top is the

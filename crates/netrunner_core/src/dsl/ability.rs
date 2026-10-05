@@ -286,6 +286,13 @@ pub enum EffectRequirement {
     /// catalog gives only the front's (`docs/roadmap/nsg-card-pool.md`,
     /// Known limits).
     IdentityMatches(crate::dsl::CardFilter),
+    /// The card the triggering event is about is of the Runner identity's
+    /// faction — Storgotic Resonator's "a card that matches the faction of
+    /// the Runner's identity". Composition didn't work: a `when` filter is
+    /// read off the card's definition alone, with no state to find the
+    /// Runner's identity in, and `IdentityMatches` reads the controller's
+    /// identity, not the card that was trashed.
+    TriggeringCardOfRunnersFaction,
     /// The controller's identity is copy `n` of itself (`CorpState::
     /// identity_copy`, set by `Effect::SetIdentityCopy`) — the gate on
     /// each of Méliès U's three reverse sides ("Side 1: When you flip this

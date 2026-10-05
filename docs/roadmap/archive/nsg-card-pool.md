@@ -7698,3 +7698,85 @@ files, decks and tests, and one line in a client test. Downfall 17 of 65;
   what the Runner's samples hold for every card it has not seen — Corp
   agenda wins 64 → 72, Corp wins by flatline 23 → 20, Runner agenda wins 102 →
   96, Runner deck-outs 3 → 4.
+
+#### Stage 3 — trigger words and bad-publicity removal (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Supercorridor, Fencer Fueno, Trickster
+Taka, Congratulations!, Demolisher, Bukhgalter, Storgotic Resonator,
+Masterwork (v37), Trebuchet and Increased Drop Rates. **No new `Effect`.**
+Downfall 27 of 65; `DF_UNIMPLEMENTED` 48 → 38. Bukhgalter is
+Standard-banned and built anyway.
+
+- **The words.** Five, none of them an `Effect`, each what one printed
+  clause needed:
+  - **A card the Runner is accessing** (`Scope::Accessing`): Demolisher's
+    "The trash cost of each Corp card is lowered by 1[credit]", asked about
+    the accessed card itself (`continuous::trash_cost_delta`, beside the
+    install's own `RootOfThisServer` question), so a card accessed out of
+    HQ or R&D is cheaper too. Every other scope that reaches a Corp card
+    reaches an install. `validate` admits it for a trash cost alone.
+  - **A surcharge** (`Discount::Surcharge`): Masterwork (v37)'s "install 1
+    piece of hardware from your grip, paying 1[credit] more". An
+    effect's discount is signed now (`ability::discount_credits`,
+    `engine::discounted`), read through the one door the offer and the
+    install share; an extra credit paid first as a cost of its own could
+    have been spent on an install the Runner then could not afford.
+  - **Hosted credits for the rest of a successful run**
+    (`PaysFor::DuringSuccessfulRuns`, Fencer Fueno): `DuringRuns` narrowed
+    by `RunState::declared_successful`, as broad as the credit pool then.
+  - **Hosted credits to use programs during runs**
+    (`PaysFor::UsingDuringRuns`, Trickster Taka): `Using` *and*
+    `DuringRuns`, because a card's words are alternatives and a program's
+    ability used outside a run (Stargate's) is not covered. Within `Using`
+    of a wider filter, for the order pools are spent in.
+  - **The trashed card is of the Runner identity's faction**
+    (`EffectRequirement::TriggeringCardOfRunnersFaction`, Storgotic
+    Resonator), read off the triggering event; a `when` filter sees the
+    card's definition alone, with no Runner identity to compare it with.
+- **What composes.** Bukhgalter is Makler's first full break each turn
+  (`OnIceFullyBroken`, `when: ByThis`). Congratulations! is Vertigo's pass
+  trigger and a subroutine that pays both players. Demolisher's first
+  trash each turn is two entries sharing one count, as Vaporframe
+  Fabricator's two "the Runner trashes" are: a trash on access and any
+  other trash of a Corp card the Runner makes (Active Policing's
+  `OwnedBy { owner: Corp, whose: Runner }`). Fencer Fueno and Trickster
+  Taka are Paladin Poemu's companion load, with Cloud Eater's paid choice
+  ("pay 1[credit] or trash") and a choice of a tag or the card at three.
+  Supercorridor's level credits are two `MoreThan`s under `Not`.
+  Masterwork's first hardware each turn hears its own install, which CR
+  9.6.5b allows: it is installed faceup, so active at the checkpoint that
+  processes the install. Trebuchet is Scapenet's trace into Vertigo's
+  `Prohibit { StealOrTrash, until: Run }`. Increased Drop Rates is Byte!'s
+  reveal in R&D and Funhouse's "unless the Runner takes 1 tag" into Luana
+  Campos's `RemoveBadPublicity`.
+- **Fidelity limits:** one, under Known limits. Storgotic Resonator's
+  "the first time each turn" is a use limit, because the turn log has no
+  faction to narrow a first time by — the third card deferred on it, after
+  Ryō "Phoenix" Ōno and The Back.
+- **Client.** Nothing added to the view, the log or a decision. The new
+  words are read out in `prose` (the card inspector's "Engine reads it
+  as"): "paying 1 more", "for the remainder of a successful run", "to use
+  a card matching program during runs", "each card the Runner accesses".
+  Increased Drop Rates is an ambush that works face down, so
+  `board::rez::gains_nothing` names it among the traps
+  (`exactly_the_traps_gain_nothing_by_a_rez`): its rez stays legal and on
+  its menu, and earns no glow. No ledger line and no ledger row.
+- **Decks.** Moonlighting takes two Masterwork (v37) for two Pennyshaver;
+  Encore two Bukhgalter for two Carmen (Bukhgalter is banned in Standard,
+  as Nyusha is, so it went where Moonlighting's Standard legality was not
+  at stake); Side Quest two Fencer Fueno for two Crash Space and two
+  Trickster Taka for two Finality; Burn Rate two Demolisher for two
+  Marrow; Dead Reckoning two Supercorridor for two Endurance; Spin Cycle
+  two Congratulations! for two Grubber; Paid Content two Increased Drop
+  Rates for two Hype Machine; Permafrost two Storgotic Resonator for two
+  Front Company; Ground Control two Trebuchet for two Valentão. Every card
+  given up is still in another deck, and every deck keeps its formats.
+- **DSL ratio** (`pool_status.py`): 15 of 101 `Effect` variants
+  single-use, none unused, over 600 card files, as over 590 at Stage 2.
+- **Measured.** `cargo test --workspace` green and clippy silent, the
+  desktop crate one test target at a time. Both sweeps are green at 256
+  seeds, the card gate included. `coverage_identical.py` against Stage 2
+  (d1fc733; 192 games a report): random identical, view and index — the
+  five words move nothing the sample decks reach. The planner moves by
+  the larger prior: Corp agenda wins 72 → 71, Corp wins by flatline 20 →
+  21, Runner agenda wins 96 → 95, Runner deck-outs 4 → 5.

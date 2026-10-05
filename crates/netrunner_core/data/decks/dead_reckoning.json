@@ -3,7 +3,7 @@
   "name": "Dead Reckoning",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Captain Padma Isbister: Intrepid Explorer, Midnight Sun's Shaper identity, which may charge one of the Runner's cards the first time each turn a run on R&D begins, and the Shaper cards of Midnight Sun Stage 3. On Safety Net's frame after Midnight Sun Stage 2, whose Endurance, Hyperbaric, Propeller, Environmental Testing, Flux Capacitor and Lampades are the cards a charge feeds, its identity swapped: two Rigging Up for its two Spark of Inspiration, an install that may charge what it installed; two Into the Depths for its two Joy Ride, a run paid for by the ice it passes; two Stoneship Chart Room for its two Aircheck; and two Daeg, First Net-Cat for its two Spree, a charge whenever an agenda is scored or stolen. Safety Net keeps every card given up here. Uprising Stage 2: two Cybertrooper Talut for its two Burner, a link and +2 strength for the turn to each non-AI icebreaker installed; two Pauleʼs Café for its two Environmental Testing, programs and hardware hosted from the grip and installed from it, the first each turn cheaper for each unique connection (Beatriz Friere Gonzalez, Talut); Safety Net keeps Environmental Testing and another deck Burner. Downfall Stage 1: two Spec Work for two Lobisomem, four credits and two cards for a program the deck no longer needs.",
+  "description": "Not a published list: built so the sweeps reach Captain Padma Isbister: Intrepid Explorer, Midnight Sun's Shaper identity, which may charge one of the Runner's cards the first time each turn a run on R&D begins, and the Shaper cards of Midnight Sun Stage 3. On Safety Net's frame after Midnight Sun Stage 2, whose Endurance, Hyperbaric, Propeller, Environmental Testing, Flux Capacitor and Lampades are the cards a charge feeds, its identity swapped: two Rigging Up for its two Spark of Inspiration, an install that may charge what it installed; two Into the Depths for its two Joy Ride, a run paid for by the ice it passes; two Stoneship Chart Room for its two Aircheck; and two Daeg, First Net-Cat for its two Spree, a charge whenever an agenda is scored or stolen. Safety Net keeps every card given up here. Uprising Stage 2: two Cybertrooper Talut for its two Burner, a link and +2 strength for the turn to each non-AI icebreaker installed; two Pauleʼs Café for its two Environmental Testing, programs and hardware hosted from the grip and installed from it, the first each turn cheaper for each unique connection (Beatriz Friere Gonzalez, Talut); Safety Net keeps Environmental Testing and another deck Burner. Downfall Stage 1: two Spec Work for two Lobisomem, four credits and two cards for a program the deck no longer needs. Downfall Stage 3: two Supercorridor for two Endurance, a console with 2[mu], a card of hand size and 2[credit] at the end of a turn that leaves both players level.",
   "style": [
     "rig"
   ],
@@ -66,7 +66,7 @@
       "count": 2
     },
     {
-      "card": "endurance",
+      "card": "supercorridor",
       "count": 2
     },
     {
