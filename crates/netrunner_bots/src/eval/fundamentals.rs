@@ -143,14 +143,13 @@ pub(super) fn continuation_upside(
         // the flat term, and the stakes when the planner prices them —
         // so the continuation is worth the terms and nothing else. Zero
         // when there is no run the Corp is paying for — an offer to end a
-        // run the Runner cannot finish anyway buys nothing.
-        Effect::EndTheRun if side == Side::Corp => Some(
-            state
-                .active_run
-                .as_ref()
-                .filter(|run| run_is_breakable(state, run, registry))
-                .map_or(0.0, |run| w.active_run_against_weight + run_stakes(state, run, registry) * w.run_stakes_weight),
-        ),
+        // run the Runner cannot finish anyway buys nothing — and less what
+        // an end-the-run the Corp holds for later already answers (§43),
+        // which `score` gives back.
+        Effect::EndTheRun if side == Side::Corp => Some(state.active_run.as_ref().filter(|run| run_is_breakable(state, run, registry)).map_or(0.0, |run| {
+            w.active_run_against_weight + run_stakes(state, run, registry) * w.run_stakes_weight
+                - answered_by_a_held_end_the_run(state, run, registry, w, rig_coverage(state, registry), horizon(stage(state, registry)))
+        })),
         _ => None,
     }
 }

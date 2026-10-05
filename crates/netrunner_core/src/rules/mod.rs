@@ -40,6 +40,10 @@ pub use ability::{amount_on_table, check_requirement, evaluate_effect, process_c
 // card from HQ" has a card to install is the selection's own question
 // (Phase 5 §36), asked of the zone as the engine will ask it.
 pub use pending_choice::eligible_positions;
+// `ability_is_usable` likewise: whether the Corp holds an end-the-run it
+// could still pay for later in a run (Phase 5 §43) is the window's own
+// question of one ability.
+pub use paid_ability::ability_is_usable;
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;
