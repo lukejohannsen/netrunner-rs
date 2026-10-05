@@ -3,7 +3,7 @@
   "name": "Pay to Win",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach GameNET: Where Dreams are Real, Uprising's NBN identity, which gains a credit whenever a Corp card's ability makes the Runner spend or lose credits during a run, and the NBN cards of Uprising Stage 5 that feed it. On Paid Content's frame, its identity swapped: three Gold Farmer for its two Grubber and a Hype Machine, a barrier that takes a credit for each printed subroutine broken and asks three for each it fires; three F2P for its two Magistrate Revontulet and the other Hype Machine, a sentry that sells the Runner a break for two while they are untagged; and two Scapenet for its two The Powers That Be, the first card in the pool to start a trace, played after a successful run to remove a chip or virtual card from the game. Paid Content keeps every card given up here. Uprising Stage 7a gave two Nonequivalent Exchange (still in Paid Content and Spin Cycle) for two SYNC Rerouting, a lockdown that taxes every run the Runner makes until the Corp's next turn.",
+  "description": "Not a published list: built so the sweeps reach GameNET: Where Dreams are Real, Uprising's NBN identity, which gains a credit whenever a Corp card's ability makes the Runner spend or lose credits during a run, and the NBN cards of Uprising Stage 5 that feed it. On Paid Content's frame, its identity swapped: three Gold Farmer for its two Grubber and a Hype Machine, a barrier that takes a credit for each printed subroutine broken and asks three for each it fires; three F2P for its two Magistrate Revontulet and the other Hype Machine, a sentry that sells the Runner a break for two while they are untagged; and two Scapenet for its two The Powers That Be, the first card in the pool to start a trace, played after a successful run to remove a chip or virtual card from the game. Paid Content keeps every card given up here. Uprising Stage 7a gave two Nonequivalent Exchange (still in Paid Content and Spin Cycle) for two SYNC Rerouting, a lockdown that taxes every run the Runner makes until the Corp's next turn. Stage 7b gave two Your Digital Life (still in Paid Content and Grand Opening) for two Ganked!, an upgrade the Corp trashes on access to send the Runner into ice protecting its server.",
   "style": [
     "fast-advance"
   ],
@@ -50,10 +50,6 @@
       "count": 2
     },
     {
-      "card": "your_digital_life",
-      "count": 2
-    },
-    {
       "card": "b_1001",
       "count": 2
     },
@@ -95,6 +91,10 @@
     },
     {
       "card": "sync_rerouting",
+      "count": 2
+    },
+    {
+      "card": "ganked",
       "count": 2
     }
   ]

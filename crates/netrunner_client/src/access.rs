@@ -226,6 +226,7 @@ mod tests {
                 resolved_cards: netrunner_core::rules::MaskedZone::Hidden { count: 0 },
                 pending_install: None,
                 outside_breach: None,
+                left: false,
                 phase: PublicAccessPhase::PendingChoice {
                     card: Some(CardId(card.to_string())),
                     trash_cost: definition.trash_cost,
@@ -237,7 +238,7 @@ mod tests {
             jack_out_permitted: false,
             declared_successful: false,
             breach_only: false,
-            forced_encounter: false,
+            forced_encounter: false, suspended: Vec::new(),
             event_counters: 0,
             gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,

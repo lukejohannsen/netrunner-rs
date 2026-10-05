@@ -7358,3 +7358,73 @@ lockdowns. **No new `Effect`.** Uprising 58 of 65, its booster pack 6 of
   identical, view and index; the planner moves by the larger prior —
   Corp agenda wins 65 → 66, Runner agenda wins 100 → 99, steps
   110,002 → 110,068.
+
+#### Stage 7b — an encounter away from the run's position (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Konjin and Ganked!. **No new
+`Effect`**: both say "The Runner encounters that ice" with Sisyphus
+Protocol's `ForceEncounter`, which now has three cards. Uprising 60 of 65,
+its booster pack 6 of 7; `UR_UNIMPLEMENTED` 7 → 5. Stage 7 is complete.
+
+- **The words.**
+  - **A forced encounter away from the Runner's position** (CR 6.1.3c,
+    6.5.9a–c): `ForceEncounter` from inside an encounter or an access
+    (`run::engine::force_encounter_elsewhere`) encounters a rezzed piece of
+    ice anywhere without moving. What it interrupted — the run's ice, its
+    position and the encounter or access it was in — waits on
+    `RunState::suspended` while the run stands on a list of the one forced
+    piece of ice, so every reader of "the ice being encountered" (fifty of
+    them across the engine, the bots and the clients) reads it with no
+    change. Its end puts the interrupted state back
+    (`run::engine::resume_suspended`, from the pass that would have been
+    and from `reconcile_ice` when the ice leaves or is derezzed), passing
+    nothing: Konjin's encounter finishes, its window opened by whoever took
+    the step. "End the run" ends both (6.5.9b); `end_run` restores the
+    run's own ice before it snapshots the run. A list, because a forced
+    encounter can force another (Ganked! into Konjin). Sisyphus
+    Protocol's encounter from the movement phase keeps its own path.
+  - **An access ends when its card leaves by a card's text resolved above
+    its decision** (CR 7.1.7): Ganked! is trashed as the cost of the
+    Corp's "you may", which resolves above the access decision already
+    presented. `AccessState::left` says so for a card in HQ or R&D (an
+    install says so by leaving the table), set in `ability::
+    trash_this_card` and cleared at each presentation, and the breach moves
+    on once nothing stands in the way (`access::move_on_if_left`, asked by
+    `engine::resume_run`) — after the encounter the trash began.
+  - Public: the suspended state (its ice masked as the run's is,
+    `PublicSuspendedEncounter`) and `left` ride in the view, and every bot
+    sample carries both, so a sample returns where the real game will.
+- **What each is made of.** Konjin is Adrian Seis's psi game on its own
+  `OnEncounter`, with "you may choose another rezzed piece of ice" a
+  `PresentChoice` over a selection of `Ice`, `Rezzed`, `NotSourceCard`
+  whose `then` is `ForceEncounter`; it has no subroutines, so it is fully
+  broken as it is encountered (CR 6.5.7c). Ganked! is Mavirus's reveal in
+  R&D and an `OnAccessed` `OfferPaidChoice` costing `TrashSelf`, its
+  selection `Ice`, `Rezzed`, `InAttackedServer`. A known limit, on the
+  conformance row: an effect lasting "the remainder of this encounter"
+  made in the interrupted encounter before the forced one is swept during
+  it; nothing in the pool makes one before Konjin's psi game resolves.
+- **Client.** `hud::in_effect` says where a forced encounter returns to
+  ("This run: after this encounter, back to the encounter with Konjin" /
+  "to the breach"), in both clients; the view ledger names `suspended`
+  drawn there and `left` the engine's. Ganked! joins the traps whose rez
+  gains nothing (`board::rez`).
+- **Decks.** A Thousand Cuts takes Konjin for its Ezam; Pay to Win two
+  Ganked! for two Your Digital Life. Every card given up is still in
+  another Sweep deck.
+- **DSL ratio** (`pool_status.py`): 16 of 101 `Effect` variants
+  single-use, none unused, over 568 card files.
+- **Real play** (`--headless`, each deck against Safety Net, seed 2;
+  random seats 96 games, planner seats 48; each pair random / planner).
+  Ganked! installed 99 / 51 and accessed 200 / 149 times; Konjin installed
+  36 / 20, rezzed 10 / 10, its psi game played 23 / 46 times. The planner
+  rezzes Ganked! (51 of 51 installs), a trap whose rez gains it nothing:
+  on the bot debts.
+- **Measured.** `cargo test --workspace` green (2,464 outside the desktop
+  crate, 251 in it) and clippy silent. Both sweeps are green at 256 seeds,
+  the card gate included, so Konjin and Ganked! were played. `coverage_
+  identical.py` against Stage 7a (6b2aca3, 192 games a report): random
+  identical, view and index — the encounter's new path is reached by no
+  game the pool pass plays; the planner moves by the larger prior — Corp
+  agenda wins 66 → 70, Runner agenda wins 99 → 95, steps 110,068 →
+  112,214.

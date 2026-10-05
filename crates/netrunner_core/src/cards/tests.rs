@@ -24419,4 +24419,149 @@ mod uprising {
         let (not_hq, _) = run_to_completion(runner, &registry, ServerId::Hq);
         assert!(!matches!(not_hq.pending_decision, Some(PendingDecision::PsiGame { .. })), "HQ was the first copy's");
     }
+
+    // ---- Stage 7b: an encounter away from the run's position ----
+
+    fn rezzed_ice_at(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { server, ..ice_at_hq(card, 0) }
+    }
+
+    /// Passes windows and continues until `done` holds, stopping on
+    /// nothing parked: a test that expects a decision asks for it.
+    fn drive(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..40 {
+            if done(&state) {
+                return state;
+            }
+            assert!(state.pending_decision.is_none() && state.pending_paid_choice.is_none(), "parked: {:?} {:?}", state.pending_decision, state.pending_paid_choice);
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error:?}")).0;
+        }
+        panic!("never done: {:?}", state.active_run.as_ref().map(|run| (run.phase, run.position)));
+    }
+
+    fn nested(state: &GameState) -> usize {
+        state.active_run.as_ref().map_or(0, |run| run.suspended.len())
+    }
+
+    fn encountering(state: &GameState) -> Option<CardId> {
+        state.active_run.as_ref().filter(|run| run.phase == crate::rules::RunPhase::EncounterIce).map(|run| run.ice[run.position].card_id.clone())
+    }
+
+    fn at_konjins_choice(other: &str, other_server: ServerId) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![ice_at_hq("konjin", 0), rezzed_ice_at(other, other_server)];
+        let asked = to_the_encounter(&state, &registry);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::PsiGame { .. })), "{:?}", asked.pending_decision);
+        let bid = |state: &GameState, amount: u32| apply_action(state, &registry, PlayerAction::ChooseNumber { amount }).expect("bid").0;
+        let differ = bid(&bid(&asked, 0), 1);
+        (differ, registry)
+    }
+
+    #[test]
+    fn konjin_sends_the_runner_into_another_rezzed_ice_and_then_finishes_its_own_encounter() {
+        let (differ, registry) = at_konjins_choice("tithe", ServerId::RnD);
+        let choosing = choose(&differ, &registry, 0);
+        let tithe = choosing.corp.installed.iter().position(|card| card.card == id("tithe")).expect("installed");
+        assert_eq!(toggles(&choosing, &registry, Side::Corp), vec![tithe], "another rezzed piece of ice, on any server; not Konjin");
+        let inside = pick(&choosing, &registry, tithe);
+        assert_eq!(encountering(&inside), Some(id("tithe")), "the Runner encounters that ice");
+        assert_eq!(nested(&inside), 1);
+        assert_eq!(inside.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq), "the attacked server does not change (CR 6.1.3c)");
+
+        let back = drive(inside, &registry, |state| nested(state) == 0);
+        assert_eq!(back.runner.grip.len(), 3, "Tithe's net damage");
+        assert_eq!(back.corp.resources.credits, Credits(11), "and its credit");
+        assert_eq!(encountering(&back), Some(id("konjin")), "finish encountering this ice");
+        let past = drive(back, &registry, |state| state.active_run.as_ref().is_none_or(|run| run.phase != crate::rules::RunPhase::EncounterIce));
+        assert_eq!(past.active_run.as_ref().map(|run| run.ice_passed), Some(1), "Konjin passed, Tithe never");
+    }
+
+    #[test]
+    fn konjins_choice_may_be_declined_and_its_forced_encounter_can_end_the_run() {
+        let (differ, registry) = at_konjins_choice("ice_wall", ServerId::RnD);
+        let declined = choose(&differ, &registry, 1);
+        assert_eq!(encountering(&declined), Some(id("konjin")));
+        assert_eq!(nested(&declined), 0);
+
+        let choosing = choose(&differ, &registry, 0);
+        let wall = choosing.corp.installed.iter().position(|card| card.card == id("ice_wall")).expect("installed");
+        let inside = pick(&choosing, &registry, wall);
+        let ended = drive(inside, &registry, |state| state.active_run.is_none());
+        assert!(ended.last_completed_run.as_ref().is_some_and(|run| run.server == ServerId::Hq), "ending the run ends both encounters (CR 6.5.9b)");
+    }
+
+    #[test]
+    fn konjin_does_nothing_when_the_bids_match() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("konjin", 0), rezzed_ice_at("tithe", ServerId::RnD)];
+        let asked = to_the_encounter(&state, &registry);
+        let bid = |state: &GameState, amount: u32| apply_action(state, &registry, PlayerAction::ChooseNumber { amount }).expect("bid").0;
+        let matched = bid(&bid(&asked, 1), 1);
+        assert!(matched.pending_decision.is_none());
+        assert_eq!(encountering(&matched), Some(id("konjin")));
+    }
+
+    #[test]
+    fn ganked_may_be_trashed_to_send_the_runner_into_ice_protecting_its_server_and_the_access_goes_on_after() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![rezzed_ice_at("tithe", ServerId::Remote(0)), root_at("ganked", 0), root_at("hostile_takeover", 0), rezzed_ice_at("ice_wall", ServerId::Hq)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let at_server = drive(state, &registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success));
+        assert_eq!(at_server.runner.grip.len(), 3, "Tithe fired on the way in");
+        let (breached, _) = apply_action(&at_server, &registry, PlayerAction::CompleteRun).expect("complete");
+        let ganked = breached
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .and_then(|access| access.candidates.iter().find(|candidate| matches!(candidate, crate::rules::AccessCandidate::Root(install) if *install == install_of(&breached, "ganked"))).cloned())
+            .expect("Ganked! is a candidate");
+        let (asked, _) = apply_action(&breached, &registry, PlayerAction::SelectCardToAccess { candidate: ganked }).expect("access Ganked!");
+        assert!(asked.pending_paid_choice.is_some(), "you may trash it");
+        let (choosing, _) = apply_action(&asked, &registry, accept()).expect("trash it");
+        assert!(choosing.corp.archives.iter().any(|archived| archived.card == id("ganked")), "trashed");
+        let tithe = choosing.corp.installed.iter().position(|card| card.card == id("tithe")).expect("installed");
+        assert_eq!(toggles(&choosing, &registry, Side::Corp), vec![tithe], "a rezzed piece of ice protecting this server, not HQ's");
+        let inside = pick(&choosing, &registry, tithe);
+        assert_eq!(encountering(&inside), Some(id("tithe")));
+        let back = drive(inside, &registry, |state| nested(state) == 0);
+        assert_eq!(back.runner.grip.len(), 2, "Tithe again");
+        let pending = back.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone());
+        assert!(
+            matches!(&pending, Some(crate::rules::AccessPhase::PendingChoice { card_id, .. }) if *card_id == id("hostile_takeover")),
+            "Ganked!'s access ended; the agenda is next: {pending:?}"
+        );
+
+        // Declined, Ganked! is accessed as any upgrade.
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let pending = declined.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone());
+        assert!(matches!(&pending, Some(crate::rules::AccessPhase::PendingChoice { card_id, trash_cost: Some(3), .. }) if *card_id == id("ganked")), "{pending:?}");
+    }
+
+    #[test]
+    fn ganked_in_r_and_d_is_revealed_and_its_encounter_ends_the_breach_when_nothing_is_left() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ganked")];
+        state.corp.installed = vec![rezzed_ice_at("tithe", ServerId::RnD)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run");
+        let at_server = drive(state, &registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success));
+        let (asked, events) = apply_action(&at_server, &registry, PlayerAction::CompleteRun).expect("complete");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardRevealed { card, .. } if *card == id("ganked"))), "they must reveal it");
+        let (choosing, _) = apply_action(&asked, &registry, accept()).expect("trash it");
+        let inside = pick(&choosing, &registry, 0);
+        assert_eq!(encountering(&inside), Some(id("tithe")));
+        let done = drive(inside, &registry, |state| state.active_run.is_none());
+        assert_eq!(done.corp.r_and_d, vec![id("hedge_fund")], "Ganked! left R&D, and nothing else was accessed");
+        assert!(done.last_completed_run.is_some());
+    }
 }

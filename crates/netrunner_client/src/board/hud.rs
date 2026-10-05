@@ -335,10 +335,24 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), title);
         Some(format!("This run: the {} [credit] on {event} may be spent only {}", run.bonus_run_credits, crate::prose::describe_pays_for(word)))
     });
+    // Konjin, Ganked!: a forced encounter away from the Runner's position
+    // returns to what it interrupted (`suspended`), which nothing else on
+    // the board says while the run stands on the forced ice.
+    let returns_to = view.active_run.as_ref().and_then(|run| run.suspended.last()).map(|suspended| {
+        let to = match suspended.phase {
+            netrunner_core::rules::RunPhase::EncounterIce => {
+                let ice = suspended.ice.get(suspended.position).and_then(|ice| ice.identity.as_ref()).map_or_else(|| "the ice".to_string(), |identity| title(&identity.card));
+                format!("the encounter with {ice}")
+            }
+            netrunner_core::rules::RunPhase::AccessingCard => "the breach".to_string(),
+            _ => "the run".to_string(),
+        };
+        format!("This run: after this encounter, back to {to}")
+    });
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(returns_to).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {

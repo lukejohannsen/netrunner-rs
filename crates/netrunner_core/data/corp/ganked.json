@@ -1,0 +1,57 @@
+{
+  "id": "ganked",
+  "title": "Ganked!",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    "Ice",
+                    "Rezzed",
+                    "InAttackedServer"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": "ForceEncounter"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash it to choose a rezzed piece of ice protecting this server"
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade, you may trash it to choose a rezzed piece of ice protecting this server. The Runner encounters that ice."
+    }
+  ],
+  "built_from": 26119,
+  "is_playable": true
+}

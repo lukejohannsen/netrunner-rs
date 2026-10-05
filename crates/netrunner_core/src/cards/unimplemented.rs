@@ -53,8 +53,6 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("megaprix_qualifier", "Megaprix Qualifier"),
     ("project_vacheron", "Project Vacheron"),
-    ("konjin", "Konjin"),
-    ("ganked", "Ganked!"),
     ("earth_station_sea_headquarters", "Earth Station: SEA Headquarters"),
     ("akhet", "Akhet"),
     ("winchester", "Winchester"),

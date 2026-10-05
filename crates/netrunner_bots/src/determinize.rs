@@ -714,10 +714,10 @@ fn determinize_run(
     pools: &mut Pools<'_>,
     installed: &[InstalledCard],
 ) -> RunState {
-    let ice = run
-        .ice
-        .iter()
-        .map(|ice| match &ice.identity {
+    // One piece of ice of the run, its identity the view's or drawn from
+    // the pool: the run's own list, and each list a forced encounter
+    // away from the Runner's position is holding (`RunState::suspended`).
+    let mut sample = |ice: &netrunner_core::rules::PublicRunIce| -> RunIce { match &ice.identity {
             Some(identity) => RunIce {
                 install_id: ice.install_id,
                 card_id: identity.card.clone(),
@@ -773,6 +773,21 @@ fn determinize_run(
                     rezzed: ice.rezzed,
                 }
             }
+        } };
+    let ice: Vec<RunIce> = run.ice.iter().map(&mut sample).collect();
+    let suspended: Vec<netrunner_core::rules::SuspendedEncounter> = run
+        .suspended
+        .iter()
+        .map(|suspended| netrunner_core::rules::SuspendedEncounter {
+            phase: suspended.phase,
+            ice: suspended.ice.iter().map(&mut sample).collect(),
+            position: suspended.position,
+            jack_out_permitted: suspended.jack_out_permitted,
+            forced_encounter: suspended.forced_encounter,
+            // Not in the view, as the run's own is not.
+            ice_bypassed: false,
+            fully_broken: suspended.fully_broken,
+            this_encounter: suspended.this_encounter.clone(),
         })
         .collect();
 
@@ -794,6 +809,8 @@ fn determinize_run(
             .and_then(|install| installed.iter().find(|c| c.install_id == install))
             .is_some_and(|card| card.rezzed),
         candidates: access.candidates.clone(),
+        // Public: the card at its decision left while it was accessed.
+        left: access.left,
         // Only the number is in the view, and it is the number the sample
         // needs: which cards they are is drawn from the sample's own HQ or
         // R&D once those exist (`draw_from_zone`), since the cards the
@@ -815,6 +832,9 @@ fn determinize_run(
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
+        // Public, and where a forced encounter away from the Runner's
+        // position returns to (Konjin, Ganked!).
+        suspended,
         event_counters: run.event_counters,
         gained_for_the_run: run.gained_for_the_run.clone(),
         // Public and carried by the view — see `PublicRunState`. Zeroing
@@ -1504,6 +1524,7 @@ mod tests {
                 access_state: Some(AccessState {
                     server,
                     outside_breach: None,
+                    left: false,
                     candidates: Vec::new(),
                     from_zone: Vec::new(),
                     resolved_cards: Vec::new(),

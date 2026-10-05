@@ -3174,6 +3174,17 @@ fn orient(card: CardId, seen_by_runner: bool) -> ArchivedCard {
     if seen_by_runner { ArchivedCard::faceup(card) } else { ArchivedCard::facedown(card) }
 }
 
+/// Marks the access of `card_id` as ended by its leaving, when it is the
+/// card at its access decision (`AccessState::left`).
+fn mark_left_while_accessed(state: &mut GameState, card_id: &CardId) {
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut())
+        && access.pending_install.is_none()
+        && matches!(&access.phase, AccessPhase::PendingChoice { card_id: pending, .. } if pending == card_id)
+    {
+        access.left = true;
+    }
+}
+
 /// Whether the Runner is currently accessing `card_id` (it's the pending
 /// choice, or already resolved earlier in this same access). Such a card has
 /// been seen even if it was never rezzed — e.g. an unrezzed ambush that
@@ -3333,6 +3344,10 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         // See the matching guard below the rig arm.
         return Ok(Vec::new());
     }
+    // The card at its access decision trashing itself from HQ or R&D ends
+    // that access (`AccessState::left`): an install says so by leaving the
+    // table, and a card in a zone by this.
+    mark_left_while_accessed(state, card_id);
     if let Some(position) = state.corp.hq.iter().position(|c| c == card_id) {
         // Trashed straight out of the Corp's hand — facedown, unless the
         // Runner is accessing it right now (an HQ ambush that trashes

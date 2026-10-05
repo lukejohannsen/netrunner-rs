@@ -56,12 +56,12 @@ pub use legal_actions::{
 pub use masking::{
     mask_action_for_player, mask_logged_action_for_player, mask_event_for_player, mask_state_for_player, ConcealedAction, MaskedZone, PublicAction, PublicAccessPhase, PublicAccessState, PublicArchivedCard, PublicCorpState,
     PublicGameState,
-    PublicPendingPayment, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState,
+    PublicPendingPayment, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState, PublicSuspendedEncounter,
     PublicRunnerState, Viewer,
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,
-    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounteredSubroutine, GainedForTheRun, OutsideBreach, RunAction, RunIce, RunPhase, RunState,
+    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounteredSubroutine, GainedForTheRun, OutsideBreach, RunAction, RunIce, RunPhase, RunState, SuspendedEncounter,
     ServerId, SubroutineStatus,
 };
 pub use setup::DeckOrder;

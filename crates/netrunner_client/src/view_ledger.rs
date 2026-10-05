@@ -176,6 +176,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         event_counters: _,       // drawn: hud::in_effect ("This run: Spree has 2 power counters"), both clients
         gained_for_the_run: _,   // drawn: the encounter's list (facts::install_facts), and outside it the ice's sheet ("» … — for the rest of this run") and hud::in_effect, both clients
         forced_encounter: _,     // drawn: board::phase ("Encounter ice 1 of 2 again"), the terminal's run strip ("encountering it again")
+        suspended: _,            // drawn: hud::in_effect ("This run: after this encounter, back to the encounter with Konjin" / "to the breach"), both clients
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
         run_credits_pay_for: _,  // drawn: hud::in_effect ("This run: the 4 [credit] on Bahia Bands may be spent only to pay trash costs"), both clients
@@ -214,6 +215,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             resolved_cards: _,  // drawn: board::trail
             pending_install: _, // engine's: which install is being accessed; access::Access shows the card
             outside_breach: _,  // engine's: the count left and the card's continuation; the choice of card shows the candidates, and the card's text is on its face
+            left: _,            // engine's: the card that left is in Archives, drawn there, and the breach moves past it before the person is asked anything
             phase: _,           // drawn: access::Access and Prompt::of
         }) = access_state
         {}

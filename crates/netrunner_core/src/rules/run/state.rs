@@ -404,6 +404,19 @@ pub struct AccessState {
     /// asked for them resolves once they are done. `None` for a breach.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outside_breach: Option<OutsideBreach>,
+    /// The card at its access decision left its place by a card's text
+    /// resolved after the decision was presented — Ganked!, trashed as the
+    /// cost of the Corp's "you may trash it to choose…", which resolves
+    /// above the decision. Its access has ended (CR 7.1.7), and the breach
+    /// moves on as soon as nothing stands in the way (`access::
+    /// move_on_if_left`, asked by `engine::resume_run`) — after the
+    /// encounter the trash began. Set where such a card is trashed
+    /// (`ability::trash_this_card`), cleared as each card is presented and
+    /// each access ends. An install says so by having left the table; this
+    /// is what says it of a card in HQ or R&D, where a copy is any copy.
+    /// Public: both players watched it go.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub left: bool,
     pub phase: AccessPhase,
 }
 
@@ -447,9 +460,36 @@ impl Default for AccessState {
             pending_install: None,
             pending_install_rezzed: false,
             outside_breach: None,
+            left: false,
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }
+}
+
+/// What a forced encounter with ice away from the Runner's position
+/// interrupted (CR 6.5.9a: "resolve an Encounter Ice Phase but do not change
+/// the Runner's position … After the encounter, return to the effect that
+/// caused the encounter and proceed from there") — an encounter (Konjin's
+/// "the Runner encounters that ice", CR 6.1.3c) or an access (Ganked!'s).
+/// The run's own `ice`, `position` and encounter fields are kept here while
+/// the forced encounter stands on a list of its one piece of ice, so every
+/// reader of "the ice being encountered" — `run.ice[run.position]`, fifty
+/// of them across the engine, the bots and the clients — reads the forced
+/// one, and they come back as they were when it ends
+/// (`run::engine::pass_current_ice`, `reconcile_ice`).
+///
+/// A list, because a forced encounter can force another: Ganked! sends the
+/// Runner into Konjin, whose psi game can send them on again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuspendedEncounter {
+    pub phase: RunPhase,
+    pub ice: Vec<RunIce>,
+    pub position: usize,
+    pub jack_out_permitted: bool,
+    pub forced_encounter: bool,
+    pub ice_bypassed: bool,
+    pub fully_broken: bool,
+    pub this_encounter: EncounterTally,
 }
 
 /// One `Effect::SetRunEndedEffect`: what resolves when the run ends, and
@@ -521,6 +561,13 @@ pub struct RunState {
     /// players saw what forced it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forced_encounter: bool,
+    /// What each forced encounter with ice away from the Runner's position
+    /// interrupted, the innermost last — see [`SuspendedEncounter`]. Empty
+    /// for every encounter at the run's own position, Sisyphus Protocol's
+    /// included (`forced_encounter` is that one's whole state). Public: both
+    /// players saw what forced each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suspended: Vec<SuspendedEncounter>,
     /// Counters on the event that began this run, while it is in the play
     /// area (CR 8.6.5) — Spree's "place 3 power counters on this event",
     /// spent by its "hosted power counter:" ability. Kept on the run
@@ -802,6 +849,7 @@ impl Default for RunState {
             declared_successful: false,
             breach_only: false,
             forced_encounter: false,
+            suspended: Vec::new(),
             event_counters: 0,
             gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,

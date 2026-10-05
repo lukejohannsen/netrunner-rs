@@ -1413,6 +1413,9 @@ fn resume_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Game
         // A breach whose beginning parked something waits here too, a
         // breach with no run included (`run::access::access_server`).
         RunPhase::Success if run.declared_successful || run.breached.is_some() => run::breach(state, registry),
+        // A card that left while it was being accessed (Ganked!) ended its
+        // access; the breach goes on once what it began is over.
+        RunPhase::AccessingCard => run::move_on_if_left(state, registry),
         _ => Ok(Vec::new()),
     }
 }
@@ -4586,7 +4589,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),

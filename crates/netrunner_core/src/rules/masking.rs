@@ -374,7 +374,25 @@ pub struct PublicAccessState {
     /// and what its printed text resolves after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outside_breach: Option<crate::rules::run::OutsideBreach>,
+    /// `AccessState::left`, never masked: both players watched the card go.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub left: bool,
     pub phase: PublicAccessPhase,
+}
+
+/// `run::SuspendedEncounter` as seen by a viewer — what a forced encounter
+/// away from the Runner's position interrupted, its ice masked as the run's
+/// own is (`mask_run_ice`). Public otherwise, as what forced it was, and
+/// carried so a sample returns where the real game will.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicSuspendedEncounter {
+    pub phase: RunPhase,
+    pub ice: Vec<PublicRunIce>,
+    pub position: usize,
+    pub jack_out_permitted: bool,
+    pub forced_encounter: bool,
+    pub fully_broken: bool,
+    pub this_encounter: crate::rules::run::EncounterTally,
 }
 
 /// `run::RunState` as seen by a particular viewer. Drops
@@ -401,6 +419,10 @@ pub struct PublicRunState {
     /// `RunState::forced_encounter`: public, as what forced it was.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forced_encounter: bool,
+    /// `RunState::suspended`: what each forced encounter away from the
+    /// Runner's position interrupted, innermost last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suspended: Vec<PublicSuspendedEncounter>,
     /// `RunState::event_counters`: public, as counters on a card are.
     #[serde(default)]
     pub event_counters: u32,
@@ -1282,6 +1304,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, v
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
         outside_breach: access.outside_breach.clone(),
+        left: access.left,
         phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
     }
 }
@@ -1307,6 +1330,19 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
+        suspended: run
+            .suspended
+            .iter()
+            .map(|suspended| PublicSuspendedEncounter {
+                phase: suspended.phase,
+                ice: suspended.ice.iter().map(|ice| mask_run_ice(state, registry, ice, viewer.is(Side::Corp))).collect(),
+                position: suspended.position,
+                jack_out_permitted: suspended.jack_out_permitted,
+                forced_encounter: suspended.forced_encounter,
+                fully_broken: suspended.fully_broken,
+                this_encounter: suspended.this_encounter.clone(),
+            })
+            .collect(),
         event_counters: run.event_counters,
         gained_for_the_run: run.gained_for_the_run.clone(),
         bad_publicity_credits: run.bad_publicity_credits,
