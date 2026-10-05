@@ -1,0 +1,61 @@
+{
+  "id": "loot_box",
+  "title": "Loot Box",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 0,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner pays 2[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 2
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 2[credit]"
+        }
+      }
+    },
+    {
+      "text": "Reveal the top 3 cards of the stack. Add 1 of those cards to the grip and gain X[credit], where X is equal to that cardʼs play or install cost. The Runner shuffles the stack. Trash this ice.",
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentDeck",
+              "filter": {
+                "TopOfZone": 3
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OpponentHand",
+              "then": {
+                "GainCreditsAmount": [
+                  "Corp",
+                  "PrintedCost"
+                ]
+              }
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 26051,
+  "is_playable": true
+}

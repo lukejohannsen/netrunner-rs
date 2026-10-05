@@ -50,13 +50,15 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 36 | 29 | Stages 1–4 built (5 October 2026) |
+| 7 | Downfall (`df`) | 65 | 45 | 20 | Stages 1–5 built (5 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
-`Effect` variants single-use, none unused, over 609 card files** (5 October
-2026, with Downfall Stage 4, which added `Repeat` and gave `RevealHand` its
-second card; Stage 3, at 15 of 101 over 600, added no variant and five
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 102
+`Effect` variants single-use, none unused, over 618 card files** (5 October
+2026, with Downfall Stage 5, which added no variant and gave
+`GainIceSubtype` its second card, Pelangi; Stage 4, at 15 of 102 over 609 —
+written here as 101 at its close, which `Repeat` had made 102 — added
+`Repeat` and gave `RevealHand` its second card; Stage 3, at 15 of 101 over 600, added no variant and five
 words beside it; Stage 2, at 15 of 101 over 590, added none and changed no engine
 code; Stage 1, at 15 of 101 over 580, added none; Uprising Stage 8, at
 15 of 101 over 573, added none and closed the set;
@@ -376,6 +378,9 @@ PR that made this list (29 September 2026).
 - **Prāna Condenser** (UR 1): "whenever **you** would do net damage" hears every net damage about to be suffered, because `EventFilter::Damage` reads the kind and not who does it; a Runner card that does net damage to its own Runner would be offered to the Corp to prevent.
 - **Earth Station: SEA Headquarters** (UR 8): its additional cost to run is paid as the server is announced, before the run's own pools exist, so neither bad publicity's credits (rightly, CR 6.3.3) nor a run event's (Overclock's, placed as its run begins here) nor a card's "during runs" credits pay it. GameNET's "causes the Runner to spend" does not hear it, as it hears no standing effect's price.
 - **Stargate** (DF 1): "reveal the top 3 cards of R&D" shows them to the Runner as the selection's candidates, and the Corp is shown only the card trashed (`CardsSelected { revealed }`, faceup in Archives); the two left on R&D are not announced to the Corp. No card in the pool reads a reveal of R&D.
+- **Loot Box** (DF 5): "Reveal the top 3 cards of the stack" shows them to the Corp as the selection's candidates, and the Runner is shown only the card added to the grip (`CardsSelected { revealed }`), as Stargate's reveal shows the Corp only the card trashed.
+- **Pelangi** (DF 5): "Choose an ice subtype" offers barrier, code gate and sentry, the three a breaker reads (`IceType`); a subtype no breaker reads (trap, AP, bioroid) is not offered.
+- **“Baklan” Bochkin** (DF 5): "X hosted power counters" is every counter on it — the card is trashed with them, so a smaller X could only derez less.
 - **Hoshiko Shiro: Untold Protagonist** (UR 2): the catalog folds the flip side's text into the front's and keeps none of its other numbers, so a flipped Hoshiko has the front's subtypes (Natural) and link (0). DreamNet's "if your identity is digital" reads her front either way (`EffectRequirement::IdentityMatches`).
 
 ### Recorded deviations from the Comprehensive Rules
@@ -970,14 +975,18 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
    Vulnerability Audit, The Nihilist, Blueberry!™ Diesel. Game Over moved
    to Stage 6: its "for each card … the Runner may pay 3[credit] to
    prevent" is a loop of decisions over cards. Stage 4 is complete.
-5. **Encounter and ice-state words:** Chisel, “Baklan” Bochkin, Pelangi,
-   Afshar, Rime, Loot Box, Public Health Portal, Secure and Protect, Rejig,
-   Divested Trust.
+5. **Encounter and ice-state words** (built, 5 October 2026): Chisel,
+   “Baklan” Bochkin, Pelangi, Afshar, Rime, Loot Box, Public Health Portal,
+   Secure and Protect, Divested Trust. Rejig moved to Stage 6: its discount
+   is the printed cost of the card its additional cost returned to the
+   grip, which no cost hands to the effect it pays for. Stage 5 is
+   complete.
 6. **Triggers created by a played card, costs to run, interrupts:** In the
    Groove, Climactic Showdown, Cold Site Server, Reduced Service, Game Over
-   (a cost to prevent each trash, moved from Stage 4), Utae (X),
-   Lucky Charm (an interrupt on "end the run"), Flip Switch (a jack-out as
-   an effect, and a lower trace base).
+   (a cost to prevent each trash, moved from Stage 4), Rejig (a card an
+   additional cost moved, read by the effect it pays for, moved from
+   Stage 5), Utae (X), Lucky Charm (an interrupt on "end the run"), Flip
+   Switch (a jack-out as an effect, and a lower trace base).
 7. **Hidden information and new zones:** Hyoubu Institute, Khusyuk, The
    Class Act (a replacement on draw), Project Yagi-Uda, Letheia Nisei,
    Saisentan.
@@ -999,6 +1008,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 4** — nine cards and Lat's Sweep deck, Level Pegging, with one new `Effect` (`Repeat`): three amounts, an action-phase rez, the Runner's successful servers last turn, an agenda that forbids its own score, and a card returned to the bottom of the stack (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 5** — nine cards with no new `Effect`: the encountered ice gains a subtype for the encounter, a piece of ice rezzed whenever a non-ice card could be on a run against its server, an install from a card's text limited to a central, and the card a trigger heard named in a choice parked behind a paid one (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 3** — ten cards with no new `Effect`: a trash cost asked of any card being accessed, a surcharge on an install, hosted credits for the rest of a successful run and for programs during runs, and a requirement on the trashed card's faction (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
 ### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)

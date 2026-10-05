@@ -536,6 +536,12 @@ pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry
     any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::RevealedWhileAccessed))
 }
 
+/// Whether the ice `install` may be rezzed whenever a non-ice card could
+/// be (`ContinuousKind::RezzedAsNonIce`, Rime's), as the table stands.
+pub(crate) fn rezzed_as_non_ice(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    Target::corp_install(state, registry, install).is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::RezzedAsNonIce))
+}
+
 /// Whether the ice `install` has `subtype` beyond the one type a run's ice
 /// carries (`RunIce::ice_type`), which the caller already knows: a second
 /// type it prints (Hafrún's "Barrier - Code Gate", `CardDefinition::

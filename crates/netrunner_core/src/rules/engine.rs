@@ -995,17 +995,20 @@ fn rez_ice(
     // encounter's (6.9.3b) — and there is none in a breach (7.2). This used to let ICE be rezzed
     // at any of those moments too (ROADMAP Rules Audit T10), which is how
     // a heuristic Corp rezzed its whole board pre-emptively at home.
-    if matches!(card_def.card_type, CardType::Ice(_)) {
-        let approached = state.active_run.as_ref().is_some_and(|run| {
-            run.phase == RunPhase::ApproachIce && run.ice.get(run.position).is_some_and(|at| at.install_id == ice)
-        });
-        if !approached {
-            return Err(RulesError::IceNotBeingApproached { card: ice_id });
+    // Rime's "during runs against this server, you can rez this ice any
+    // time you could rez non-ice cards" (`continuous::rezzed_as_non_ice`)
+    // adds those moments to its approach, so it falls through to them.
+    let is_ice = matches!(card_def.card_type, CardType::Ice(_));
+    let approached = state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce && run.ice.get(run.position).is_some_and(|at| at.install_id == ice));
+    if is_ice && !approached && !continuous::rezzed_as_non_ice(state, registry, ice) {
+        return Err(RulesError::IceNotBeingApproached { card: ice_id });
+    }
+    if !(is_ice && approached) {
+        if state.paid_ability_window.is_none() {
+            require_phase(state, GamePhase::Action(side))?;
+        } else if !paid_ability::window_permits_rez(state) {
+            return Err(RulesError::NotPermittedInThisWindow);
         }
-    } else if state.paid_ability_window.is_none() {
-        require_phase(state, GamePhase::Action(side))?;
-    } else if !paid_ability::window_permits_rez(state) {
-        return Err(RulesError::NotPermittedInThisWindow);
     }
     // An agenda is never flipped faceup on the table — except under
     // BANGUN: When Disaster Strikes, whose "you may install agendas

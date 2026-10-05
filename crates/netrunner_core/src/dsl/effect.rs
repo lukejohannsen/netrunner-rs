@@ -758,6 +758,11 @@ pub enum Effect {
         /// `engine::corp_install_destinations` otherwise allows.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remote_only: bool,
+        /// Offer central servers only — Secure and Protect's "install that
+        /// ice **protecting a central server**". `remote_only`'s other half,
+        /// a field for the same reason.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        central_only: bool,
         /// Offer every server but the one the acting install is in —
         /// Tributary's "install 1 piece of ice from HQ **protecting another
         /// server**", from the ice being encountered. A field for the reason
@@ -1237,7 +1242,19 @@ pub enum Effect {
     /// a gained subtype was only ever declared (`ContinuousKind::
     /// GainSubtype`), which holds while its source is active and has
     /// nowhere to keep which subtype was chosen.
-    GainIceSubtype(crate::dsl::IceType),
+    ///
+    /// `ice` says which ice and so for how long: `This`, the default, is
+    /// Lycian's own, while it remains rezzed; `Encountered` is Pelangi's
+    /// "the ice you are encountering gains that subtype for the remainder
+    /// of this encounter", said by a Runner program (`Until::Encounter` of
+    /// the encountered ice). A word rather than a second variant, as
+    /// `ModifyStrength`'s `ice` is: the sentences differ only in which ice
+    /// and for how long. `EachIce` is refused by `validate`.
+    GainIceSubtype {
+        subtype: crate::dsl::IceType,
+        #[serde(default = "StrengthOf::this", skip_serializing_if = "StrengthOf::is_this")]
+        ice: StrengthOf,
+    },
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -2185,6 +2202,14 @@ impl StrengthOf {
     fn is_encountered(&self) -> bool {
         *self == StrengthOf::Encountered
     }
+
+    fn this() -> StrengthOf {
+        StrengthOf::This
+    }
+
+    fn is_this(&self) -> bool {
+        *self == StrengthOf::This
+    }
 }
 
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
@@ -2401,6 +2426,51 @@ impl Effect {
         }
     }
 
+    /// Whether a selection in this effect names `CardFilter::ThatCard`, so
+    /// a trigger asks what its moment is about only when the answer is
+    /// written somewhere.
+    pub fn names_that_card(&self) -> bool {
+        let mut named = false;
+        self.for_each_effect(&mut |effect| {
+            if let Effect::PromptChooseCards { filter, .. } = effect {
+                named |= filter.names_that_card();
+            }
+        });
+        named
+    }
+
+    /// `CardFilter::ThatCard` written over as `card`, the card the moment a
+    /// trigger heard is about, in every selection the effect makes and
+    /// every choice, sequence, condition or paid choice around one — the
+    /// shapes Divested Trust's is written in; any other effect is returned
+    /// as it is.
+    pub fn with_that_card(self, card: &crate::dsl::CardId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_that_card(card));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_that_card(card)).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter: filter.with_that_card(card),
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(boxed),
+                count,
+                up_to,
+            },
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            }
+            other => other,
+        }
+    }
+
     /// This effect with every `Amount::ChosenNumber` written over by
     /// `Fixed(number)` — what `Effect::ChooseNumber::then` becomes once the
     /// number is chosen. Stops at a nested `ChooseNumber`'s own `then`,
@@ -2495,7 +2565,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -2503,6 +2573,7 @@ impl Effect {
                     discount,
                     then,
                     remote_only,
+                    central_only,
                     another_server,
                     new_remote,
                     rez,
@@ -2637,7 +2708,7 @@ impl Effect {
             | Effect::WinTheGame
             | Effect::TurnHostedFaceup
             | Effect::GainSubroutine { .. }
-            | Effect::GainIceSubtype(_)
+            | Effect::GainIceSubtype { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)

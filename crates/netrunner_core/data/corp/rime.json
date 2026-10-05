@@ -1,0 +1,43 @@
+{
+  "id": "rime",
+  "title": "Rime",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 0,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": "RezzedAsNonIce",
+      "applies_to": "This",
+      "while": "RunAgainstThisServer",
+      "text": "During runs against this server, you can rez this ice any time you could rez non-ice cards."
+    },
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "Each piece of ice protecting this server gets +1 strength."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner loses 1[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 26065,
+  "is_playable": true
+}

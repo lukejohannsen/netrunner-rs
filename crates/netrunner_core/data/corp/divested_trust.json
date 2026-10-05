@@ -1,0 +1,55 @@
+{
+  "id": "divested_trust",
+  "title": "Divested Trust",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "requirement": {
+        "Not": "InRunnersScoreArea"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "ForfeitSelf",
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    5
+                  ]
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OpponentScoreArea",
+                    "filter": "ThatCard",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnHq"
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may forfeit this agenda to gain 5[credit] and add the stolen agenda to HQ"
+          }
+        }
+      ],
+      "text": "Whenever the Runner steals another agenda, you may forfeit this agenda to gain 5[credit] and add the stolen agenda to HQ."
+    }
+  ],
+  "built_from": 26055,
+  "is_playable": true
+}

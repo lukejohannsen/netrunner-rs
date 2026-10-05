@@ -457,6 +457,17 @@ pub enum CardFilter {
     /// middle of its own resolution, and a discard pile has no order to
     /// read (CR 4.4.2).
     TrashedThisWay,
+    /// **That card**: the one the moment a trigger heard is about —
+    /// Divested Trust's "add **the stolen agenda** to HQ", chosen out of the
+    /// Runner's score area by a selection only it passes. A placeholder,
+    /// written over as the card when the trigger fires
+    /// (`CardFilter::with_that_card`, from `listeners::card_about`), the
+    /// convention `TrashedThisWay` follows; unresolved it matches nothing.
+    /// Composition didn't work: `acts_on_subject` moves every effect of the
+    /// trigger onto the stolen agenda, and Divested Trust's forfeit is its
+    /// own; and the paid choice parks, so the triggering event is gone by
+    /// the time the agenda is chosen.
+    ThatCard,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -569,6 +580,28 @@ impl CardFilter {
         }
     }
 
+    /// Whether `ThatCard` is in this filter, through `All`, `AnyOf` and
+    /// `Not`.
+    pub fn names_that_card(&self) -> bool {
+        match self {
+            CardFilter::ThatCard => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::names_that_card),
+            CardFilter::Not(filter) => filter.names_that_card(),
+            _ => false,
+        }
+    }
+
+    /// `ThatCard` written over as `card`, through `All`, `AnyOf` and `Not`.
+    pub fn with_that_card(self, card: &crate::dsl::CardId) -> CardFilter {
+        match self {
+            CardFilter::ThatCard => CardFilter::AmongCards(vec![card.clone()]),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_that_card(card))),
+            other => other,
+        }
+    }
+
     /// `TrashedThisWay` written over as the cards a mill trashed, through
     /// `All`, `AnyOf` and `Not`.
     pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> CardFilter {
@@ -652,7 +685,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
-        CardFilter::TrashedThisWay => false,
+        CardFilter::TrashedThisWay | CardFilter::ThatCard => false,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
             _ => false,

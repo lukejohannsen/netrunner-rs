@@ -217,6 +217,17 @@ pub enum ContinuousKind {
     /// because it is a static ability of the card's, read wherever the card
     /// is, like every `Scope::This` effect.
     RevealedWhileAccessed,
+    /// "You can rez this ice any time you could rez non-ice cards" —
+    /// Rime's, `while` a run is against its server
+    /// (`RunAgainstThisServer`): the windows marked (R) (CR 9.2.7c) and the
+    /// Corp's own action phase, beside the approach of the ice itself,
+    /// never instead of it. About `This`, on ice; the rez handler asks it
+    /// (`continuous::rezzed_as_non_ice`), and with it the action list,
+    /// whose probe applies the rez. A kind because it is a static ability
+    /// of the card's, read face down as every `Scope::This` effect is.
+    /// Composition didn't work: when a card may be rezzed was the rez
+    /// handler's rule, read off the card's type alone.
+    RezzedAsNonIce,
     /// A card may be installed onto this one — Hackerspace's "You can
     /// install unique companion resources and unique connection resources
     /// onto this resource". A permission, and so a standing effect of the

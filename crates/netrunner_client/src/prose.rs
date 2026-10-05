@@ -485,9 +485,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
-        Effect::GainIceSubtype(kind) => {
-            format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*kind]))
-        }
+        Effect::GainIceSubtype { subtype, ice } => match ice {
+            netrunner_core::dsl::StrengthOf::Encountered => {
+                format!("the ice you are encountering gains {} for the remainder of this encounter", crate::board::facts::ice_type_words(&[*subtype]))
+            }
+            netrunner_core::dsl::StrengthOf::EachIce => format!("each piece of ice gains {}", crate::board::facts::ice_type_words(&[*subtype])),
+            netrunner_core::dsl::StrengthOf::This => format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*subtype])),
+        },
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
@@ -810,6 +814,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
+        ContinuousKind::RezzedAsNonIce => "can be rezzed any time a non-ice card could be".to_string(),
         ContinuousKind::MayHost => "may be installed there".to_string(),
         ContinuousKind::CannotBeDeclaredSuccessful => "cannot be declared successful".to_string(),
         ContinuousKind::AccessOthersAtMost(n) => format!("accesses at most {} other than this card", plural(*n, "card", "cards")),

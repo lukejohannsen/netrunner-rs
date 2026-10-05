@@ -7895,3 +7895,84 @@ Nihilist and Blueberry!™ Diesel, and Lat's Sweep deck, Level Pegging.
 - **DSL ratio** (`pool_status.py`): 15 of 102 `Effect` variants
   single-use, none unused, over 609 card files — `Repeat` is single-use
   and `RevealHand` has its second card.
+
+#### Stage 5 — encounter and ice-state words (5 October 2026)
+
+`claude/serene-einstein-6bhlig`: Chisel, “Baklan” Bochkin, Pelangi,
+Afshar, Rime, Loot Box, Public Health Portal, Secure and Protect and
+Divested Trust. **No new `Effect`.** Downfall 45 of 65; `DF_UNIMPLEMENTED`
+29 → 20.
+
+- **Rejig moved to Stage 6.** "As an additional cost to play this event,
+  add 1 installed program or piece of hardware to your grip. Install 1
+  program or piece of hardware from your grip, paying X[credit] less. X is
+  equal to the printed install cost of the card you added to your grip."
+  No cost hands the card it moved to the effect it pays for:
+  `ResolutionContext::paid_with` is filled only where an accepted paid
+  choice resolves, and the install that reads X parks a choice, so X would
+  have to be written into it before it does. Stage 6 is the stage of costs.
+- **The words.**
+  - **`GainIceSubtype` says which ice** (`ice`, `ModifyStrength`'s
+    `StrengthOf`): Pelangi's "the ice you are encountering gains that
+    subtype for the remainder of this encounter" is a `Lingering::
+    GainSubtype` on the encountered ice until the encounter ends, beside
+    Lycian Multi-Munition's own while it stays rezzed. A tuple variant
+    became a struct one, so Lycian's file names its subtypes as fields.
+    `validate` refuses "each piece of ice gains", which no card prints.
+  - **`ContinuousKind::RezzedAsNonIce`** (Rime's "during runs against this
+    server, you can rez this ice any time you could rez non-ice cards", a
+    `while: RunAgainstThisServer`): the rez handler asks it beside the
+    approach, never instead of it, and the action list's probe follows.
+    CR 3.4.3a says ice is *normally* rezzed only while approached.
+  - **`CardFilter::ThatCard`** (Divested Trust's "add **the stolen
+    agenda** to HQ"): a placeholder written over as the card the trigger's
+    moment is about when the trigger fires (`listeners::card_about`,
+    `Effect::with_that_card`), so it outlives the forfeit the Corp is
+    asked about first. `acts_on_subject` would have moved the forfeit onto
+    the stolen agenda too. `validate` refuses it on a trigger not about a
+    card.
+  - **A selection takes a card out of the Runner's score area** for the
+    Corp, with its points (CR 1.17.1, as a forfeit takes them).
+  - **`PromptInstallCorpCard::central_only`** (Secure and Protect's
+    "protecting a central server"), `remote_only`'s other half.
+  - **Ice protects a server for `Scope::IceProtectingThisServer`**: Rime's
+    "each piece of ice protecting this server gets +1 strength", which
+    `validate` had admitted only from an asset, an upgrade or a Trojan.
+- **What composes.** Chisel is Monkeywrench's host strength over
+  `HostedCounters` and Arruaceiras Crew's "if its strength is 0 or less,
+  trash it" on a `Host` encounter; its counter waits on `ThisCardIsInstalled`,
+  since the ice it just trashed still reads as encountered. Bochkin is
+  S-Dobrado's first encounter of a run (`EncountersThisRun`) and Capybara's
+  derez of the encountered ice, measured against its counters as they were
+  before its `[trash]` (`last_known`). Afshar is Hammer's `BreakLimit`
+  under Winchester's `Protecting(Hq)`. Loot Box is Stargate's reveal of
+  the top 3 turned to the Runner's stack, chosen by the Corp, into the grip
+  and paid at realloc()'s `PrintedCost`, then shuffled. Public Health
+  Portal is Flower Sermon's reveal of the top of R&D. Secure and Protect is
+  Tucana's search under a Double's click.
+- **Fidelity limits:** three, under Known limits. Loot Box shows the
+  Runner only the card added to the grip, as Stargate shows the Corp only
+  the card trashed; Pelangi offers barrier, code gate and sentry; Bochkin's
+  X is every counter it has.
+- **Client.** No new view field. The new words are read out in `prose`.
+  No ledger row.
+- **Decks.** Burn Rate takes two Chisel for two Hantu; Moonlighting two
+  “Baklan” Bochkin for two Red Team; Dead Reckoning two Pelangi for two
+  Sipa; Ground Control two Afshar for two Tocsin and two Secure and Protect
+  for two Pivot; Hostile Bid two Divested Trust for two False Lead, point
+  for point; Undertow two Rime for two Sorocaban Blade; Paid Content two
+  Loot Box for two Capacitor; Second Site two Public Health Portal for two
+  Esca. Every card given up is still in another deck, and every deck keeps
+  its formats.
+- **Measured.** `cargo test --workspace` is green and clippy is silent,
+  with the desktop crate run one test target at a time. Both sweeps are
+  green at 256 seeds, the card gate included. `coverage_identical.py`
+  against Stage 4 (9fc2590; 192 games a report) has random identical, by
+  view and by index: the new words move nothing the sample decks reach.
+  The planner moves because `determinize` samples the new cards: Corp
+  agenda wins 65 → 66, Corp wins by flatline 22 → 20, Runner deck-outs
+  3 → 4. The purge test's Runner virus roster names Chisel and Pelangi.
+- **DSL ratio** (`pool_status.py`): 14 of 102 `Effect` variants
+  single-use, none unused, over 618 card files — `GainIceSubtype` has its
+  second card. Stage 4's ratio was 15 of 102 over 609 (recorded above);
+  the live roadmap had written it as 101.

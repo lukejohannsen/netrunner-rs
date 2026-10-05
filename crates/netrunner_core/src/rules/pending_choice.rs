@@ -1365,6 +1365,18 @@ pub(crate) fn resolve_confirm_card_selection(
                     }),
                     None => None,
                 },
+                // A stolen agenda taken back out of the Runner's score area
+                // — Divested Trust's "add the stolen agenda to HQ" — takes
+                // its points with it (CR 1.17.1), as a forfeit does.
+                CardZoneRef::OpponentScoreArea if side == Side::Corp => {
+                    let position = state.runner.scored_agendas.iter().position(|scored| &scored.card == card_id && scored.as_agenda.is_none());
+                    position.map(|position| {
+                        let taken = state.runner.scored_agendas.remove(position);
+                        let points = crate::rules::win::scored_value(state, registry, &taken, Side::Runner);
+                        state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(-points);
+                        true
+                    })
+                }
                 _ if is_corp_archives(side, &source) => {
                     let pos = state.corp.archives.iter().position(|a| &a.card == card_id);
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)

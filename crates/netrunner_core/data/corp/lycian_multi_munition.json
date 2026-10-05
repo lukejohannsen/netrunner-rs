@@ -17,13 +17,19 @@
             "chooser": "Corp",
             "options": [
               {
-                "GainIceSubtype": "Barrier"
+                "GainIceSubtype": {
+                  "subtype": "Barrier"
+                }
               },
               {
-                "GainIceSubtype": "CodeGate"
+                "GainIceSubtype": {
+                  "subtype": "CodeGate"
+                }
               },
               {
-                "GainIceSubtype": "Sentry"
+                "GainIceSubtype": {
+                  "subtype": "Sentry"
+                }
               },
               {
                 "PresentChoice": {
@@ -32,43 +38,61 @@
                     {
                       "Sequence": [
                         {
-                          "GainIceSubtype": "Barrier"
+                          "GainIceSubtype": {
+                  "subtype": "Barrier"
+                }
                         },
                         {
-                          "GainIceSubtype": "CodeGate"
+                          "GainIceSubtype": {
+                  "subtype": "CodeGate"
+                }
                         }
                       ]
                     },
                     {
                       "Sequence": [
                         {
-                          "GainIceSubtype": "Barrier"
+                          "GainIceSubtype": {
+                  "subtype": "Barrier"
+                }
                         },
                         {
-                          "GainIceSubtype": "Sentry"
+                          "GainIceSubtype": {
+                  "subtype": "Sentry"
+                }
                         }
                       ]
                     },
                     {
                       "Sequence": [
                         {
-                          "GainIceSubtype": "CodeGate"
+                          "GainIceSubtype": {
+                  "subtype": "CodeGate"
+                }
                         },
                         {
-                          "GainIceSubtype": "Sentry"
+                          "GainIceSubtype": {
+                  "subtype": "Sentry"
+                }
                         }
                       ]
                     },
                     {
                       "Sequence": [
                         {
-                          "GainIceSubtype": "Barrier"
+                          "GainIceSubtype": {
+                  "subtype": "Barrier"
+                }
                         },
                         {
-                          "GainIceSubtype": "CodeGate"
+                          "GainIceSubtype": {
+                  "subtype": "CodeGate"
+                }
                         },
                         {
-                          "GainIceSubtype": "Sentry"
+                          "GainIceSubtype": {
+                  "subtype": "Sentry"
+                }
                         }
                       ]
                     }

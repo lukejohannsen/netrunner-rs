@@ -129,6 +129,16 @@ struct Listener {
     in_runner_score_area: bool,
 }
 
+/// The card `event` is about as an occurrence of `trigger`, for a
+/// trigger that names it (`CardFilter::ThatCard`, Divested Trust's "the
+/// stolen agenda"). `None` for a moment about a server or nothing.
+pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger) -> Option<CardId> {
+    moments(state, event).into_iter().find(|moment| moment.trigger == trigger).and_then(|moment| match moment.about {
+        About::Card { card, .. } => Some(card),
+        About::Nothing | About::Server(_) | About::Damage(_) | About::Cards(_) => None,
+    })
+}
+
 /// What `event` is an occurrence of. Most events are an occurrence of
 /// nothing: they record a state change no card in the pool prints a trigger
 /// for. They are listed by name, not caught by `_`, so that adding a

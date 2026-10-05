@@ -1195,7 +1195,18 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::GainIceSubtype(subtype) => {
+        // "The ice you are encountering gains that subtype for the
+        // remainder of this encounter" (Pelangi).
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::Encountered } => {
+            let run = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
+            let install = run.ice.get(run.position).map(|ice| ice.install_id).ok_or(RulesError::NotInEncounter)?;
+            let source = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let until = lingering::until(state, crate::dsl::EffectDuration::Encounter, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
+            Ok(Vec::new())
+        }
+        Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce, .. } => Err(RulesError::UnresolvedCardTarget),
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This } => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
             let rezzed_ice = state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed && card.slot == InstallSlot::Ice);
             if !rezzed_ice {
@@ -2107,7 +2118,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -2142,6 +2153,9 @@ pub fn evaluate_effect(
             let mut allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs, *discount);
             if *remote_only {
                 allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
+            }
+            if *central_only {
+                allowed.retain(|server| !matches!(server, crate::rules::run::ServerId::Remote(_)));
             }
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
@@ -2688,9 +2702,19 @@ pub(crate) fn fire_card_triggers(
         // A trigger's effect list is a `Sequence` in all but name. "Those
         // cards" a batch trashed are written in, as a mill's `then` has
         // them (Buffer Drive's "add 1 of those cards").
-        match triggering_event {
-            Some(GameEvent::CardsTrashedFromGripOrStack { cards, .. }) => {
+        // "That card", the one the moment is about, is written in too, so
+        // it outlives a choice parked ahead of it (Divested Trust's "add
+        // the stolen agenda to HQ", behind its forfeit).
+        let that_card = triggering_event
+            .filter(|_| triggered.effects.iter().any(Effect::names_that_card))
+            .and_then(|event| listeners::card_about(state, event, trigger));
+        match (triggering_event, that_card) {
+            (Some(GameEvent::CardsTrashedFromGripOrStack { cards, .. }), _) => {
                 let effects: Vec<Effect> = triggered.effects.iter().cloned().map(|effect| effect.with_those_trashed(cards)).collect();
+                events.extend(evaluate_sequence(state, &effects, &mut effect_ctx, registry)?);
+            }
+            (_, Some(card)) => {
+                let effects: Vec<Effect> = triggered.effects.iter().cloned().map(|effect| effect.with_that_card(&card)).collect();
                 events.extend(evaluate_sequence(state, &effects, &mut effect_ctx, registry)?);
             }
             _ => events.extend(evaluate_sequence(state, &triggered.effects, &mut effect_ctx, registry)?),
