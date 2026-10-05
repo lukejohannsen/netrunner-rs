@@ -3291,3 +3291,31 @@ Every agenda discarded at hand size was discarded from an HQ of nothing but agen
 **Ryō's is read off the code:** one ply (`planner::one_ply`) applies each legal action and scores the result, and a `ToggleCardSelection` marks a position without moving the card, so every candidate scores alike and `TIE_BREAK_JITTER` chooses — the reason `agent::is_regressive` already gives for skipping a deselect. 5 of 17 is about the share of agendas in those hands. Longevity Serum's three are a choice of "any number", which chooser answered them not traced, followed by "shuffle up to 3 from Archives into R&D", which can put them back; whether it did is not counted. **AU Co.'s is not traced:** its search has been a step of the turn's line since §37, so the line scores the search where it leaves the board. The cases it chose (Sericulture Expansion trashed over Phật Gioan Baotixita, Offworld Office over Spin Doctor or Byte!, Orbital Superiority over Anoetic Void with Offworld Office kept) show the evaluator preferring the other card at a cost of half the agenda's points; the Corp's evaluator gives an agenda held in HQ no worth of its own, which is the lead, unmeasured.
 
 **Not done, and why.** Both are Open: the one-ply selection, first, since it is any one-card selection either chair answers out of its turn; AU Co., traced before any weight moves.
+
+## 41. One ply scores a card selection where its confirm leaves the board: Ryō's prompt and Longevity Serum stop trashing agendas the Corp could keep — DONE (`fix/one-ply-scores-the-confirmed-selection`, 5 October 2026)
+
+**The first of §40's two findings.** One ply (`planner::one_ply`, what the planner plays wherever it does not plan: a run, a prompt, the other side's turn) applies each legal action and scores the result. A `ToggleCardSelection` marks a position and moves no card, so every candidate of a selection scored alike and `TIE_BREAK_JITTER` chose: Ryō "Phoenix" Ōno's "the Corp trashes 1 card from HQ", answered in the Runner's turn, sent an agenda to Archives 5 of 17 times HQ held something else.
+
+**What it is now.** A toggle is scored where the selection leaves the board once confirmed: one ply applies `ConfirmCardSelection` after the toggle and scores that state when the confirm applies. That is exact for one card, and greedy for "up to" or "any number", whose Confirm is already a candidate a toggle has to beat. A selection still owed two or more cards is scored as before. The beam's own lines are not one ply's: Hansei Review, played inside a planned turn, already trashed no agenda (0 / 41, §40). **Rejected:** treating every one-card selection as `whole_sets` does (§38). That lives in the beam and is asked only while a seat decides for its own identity, and Ryō's prompt is answered by the seat it is *not* the identity of.
+
+Test: `one_ply_keeps_the_agenda_a_one_card_selection_could_trash` (Hansei Review's trash out of an agenda and two Hedge Funds keeps the agenda on 16 seeds; with the confirm switched off, seed 1 trashes it).
+
+**Measured** (pinned binaries, `main` at `1c4c134` against `bcac4d3`):
+- `coverage_identical.py`: both random shapes identical (`66ec5f5d…`); planner shapes `edea6abe…` → `87cce421…`.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.458 → 0.469** (seed 1, +0.010, z +0.60, 44 discordant) and **0.453 → 0.469** (seed 2, +0.016, z +0.97, 38 discordant). Toward the Corp on both seeds, inside the band. One ply is both chairs', so this is not a Corp-only lever.
+- `diag precepts --deck-styles`, planner both chairs, 192 games, seeds 1 / 2:
+
+  | | before | after |
+  |---|---|---|
+  | agendas to Archives | 17 / 16 | **10 / 11** |
+  | Ryō's prompt, an agenda trashed / mixed choices | 3 of 7 / 4 of 11 | **0 of 8 / 0 of 8** |
+  | Longevity Serum, the same | 3 of 6 / 0 of 4 | **0 of 6 / 0 of 3** |
+  | AU Co.'s search, the same (planned, untouched) | 5 of 9 / 2 of 4 | 5 of 10 / 3 of 5 |
+  | steals out of Archives / all steals | 5 / 482, 8 / 499 | 4 / 484, 6 / 493 |
+  | Corp scores | 346 / 326 | 356 / 331 |
+  | Corp wins | 87 / 85 | 87 / 87 |
+
+**Not done, and why.** AU Co.'s search is §40's other finding and stays Open: planned, so not this tie.
+
+**Verified.** `cargo test --workspace` green (2,743), clippy silent, both 256-seed sweeps green in release.
+
