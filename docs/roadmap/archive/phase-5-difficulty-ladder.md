@@ -3288,7 +3288,7 @@ Every agenda discarded at hand size was discarded from an HQ of nothing but agen
 
 (Seed 2 also sent one agenda by an install's trash of the root it replaced and one by a cost's selection.)
 
-**Ryō's is read off the code:** one ply (`planner::one_ply`) applies each legal action and scores the result, and a `ToggleCardSelection` marks a position without moving the card, so every candidate scores alike and `TIE_BREAK_JITTER` chooses — the reason `agent::is_regressive` already gives for skipping a deselect. 5 of 17 is about the share of agendas in those hands. Longevity Serum's three are a choice of "any number", which chooser answered them not traced, followed by "shuffle up to 3 from Archives into R&D", which can put them back; whether it did is not counted. **AU Co.'s is not traced:** its search has been a step of the turn's line since §37, so the line scores the search where it leaves the board. The cases it chose (Sericulture Expansion trashed over Phật Gioan Baotixita, Offworld Office over Spin Doctor or Byte!, Orbital Superiority over Anoetic Void with Offworld Office kept) show the evaluator preferring the other card at a cost of half the agenda's points; the Corp's evaluator gives an agenda held in HQ no worth of its own, which is the lead, unmeasured.
+**Ryō's is read off the code:** one ply (`planner::one_ply`) applies each legal action and scores the result, and a `ToggleCardSelection` marks a position without moving the card, so every candidate scores alike and `TIE_BREAK_JITTER` chooses — the reason `agent::is_regressive` already gives for skipping a deselect. 5 of 17 is about the share of agendas in those hands. Longevity Serum's three are a choice of "any number", which chooser answered them not traced, followed by "shuffle up to 3 from Archives into R&D", which can put them back; whether it did is not counted. **AU Co.'s is not traced:** its search has been a step of the turn's line since §37, so the line scores the search where it leaves the board. The cases it chose (Sericulture Expansion trashed over Phật Gioan Baotixita, Offworld Office over Spin Doctor or Byte!, Orbital Superiority over Anoetic Void with Offworld Office kept) show the evaluator preferring the other card at a cost of half the agenda's points; the Corp's evaluator gives an agenda held in HQ no worth of its own, which is the lead, unmeasured. **Corrected by §42: the lead was wrong.** The search was decided on cards the Corp was not looking at — the sample's guesses at the top of R&D, through a plan made at the offer and followed into the selection — not by the evaluator's reading of the real ones.
 
 **Not done, and why.** Both are Open: the one-ply selection, first, since it is any one-card selection either chair answers out of its turn; AU Co., traced before any weight moves.
 
@@ -3318,4 +3318,33 @@ Test: `one_ply_keeps_the_agenda_a_one_card_selection_could_trash` (Hansei Review
 **Not done, and why.** AU Co.'s search is §40's other finding and stays Open: planned, so not this tie.
 
 **Verified.** `cargo test --workspace` green (2,743), clippy silent, both 256-seed sweeps green in release.
+
+## 42. A selection is decided on the cards it shows: AU Co.'s search keeps the agendas it looks at — DONE (`fix/au-co-search`, 5 October 2026)
+
+**The second of §40's findings.** AU Co.'s "look at the top 3 cards of R&D. Trash 1 of those cards" trashed an agenda 8 times in 14 where the three held something else, though the search has been planned since §37. Traced, it was not the evaluator (§40's lead, corrected there):
+
+- **The sample guessed the cards.** The Corp's view names the three cards and their positions (`ClientView::selection`), and `determinize` drew all of R&D from the pool and never read that list, so whatever stood at those positions was a guess.
+- **The guess was followed.** The line is planned at AU Co.'s offer, before the Corp has looked, and `PlanningAgent::follow` plays a standing line while the view's legal actions are the ones predicted. A toggle is a position, the same in the sample and at the table, so the plan's trash was played on the real cards without a look.
+
+**What it is now.** `determinize::seat_selection` puts each card a parked selection shows its chooser out of a zone they cannot see (`CardZoneRef::shows_the_chooser_hidden_cards`: their own R&D or stack, the other side's hand or deck) at the position the view names it by, swapping in a copy from elsewhere in the zone where there is one so the counts hold, and writing over the guess where there is none, as `seat_revealed` does. And `follow` stops when such a selection shows cards the line was not made with (`Plan::shown`), so the seat plans again on them. **Both are needed:** with either alone the new test trashes the agenda 4 times in 7, as with neither. This also closes the residual `a_parked_selections_targets_stay_addressable_after_determinization` recorded since the selection became positional: an offered position now holds the card shown there, and the test asserts it.
+
+Tests: `au_cos_search_trashes_a_card_it_looked_at_and_keeps_the_agenda` (an agenda and two cards that are not on top of R&D, twelve seeds, the agenda never trashed in the 7 that take the search), and the determinize test above. **§37's `takes_au_cos_search_at_its_turn_start_and_keeps_the_agenda` never offered the agenda:** its Offworld Office is fourth from the top of R&D, out of the search's reach and into HQ by the turn's draw, so it held the agenda kept whatever was trashed. It stays, for what it does show: the search is taken.
+
+**Measured** (pinned binaries, `main` at `d2321e0` against `7c0692b`):
+- `coverage_identical.py`: both random shapes identical (`66ec5f5d…`); planner shapes `87cce421…` → `69e4ca20…`.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.469 → 0.477** (seed 1, +0.008, z +0.48, 39 discordant) and **0.469 → 0.482** (seed 2, +0.013, z +0.76, 43 discordant), toward the Corp on both seeds and inside the band. `seat_selection` serves both chairs, so this is not a Corp-only lever.
+- `diag precepts --deck-styles`, planner both chairs, 192 games, seeds 1 / 2:
+
+  | | before | after |
+  |---|---|---|
+  | AU Co.'s search, agenda trashed / mixed choices | 5 of 10 / 3 of 5 | **0 of 4 / 0 of 8** |
+  | agendas to Archives | 10 / 11 | **6 / 9** |
+  | of them avoidable | 5 / 3 | **0 / 0** |
+  | steals out of Archives / all steals | 4 / 484, 6 / 493 | **0 / 481, 5 / 488** |
+  | Corp scores | 356 / 331 | 347 / 332 |
+  | Corp wins | 87 / 87 | 88 / 89 |
+
+  What still reaches Archives is forced: Ryō "Phoenix" Ōno's prompt (3 / 6) and Hansei Review's from an HQ of agendas, a discard at hand size from one (1 / 1), and an install's trash of the root it replaced (1 / 1).
+
+**Verified.** `cargo test --workspace` green (2,744), clippy silent, both 256-seed sweeps green in release.
 
