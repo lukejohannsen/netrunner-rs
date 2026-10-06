@@ -349,9 +349,18 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             None => Vec::new(),
         },
         GameEvent::CardsLookedAt { .. } => Vec::new(),
-        // No card hears a reveal yet: Esca, Tocsin and the traps reveal, and
-        // nothing in the pool asks what was revealed.
-        GameEvent::CardRevealed { .. } => Vec::new(),
+        // A selection that reveals what it chose (Hyoubu Institute's own
+        // "reveal the top card of the stack") is its chooser revealing
+        // each card.
+        GameEvent::CardsSelected { side, cards, revealed: true } => cards
+            .iter()
+            .map(|revealed| moment(Trigger::OnCardRevealed, &About::Card { card: revealed.clone(), install: None, installed: false }, Some(*side)))
+            .collect(),
+        // Heard by whoever revealed it, about the card, which both players
+        // now see (Hyoubu Institute's "you reveal a card").
+        GameEvent::CardRevealed { card: revealed, by, .. } => {
+            vec![moment(Trigger::OnCardRevealed, &About::Card { card: revealed.clone(), install: None, installed: false }, Some(*by))]
+        }
         GameEvent::CardsSetAside { .. } => Vec::new(),
         // The Runner breached, but the cards are the Corp's: whoever
         // listens hears it, and none of it is a card to be "this".
@@ -409,6 +418,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // pool is printed about; a tag or a trash about to happen is an
         // occurrence of nothing until a card listens for one.
         GameEvent::AboutToResolve { what: WouldHappen::Damage { kind, .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Damage(*kind), None)],
+        // "You would draw" — only the Runner's draws are announced
+        // (`ability::draw`), so only theirs is a moment.
+        GameEvent::AboutToResolve { what: WouldHappen::Draw { side, .. } } => vec![moment(Trigger::OnDrawAboutToResolve, &About::Nothing, Some(*side))],
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
@@ -451,7 +463,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::BadPublicityCreditsSpent { .. }
         | GameEvent::PaymentChoiceOffered { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
-        | GameEvent::CardsSelected { .. }
+        | GameEvent::CardsSelected { revealed: false, .. }
         | GameEvent::PendingCardSelectionOffered { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }

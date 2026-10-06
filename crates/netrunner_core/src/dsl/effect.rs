@@ -1674,7 +1674,12 @@ pub enum Effect {
     /// server, ice list and position together, and every existing mover
     /// (`RedirectRunOnApproach`, `run::reconcile_ice`) keeps the Runner's
     /// progress rather than resetting it.
-    MoveRunToOutermost(ServerId),
+    ///
+    /// `None` is the attacked server — Letheia Nisei's "the Runner moves to
+    /// the outermost position of **this server**", heard as the Runner
+    /// approaches it, so it is the server being run; written `null`, since
+    /// the server it means is the run's and no card file can name it.
+    MoveRunToOutermost(Option<ServerId>),
     /// Takes the acting card — an agenda the Runner has scored — out of
     /// the Runner's score area, removes tags equal to its printed points,
     /// and installs it unrezzed in a fresh remote. IP Enforcement's "as an
@@ -2153,6 +2158,31 @@ pub enum Amount {
     /// not count, or with no Corp install resolving. `TimesThisTurn` counts
     /// the turn's moments by class, and a class has no copy in it.
     TimesThisTurnOnThisCopy(crate::dsl::Trigger),
+    /// How much of what is about to happen there is — the cards "you would
+    /// draw" in The Class Act's "X is equal to the number of cards you
+    /// would draw plus 1" (`Increased` by 1), read off the
+    /// `GameEvent::AboutToResolve` the trigger heard. 0 for any other
+    /// moment. Composition didn't work: no amount read the event a trigger
+    /// heard beyond the card it was about.
+    AboutToResolve,
+}
+
+impl Amount {
+    /// See `Effect::with_chosen_number`, for an amount that reads the
+    /// number inside a filter or a sum: Khusyuk's "the number of your
+    /// installed cards with that printed install cost, up to 6", which is
+    /// `Reduced` over `InZone { filter: PrintedCostExactly(ChosenNumber) }`.
+    pub fn with_chosen_number(self, number: u32) -> Amount {
+        let boxed = |amount: Box<Amount>| Box::new(amount.with_chosen_number(number));
+        match self {
+            Amount::ChosenNumber => Amount::Fixed(number),
+            Amount::InZone { zone, filter } => Amount::InZone { zone, filter: filter.with_chosen_number(number) },
+            Amount::Reduced { amount, by } => Amount::Reduced { amount: boxed(amount), by: boxed(by) },
+            Amount::Increased { amount, by } => Amount::Increased { amount: boxed(amount), by: boxed(by) },
+            Amount::Times { amount, times } => Amount::Times { amount: boxed(amount), times },
+            other => other,
+        }
+    }
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run with
@@ -2583,7 +2613,7 @@ impl Effect {
     /// to it instead — no card's `then` may come out still naming the
     /// placeholder.
     pub fn with_chosen_number(self, number: u32) -> Effect {
-        let amount = |amount: Amount| if amount == Amount::ChosenNumber { Amount::Fixed(number) } else { amount };
+        let amount = |amount: Amount| amount.with_chosen_number(number);
         let boxed = |effect: Box<Effect>| Box::new(effect.with_chosen_number(number));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_number(number)).collect();
         match self {

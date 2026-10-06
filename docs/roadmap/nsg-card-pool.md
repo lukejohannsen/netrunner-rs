@@ -50,12 +50,14 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 54 | 11 | Stages 1–6 built (6 October 2026) |
+| 7 | Downfall (`df`) | 65 | 60 | 5 | Stages 1–7 built (6 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 103
-`Effect` variants single-use, none unused, over 627 card files** (6 October
-2026, with Downfall Stage 6, which added `ForEach` and generalised
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **12 of 103
+`Effect` variants single-use, none unused, over 633 card files** (6 October
+2026, with Downfall Stage 7, which added no variant and gave
+`MoveRunToOutermost` its second card, Letheia Nisei; Stage 6, at 13 of 103
+over 627, added `ForEach` and generalised
 `WhenThisTurnEnds` into `LaterThisTurn`, now three cards'; Stage 5, at 14
 of 102 over 618, added no variant and gave `GainIceSubtype` its second
 card, Pelangi; Stage 4, at 15 of 102 over 609 —
@@ -385,6 +387,12 @@ PR that made this list (29 September 2026).
 - **“Baklan” Bochkin** (DF 5): "X hosted power counters" is every counter on it — the card is trashed with them, so a smaller X could only derez less.
 - **Reduced Service** (DF 6): "you may pay up to 4[credit]" loses the credits from the credit pool rather than paying them, as Focus Group's X does.
 - **In the Groove** (DF 6): "Play only as your first [click]" is the turn's first action (`NoActionTakenThisTurn`, Petty Cash's), which every first action in the pool spends a click on.
+- **Hyoubu Institute** (DF 7): the top card of the stack is revealed by a one-card selection the Corp confirms, which shows it to the Corp a moment before the Runner.
+- **Khusyuk** (DF 7): the install cost is chosen from 1 to 10, Orca's printed 10 being the highest of a Runner card in the pool.
+- **The Class Act** (DF 7): drawn cards go straight to the grip once the interrupt has resolved, never into a set-aside zone first (CR 8.4.2, 8.4.5); "when a discard phase ends" hears the Runner's own, so a copy installed during the Corp's turn draws nothing at the Corp's; and a draw made while something else is parked for prevention is not announced (the Prevention Rule's one-slot rule), so it is not "the first time".
+- **Project Yagi-Uda** (DF 7): "for each hosted advancement counter past 3" is Dividends, counted past the requirement as the score began, which is 3 unless a card has changed it; and the card swapped in is not heard as installed (CR 8.8.4b's install trigger conditions), as Mitra Aman's and Tatu-Bola's are not.
+- **Letheia Nisei** (DF 7): "the first time … during each run" is a use limit (`OncePerRun`), spent when it resolves; the Runner approaches the server again only once Letheia has trashed itself, so no card in the pool can tell the two apart.
+- **Saisentan** (DF 7): the extra net damage reads what the subroutine's own damage trashed in the same resolution (`LastDamageTrashed`), so damage parked for an interrupt and dealt on a later action is not read for its type, as Diviner's is not.
 - **Flip Switch** (DF 6): "[trash]: Jack out" pays the jack-out as part of the cost (`Cost::JackOut`, which Lionsmane offers), so it is made with the trash rather than after it; nothing can come between the two.
 - **Hoshiko Shiro: Untold Protagonist** (UR 2): the catalog folds the flip side's text into the front's and keeps none of its other numbers, so a flipped Hoshiko has the front's subtypes (Natural) and link (0). DreamNet's "if your identity is digital" reads her front either way (`EffectRequirement::IdentityMatches`).
 
@@ -993,9 +1001,11 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
    pays for, moved from Stage 5), Utae (X), Lucky Charm (an interrupt on
    "end the run"), Flip Switch (a jack-out, paid as a cost, and a lower
    trace base). Stage 6 is complete.
-7. **Hidden information and new zones:** Hyoubu Institute, Khusyuk, The
-   Class Act (a replacement on draw), Project Yagi-Uda, Letheia Nisei,
-   Saisentan.
+7. **Hidden information and new zones** (built, 6 October 2026): Hyoubu
+   Institute (a reveal as a moment), Khusyuk (a set-aside count by printed
+   install cost), The Class Act (an interrupt on a draw, not a prevention),
+   Project Yagi-Uda (a swap out of HQ into a root as well as ice), Letheia
+   Nisei, Saisentan. Stage 7 is complete.
 8. **Naming a card, blanking an identity, memory across runs, action
    kinds:** Whistleblower, Complete Image, Direct Access, Always Have a
    Backup Plan, MirrorMorph.
@@ -1014,6 +1024,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 4** — nine cards and Lat's Sweep deck, Level Pegging, with one new `Effect` (`Repeat`): three amounts, an action-phase rez, the Runner's successful servers last turn, an agenda that forbids its own score, and a card returned to the bottom of the stack (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 7** — six cards and Hyoubu Institute's Sweep deck, Open Book, with no new `Effect`: a reveal is a moment heard by whoever revealed, the Runner's draw is announced and parked so an interrupt resolves before it, a card from HQ may be swapped into a root as well as for ice, a chosen number reaches the amounts and filters it is read in, and the run moves to the outermost position of the server it is on (`claude/serene-einstein-6bhlig`, 6 October 2026).
 - **Stage 6** — nine cards with one new `Effect` (`ForEach`): a delayed ability waits for any moment of the turn, once or every time; an upgrade's run cost counts its counters; a cost returns an installed card to the grip and the event reads its printed cost; and two interrupts, on a Corp card's "end the run" and on a trace's base strength (`claude/serene-einstein-6bhlig`, 6 October 2026).
 - **Stage 5** — nine cards with no new `Effect`: the encountered ice gains a subtype for the encounter, a piece of ice rezzed whenever a non-ice card could be on a run against its server, an install from a card's text limited to a central, and the card a trigger heard named in a choice parked behind a paid one (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 3** — ten cards with no new `Effect`: a trash cost asked of any card being accessed, a surcharge on an install, hosted credits for the rest of a successful run and for programs during runs, and a requirement on the trashed card's faction (`claude/serene-einstein-6bhlig`, 5 October 2026).

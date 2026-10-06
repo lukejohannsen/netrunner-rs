@@ -418,6 +418,13 @@ fn instance_matches_filter(
             let len = zone_card_ids(state, chooser, zone, source).len();
             position >= len.saturating_sub(*count as usize)
         }
+        // Read as the selection was offered (`with_resolution`); left
+        // unread, nothing.
+        CardFilter::TopOf(_) => false,
+        // The install the selection acts as is the place.
+        CardFilter::SwappableIntoThis => source.is_some_and(|place| {
+            zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| crate::rules::run::swappable_into(state, registry, card, place))
+        }),
         // Only a hand holds a revealed card, and only its owner's.
         CardFilter::Revealed => {
             let owner = owning_side(chooser, zone);
@@ -1264,6 +1271,10 @@ pub(crate) fn resolve_confirm_card_selection(
         return Err(RulesError::NoPendingDecision);
     };
 
+    // Something parked before this selection was made — the draw The
+    // Class Act's selection is heard ahead of — is not something the
+    // selection's `then` waits behind (below): it is what waits for it.
+    let parked_before = state.pending_prevention.is_some();
     let count = selected.len();
     if count < min as usize || count > max as usize {
         // Selection is discarded (not re-parked) on an invalid confirm —
@@ -1305,7 +1316,10 @@ pub(crate) fn resolve_confirm_card_selection(
     } else {
         selected.clone()
     };
-    let mut events = vec![GameEvent::CardsSelected { side, cards: named, revealed: reveal }];
+    // Dispatched: a selection that reveals is its chooser revealing
+    // (Hyoubu Institute's "you reveal a card").
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardsSelected { side, cards: named, revealed: reveal })?;
     // Cards the Corp trashes out of HQ, counted for one batch event —
     // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
     // does it in its deck).
@@ -1572,7 +1586,7 @@ pub(crate) fn resolve_confirm_card_selection(
         };
         // The trash above was parked for prevention: the `then` waits its
         // turn behind it, as the rest of a `Sequence` does.
-        if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some()) {
+        if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some() && !parked_before) {
             state.deferred_triggers.push(crate::rules::state::DeferredTrigger { announce: None,
                 card: card.clone(),
                 trigger: crate::dsl::Trigger::OnPlay,
@@ -1753,15 +1767,16 @@ pub(crate) fn resolve_choose_server(
         // revealed (CR 8.5.13d), since the Runner could otherwise not tell
         // that the "install and rez" was carried out. Eminent Domain's is
         // the first that may install an agenda.
-        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| {
+        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| -> Result<(), RulesError> {
             if let Some(installed) = state.corp.installed.iter_mut().find(|c| Some(c.install_id) == landed) {
                 installed.seen_by_runner = true;
-                events.push(GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone() });
+                dispatcher::emit(state, registry, events, GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone(), by: Side::Corp })?;
             }
+            Ok(())
         };
         let rezzable = !matches!(registry.get(&card_id).map(|c| &c.card_type), Some(crate::dsl::CardType::Agenda));
         if pending_install.rez && !rezzable {
-            reveal(state, &mut events);
+            reveal(state, &mut events)?;
         }
         if let (true, true, Some(install)) = (pending_install.rez, rezzable, landed) {
             let rest = pending_install.discount - install_takes;
@@ -1779,7 +1794,7 @@ pub(crate) fn resolve_choose_server(
                 // rezzed (CR 1.16.4b–c).
                 Err(
                     RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. },
-                ) => reveal(state, &mut events),
+                ) => reveal(state, &mut events)?,
                 Err(other) => return Err(other),
             }
         }

@@ -567,7 +567,7 @@ fn present_card_for_access(
     // "They must reveal it" (CR 1.21.7): the Corp is shown which of its
     // cards this is, as the view shows it for the rest of the access.
     if crate::rules::continuous::revealed_while_accessed(state, registry, card_id) {
-        events.push(GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone() });
+        dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone(), by: Side::Runner })?;
     }
 
     // An unmet `requirement` means the trigger does not apply to *this*

@@ -1,0 +1,101 @@
+{
+  "id": "open_book",
+  "name": "Open Book",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: Hyoubu Institute's deck, built in Downfall Stage 7 so the sweeps reach a reveal heard as a moment and the Runner's draw parked ahead of The Class Act's look. Every card in it reveals or makes the Runner pay for what is revealed: the identity's click shows a grip card or the top of the stack and pays 1[credit] the first time each turn, Engram Flush and Bring Them Home reveal the grip, Public Health Portal the top of R&D, Snare! itself as it is accessed; Saisentan's net damage names a card type and does more for each card of it trashed, Letheia Nisei sends a Runner who loses its psi game back to the outermost ice, and Project Yagi-Uda banks its extra advancements to swap a card from HQ into the server being run. Of Jinteki and neutral cards, on Permafrost's and Second Site's frames, whose Core Set cards keep it out of Standard.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "hyoubu_institute_absolute_clarity",
+  "cards": [
+    {
+      "card": "project_yagi_uda",
+      "count": 3
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 2
+    },
+    {
+      "card": "see_how_they_run",
+      "count": 2
+    },
+    {
+      "card": "fujii_asset_retrieval",
+      "count": 2
+    },
+    {
+      "card": "saisentan",
+      "count": 3
+    },
+    {
+      "card": "engram_flush",
+      "count": 2
+    },
+    {
+      "card": "tatu_bola",
+      "count": 2
+    },
+    {
+      "card": "phoneutria",
+      "count": 2
+    },
+    {
+      "card": "vicsek",
+      "count": 2
+    },
+    {
+      "card": "tributary",
+      "count": 2
+    },
+    {
+      "card": "knowledge_seeker",
+      "count": 2
+    },
+    {
+      "card": "cloud_eater",
+      "count": 2
+    },
+    {
+      "card": "letheia_nisei",
+      "count": 2
+    },
+    {
+      "card": "the_red_room",
+      "count": 2
+    },
+    {
+      "card": "public_health_portal",
+      "count": 2
+    },
+    {
+      "card": "snare",
+      "count": 2
+    },
+    {
+      "card": "bring_them_home",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "mitosis",
+      "count": 2
+    },
+    {
+      "card": "cultivate",
+      "count": 2
+    },
+    {
+      "card": "mindscaping",
+      "count": 1
+    },
+    {
+      "card": "simulation_reset",
+      "count": 1
+    }
+  ]
+}

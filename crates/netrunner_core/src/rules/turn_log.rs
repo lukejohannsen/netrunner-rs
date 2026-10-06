@@ -307,7 +307,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // An ability is used on a faceup card, or on one its cost reveals
         // (Tocsin, from HQ).
         | Trigger::OnActionTaken
-        | Trigger::OnAbilityUsed => false,
+        | Trigger::OnAbilityUsed
+        // Revealed is shown to both players (CR 1.21.3).
+        | Trigger::OnCardRevealed => false,
         // An ambush asks for credits face down (Cerebral Overwriter, Esca),
         // seen by the Runner who accessed it and by no spectator.
         Trigger::OnAbilityTookCredits => true,
@@ -351,6 +353,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnCardsTrashedFromGripOrStack
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
+        | Trigger::OnDrawAboutToResolve
         | Trigger::OnDamageSuffered
         | Trigger::OnCreditsSpentFromInstalledCard
         | Trigger::OnIdentityFlipped

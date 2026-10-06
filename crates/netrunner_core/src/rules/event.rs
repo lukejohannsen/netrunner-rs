@@ -110,8 +110,16 @@ pub enum GameEvent {
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
     /// accessing it in R&D (`ContinuousKind::RevealedWhileAccessed`), which
     /// is how the Corp learns which of its cards was accessed there. Public
-    /// by definition; no card hears a reveal yet.
-    CardRevealed { side: Side, card: CardId },
+    /// by definition. `by` is the player who revealed it, which is not
+    /// always its owner — Engram Flush has the Corp reveal the grip — and is
+    /// who Hyoubu Institute's "the first time each turn **you** reveal a
+    /// card" hears (`Trigger::OnCardRevealed`).
+    CardRevealed {
+        side: Side,
+        card: CardId,
+        #[serde(default = "crate::rules::event::the_corp")]
+        by: Side,
+    },
     /// `cards`, `side`'s, went faceup into the set-aside zone, in that
     /// order (The Wizard's Chest, `Effect::SetAsideFromTopUntil`). Public:
     /// set aside faceup, so shown to both (CR 4.8.6). No card hears it.
@@ -821,4 +829,10 @@ impl GameEvent {
             | GameEvent::PendingPaidChoiceDeclined { .. } => false,
         }
     }
+}
+
+/// `CardRevealed::by`'s default, for a record written before the field: the
+/// Corp, whose cards nearly every reveal before Hyoubu Institute was of.
+pub(crate) fn the_corp() -> Side {
+    Side::Corp
 }

@@ -143,7 +143,9 @@ pub(crate) fn would(
     if what.amount() == 0 {
         return Ok(Vec::new());
     }
-    let heard = matches!(what, WouldHappen::Damage { .. });
+    // A draw is heard as damage is, and for the same reason: The Class
+    // Act's "the first time each turn" counts the draws before it.
+    let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. });
     if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         let responsible = responsible_for(registry, ctx.acting_card);
         let source = ctx.acting_install;
@@ -345,7 +347,7 @@ fn settle_within(
     }
     let mut events = Vec::new();
     while let Some(position) =
-        state.deferred_triggers.iter().position(|due| due.trigger == Trigger::OnDamageAboutToResolve && due.continuation.is_none())
+        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve) && due.continuation.is_none())
     {
         let due = state.deferred_triggers.remove(position);
         events.extend(dispatcher::fire_deferred(state, registry, &due)?);
@@ -518,6 +520,9 @@ fn happen(
         WouldHappen::RunEnds { .. } => ability::end_the_run(state, registry),
         // Started from `PendingPrevention::waiting` by `finish_within`.
         WouldHappen::Trace { .. } => Ok(Vec::new()),
+        // Whatever heard it has resolved; the cards are drawn now, from
+        // the stack as it has left it.
+        WouldHappen::Draw { side, .. } => Ok(ability::draw(state, *side, amount)),
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             // Carried out, so it is one of the encountered ice's trashes

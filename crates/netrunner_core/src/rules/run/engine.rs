@@ -957,6 +957,37 @@ pub(crate) fn move_run_to_outermost(
     Ok(events)
 }
 
+/// Whether `card_id` may be swapped into the place of `install`, a Corp
+/// install (CR 8.8.2: "a card can only ever be swapped into a location it
+/// is normally allowed to occupy"): a piece of ice for a piece of ice, and
+/// into a root only what may be installed there — an upgrade, or an agenda
+/// or asset in a remote whose root holds no other — and never a second
+/// region (3.6.5e) or an upgrade where its "only" forbids it (8.5.12). The
+/// card leaving the place is not counted against it. The one question the
+/// offer (`CardFilter::SwappableIntoThis`) and the swap both ask.
+pub(crate) fn swappable_into(state: &GameState, registry: &CardRegistry, card_id: &CardId, install: crate::rules::state::InstallId) -> bool {
+    use crate::dsl::{CardSubtype, CardType};
+    let (Some(place), Some(card)) = (state.find_corp_install(install), registry.get(card_id)) else { return false };
+    match (place.slot, &card.card_type) {
+        (InstallSlot::Ice, CardType::Ice(_)) => true,
+        (InstallSlot::Root, CardType::Upgrade | CardType::Agenda | CardType::Asset) => {
+            let agenda_or_asset = matches!(card.card_type, CardType::Agenda | CardType::Asset);
+            let region = card.subtypes.contains(&CardSubtype::Region);
+            let others_clash = state
+                .corp
+                .installed
+                .iter()
+                .filter(|other| other.server == place.server && other.slot == InstallSlot::Root && other.install_id != install)
+                .filter_map(|other| registry.get(&other.card))
+                .any(|other| {
+                    (agenda_or_asset && matches!(other.card_type, CardType::Agenda | CardType::Asset)) || (region && other.subtypes.contains(&CardSubtype::Region))
+                });
+            (!agenda_or_asset || matches!(place.server, ServerId::Remote(_))) && card.may_be_installed_in(place.server) && !others_clash
+        }
+        _ => false,
+    }
+}
+
 /// Swaps the ice the Runner is approaching with `card_id`, a piece of ice
 /// in `origin` (HQ or Archives) — Mitra Aman. The install keeps its
 /// position and handle and takes the new card **unrezzed** (it arrives
@@ -973,8 +1004,10 @@ pub(crate) fn swap_approached_ice_with_card(
     origin: &crate::dsl::CardZoneRef,
     this_ice: Option<crate::rules::state::InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    // The ice in the slot: the one named (Tatu-Bola's "swap it"), or the
-    // one being approached (Mitra Aman's), which only an approach has.
+    // The card in the place: the one named (Tatu-Bola's "swap it", and
+    // Project Yagi-Uda's card "in the root of or protecting the attacked
+    // server", which may be a root card), or the ice being approached
+    // (Mitra Aman's), which only an approach has.
     let approached = match this_ice {
         Some(install) => install,
         None => {
@@ -986,10 +1019,7 @@ pub(crate) fn swap_approached_ice_with_card(
             approached
         }
     };
-    if !state.find_corp_install(approached).is_some_and(|installed| installed.slot == crate::rules::state::InstallSlot::Ice) {
-        return Ok(Vec::new());
-    }
-    if !registry.get(card_id).is_some_and(|def| matches!(def.card_type, crate::dsl::CardType::Ice(_))) {
+    if !swappable_into(state, registry, card_id, approached) {
         return Ok(Vec::new());
     }
     // Take the incoming card out of its zone first: if it is not there any
@@ -1023,6 +1053,10 @@ pub(crate) fn swap_approached_ice_with_card(
     // `seen_by_runner` — Tatu-Bola is always rezzed as it swaps.
     installed.seen_by_runner = false;
     installed.this_turn = Default::default();
+    // "Any cards or counters hosted on it are trashed" (CR 8.8.4b): the
+    // counters went above; a Trojan on the ice that left goes too, rather
+    // than staying on the handle the new card keeps.
+    let mut hosted = crate::rules::ability::cascade_trash_hosted_programs(state, approached);
     match origin {
         crate::dsl::CardZoneRef::OwnHq => state.corp.hq.push(displaced.clone()),
         _ => crate::rules::turn_log::file_in_archives(state, if was_rezzed {
@@ -1042,6 +1076,7 @@ pub(crate) fn swap_approached_ice_with_card(
         a_card: Some(displaced.clone()),
         b_card: Some(card_id.clone()),
     }];
+    events.append(&mut hosted);
     // The run's own copy of the ice is stale now; rebuilding it here rather
     // than waiting for the next step keeps the approach pointed at the card
     // that is actually there.

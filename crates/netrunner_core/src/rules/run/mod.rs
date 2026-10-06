@@ -13,7 +13,7 @@ pub use engine::{advance_run, start_run};
 pub(crate) use engine::{force_encounter, may_pay_run_cost, resolving_subroutines_of, start_breach};
 pub(crate) use engine::{
     break_subroutine, bypass_encountered_ice, check_run_may_begin, encounter_ends, end_run, move_run_to_outermost, reconcile_ice, renumber_subroutines,
-    swap_approached_ice_with_card, transition_subroutine,
+    swap_approached_ice_with_card, swappable_into, transition_subroutine,
 };
 pub use state::{
     AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounterTally, EncounteredSubroutine, GainedForTheRun, OutsideBreach, RunEndRider, RunIce, RunPhase, RunState, ServerId, SuspendedEncounter,

@@ -333,6 +333,13 @@ pub enum CardFilter {
     /// re-finds the card by) the whole of R&D. The top of R&D and of the
     /// stack is the *end* of the `Vec` — see `zone_card_ids`.
     TopOfZone(u32),
+    /// `TopOfZone` of a number read as the selection is offered — The
+    /// Class Act's "look at the top X cards of your stack", X the cards
+    /// about to be drawn plus 1 (`Amount::AboutToResolve`). Written over
+    /// as `TopOfZone` by `with_resolution`; unresolved, it matches nothing.
+    /// A word beside `TopOfZone` rather than an `Amount` in it, so the
+    /// cards that print a number keep writing the number.
+    TopOf(Box<crate::dsl::Amount>),
     /// A card revealed in its owner's hand by the ability still resolving
     /// (`GameState::revealed`) — Burner's "Add 2 of the revealed cards to
     /// the top and/or bottom of R&D". Instance-level, like `TopOfZone`:
@@ -468,6 +475,15 @@ pub enum CardFilter {
     /// own; and the paid choice parks, so the triggering event is gone by
     /// the time the agenda is chosen.
     ThatCard,
+    /// A card that may be swapped into the place of the install the
+    /// selection acts as (`run::swappable_into`, CR 8.8.2) — Project
+    /// Yagi-Uda's "swap 1 card from HQ with 1 card in the root of or
+    /// protecting the attacked server", whose card from HQ is chosen
+    /// inside the `then` of the choice of the installed one: ice for ice,
+    /// and for a root only what that root may hold. Instance-level: the
+    /// answer is the table's. Composition didn't work: a type filter says
+    /// "ice", never "what fits where that card is".
+    SwappableIntoThis,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -488,6 +504,7 @@ impl CardFilter {
         match self {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
+            CardFilter::TopOf(count) => CardFilter::TopOfZone(amount(&count)),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
             // A discount read off the resolution (Rejig's "paying X[credit]
             // less", X the printed cost of the card its cost returned) is
@@ -510,6 +527,22 @@ impl CardFilter {
             CardFilter::InChosenServer => server.map_or(CardFilter::InChosenServer, CardFilter::InServer),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            other => other,
+        }
+    }
+
+    /// This filter with a chosen number written into the amounts it reads
+    /// (`Amount::with_chosen_number`): Khusyuk's "your installed cards with
+    /// that printed install cost".
+    pub fn with_chosen_number(self, number: u32) -> CardFilter {
+        let amount = |amount: Box<crate::dsl::Amount>| Box::new(amount.with_chosen_number(number));
+        match self {
+            CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(amount(at_most)),
+            CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
+            CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_number(number))),
             other => other,
         }
     }
@@ -566,6 +599,7 @@ impl CardFilter {
                 | CardFilter::Advanced
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
+                | CardFilter::TopOf(_)
                 | CardFilter::Revealed
                 | CardFilter::NotInstalledThisTurn
                 | CardFilter::NotAdvancedThisTurn
@@ -682,7 +716,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::TopOf(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
@@ -693,6 +727,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard => false,
+        CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
             _ => false,

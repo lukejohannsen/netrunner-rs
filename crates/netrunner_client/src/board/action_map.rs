@@ -621,6 +621,9 @@ impl Prompt {
                 }
                 WouldHappen::RunEnds { .. } => format!("Prevent {} from ending the run?", title_of(prevention.source_card.as_ref(), registry)),
                 WouldHappen::Trace { base } => format!("Reduce {}'s trace, base strength {base}, to 0?", title_of(prevention.source_card.as_ref(), registry)),
+                // Never asked (no card prevents a draw); only what hears
+                // it, which asks with a prompt of its own.
+                WouldHappen::Draw { side, amount } => format!("{side:?} is about to draw {amount}"),
             };
             return Some(Prompt { title, detail: format!("{} offers to", title_of(prevention.source_card.as_ref(), registry)) });
         }

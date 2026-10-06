@@ -126,6 +126,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::Credits(Side::Runner) => "the Runner's credits".to_string(),
         Amount::ThisCardStrength => "this program's strength".to_string(),
         Amount::TimesThisTurnOnThisCopy(trigger) => format!("the times \"{}\" has happened to this card this turn", humanize(format!("{trigger:?}"))),
+        Amount::AboutToResolve => "the number about to happen".to_string(),
     }
 }
 
@@ -556,7 +557,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))
         }
         Effect::ReplaceSubroutines => "for this encounter, the Corp resolves this card's subroutine instead of each subroutine on the ice".to_string(),
-        Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),
+        Effect::MoveRunToOutermost(Some(server)) => format!("move the run to the outermost ice of {}", describe_server(*server)),
+        Effect::MoveRunToOutermost(None) => "move the run to the outermost ice of the attacked server".to_string(),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
         Effect::SwapApproachedIceWithCard { this_ice: true, .. } => "swap this ice with a card".to_string(),
         Effect::SwapApproachedIceWithCard { .. } => "swap the approached ice with a card".to_string(),

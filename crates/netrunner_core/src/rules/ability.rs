@@ -298,6 +298,53 @@ impl<'a> ResolutionContext<'a> {
     }
 }
 
+/// The Runner is about to draw `amount` cards: announced and parked
+/// (`WouldHappen::Draw`), so that The Class Act's "the first time each turn
+/// you would draw" resolves before they are drawn. An empty stack draws
+/// nothing (CR 1.7.2c: the Runner never decks out), so there is nothing
+/// about to happen and nothing is announced.
+pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, amount: u32, ctx: &mut ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    if state.runner.stack.is_empty() {
+        return Ok(Vec::new());
+    }
+    crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Runner, amount }, ctx)
+}
+
+/// Draws `amount` cards for `side`, one at a time. Mirrors
+/// `engine::draw_card_click`'s per-card pattern. An empty stack is a
+/// silent stop for the Runner, who never decks out. The Corp loses: "The
+/// Runner wins if the Corp is required to draw a card from R&D but cannot
+/// because R&D is empty" (CR 1.7.2c). That is a failed attempt, not a
+/// standing condition, so it is here rather than in `checkpoint`; it was a
+/// silent stop for both, and Sprint or Spin Doctor on an empty R&D drew
+/// nothing and played on. Called by `Effect::DrawCards` for the Corp and by
+/// `prevention::happen` for the Runner, once the draw has been announced.
+pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> Vec<GameEvent> {
+    let mut events = Vec::new();
+    for _ in 0..amount {
+        let drawn = match side {
+            Side::Corp => state.corp.r_and_d.pop(),
+            Side::Runner => state.runner.stack.pop(),
+        };
+        match drawn {
+            Some(card) => {
+                match side {
+                    Side::Corp => state.corp.hq.push(card),
+                    Side::Runner => state.runner.grip.push(card),
+                }
+                events.push(GameEvent::CardDrawn { side });
+            }
+            None => {
+                if side == Side::Corp {
+                    events.extend(crate::rules::win::end_game(state, Side::Runner));
+                }
+                break;
+            }
+        }
+    }
+    events
+}
+
 /// Whose text the resolution is: the side of the card it is attributed to
 /// (`ResolutionContext::attributed_card`), so a selection's `then` acting as
 /// the Runner's resource is still Klevetnik's — "**your** next turn" is the
@@ -448,38 +495,13 @@ pub fn evaluate_effect(
         }
 
         Effect::DrawCards(side, amount) => {
-            // Mirrors engine::draw_card_click's existing per-card pattern,
-            // generalized to `amount` and either side's deck. An empty
-            // stack is a silent stop for the Runner, who never decks out.
-            // The Corp loses: "The Runner wins if the Corp is required to
-            // draw a card from R&D but cannot because R&D is empty" (CR
-            // 1.7.2c). That is a failed attempt, not a standing condition,
-            // so it is here rather than in `checkpoint`; it was a silent
-            // stop for both, and Sprint or Spin Doctor on an empty R&D
-            // drew nothing and played on.
-            let mut events = Vec::new();
-            for _ in 0..*amount {
-                let drawn = match side {
-                    Side::Corp => state.corp.r_and_d.pop(),
-                    Side::Runner => state.runner.stack.pop(),
-                };
-                match drawn {
-                    Some(card) => {
-                        match side {
-                            Side::Corp => state.corp.hq.push(card),
-                            Side::Runner => state.runner.grip.push(card),
-                        }
-                        events.push(GameEvent::CardDrawn { side: *side });
-                    }
-                    None => {
-                        if *side == Side::Corp {
-                            events.extend(crate::rules::win::end_game(state, Side::Runner));
-                        }
-                        break;
-                    }
-                }
+            // The Runner's draw is about to happen first, so that what
+            // hears it (The Class Act) resolves before the cards move
+            // (`WouldHappen::Draw`); the Corp's is a moment of nothing.
+            match side {
+                Side::Runner => runner_would_draw(state, registry, *amount, ctx),
+                Side::Corp => Ok(draw(state, Side::Corp, *amount)),
             }
-            Ok(events)
         }
 
         Effect::EndTheRun => {
@@ -594,10 +616,11 @@ pub fn evaluate_effect(
                 Side::Corp => state.corp.hq.clone(),
                 Side::Runner => state.runner.grip.clone(),
             };
+            let by = controller(ctx, state, registry);
             let mut events = Vec::new();
             for card in hand {
                 state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
-                events.push(GameEvent::CardRevealed { side: *side, card });
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: *side, card, by })?;
             }
             Ok(events)
         }
@@ -942,10 +965,11 @@ pub fn evaluate_effect(
                 let index = (state.next_u64() % hand.len() as u64) as usize;
                 drawn.push(hand.remove(index));
             }
+            let by = controller(ctx, state, registry);
             let mut events = Vec::new();
             for card in &drawn {
                 state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
-                events.push(GameEvent::CardRevealed { side: *side, card: card.clone() });
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: *side, card: card.clone(), by })?;
             }
             if let Some(each) = each {
                 for card in &drawn {
@@ -2471,7 +2495,8 @@ pub fn evaluate_effect(
         }
 
         Effect::MoveRunToOutermost(server) => {
-            crate::rules::run::move_run_to_outermost(state, registry, *server)
+            let Some(server) = server.or_else(|| state.active_run.as_ref().map(|run| run.server)) else { return Ok(Vec::new()) };
+            crate::rules::run::move_run_to_outermost(state, registry, server)
         }
 
         Effect::SwapApproachedIceWithCard { origin, this_ice } => {
@@ -3770,7 +3795,7 @@ pub(crate) fn pay_cost_ctx(
                 Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone())),
                 Side::Runner => state.runner.heap.push(card.clone()),
             }
-            Ok(vec![GameEvent::CardRevealed { side, card: card.clone() }, GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None }])
+            Ok(vec![GameEvent::CardRevealed { side, card: card.clone(), by: side }, GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None }])
         }
 
         Cost::TrashRandomFromHq(count) => {
@@ -3820,7 +3845,7 @@ pub(crate) fn pay_cost_ctx(
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let position = acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             state.corp.installed[position].seen_by_runner = true;
-            Ok(vec![GameEvent::CardRevealed { side: Side::Corp, card: card_id }])
+            Ok(vec![GameEvent::CardRevealed { side: Side::Corp, card: card_id, by: Side::Corp }])
         }
 
         Cost::DerezSelf => {
@@ -4406,6 +4431,11 @@ pub fn check_requirement(
                 .iter()
                 .any(|card_id| registry.get(card_id).is_some_and(|card| card.cost % 2 == 1));
             if trashed_odd_cost { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::LastDamageTrashed(filter) => {
+            let filter = filter.clone().with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)));
+            let trashed = ctx.damage_discarded.iter().any(|card_id| registry.get(card_id).is_some_and(|card| crate::dsl::card_matches_filter(card, &filter)));
+            if trashed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::LastRunWasOnHqOrRnD => match state.last_completed_run.as_ref().map(|run| run.server) {
             Some(ServerId::Hq | ServerId::RnD) => Ok(()),
@@ -5047,6 +5077,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .acting_install
             .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))
             .map_or(0, |installed| installed.this_turn.count(state.turn, *trigger)),
+        Amount::AboutToResolve => match ctx.triggering_event {
+            Some(GameEvent::AboutToResolve { what }) => what.amount(),
+            _ => 0,
+        },
     }
 }
 
@@ -5119,6 +5153,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::RezzedDuringRunAgainstThisServer
         | EffectRequirement::RunAgainstThisServer
         | EffectRequirement::LastDamageTrashedOddCostCard
+        | EffectRequirement::LastDamageTrashed(_)
         | EffectRequirement::LastRunWasOnHqOrRnD
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
@@ -5255,7 +5290,9 @@ mod tests {
 
         assert_eq!(state.runner.grip, vec![CardId("only_card".to_string())]);
         assert!(state.runner.stack.is_empty());
-        assert_eq!(events, vec![GameEvent::CardDrawn { side: Side::Runner }]);
+        // Announced as the three it would be (The Class Act's "the
+        // number of cards you would draw"), drawn as the one there is.
+        assert_eq!(events, vec![GameEvent::AboutToResolve { what: WouldHappen::Draw { side: Side::Runner, amount: 3 } }, GameEvent::CardDrawn { side: Side::Runner }]);
     }
 
     /// CR 1.19.1: "Trashing is the act of moving an object to its owner's

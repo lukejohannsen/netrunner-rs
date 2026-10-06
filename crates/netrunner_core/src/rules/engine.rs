@@ -758,12 +758,20 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    let drawn = match side {
-        Side::Runner => next.runner.stack.pop().map(|card| next.runner.grip.push(card)),
-        Side::Corp => next.corp.r_and_d.pop().map(|card| next.corp.hq.push(card)),
-    };
-    if drawn.is_some() {
-        events.push(GameEvent::CardDrawn { side });
+    match side {
+        // Announced first, as every draw of the Runner's is (The Class
+        // Act's "you would draw"), and drawn once what heard it is done —
+        // here, or after a selection it parked (`prevention::settle`).
+        Side::Runner => {
+            let mut ctx = ability::ResolutionContext::for_card(None);
+            events.extend(ability::runner_would_draw(&mut next, registry, 1, &mut ctx)?);
+        }
+        Side::Corp => {
+            if let Some(card) = next.corp.r_and_d.pop() {
+                next.corp.hq.push(card);
+                events.push(GameEvent::CardDrawn { side });
+            }
+        }
     }
 
     let basic_draw_event = GameEvent::BasicDrawActionTaken { side };
@@ -3506,6 +3514,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Draw { side: Side::Runner, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Runner },
                 GameEvent::BasicDrawActionTaken { side: Side::Runner },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },

@@ -206,6 +206,16 @@ pub enum EffectRequirement {
     /// resolution that dealt no damage answers "not met" rather than
     /// inheriting an earlier action's discards.
     LastDamageTrashedOddCostCard,
+    /// The most recent `Effect::DealDamage` in this same resolution
+    /// discarded a card the filter admits — Saisentan's "whenever you
+    /// trash a card **of the chosen type** with net damage from a
+    /// subroutine on this ice, do 1 net damage" (`OfChosenCardType`, the
+    /// type the ice remembered as it was encountered). Read from
+    /// `ResolutionContext::damage_discarded`, as `LastDamageTrashedOdd
+    /// CostCard` is. Composition didn't work: that one asks one fixed
+    /// question of the discards, and this card's is a filter; Diviner's
+    /// stays, because no filter says "an odd printed cost".
+    LastDamageTrashed(crate::dsl::CardFilter),
     /// The most recently concluded run (`GameState::last_completed_run`)
     /// targeted HQ or R&D — e.g. Zahya Sadeghi's "when a run on HQ or R&D
     /// ends."

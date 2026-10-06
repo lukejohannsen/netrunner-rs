@@ -8082,3 +8082,101 @@ they were moved. **One new `Effect`** (`ForEach`). Downfall 54 of 65;
 - **DSL ratio** (`pool_status.py`): 13 of 103 `Effect` variants
   single-use, none unused, over 627 card files — `ForEach` is single-use,
   and `LaterThisTurn` has three cards where `WhenThisTurnEnds` had one.
+
+#### Stage 7 — hidden information and new zones (6 October 2026)
+
+`claude/serene-einstein-6bhlig`: Hyoubu Institute: Absolute Clarity,
+Khusyuk, The Class Act, Project Yagi-Uda, Letheia Nisei and Saisentan, and
+Hyoubu Institute's Sweep deck, Open Book. **No new `Effect`.** Downfall 60
+of 65; `DF_UNIMPLEMENTED` 11 → 5.
+
+- **The words.**
+  - **A reveal is a moment** (`Trigger::OnCardRevealed`, Hyoubu
+    Institute's "the first time each turn you reveal a card"), heard by
+    whoever revealed the card, which is not always its owner:
+    `GameEvent::CardRevealed` carries `by` (Engram Flush has the Corp
+    reveal the Runner's grip; the Runner reveals Snare! as it is accessed),
+    and a selection that reveals what it chose (`CardsSelected { revealed:
+    true }`) is its chooser revealing each card. Every site that records
+    one outside a cost dispatches it now (`dispatcher::emit`), as the audit
+    asked of each; a cost's are dispatched by its payer.
+  - **The Runner's draw is about to happen** (`WouldHappen::Draw`,
+    `Trigger::OnDrawAboutToResolve`): every draw of the Runner's, by a
+    card's text or the click, is announced and parked through
+    `rules::prevention` as damage is, so The Class Act's "the first time
+    each turn you would draw any number of cards, look at the top X cards
+    of your stack. Add 1 of those cards to the bottom" resolves, and parks
+    its selection, before the cards move. **The first thing parked there
+    that no card prevents**: nothing is ever asked, and the parking is the
+    point (CR 9.9.3). An empty stack announces nothing; the Corp's draws
+    are not announced, since no card hears them. X is `Amount::
+    AboutToResolve` plus 1, read into `CardFilter::TopOf` as the selection
+    is offered.
+  - **A swap out of HQ into a root** (Project Yagi-Uda's "swap 1 card from
+    HQ with 1 card in the root of or protecting the attacked server"):
+    Tatu-Bola's swap takes any Corp install now, and what may come in is
+    one question for the offer and the swap (`run::swappable_into`,
+    `CardFilter::SwappableIntoThis`, CR 8.8.2) — ice for ice; into a root an
+    upgrade, or an agenda or asset in a remote holding no other, never a
+    second region or past an upgrade's "only". A Trojan on ice swapped out
+    is trashed with it (8.8.4b); it had stayed on the handle.
+  - **A chosen number reaches what reads it** (`Amount::
+    with_chosen_number`, `CardFilter::with_chosen_number`): Khusyuk's
+    "the number of your installed cards with that printed install cost, up
+    to 6" is `Reduced` sums over `InZone { filter: PrintedCostExactly(
+    ChosenNumber) }`, which the substitution used to leave untouched below
+    the top of an amount.
+  - **`MoveRunToOutermost(None)`** is the attacked server (Letheia Nisei's
+    "this server"), and **`EffectRequirement::LastDamageTrashed(filter)`**
+    asks what the last damage in the resolution trashed (Saisentan's "a
+    card of the chosen type", the type Engram Flush's `Remember` keeps for
+    the encounter).
+- **A `then` that waited behind its own trigger.** A selection whose
+  resolution finds something parked for prevention queues its `then`
+  behind it — right for a trash the selection itself parked, wrong for the
+  draw The Class Act's selection is heard ahead of: the draw happened
+  first and the chosen card went to the bottom afterwards. Only what the
+  selection parked is waited behind now.
+- **Karunā jacks out.** Its "The Runner may jack out" was an "end the run"
+  the Runner chose, which since Stage 6 Lucky Charm could have been asked
+  to prevent; it is Lionsmane's paid jack-out now, as Letheia Nisei's and
+  Project Yagi-Uda's are.
+- **What composes.** Hyoubu's click is a choice between Bring Them Home's
+  `RevealAtRandom` and a one-card revealing selection off the top of the
+  stack; Khusyuk is Stargate's run and access replacement over Deep Dive's
+  set-aside and access, the X cards set aside one at a time (`Repeat`); The
+  Class Act's discard-phase draw asks Euler's `ActingCardMatches(
+  InstalledThisTurn)`; Project Yagi-Uda's counters are Off the Books'
+  dividends; Letheia is a psi game (`PsiGame`) behind `OncePerRun`;
+  Saisentan is Engram Flush's remembered card type.
+- **Fidelity limits:** six, under Known limits — Hyoubu's stack reveal is a
+  selection the Corp confirms; Khusyuk's cost is chosen from 1 to 10; The
+  Class Act's drawn cards are never set aside and hear only the Runner's
+  discard phase; Project Yagi-Uda's "past 3" is past the requirement, and
+  a swapped-in card is not heard as installed; Letheia's "first time" is
+  `OncePerRun`; Saisentan reads only damage dealt in the same resolution.
+- **Client.** The prevention prompt and the log have arms for a draw,
+  which nobody is asked about; `Amount::AboutToResolve` and the attacked
+  server's move have words. `CardRevealed::by` rides in the log only, and
+  `WouldHappen::Draw` in `ClientView::pending_prevention`, already drawn;
+  no ledger row.
+- **Decks.** Open Book is new: Hyoubu Institute with Saisentan, Letheia
+  Nisei and Project Yagi-Uda among Jinteki cards that reveal (Engram
+  Flush, Bring Them Home, Public Health Portal, Snare!), Eternal-legal.
+  Safety Net takes two Khusyuk for two Beatriz Friere Gonzalez, and
+  Moonlighting two The Class Act for two Verbal Plasticity; every card
+  given up is still in another deck.
+- **Measured.** `cargo test --workspace` is green and clippy is silent,
+  with the desktop crate run one test target at a time. Both sweeps are
+  green at 256 seeds, the card gate included. `coverage_identical.py`
+  against Stage 6 (a4a70a0; 192 games a report) is identical by view and
+  by index, and differs from Stage 6 in every shape, for two reasons
+  taken apart by a second run with Karunā's old file: **with it, random
+  differs only in `AboutToResolve` events (336 → 1525)**, the Runner's
+  draws now announced, every game otherwise the same; Karunā's jack-out
+  then re-rolls the random games that meet it (Runner agenda wins 113 →
+  112, Corp flatlines 74 → 75). The planner moves because `determinize`
+  samples the new cards (Corp agenda wins 66 → 61, flatlines 20 → 25).
+- **DSL ratio** (`pool_status.py`): 12 of 103 `Effect` variants
+  single-use, none unused, over 633 card files — no variant added, and
+  `MoveRunToOutermost` has its second card.
