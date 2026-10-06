@@ -8286,3 +8286,52 @@ built.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 638 card files — `ChooseCardName` is two
   cards', `StealAccessedCard` one's.
+
+### 8. The reprint packs and the Core Set's remainder — 159 cards (C 95 / V 45 / M 20)
+
+#### Stage 1a — System Update 2021's Runner cards, composed (6 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Mimic, Abagnale, Legwork, Dirty Laundry,
+Career Fair, Professional Contacts, Liberated Account, Earthrise Hotel,
+Scrubber and Xanadu. **No new `Effect`, and no change to the engine:**
+card files, decks and tests. System Update 2021 21 of 82;
+`SU21_UNIMPLEMENTED` 71 → 61. The tranche's first stage was split in two
+(1a, 1b) to keep a pull request near ten cards, the person's measure
+(6 October 2026: a whole set in one tranche "is too much").
+
+- **What each is made of.** Mimic is a killer with Corroder's break and no
+  pump. Abagnale is Cat's Cradle's two abilities and Laser Pointer's
+  `TrashSelf` bypass, asked as a paid ability under
+  `Encountering(CodeGate)` (Corsair's requirement), so it is offered on a
+  code gate alone. Legwork is The Maker's Eye on HQ. Dirty Laundry is
+  Kompromat's `SetRunEndedEffect` under `on_success`, so an unsuccessful
+  run pays nothing. Career Fair is Bahia Bands' discounted install from
+  the grip, its selection narrowed to resources. Professional Contacts is
+  a [click] ability with no limit. Liberated Account is Telework
+  Contract's counters with no once-per-turn, and Earthrise Hotel Dr. Nuka
+  Vrolyck's power counters spent as the turn begins, each trashed when
+  empty. Scrubber is Azimat's two recurring credits for trash costs on a
+  resource. Xanadu is Fransofia Ward's rez tax, word for word.
+- **Fidelity limits:** none found.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row.
+- **Decks.** Pay As You Go takes two Mimic for two Chain Reaction, two
+  Liberated Account for its Nga, two Scrubber for its Num and two Xanadu
+  for two of its three The Toolbox; Encore two Legwork for its Tread
+  Lightly, two Dirty Laundry for its Docklands Pass and two Abagnale for
+  its Buzzsaw, decoder for decoder, then two Career Fair for its Red Team
+  and two Earthrise Hotel for its Mutual Favor; Safety Net two
+  Professional Contacts for its Gauss. Every card given up is still in
+  another deck, and every deck keeps the formats it was pinned to:
+  Moonlighting, Standard-legal, was the first home for Career Fair and
+  Earthrise Hotel, and the format pin refused it, since no reprint pack
+  is in Standard.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 648 card files, as over 638 at Downfall's
+  close.
+- **Measured.** `cargo test --workspace` green and clippy silent, the
+  desktop crate excluded (the cloud container has no Wayland to build it
+  against, and this stage touches no client code). Both sweeps are green
+  at 256 seeds, the card gate included, so every new card is seen in play.
+  The random `--all-matchups` report cannot move: Sweep decks are not in
+  `matchups()`.

@@ -1,0 +1,15 @@
+{
+  "id": "scrubber",
+  "title": "Scrubber",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "TrashCosts"
+  ],
+  "built_from": 31011,
+  "is_playable": true
+}

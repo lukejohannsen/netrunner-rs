@@ -1,0 +1,24 @@
+{
+  "id": "xanadu",
+  "title": "Xanadu",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "text": "The rez cost of each piece of ice is increased by 1[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 31012,
+  "is_playable": true
+}
