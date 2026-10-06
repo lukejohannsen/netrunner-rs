@@ -1,0 +1,19 @@
+{
+  "id": "prepaid_voicepad",
+  "title": "Prepaid VoicePAD",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    {
+      "Playing": {
+        "CardType": "Event"
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 31038,
+  "is_playable": true
+}

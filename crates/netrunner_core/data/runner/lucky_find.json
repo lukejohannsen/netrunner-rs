@@ -1,0 +1,26 @@
+{
+  "id": "lucky_find",
+  "title": "Lucky Find",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            9
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 29007,
+  "is_playable": true
+}

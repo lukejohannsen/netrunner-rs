@@ -1,0 +1,51 @@
+{
+  "id": "indexing",
+  "title": "Indexing",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "RnD",
+            "optional": true,
+            "effect": {
+              "Sequence": [
+                {
+                  "LookAtTopOfDeck": {
+                    "deck": "Corp",
+                    "count": 5
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentDeck",
+                    "filter": {
+                      "TopOfZone": 5
+                    },
+                    "min": 0,
+                    "max": 5,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OpponentDeck"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, instead of breaching R&D, you may look at the top 5 cards of R&D and arrange them in any order."
+    }
+  ],
+  "built_from": 29005,
+  "is_playable": true
+}
