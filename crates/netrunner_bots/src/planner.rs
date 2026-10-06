@@ -980,23 +980,8 @@ fn one_ply(
         if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
             continue;
         }
-        let Ok((mut next, _events)) = apply_action(sample, registry, action.clone()) else { continue };
-        // A toggle marks a position and moves no card, so every candidate
-        // of a selection scored where it stands alike and the jitter
-        // chose: Ryō "Phoenix" Ōno's "the Corp trashes 1 card from HQ",
-        // answered in the Runner's turn, sent an agenda to Archives 5 of
-        // 17 times HQ held something else (Phase 5 §40). Scored where the
-        // selection would leave the board once confirmed — exact for one
-        // card, and greedy for "up to" or "any number", whose Confirm is
-        // already a candidate to beat. A selection that cannot be
-        // confirmed yet (two or more cards still owed) is scored as
-        // before; the beam's own lines are not this function's.
-        if matches!(action, PlayerAction::ToggleCardSelection { .. })
-            && let Ok((confirmed, _)) = apply_action(&next, registry, PlayerAction::ConfirmCardSelection)
-        {
-            next = confirmed;
-        }
-        let score = evaluate_state_with(&next, side, registry, weights) + rng.random::<f64>() * TIE_BREAK_JITTER;
+        let Some(score) = one_ply_score(sample, action, registry, side, weights, OWN_DECISIONS_LOOKED_THROUGH) else { continue };
+        let score = score + rng.random::<f64>() * TIE_BREAK_JITTER;
         if best.is_none_or(|(best_score, _)| score > best_score) {
             best = Some((score, index));
         }
@@ -1013,6 +998,60 @@ fn one_ply(
         |(_, index)| view.legal_actions[index].clone(),
     )
 }
+
+/// `action` applied to `state` and scored for `side` as one ply scores it
+/// (`one_ply`), or `None` when the sample refuses it.
+///
+/// A toggle marks a position and moves no card, so every candidate of a
+/// selection scored where it stands alike and the jitter chose: Ryō
+/// "Phoenix" Ōno's "the Corp trashes 1 card from HQ", answered in the
+/// Runner's turn, sent an agenda to Archives 5 of 17 times HQ held
+/// something else (Phase 5 §40). Scored where the selection would leave
+/// the board once confirmed — exact for one card, and greedy for "up to"
+/// or "any number", whose Confirm is already a candidate to beat. A
+/// selection that cannot be confirmed yet (two or more cards still owed)
+/// is scored as before; the beam's own lines are not this function's.
+///
+/// **An action that parks a decision on the seat itself is scored by the
+/// seat's best answer to it** (Phase 5 §44), `depth` decisions deep. The
+/// evaluator charges a parked decision of a side's own
+/// `unresolved_decision_weight` (2.0) and credits only a lower bound of
+/// what resolving it delivers, which is what stops a selection walking —
+/// but the seat is the one who answers, and before the answer nothing
+/// after the decision has resolved either. Passing into Brân 1.0's "you
+/// may install 1 piece of ice" scored −2.0 with its two "end the run"
+/// still waiting behind it, the price of a Mercia B4LL4RD, and LEO
+/// Construction trashed one to end a run the ice was about to end: 5 of
+/// its 17 uses in 96 games were ties like it, a Corp choosing which of
+/// the Runner's programs a subroutine trashes among them. A toggle that
+/// leaves its selection open is not looked through: that is the walk the
+/// charge exists to stop, and every order of its cards would be priced.
+fn one_ply_score(state: &GameState, action: &PlayerAction, registry: &CardRegistry, side: Side, weights: &Weights, depth: u8) -> Option<f64> {
+    let (mut next, _events) = apply_action(state, registry, action.clone()).ok()?;
+    let mut open = false;
+    if matches!(action, PlayerAction::ToggleCardSelection { .. }) {
+        match apply_action(&next, registry, PlayerAction::ConfirmCardSelection) {
+            Ok((confirmed, _)) => next = confirmed,
+            Err(_) => open = true,
+        }
+    }
+    if !open && depth > 0 && next.is_resolution_blocked() && current_actor(&next) == Some(side) {
+        let answered = netrunner_core::rules::legal_actions_for(&next, registry, side)
+            .iter()
+            .filter(|answer| !is_regressive(answer, next.pending_decision.as_ref()))
+            .filter_map(|answer| one_ply_score(&next, answer, registry, side, weights, depth - 1))
+            .max_by(f64::total_cmp);
+        if answered.is_some() {
+            return answered;
+        }
+    }
+    Some(evaluate_state_with(&next, side, registry, weights))
+}
+
+/// How many of the seat's own decisions, parked one behind another, one
+/// ply answers before it scores (`one_ply_score`): a "may" whose yes is a
+/// selection is two, and a third is scored where it stands.
+const OWN_DECISIONS_LOOKED_THROUGH: u8 = 2;
 
 /// One credit's worth of score, and the edge, for each unspent click —
 /// the least a click buys, and the preference for keeping it. What the
@@ -1181,6 +1220,63 @@ mod tests {
             }
             assert!(state.pending_decision.is_none(), "seed {seed}: the selection is made");
             assert!(state.corp.hq.iter().any(|card| card.0 == "offworld_office"), "seed {seed}: the agenda is kept: {:?}", state.corp.archives);
+        }
+    }
+
+    /// One ply answers a decision its own pass parks before it scores the
+    /// pass (§44): at Brân 1.0 the Runner cannot break, LEO Construction's
+    /// trash of Mercia B4LL4RD ends the run, and so does letting Brân's
+    /// subroutines fire — whose first, "you may install 1 piece of ice",
+    /// parks a choice on the Corp ahead of its two "end the run". Charged
+    /// `unresolved_decision_weight` there, the pass cost what Mercia does
+    /// and the jitter chose; answered, the pass keeps her on every seed.
+    #[test]
+    fn one_ply_lets_the_ice_end_the_run_rather_than_pay_to_end_it() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let card = |id: &str| CardId(id.to_string());
+        for seed in 0..16 {
+            let mut state = GameState::new(seed);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.turn = 6;
+            state.next_install_id = 20;
+            state.corp.identity = Some(card("leo_construction_labor_solutions"));
+            state.corp.hq = vec![card("hedge_fund"); 3];
+            state.corp.r_and_d = vec![card("hedge_fund"); 10];
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+            state.corp.installed = vec![
+                InstalledCard { card: card("bran_1_0"), install_id: InstallId(10), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+                InstalledCard { card: card("mercia_b4ll4rd"), install_id: InstallId(11), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            ];
+            state.runner = empty_runner();
+            state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.runner.stack = vec![card("sure_gamble"); 10];
+            state = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("the run starts").0;
+            let mut rng = StdRng::seed_from_u64(seed);
+            for _ in 0..30 {
+                if state.active_run.is_none() {
+                    break;
+                }
+                let Some(actor) = current_actor(&state) else { break };
+                let view = build_client_view(&state, &registry, actor);
+                let action = match actor {
+                    // The Runner breaks nothing and goes on.
+                    Side::Runner => view
+                        .legal_actions
+                        .iter()
+                        .find(|a| matches!(a, PlayerAction::PassPriority { .. }))
+                        .or_else(|| view.legal_actions.iter().find(|a| !matches!(a, PlayerAction::JackOut | PlayerAction::BreakSubroutineWithClick { .. })))
+                        .expect("the Runner can go on")
+                        .clone(),
+                    Side::Corp => {
+                        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+                        one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng)
+                    }
+                };
+                state = apply_action(&state, &registry, action).expect("the action applies").0;
+            }
+            assert!(state.active_run.is_none(), "seed {seed}: the run ended");
+            assert!(state.corp.installed.iter().any(|c| c.card.0 == "mercia_b4ll4rd"), "seed {seed}: Mercia is kept: {:?}", state.corp.archives);
         }
     }
 

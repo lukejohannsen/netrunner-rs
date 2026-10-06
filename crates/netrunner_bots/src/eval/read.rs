@@ -900,6 +900,46 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
     f64::from(turn + run + click + cashout)
 }
 
+/// What a Corp card's turn trigger saves in installs from HQ over
+/// `horizon` more of the Corp's turns, in credits: each turn one card the
+/// trigger may choose is installed without the click it would cost (a
+/// click a credit, the guide's rate) and at `discount` credits less, for
+/// as many turns as HQ holds such a card now — Mercia B4LL4RD's "when your
+/// action phase ends, you may install 1 piece of ice from HQ, paying 1[c]
+/// less", Warm Reception's "when your turn begins, you may install 1 card
+/// from HQ" (Phase 5 §43). Read off the trigger — a `PromptChooseCards`
+/// from HQ whose `then` installs from HQ, on a turn's beginning or the end
+/// of its action phase — so it names no card. Zero for a card with none.
+///
+/// **Why.** `declared_income` reads what a card pays, and an install is
+/// not a payment, so Mercia was worth what any rezzed upgrade is (2.0 at
+/// the planner's weights), and LEO Construction's end-the-run, which
+/// trashes a rezzed bioroid, traded her for runs that threatened about
+/// that much — while she installs a piece of ice a turn out of an Agency
+/// deck that holds sixteen of them in forty-nine cards.
+pub(super) fn turn_installs(state: &GameState, def: &CardDefinition, registry: &CardRegistry, horizon: u32) -> f64 {
+    let mut per_turn = 0;
+    for trigger in def.triggers.iter().filter(|trigger| matches!(trigger.trigger, Trigger::OnTurnStart | Trigger::OnActionPhaseEnd)) {
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut |effect| {
+                if let Effect::PromptChooseCards { source: CardZoneRef::OwnHq, filter, then: Some(then), .. } = effect {
+                    let mut discount = None;
+                    then.for_each_effect(&mut |effect| {
+                        if let Effect::PromptInstallCorpCard { origin_zone: CardZoneRef::OwnHq, discount: d, .. } = effect {
+                            discount = Some(*d);
+                        }
+                    });
+                    if let Some(discount) = discount {
+                        let held = state.corp.hq.iter().filter_map(|card| registry.get(card)).filter(|card| card_matches_filter(card, filter)).count() as u32;
+                        per_turn += (1 + discount) * horizon.min(held);
+                    }
+                }
+            });
+        }
+    }
+    f64::from(per_turn)
+}
+
 /// The Corp's rez reserve: the printed cost of the dearest unrezzed piece
 /// of ICE it has installed, on any server — the one rez that stops a run
 /// (the strategy guide: "they can afford the expensive run, or the rez
@@ -1176,28 +1216,28 @@ pub(super) fn ice_out_of_order(state: &GameState, registry: &CardRegistry) -> us
         .sum()
 }
 
-/// Whether the Runner has beaten the wall in front of `fort`: there is a
-/// wall — at least `depth` pieces, the fort's own cap — their rig covers
-/// the subtype of every piece on it, face down or not, and their credits
-/// cover what breaking in would cost with the Corp's affordable rezzes
-/// made (`taxing_cost`). "Once the Runner has spent everything building
-/// a rig that beats the wall, score the last points from hand, where that
-/// rig is no use." A remote with no ICE is not a wall anyone beat: read
-/// without the depth, every fresh remote was "beaten" the turn it was
-/// made and the fort terms fell away before there was a fort. See
-/// `Weights::fort_until_beaten`.
-pub(super) fn fort_beaten(state: &GameState, fort: netrunner_core::rules::ServerId, depth: usize, registry: &CardRegistry) -> bool {
-    use netrunner_core::rules::InstallSlot;
-    let rig = rig_coverage(state, registry);
-    let wall: Vec<&InstalledCard> = state.corp.installed.iter().filter(|card| card.server == fort && card.slot == InstallSlot::Ice).collect();
-    if wall.len() < depth.max(1) {
-        return false;
-    }
-    let covered = wall.iter().all(|card| match registry.get(&card.card).map(|def| &def.card_type) {
-        Some(CardType::Ice(subtype)) => subtype_slot(*subtype).map_or(rig.iter().all(|c| *c), |slot| rig[slot]),
-        _ => true,
-    });
-    covered && taxing_cost(state, fort, registry).is_some_and(|cost| cost <= state.runner.resources.credits.0)
+/// Whether the Runner has beaten the wall: their rig breaks every
+/// subtype of ICE, and their credits cover what breaking into `fort` would
+/// cost with the Corp's affordable rezzes made (`taxing_cost`; nothing
+/// with no fort). "Once the Runner has spent everything building a rig
+/// that beats the wall, score the last points from hand, where that rig
+/// is no use." See `Weights::fort_until_beaten`.
+///
+/// **Read off the Runner's side, so the Corp cannot unbeat it** (§45).
+/// It was the rig covering the pieces the fort has, once there were at
+/// least the fort's depth of them — and so a count the Corp moves itself:
+/// one piece too few was no wall anyone beat, and the whole of the fort
+/// terms came back. LEO Construction's trash of its own Bumi 1.0 at a
+/// run's initiation scored +13.0 for that (10.0 of it the central ICE),
+/// and adding the piece that made the depth read as losing it. Every
+/// subtype is what a Corp could still put in front of the rig; the
+/// credits are the one part the wall moves, and that part only one way —
+/// another piece costs more to break. The depth rule was there because a
+/// remote with no ICE had been "covered" (nothing to cover) the turn it
+/// was made, which a rig that breaks every subtype is not.
+pub(super) fn fort_beaten(state: &GameState, fort: Option<netrunner_core::rules::ServerId>, registry: &CardRegistry) -> bool {
+    rig_coverage(state, registry).iter().all(|covered| *covered)
+        && fort.map_or(Some(0), |fort| taxing_cost(state, fort, registry)).is_some_and(|cost| cost <= state.runner.resources.credits.0)
 }
 
 // ---------------------------------------------------------------------
@@ -1659,6 +1699,25 @@ mod tests {
         let wall = income("palisade");
         assert_eq!(wall, Income::default(), "ICE declares no economy");
         assert_eq!(income("offworld_office").turn_credits, 0, "an agenda's text is read once it is scored, not here");
+    }
+
+    /// A turn trigger that installs from HQ saves a click and its
+    /// discount a turn, for as many turns as HQ holds a card it may
+    /// choose (§43): Mercia B4LL4RD's piece of ice at 1[c] less, Warm
+    /// Reception's card at no discount. A card with no such trigger
+    /// saves nothing.
+    #[test]
+    fn a_turn_trigger_that_installs_from_hq_saves_a_click_and_its_discount() {
+        let pool = pool();
+        let mut state = GameState::new(0);
+        state.corp.hq = ["bran_1_0", "semak_samun", "syailendra", "hedge_fund", "otto_campaign"].map(|id| CardId(id.to_string())).to_vec();
+        let installs = |id: &str, horizon: u32| turn_installs(&state, &printed(&pool, id), &pool, horizon);
+        assert_eq!(installs("mercia_b4ll4rd", 9), 6.0, "three pieces of ice in HQ, a click and a credit each");
+        assert_eq!(installs("mercia_b4ll4rd", 2), 4.0, "two turns left");
+        assert_eq!(installs("warm_reception", 9), 4.0, "three pieces of ice and a campaign, a click each");
+        assert_eq!(installs("pad_campaign", 9), 0.0);
+        state.corp.hq.clear();
+        assert_eq!(turn_installs(&state, &printed(&pool, "mercia_b4ll4rd"), &pool, 9), 0.0, "nothing in HQ to install");
     }
 
     /// What an active card will still pay: a turn's income over the

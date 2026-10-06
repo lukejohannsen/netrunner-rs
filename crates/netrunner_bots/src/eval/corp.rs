@@ -48,6 +48,7 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
         && let Some(def) = def
     {
         value += future_credits(&declared_income(def), Some(installed.counters), horizon) * w.future_credit_weight;
+        value += turn_installs(state, def, registry, horizon) * w.future_credit_weight;
     }
     // What the rig cannot break is what holds — and only once it is face
     // up, which is the whole point: a term paid on the face-down card too
@@ -112,6 +113,135 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
         }
     }
     value
+}
+
+/// What the run in progress costs the Corp in `score`: the flat term,
+/// what both identities print about its success, and — where the plans
+/// price them — the stakes less the tax the Runner still pays to break
+/// in. The run is the one `run_is_breakable` admits; `score` charges
+/// each part where it always has, and this is their sum, for the one
+/// reading that needs the whole (`answered_by_a_held_end_the_run`).
+fn charged_run_threat(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights) -> f64 {
+    let pays = identities::run_success(state, registry, run);
+    let mut threat = w.active_run_against_weight + f64::from(pays.runner_credits + pays.runner_cards) * w.opponent_credit_weight
+        - f64::from(pays.corp_credits) * w.own_credit_weight
+        - f64::from(pays.corp_cards) * w.click_weight;
+    if w.run_stakes_weight != 0.0 {
+        threat += run_stakes(state, run, registry) * w.run_stakes_weight
+            - f64::from(remaining_break_cost(state, run, registry).unwrap_or(0)) * w.opponent_credit_weight;
+    }
+    threat
+}
+
+/// The part of what `run` costs the Corp in `score` that a paid
+/// end-the-run it holds already answers — LEO Construction's "trash 1
+/// rezzed bioroid card in the root of or protecting the attacked server:
+/// end the run", Event Horizon's and M.I.C.'s "[trash]: end the run"
+/// (Phase 5 §43). Zero when no such ability is usable. Otherwise, up to and
+/// including the run's last window (CR 6.9.4e), whatever the run costs
+/// beyond the cheapest ability's price less `HELD_END_THE_RUN_EDGE`; and
+/// once the run is past that window, the flat term, so the run costs what
+/// its breach reaches and no more.
+///
+/// **Why.** A run ended by paying for it gave back the whole run term
+/// whatever the run would have reached, so the one-ply chooser paid the
+/// moment it could: LEO Construction ended 20 of 28 runs at their
+/// initiation, before the Runner had approached any ICE that might have
+/// stopped them, half the time for less than a point of score and half
+/// the time paying with Mercia B4LL4RD (Agency against Stolen Goods and
+/// Tickets Please, seed 2, 48 planner games each). The ability is as
+/// good at the last window, which always opens, so before it the run
+/// costs the Corp no more than the price, and paying is worse than
+/// waiting by the edge. At the last
+/// window the choice is the price against the run going on, and a run
+/// past it is one the Corp chose to let through: what it costs then is
+/// what the breach takes — the stakes, what the identities print about
+/// it — and not `active_run_against_weight`, which prices a run that may
+/// yet be stopped and with it in the comparison the Corp paid 2.0 of
+/// Mercia for an R&D access worth 0.7 (26 of 39 uses at the last window,
+/// most of them on R&D and HQ, before this). So the Corp pays exactly when
+/// the breach would take more than the card. Read off the abilities the
+/// engine says are usable now (`ability_is_usable`), which is what they
+/// will be at the last window unless the board changes on the way in.
+pub(super) fn answered_by_a_held_end_the_run(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
+    let Some(price) = held_end_the_run_price(state, registry, w, rig, horizon) else { return 0.0 };
+    if before_the_breach(run) {
+        (charged_run_threat(state, run, registry, w) - (price - HELD_END_THE_RUN_EDGE)).max(0.0)
+    } else {
+        w.active_run_against_weight
+    }
+}
+
+/// Whether `run` has not yet gone past its last paid-ability window: every
+/// phase up to the movement phase, whose last window (CR 6.9.4e) is the
+/// one after the Runner goes on from the innermost position. The success
+/// and the breach have none (`paid_ability`'s
+/// `open_window_if_at_checkpoint`), so nothing ends the run there.
+fn before_the_breach(run: &RunState) -> bool {
+    match run.phase {
+        RunPhase::Initiation | RunPhase::ApproachIce | RunPhase::EncounterIce | RunPhase::Movement => true,
+        RunPhase::AccessingCard | RunPhase::Success | RunPhase::Ended => false,
+    }
+}
+
+/// The least the Corp would give up to end a run by a paid ability it can
+/// use now — its identity's, a rezzed install's or a scored agenda's, an
+/// ability that is not an action, an access ability or an interrupt —
+/// priced by `end_the_run_cost`. `None` when no such ability is usable, or
+/// none has a cost this evaluator can price.
+fn held_end_the_run_price(state: &GameState, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> Option<f64> {
+    use netrunner_core::rules::{ability_is_usable, InstallId};
+    let identity = state.corp.identity.iter().map(|card| (InstallId::CORP_IDENTITY, card));
+    let installed = state.corp.installed.iter().filter(|card| card.rezzed).map(|card| (card.install_id, &card.card));
+    let scored = state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| (scored.install_id, &scored.card));
+    identity
+        .chain(installed)
+        .chain(scored)
+        .filter_map(|(install, card)| registry.get(card).map(|def| (install, card, def)))
+        .flat_map(|(install, card, def)| def.abilities.iter().enumerate().map(move |(index, ability)| (install, card, index, ability)))
+        .filter(|(_, _, _, ability)| {
+            ability.trigger == Trigger::Paid && !ability.is_action() && !ability.access && ability.effect.prevents().is_none() && ability.effect.can_end_the_run()
+        })
+        .filter(|(install, card, index, _)| ability_is_usable(state, registry, Side::Corp, *install, card, *index))
+        .filter_map(|(install, card, _, ability)| end_the_run_cost(state, registry, w, rig, horizon, install, card, ability.cost.as_ref()))
+        .min_by(f64::total_cmp)
+}
+
+/// What paying `cost` takes from the Corp, in the evaluator's own terms:
+/// credits at `own_credit_weight`, and a card it trashes at what the card
+/// is worth installed (`corp_install_value`) — the source itself for
+/// "[trash]:", the cheapest of the cards the engine would let it choose
+/// for "trash 1 rezzed bioroid" (`eligible_positions`, the selection's own
+/// question). `None` for a cost no reading prices, which then answers
+/// nothing of the run.
+#[allow(clippy::too_many_arguments)]
+fn end_the_run_cost(
+    state: &GameState,
+    registry: &CardRegistry,
+    w: &Weights,
+    rig: [bool; 3],
+    horizon: u32,
+    install: netrunner_core::rules::InstallId,
+    card: &netrunner_core::dsl::CardId,
+    cost: Option<&Cost>,
+) -> Option<f64> {
+    let value = |installed: &InstalledCard| corp_install_value(state, installed, registry, w, rig, horizon);
+    match cost {
+        None => Some(0.0),
+        Some(Cost::Credits(n)) => Some(f64::from(*n) * w.own_credit_weight),
+        Some(Cost::TrashSelf) => state.find_corp_install(install).map(value),
+        Some(Cost::Trash { from: from @ CardZoneRef::OwnInstalled, filter, count, .. }) => {
+            let mut values: Vec<f64> = netrunner_core::rules::eligible_positions(state, registry, Side::Corp, from, filter, Some(install), Some(card))
+                .into_iter()
+                .filter_map(|position| state.corp.installed.get(position))
+                .map(value)
+                .collect();
+            values.sort_by(f64::total_cmp);
+            (values.len() >= *count as usize).then(|| values.iter().take(*count as usize).sum())
+        }
+        Some(Cost::AllOf(parts)) => parts.iter().map(|part| end_the_run_cost(state, registry, w, rig, horizon, install, card, Some(part))).sum(),
+        Some(_) => None,
+    }
 }
 
 /// Agenda counters sitting on the Corp's scored agendas — Dividends,
@@ -260,7 +390,8 @@ pub(super) fn installed_agendas(state: &GameState, registry: &CardRegistry) -> u
 ///   Archives is worth one piece — what is in it is mostly faceup and
 ///   already the Runner's to see.
 /// - **The scoring remote**, `fort_weight` a piece up to `fort_cap` on the
-///   deepest remote whose root is empty or holds an agenda. It is priced
+///   deepest remote whose root is empty or holds an agenda (and any
+///   upgrades: `fort_remote`). It is priced
 ///   before the agenda exists, which is what `protected_agenda_ice`
 ///   cannot do, and it stays priced once the agenda goes in and after it
 ///   is scored, so the same remote is used again. ICE in front of an
@@ -277,7 +408,6 @@ pub(super) fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights
     let ice_on = |server: ServerId| {
         state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
     };
-    let is_agenda = |card: &InstalledCard| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda);
 
     let centrals = ice_on(ServerId::Hq).min(w.central_ice_cap)
         + ice_on(ServerId::RnD).min(w.central_ice_cap)
@@ -285,20 +415,37 @@ pub(super) fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights
 
     let fort = fort_remote(state, registry, w).map_or(0, |server| ice_on(server).min(w.fort_cap));
 
-    let exposure: usize = state
-        .corp
-        .installed
-        .iter()
-        .filter(|card| card.slot == InstallSlot::Root && is_agenda(card))
-        .map(|agenda| w.fort_cap.saturating_sub(ice_on(agenda.server)))
-        .sum();
+    let exposure = exposure(state, registry, w);
 
     centrals as f64 * w.central_ice_weight + fort as f64 * w.fort_weight - exposure as f64 * w.exposed_agenda_weight
 }
 
+/// The pieces of ICE short of `fort_cap` in front of each installed
+/// agenda, summed: `fort_value`'s exposure, and all of it that stays once
+/// the Runner has beaten the wall (`score`, §45).
+pub(super) fn exposure(state: &GameState, registry: &CardRegistry, w: &Weights) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    let ice_on = |server: netrunner_core::rules::ServerId| {
+        state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
+    };
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root && registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
+        .map(|agenda| w.fort_cap.saturating_sub(ice_on(agenda.server)))
+        .sum()
+}
+
 /// The scoring remote `fort_value` prices: the deepest remote whose root
 /// is empty or holds only what the fort is for. `None` with no remote
-/// at all. A trap the Runner has not seen is an agenda as far as the
+/// at all. **An upgrade is what a fort's root holds beside its agenda**
+/// (§45): it protects the server and takes no agenda's place, so a root
+/// holding Mercia B4LL4RD and Project Ingatan is the fort. Read as "not
+/// only what the fort is for", it was no fort, and LEO Construction's
+/// trash of the Mercia read as building one (+3.0, two pieces at
+/// `fort_weight`): 8 of LEO's 15 uses in 96 Agency games were a Mercia
+/// out of the root of the agenda's own remote. A trap the Runner has not seen is an agenda as far as the
 /// fort is concerned — that is the bluff, and the Corp is the one player
 /// who knows the difference; a trap already sprung is not: the remote is
 /// spent, and going on icing it protects nothing. **Under the traps plan
@@ -316,6 +463,7 @@ pub(super) fn fort_remote(state: &GameState, registry: &CardRegistry, w: &Weight
     let is_agenda = |card: &InstalledCard| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda);
     let is_fort_root = |card: &InstalledCard| {
         is_agenda(card)
+            || registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Upgrade)
             || (!card.seen_by_runner && registry.get(&card.card).is_some_and(is_lure_trap))
             || (w.bluff_weight != 0.0 && !card.rezzed && !card.seen_by_runner)
     };
@@ -438,9 +586,24 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // "Glacier, then fast advance": the fort terms fall away once the
     // Runner's rig beats the wall (`fort_until_beaten`, Stage 6), so the
     // last points are scored from hand where that rig is no use.
-    let fort_holds = !w.fort_until_beaten || !fort_remote(state, registry, w).is_some_and(|fort| fort_beaten(state, fort, w.fort_cap, registry));
-    if (w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0) && fort_holds {
-        *score += fort_value(state, registry, w);
+    //
+    // Read between runs (§43, `between_runs`).
+    let between = std::cell::OnceCell::new();
+    let board = || between.get_or_init(|| between_runs(state));
+    //
+    // **What falls away is the fort's worth, not an agenda's exposure**
+    // (§45): an agenda short of the wall is no safer for the Runner having
+    // beaten it. With the whole of `fort_value` switched off, a fort whose
+    // terms were net negative — an exposed agenda outweighing the ICE —
+    // read beating it as a gain, and the Corp's trash of its own Brân 1.0
+    // once scored +3.5.
+    let fort_holds = !w.fort_until_beaten || !fort_beaten(board(), fort_remote(board(), registry, w), registry);
+    if w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0 {
+        if fort_holds {
+            *score += fort_value(state, registry, w);
+        } else {
+            *score -= exposure(state, registry, w) as f64 * w.exposed_agenda_weight;
+        }
     }
     if w.held_trap_weight != 0.0 {
         *score += held_traps(state, registry) as f64 * w.held_trap_weight;
@@ -476,7 +639,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score -= unaffordable_ice(state, registry) as f64 * w.unaffordable_ice_weight;
     }
     if w.taxing_window_weight != 0.0 {
-        *score += agendas_under_the_window(state, registry) as f64 * w.taxing_window_weight;
+        *score += agendas_under_the_window(board(), registry) as f64 * w.taxing_window_weight;
     }
     // The plans' terms (Stage 6), after the guide's rate.
     if w.run_stakes_weight != 0.0
@@ -485,6 +648,15 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     {
         *score -= run_stakes(state, run, registry) * w.run_stakes_weight;
         *score += f64::from(remaining_break_cost(state, run, registry).unwrap_or(0)) * w.opponent_credit_weight;
+    }
+    // What a paid end-the-run held for a later window already answers of
+    // the run (§43), given back after the run's terms above rather than
+    // folded into them, so a board with no such ability scores to the bit
+    // what it did.
+    if let Some(run) = &state.active_run
+        && run_is_breakable(state, run, registry)
+    {
+        *score += answered_by_a_held_end_the_run(state, run, registry, w, rig, horizon);
     }
     if w.rez_held_weight != 0.0 {
         *score += held_rezzes(state, registry) as f64 * w.rez_held_weight;
@@ -505,6 +677,30 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     if w.bluff_weight != 0.0 && bluffed_root(state, registry, w) {
         *score += w.bluff_weight;
     }
+}
+
+/// `state` as it stands between runs: the run taken off the board, and
+/// with it what the run lends the rig — a breaker pumped for the
+/// encounter, whose lingering effect no longer holds once there is no
+/// run (`LingeringEffect::holds` asks the state), and the credits a run
+/// event brought, which live on the run (Phase 5 §43). What the two
+/// standing readings of the Runner's reach ask — whether the rig beats
+/// the fort (`fort_beaten`), whether it can afford a server with an
+/// agenda in it (`agendas_under_the_window`) — is asked of this board,
+/// because they are about the Runner's next run and not the one under
+/// way.
+///
+/// **Why.** Read during a run, both said yes for exactly as long as the
+/// run went on, so ending it read as rebuilding the fort: at one of LEO
+/// Construction's offers, in an Overclock run with Carmen pumped +3
+/// against Ansel 1.0, the fort terms were off (13.0 of score) until the
+/// run ended, and the Corp traded Ansel for the run with nothing on the
+/// server worth that.
+fn between_runs(state: &GameState) -> std::borrow::Cow<'_, GameState> {
+    if state.active_run.is_none() {
+        return std::borrow::Cow::Borrowed(state);
+    }
+    std::borrow::Cow::Owned(GameState { active_run: None, ..state.clone() })
 }
 
 /// Installed, unscored agendas in a server the Runner cannot afford to
@@ -1414,6 +1610,55 @@ mod tests {
 
     // ----- The Corp's plans (Stage 6) -----
 
+    /// LEO Construction's end-the-run held (§43): up to the run's last
+    /// window it caps what the run costs the Corp at the price of ending
+    /// it, less the edge, so paying is worse than waiting; a run let past
+    /// that window costs what its breach reaches, so at the last window
+    /// the Corp pays for a run on its agenda and not for one on an empty
+    /// remote.
+    #[test]
+    fn a_held_end_the_run_answers_the_run_until_its_breach() {
+        use netrunner_core::rules::{InstallSlot, RunPhase, ServerId};
+        let pool = pool();
+        let mut registry = CardRegistry::from_cards(vec![advanceable("plan", 3)]);
+        for id in ["leo_construction_labor_solutions", "mercia_b4ll4rd"] {
+            registry.insert(printed(&pool, id));
+        }
+        let w = every_corp();
+        let mercia = InstalledCard { card: CardId("mercia_b4ll4rd".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() };
+        let plan = InstalledCard { card: CardId("plan".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() };
+        let board = |agenda: bool, with_mercia: bool, phase: Option<RunPhase>| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.identity = Some(CardId("leo_construction_labor_solutions".to_string()));
+            state.corp.installed = [with_mercia.then(|| mercia.clone()), agenda.then(|| plan.clone())].into_iter().flatten().collect();
+            state.active_run = phase.map(|phase| RunState { server: ServerId::Remote(0), phase, ..Default::default() });
+            state
+        };
+        let score = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &w);
+        let used = |agenda: bool| score(&board(agenda, false, None));
+
+        // Up to and at the last window, the ability is worth more held
+        // than used — by the edge, when the run threatens more than it.
+        for phase in [RunPhase::Initiation, RunPhase::ApproachIce, RunPhase::Movement] {
+            let held = score(&board(true, true, Some(phase)));
+            assert!((held - used(true) - HELD_END_THE_RUN_EDGE).abs() < 1e-9, "{phase:?}: held {held}, used {}", used(true));
+            assert!(score(&board(false, true, Some(phase))) > used(false), "{phase:?}");
+        }
+        // Past it, the run costs what the breach reaches: more than Mercia
+        // on the agenda, less on an empty remote.
+        assert!(score(&board(true, true, Some(RunPhase::Success))) < used(true), "the Corp pays for the run on its agenda");
+        assert!(score(&board(false, true, Some(RunPhase::Success))) > used(false), "and keeps Mercia against an empty remote");
+        let breach = score(&board(false, true, None)) - score(&board(false, true, Some(RunPhase::Success)));
+        assert!(breach.abs() < 1e-9, "an empty remote's breach takes nothing: {breach}");
+
+        // Without a bioroid to trash the ability cannot be used, and the
+        // run is charged whole wherever it stands.
+        let charged = |phase| score(&board(true, false, None)) - score(&board(true, false, Some(phase)));
+        assert!((charged(RunPhase::Initiation) - charged(RunPhase::Success)).abs() < 1e-9);
+        assert!(charged(RunPhase::Success) > w.active_run_against_weight);
+    }
+
     /// The stakes of a run are what the breach would reach, counted as
     /// the Corp can count them.
     #[test]
@@ -1604,43 +1849,125 @@ mod tests {
         assert!(!bluffed_root(&in_fort, &registry, &traps), "rezzed, it is a known asset");
     }
 
-    /// "Glacier, then fast advance": once the Runner's rig covers the
-    /// fort and their credits cover the break, the fort terms fall away
-    /// — a naked agenda stops paying the exposure — and glacier alone
-    /// keeps paying them.
+    /// An upgrade is what a fort's root holds beside its agenda (§45): a
+    /// remote with Mercia B4LL4RD and an agenda behind two pieces is the
+    /// fort, and trashing the upgrade out of it is no fort gained. Read as
+    /// "not only what the fort is for", the remote was no fort and LEO
+    /// Construction's trash of the Mercia scored the two pieces at
+    /// `fort_weight` (+3.0).
+    #[test]
+    fn a_root_holding_an_upgrade_is_still_the_fort() {
+        use netrunner_core::rules::ServerId::{self, Remote};
+        let mut registry = fort_registry();
+        let mut upgrade = printed(&pool(), "mercia_b4ll4rd");
+        upgrade.id = CardId("grid".to_string());
+        registry.insert(upgrade);
+        let walled = [ServerId::Hq, ServerId::RnD, Remote(0), Remote(0)];
+        let with = fort_board(&walled, &[("plan", Remote(0)), ("grid", Remote(0))]);
+        let without = fort_board(&walled, &[("plan", Remote(0))]);
+        let alone = fort_board(&walled, &[("grid", Remote(0))]);
+        let w = planned(&[crate::plans::Plan::Glacier]);
+        assert_eq!(fort_remote(&with, &registry, &w), Some(Remote(0)));
+        assert_eq!(fort_remote(&alone, &registry, &w), Some(Remote(0)), "the agenda goes in beside it");
+        assert_eq!(fort_value(&with, &registry, &w), fort_value(&without, &registry, &w), "the upgrade's trash gains no fort");
+    }
+
+    /// "Glacier, then fast advance": once the Runner's rig breaks every
+    /// subtype and their credits cover the break into the fort, the
+    /// fort's worth falls away and glacier alone keeps paying it. An
+    /// agenda short of the wall keeps paying its exposure (§45): it is no
+    /// safer for the Runner having beaten the wall. And the Corp cannot
+    /// unbeat the wall by taking its own ICE off it (§45): a piece fewer
+    /// is a cheaper break, never a wall the rig no longer beats.
     #[test]
     fn the_fort_falls_away_once_the_runner_beats_the_wall_when_fast_advance_follows_glacier() {
         use crate::plans::Plan;
         use netrunner_core::rules::{InstallSlot, ServerId};
         let pool = pool();
-        let mut registry = CardRegistry::from_cards(vec![advanceable("plan", 3), priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let mut registry = CardRegistry::from_cards(vec![
+            advanceable("plan", 3),
+            priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1)),
+            priced_breaker("decoder", Some(IceType::CodeGate), (1, 1), (1, 1)),
+            priced_breaker("killer", Some(IceType::Sentry), (1, 1), (1, 1)),
+        ]);
         registry.insert(printed(&pool, "palisade"));
-        let board = |runner_credits: u32| {
+        let board = |runner_credits: u32, rig: &[&str], walls: u32| {
             let mut state = GameState::new(0);
             state.corp.resources.credits = Credits(5);
             state.runner.resources.credits = Credits(runner_credits);
-            state.runner.rig = vec![InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") }];
+            state.runner.rig = rig.iter().map(|id| InstalledRunnerCard { base_strength: 3, ..rig_card(id) }).collect();
+            state.corp.installed = (0..walls)
+                .map(|n| InstalledCard { card: CardId("palisade".to_string()), install_id: InstallId(1 + n), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() })
+                .collect();
+            state.corp.installed.push(InstalledCard { card: CardId("plan".to_string()), install_id: InstallId(9), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() });
+            state
+        };
+        let full = ["cleaver", "decoder", "killer"];
+        let rich = board(20, &full, 2);
+        let poor = board(0, &full, 2);
+        assert!(fort_beaten(&rich, Some(ServerId::Remote(0)), &registry) && !fort_beaten(&poor, Some(ServerId::Remote(0)), &registry));
+        assert!(!fort_beaten(&board(20, &["cleaver"], 2), Some(ServerId::Remote(0)), &registry), "a rig that breaks barriers alone has not beaten a Corp that can still ice a code gate");
+        assert!(fort_beaten(&board(20, &full, 1), Some(ServerId::Remote(0)), &registry), "a piece fewer does not unbeat the wall");
+        assert!(fort_beaten(&rich, None, &registry), "with no fort, the rig is what beats it");
+        let stacked = planned(&[Plan::Glacier, Plan::FastAdvance]);
+        let alone = planned(&[Plan::Glacier]);
+        let swing = |w: &Weights| evaluate_state_with(&rich, Side::Corp, &registry, w) - evaluate_state_with(&poor, Side::Corp, &registry, w);
+        // The fort is two pieces and the agenda is naked: its two pieces'
+        // worth is dropped when the wall is beaten, and the exposure is not.
+        let dropped = -(2.0 * stacked.fort_weight);
+        assert!((swing(&stacked) - swing(&alone) - dropped).abs() < 1e-9, "{} vs {}", swing(&stacked), swing(&alone));
+        // Taking a piece off a beaten wall is never a gain: before §45 a
+        // wall one piece short of the fort's depth was no wall the rig had
+        // beaten, and the fort terms came back whole.
+        let score = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &stacked);
+        assert!(score(&board(20, &full, 1)) < score(&rich), "{} against {}", score(&board(20, &full, 1)), score(&rich));
+    }
+
+    /// What a run lends the rig lasts the run, so the fort is read as it
+    /// stands between runs (§43): a breaker pumped for the run beats the
+    /// wall while the run goes on, and the fort terms stay on, so ending
+    /// the run does not read as building the fort back.
+    #[test]
+    fn a_pump_that_lasts_the_run_does_not_beat_the_fort() {
+        use crate::plans::Plan;
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let pool = pool();
+        let mut registry = CardRegistry::from_cards(vec![
+            advanceable("plan", 3),
+            priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1)),
+            priced_breaker("decoder", Some(IceType::CodeGate), (1, 1), (1, 1)),
+            priced_breaker("killer", Some(IceType::Sentry), (1, 1), (1, 1)),
+        ]);
+        registry.insert(printed(&pool, "palisade"));
+        let board = |pumped: bool| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.resources.credits = Credits(5);
+            state.runner.resources.credits = Credits(5);
+            state.runner.rig = vec![
+                InstalledRunnerCard { install_id: InstallId(10), ..rig_card("cleaver") },
+                InstalledRunnerCard { install_id: InstallId(11), ..rig_card("decoder") },
+                InstalledRunnerCard { install_id: InstallId(12), ..rig_card("killer") },
+            ];
             state.corp.installed = vec![
                 InstalledCard { card: CardId("palisade".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
                 InstalledCard { card: CardId("palisade".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
                 InstalledCard { card: CardId("plan".to_string()), install_id: InstallId(3), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() },
             ];
+            // A run on HQ, which has no ice: the run's own term is the same
+            // either way, and only the pump differs.
+            state.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+            if pumped {
+                state.lingering.push(LingeringEffect { what: Lingering::Strength(10), on: On::Install(InstallId(10)), until: Until::EndOfRun, source: CardId("cleaver".to_string()) });
+            }
             state
         };
-        let rich = board(20);
-        let poor = board(0);
-        assert!(fort_beaten(&rich, ServerId::Remote(0), 2, &registry) && !fort_beaten(&poor, ServerId::Remote(0), 2, &registry));
-        // A wall is at least the fort's depth: one piece is not a wall the
-        // rig beat, and a bare remote is not either.
-        assert!(!fort_beaten(&rich, ServerId::Remote(0), 3, &registry));
-        assert!(!fort_beaten(&rich, ServerId::Remote(1), 2, &registry), "the naked remote is no beaten fort");
-        let stacked = planned(&[Plan::Glacier, Plan::FastAdvance]);
-        let alone = planned(&[Plan::Glacier]);
-        let swing = |w: &Weights| evaluate_state_with(&rich, Side::Corp, &registry, w) - evaluate_state_with(&poor, Side::Corp, &registry, w);
-        // The fort is two pieces and the agenda is naked: fort_value is
-        // 2 × fort − 2 × exposure, dropped when the wall is beaten.
-        let dropped = -(2.0 * stacked.fort_weight - 2.0 * stacked.exposed_agenda_weight);
-        assert!((swing(&stacked) - swing(&alone) - dropped).abs() < 1e-9, "{} vs {}", swing(&stacked), swing(&alone));
-        assert!(swing(&stacked) > swing(&alone), "the naked agenda stops paying once the rig beats the wall");
+        let (pumped, plain) = (board(true), board(false));
+        assert!(fort_beaten(&pumped, Some(ServerId::Remote(0)), &registry), "the pump beats the wall while the run lasts");
+        assert!(!fort_beaten(&plain, Some(ServerId::Remote(0)), &registry));
+        let w = planned(&[Plan::Glacier, Plan::FastAdvance]);
+        let score = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &w);
+        assert!((score(&pumped) - score(&plain)).abs() < 1e-9, "the fort holds between runs: {} vs {}", score(&pumped), score(&plain));
     }
 }

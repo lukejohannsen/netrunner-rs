@@ -950,6 +950,17 @@ const _: () = assert!(SUCCESSFUL_RUN_WEIGHT > ACTIVE_RUN_WEIGHT && SUCCESSFUL_RU
 /// scoring, and it lands at one advancement token — the Corp gives up
 /// about one advance's worth of tempo to turn a live run away.
 const ACTIVE_RUN_AGAINST_WEIGHT: f64 = 1.5;
+/// Corp only: what holding a paid end-the-run is worth over paying for
+/// it now, until the run is past its last paid-ability window
+/// (`corp::answered_by_a_held_end_the_run`, Phase 5 §43). Waiting is
+/// never worse — the Runner may yet be stopped by the ICE ahead or jack
+/// out, and the ability is as good at the last window (CR 6.9.4e) as at
+/// the first — so a run that threatens more than the price is charged
+/// the price less this, and paying is the worse of the two by exactly
+/// this much. Only an edge: it has to beat the planner's tie-break
+/// jitter (1e-3) and nothing else, as `KEPT_CLICK_EDGE` does for a
+/// click kept.
+const HELD_END_THE_RUN_EDGE: f64 = 0.05;
 // **There is no Corp damage term, and that is a measurement.**
 //
 // `opponent_grip_weight` — a value per card in the Runner's grip — was
@@ -1358,8 +1369,8 @@ pub struct Weights {
     /// See `BLUFF_WEIGHT`.
     pub bluff_weight: f64,
     /// Corp only, "glacier then fast advance": the fort terms fall away
-    /// once the Runner's rig covers every piece of the fort and their
-    /// credits cover the break (`read::fort_beaten`). A condition inside
+    /// once the Runner's rig breaks every subtype of ICE and their
+    /// credits cover the break into the fort (`read::fort_beaten`). A condition inside
     /// the fort terms, never a switch between weight sets: with it off
     /// the fort is priced all game, which is glacier alone.
     pub fort_until_beaten: bool,
