@@ -13,7 +13,9 @@
 //! **The definition is the one the baseline was taken on** (`diag
 //! precepts`, Stage 1): late once either side is within two points of the
 //! target, otherwise middle once both HQ and R&D are iced and some remote
-//! has ICE in front of it, otherwise early. The guide's third signal —
+//! has ICE in front of it, otherwise early — and never early past
+//! `EARLY_STAGE_ENDS` (Phase 5 §46), so stripping a board does not make a
+//! game young again. The guide's third signal —
 //! each side's economy on the table — is deliberately not folded in yet:
 //! it would move the baseline's stage columns without a term needing it,
 //! and it goes in with the first term that reads it, measured. Points are
@@ -76,12 +78,29 @@ pub fn stage(state: &GameState, registry: &CardRegistry) -> Stage {
     let iced = |server: ServerId| state.corp.installed.iter().any(|card| card.slot == InstallSlot::Ice && card.server == server);
     let remote_iced =
         state.corp.installed.iter().any(|card| card.slot == InstallSlot::Ice && matches!(card.server, ServerId::Remote(_)));
-    if iced(ServerId::Hq) && iced(ServerId::RnD) && remote_iced {
+    if (iced(ServerId::Hq) && iced(ServerId::RnD) && remote_iced) || state.turn >= EARLY_STAGE_ENDS {
         Stage::Middle
     } else {
         Stage::Early
     }
 }
+
+/// The game turn from which a game is no longer early, whatever its board
+/// says (Phase 5 §46): a game does not get younger. The board reading is
+/// one the Corp moves itself, and at LEO Construction's offer to end a run
+/// on HQ by trashing its only piece of ICE, Ansel 1.0, an HQ left bare
+/// read the game as early again — 9 turns of horizon where it had 5 — and
+/// the Corp's declared income came to +4.0 more than passing, which
+/// decided the trade (+1.23) at the run's initiation. The Corp had no
+/// ICE in hand and no credits to replace it for three turns.
+///
+/// Measured, not chosen: over a planner pass of the pool (192 games,
+/// seed 1), games left the early stage by game turn 11 at the median, 13
+/// at three in four and **19 at nine in ten**, and not one started a
+/// later Corp turn back in it. So this is a floor almost no game's own
+/// board reaches first; it moves only the reading of a board stripped
+/// late, and of the one game in ten that is still building.
+pub const EARLY_STAGE_ENDS: u32 = 19;
 
 #[cfg(test)]
 mod tests {
@@ -114,6 +133,25 @@ mod tests {
         fresh.runner.resources.agenda_points = AgendaPoints(6);
         assert_eq!(stage(&fresh), Stage::Late, "the clock beats an empty board");
         assert!(Stage::Early < Stage::Middle && Stage::Middle < Stage::Late, "the order is the game's");
+    }
+
+    /// A game does not get younger (§46): a board with HQ stripped bare is
+    /// early on the turns most games are still building, and middle from
+    /// `EARLY_STAGE_ENDS` on — so trashing a central's last piece of ICE
+    /// late in a game does not lengthen the horizon every income is
+    /// counted over.
+    #[test]
+    fn a_stripped_board_late_in_a_game_is_not_early() {
+        let registry = CardRegistry::default();
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![ice(ServerId::RnD), ice(ServerId::Remote(0))];
+        state.turn = EARLY_STAGE_ENDS - 1;
+        assert_eq!(stage(&state, &registry), Stage::Early, "HQ bare while games are still building");
+        state.turn = EARLY_STAGE_ENDS;
+        assert_eq!(stage(&state, &registry), Stage::Middle, "HQ bare on a turn nine games in ten are past building");
+        state.corp.installed.push(ice(ServerId::Hq));
+        assert_eq!(stage(&state, &registry), Stage::Middle, "and the board's own reading is unchanged");
+        assert!(horizon(stage(&state, &registry)) < horizon(Stage::Early));
     }
 
     /// The horizon shortens with the stage and is never nothing: a card
