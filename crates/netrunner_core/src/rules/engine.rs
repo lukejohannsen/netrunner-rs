@@ -267,6 +267,7 @@ fn apply_action_once(
                 | PlayerAction::ChooseServerForPendingDecision { .. }
                 | PlayerAction::ChooseTriggerToResolve { .. }
                 | PlayerAction::ChooseNumber { .. }
+                | PlayerAction::ChooseCardName { .. }
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
@@ -290,6 +291,15 @@ fn apply_action_once(
     // immediately below as well as by `open_post_action_window` at the end.
     let action_kind = classify_action(state, registry, &action);
     let finishes_action = counts_as_turn_action(state, registry, &action).then(|| same_action(state, registry, &action)).flatten();
+    // "Take another **different** action" (MirrorMorph): while the
+    // prohibition holds, an action already taken this turn is refused, so
+    // the action list offers only the others (`continuous::cannot`).
+    if let Some((_, same)) = finishes_action
+        && state.this_turn.times_taken(same) > 0
+        && continuous::cannot(state, registry, Prohibition::RepeatAnAction)
+    {
+        return Err(RulesError::ActionRepeated);
+    }
     // The action a run in progress is part of, finished once the run is.
     let run_was_part_of = state.active_run.as_ref().map(|run| run.finishes);
     // A run is itself an action in progress: no basic action may begin until
@@ -383,6 +393,11 @@ fn apply_action_once(
         PlayerAction::ChooseNumber { amount } => {
             let mut next = state.clone();
             let events = pending_choice::resolve_choose_number(&mut next, registry, amount)?;
+            Ok((next, events))
+        }
+        PlayerAction::ChooseCardName { card } => {
+            let mut next = state.clone();
+            let events = pending_choice::resolve_choose_card_name(&mut next, registry, card)?;
             Ok((next, events))
         }
     }?;
@@ -699,7 +714,8 @@ fn classify_action(state: &GameState, registry: &CardRegistry, action: &PlayerAc
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. }
-        | PlayerAction::ChooseNumber { .. } => ActionKind::Other,
+        | PlayerAction::ChooseNumber { .. }
+        | PlayerAction::ChooseCardName { .. } => ActionKind::Other,
     }
 }
 

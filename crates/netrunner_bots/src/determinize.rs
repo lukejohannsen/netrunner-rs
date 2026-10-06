@@ -880,6 +880,9 @@ fn determinize_run(
         // Public, and what Into the Depths' "for each time you passed ice"
         // reads.
         ice_passed: run.ice_passed,
+        // The engine's: the view's run does not carry it (`RunState::
+        // last_encountered`).
+        last_encountered: None,
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.

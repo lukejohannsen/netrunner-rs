@@ -296,6 +296,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
         Prohibition::DeclaredSuccessful => "this run cannot be declared successful",
         Prohibition::BreakWithNonIcebreakers => "the Runner cannot use non-icebreaker cards to break subroutines",
+        Prohibition::RepeatAnAction => "the Corp's next action must be one not yet taken this turn",
     }
 }
 
@@ -456,6 +457,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::WhileRezzed(_) => ", while it remains rezzed",
                 Until::WhileInstalled(_) => ", while it remains installed",
                 Until::WhileInPlay(_) => ", while it stays in play",
+                Until::ActionsFinished { .. } => ", for the next action",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))

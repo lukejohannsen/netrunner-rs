@@ -647,6 +647,18 @@ pub enum EffectRequirement {
 impl EffectRequirement {
     /// See `Effect::with_chosen_number`: a condition inside a chosen
     /// number's `then` may read the number ("if you removed 2 or more").
+    /// See `Effect::with_chosen_name`: Complete Image's "if you trash a
+    /// card with the chosen name this way".
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> EffectRequirement {
+        match self {
+            EffectRequirement::LastDamageTrashed(filter) => EffectRequirement::LastDamageTrashed(filter.with_chosen_name(card)),
+            EffectRequirement::ActingCardMatches(filter) => EffectRequirement::ActingCardMatches(filter.with_chosen_name(card)),
+            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.with_chosen_name(card))),
+            EffectRequirement::And(a, b) => EffectRequirement::And(Box::new(a.with_chosen_name(card)), Box::new(b.with_chosen_name(card))),
+            other => other,
+        }
+    }
+
     pub fn with_chosen_number(self, number: u32) -> EffectRequirement {
         match self {
             EffectRequirement::AmountAtLeast(crate::dsl::Amount::ChosenNumber, at_least) => {

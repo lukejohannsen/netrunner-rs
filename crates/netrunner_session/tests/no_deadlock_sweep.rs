@@ -717,6 +717,13 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
     // as public as the rig, whichever side's card it is.
     visible.extend(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).map(|c| c.0.as_str()));
+    // A card name to choose (Complete Image, Whistleblower): the names are
+    // every playable card the filter admits, read off the registry and not
+    // the game, so one that happens to be in a hidden zone gives nothing
+    // away — and the decision that lists them is in the view.
+    if let Some(netrunner_core::rules::PendingDecision::ChooseCardName { names, .. }) = &view.pending_decision {
+        visible.extend(names.iter().map(|c| c.0.as_str()));
+    }
     if let Some(cards) = &view.corp.hq_cards {
         visible.extend(cards.iter().map(|c| c.0.as_str()));
     }

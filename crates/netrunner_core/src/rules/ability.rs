@@ -903,7 +903,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::LaterThisTurn { when, filter, every_time, effect } => {
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => {
             let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let effect = match state.active_run.as_ref() {
                 Some(run) => (**effect).clone().with_attacked_server(run.server),
@@ -914,6 +914,7 @@ pub fn evaluate_effect(
                 filter: filter.clone(),
                 every_time: *every_time,
                 turn: state.turn,
+                this_run: *this_run && state.active_run.is_some(),
                 effect,
                 card,
                 install: ctx.acting_install,
@@ -943,6 +944,35 @@ pub fn evaluate_effect(
             let side = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
             crate::rules::turn::force_action_phase_end(state, side, registry)
         }
+
+        // Every playable card the filter admits, by id, which is the
+        // order `ActionSpace` gives them; no name to choose is nothing to
+        // ask.
+        Effect::ChooseCardName { chooser, names, text, .. } => {
+            let mut options: Vec<CardId> = registry
+                .iter()
+                .filter(|card| card.is_playable && card.card_type != crate::dsl::CardType::Identity && crate::dsl::card_matches_filter(card, names))
+                .map(|card| card.id.clone())
+                .collect();
+            options.sort();
+            options.truncate(crate::rules::action_mask::MAX_NAME_OPTIONS);
+            if options.is_empty() {
+                return Ok(Vec::new());
+            }
+            state.pending_decision = Some(PendingDecision::ChooseCardName {
+                chooser: *chooser,
+                names: options,
+                effect: Box::new(effect.clone()),
+                text: text.clone(),
+                source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            Ok(Vec::new())
+        }
+
+        Effect::StealAccessedCard => crate::rules::run::steal_accessed_ignoring_costs(state, registry),
 
         Effect::Score => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
@@ -2016,6 +2046,8 @@ pub fn evaluate_effect(
             exclude_servers_run_this_turn,
             only_protected_by_ice,
             only_in,
+            last_run_server,
+            ignore_additional_costs,
         } => {
             // A parked `ChooseServer` is only ever resolved by
             // `run::start_run`, which rejects a second concurrent run — so
@@ -2050,6 +2082,22 @@ pub fn evaluate_effect(
             // server" (Front Company): not offered, as `start_run` would
             // refuse it.
             let no_remote = crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote);
+            // "Run the attacked server again": the last run's, if there was
+            // one and it is still a server to run.
+            let allowed_servers = if *last_run_server {
+                let last = state.last_completed_run.as_ref().map(|run| run.server).ok_or(RulesError::NoServerLeftToRun)?;
+                let exists = match last {
+                    ServerId::Remote(id) => crate::rules::legal_actions::existing_remote_ids(state).contains(&id),
+                    _ => true,
+                };
+                if !exists || (no_remote && matches!(last, ServerId::Remote(_))) {
+                    return Err(RulesError::NoServerLeftToRun);
+                }
+                Some(vec![last])
+            } else {
+                allowed_servers.clone()
+            };
+            let allowed_servers = &allowed_servers;
             let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() || no_remote {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
@@ -2099,7 +2147,7 @@ pub fn evaluate_effect(
                 servers
             };
             let candidates = allowed_servers.clone().unwrap_or_else(every_server);
-            let allowed_servers = if candidates.iter().all(|server| run::may_pay_run_cost(state, registry, *server)) {
+            let allowed_servers = if *ignore_additional_costs || candidates.iter().all(|server| run::may_pay_run_cost(state, registry, *server)) {
                 allowed_servers
             } else {
                 let payable: Vec<ServerId> = candidates.into_iter().filter(|server| run::may_pay_run_cost(state, registry, *server)).collect();
@@ -2118,6 +2166,7 @@ pub fn evaluate_effect(
                 install: None,
                 move_to_root: false,
                 remember: false,
+                ignore_run_costs: *ignore_additional_costs,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -2151,6 +2200,7 @@ pub fn evaluate_effect(
                 install: None,
                 move_to_root: true,
                 remember: false,
+                ignore_run_costs: false,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -2234,6 +2284,7 @@ pub fn evaluate_effect(
                 on_start: None,
                 move_to_root: false,
                 remember: false,
+                ignore_run_costs: false,
                 install: Some(crate::rules::state::PendingInstallFromZone {
                     origin: origin_zone.clone(),
                     position,
@@ -2350,13 +2401,23 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::LoseAbilities { until, attacked_root: true } => {
+        // Both identities (Direct Access), by their handles, which
+        // `rules::active` asks before counting an identity active.
+        Effect::LoseAbilities { until, identities: true, .. } => {
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
+            for identity in [InstallId::CORP_IDENTITY, InstallId::RUNNER_IDENTITY] {
+                state.lingering.push(LingeringEffect { what: Lingering::LosesAbilities, on: On::Install(identity), until, source: source.clone() });
+            }
+            Ok(Vec::new())
+        }
+        Effect::LoseAbilities { until, attacked_root: true, .. } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
             state.lingering.push(LingeringEffect { what: Lingering::LosesAbilities, on: On::RootOfAttackedServer, until, source });
             Ok(Vec::new())
         }
-        Effect::LoseAbilities { until, attacked_root: false } => {
+        Effect::LoseAbilities { until, attacked_root: false, .. } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let Some(install) = ctx.acting_install else { return Err(RulesError::UnresolvedCardTarget) };
             // A card gone from the table between the choice and now has
@@ -2401,6 +2462,7 @@ pub fn evaluate_effect(
                 install: None,
                 move_to_root: false,
                 remember: true,
+                ignore_run_costs: false,
                 source_card: Some(card.clone()),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -5077,6 +5139,12 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .acting_install
             .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))
             .map_or(0, |installed| installed.this_turn.count(state.turn, *trigger)),
+        Amount::AgendaPoints(side) => match side {
+            Side::Corp => state.corp.resources.agenda_points.0.max(0) as u32,
+            Side::Runner => state.runner.resources.agenda_points.0.max(0) as u32,
+        },
+        Amount::ActionsThisTurn => state.this_turn.actions_finished(),
+        Amount::DifferentActionsThisTurn => state.this_turn.different_actions(),
         Amount::AboutToResolve => match ctx.triggering_event {
             Some(GameEvent::AboutToResolve { what }) => what.amount(),
             _ => 0,
@@ -6745,7 +6813,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, last_encountered: None });
 
         let events = evaluate_effect(
             &mut state,
@@ -6928,13 +6996,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, last_encountered: None });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, last_encountered: None });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

@@ -1,0 +1,48 @@
+{
+  "id": "whistleblower",
+  "title": "Whistleblower",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "ChooseCardName": {
+                "chooser": "Runner",
+                "names": {
+                  "CardType": "Agenda"
+                },
+                "then": {
+                  "LaterThisTurn": {
+                    "when": "OnAccessed",
+                    "filter": {
+                      "Card": "ChosenName"
+                    },
+                    "this_run": true,
+                    "effect": "StealAccessedCard"
+                  }
+                },
+                "text": "choose a card name"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash this resource to choose a card name"
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run, you may trash this resource to choose a card name. The next time this run you access an agenda with the chosen name, steal it, ignoring all costs."
+    }
+  ],
+  "built_from": 26030,
+  "is_playable": true
+}

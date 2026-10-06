@@ -674,6 +674,7 @@ pub fn narrate_event(
         // A number named aloud is part of the record: what followed —
         // two tags off, ten credits across — only reads with it.
         GameEvent::NumberChosen { amount, secret: false, .. } => format!("chose {amount}"),
+        GameEvent::CardNameChosen { card, .. } => format!("named {}", title(card)),
         GameEvent::NumberChosen { amount, secret: true, .. } => format!("chose {amount}, in secret"),
         GameEvent::PsiBidsRevealed { corp, runner } => format!(
             "revealed the psi game's bids: the Corp {corp}[credit], the Runner {runner}[credit] — the bids {}",
@@ -826,6 +827,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
+        PlayerAction::ChooseCardName { card } => format!("Name {}", title(card)),
         // The question is the card's own clause, over the buttons
         // (`prose::decision_prompt`); a button is its number.
         PlayerAction::ChooseNumber { amount } => {
@@ -1099,6 +1101,7 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::ConfirmCardSelection => "Confirm the cards you selected: the card effect goes ahead with them.".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {} as the server this card effect applies to: where the card it installs goes, or the server it runs.", server_name(*server)),
         PlayerAction::ChooseNumber { amount } => format!("Answer the card that is asking for a number with {amount}: how many tags, credits or counters its effect is about."),
+        PlayerAction::ChooseCardName { card } => format!("Name {} for the card that is asking you to choose a card name.", title(card)),
     }
 }
 
@@ -1705,6 +1708,7 @@ mod tests {
             PlayerAction::ConfirmCardSelection,
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD },
             PlayerAction::ChooseNumber { amount: 2 },
+            PlayerAction::ChooseCardName { card: card() },
         ];
         assert_eq!(actions.len(), PlayerAction::VARIANT_NAMES.len(), "one instance per variant");
         let registry = CardRegistry::new();

@@ -533,6 +533,9 @@ mod tests {
             // and Second Site's frames, whose Core Set cards keep it out of
             // Standard.
             ("open_book", &neither),
+            // Downfall Stage 8: MirrorMorph's deck, on Retirement Package's
+            // frame, whose Core Set cards keep it out of Standard.
+            ("endless_loop", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

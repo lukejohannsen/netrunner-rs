@@ -183,6 +183,17 @@ pub(crate) fn may_pay_run_cost(state: &GameState, registry: &CardRegistry, serve
 /// put ahead of `RunInitiated` and to dispatch after it
 /// (`ability::dispatch_cost_events`, the payer's half of the Payment Rule).
 pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    start_run_paying(state, registry, server, true)
+}
+
+/// `start_run`, "ignoring any additional costs to run" (Always Have a
+/// Backup Plan's second run): no run cost is paid as the server is
+/// announced, and none refuses the run.
+pub fn start_run_ignoring_costs(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    start_run_paying(state, registry, server, false)
+}
+
+fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: ServerId, pay_run_costs: bool) -> Result<Vec<GameEvent>, RulesError> {
     // A run a card's text starts as the Runner's turn begins — Alarm
     // Clock's "When your turn begins, you may run HQ" (CR 5.7.1d, before
     // the action phase) — is run in the action phase's shape, which is the
@@ -209,7 +220,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     // announced as the attacked server" (CR 6.3.2b) — before the run's bad
     // publicity credits exist (6.3.3), which cannot pay them. All at once
     // (1.16.10b), and a run that cannot pay is not made.
-    let paid = match run_cost(state, registry, server) {
+    let paid = match run_cost(state, registry, server).filter(|_| pay_run_costs) {
         None => Vec::new(),
         Some(cost) => {
             if !may_pay_run_cost(state, registry, server) {
@@ -235,7 +246,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -456,6 +467,7 @@ fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, ins
     run.fully_broken = false;
     run.ice_bypassed = false;
     run.encounters += 1;
+    run.last_encountered = run.ice.first().map(|ice| ice.install_id);
     add_own_subroutines(run, 0, own);
     add_gained_for_the_run(run, 0, may_gain);
     let nothing_to_break = fully_broken_with_nothing_to_break(run, 0);
@@ -534,6 +546,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
     run.encounters += 1;
+    run.last_encountered = run.ice.get(position).map(|ice| ice.install_id);
     add_own_subroutines(run, position, own);
     add_gained_for_the_run(run, position, may_gain);
     let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
@@ -1156,6 +1169,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.fully_broken = false;
             run.this_encounter = Default::default();
             run.encounters += 1;
+            run.last_encountered = run.ice.get(position).map(|ice| ice.install_id);
             add_own_subroutines(run, position, own);
             add_gained_for_the_run(run, position, may_gain);
             let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
@@ -1398,6 +1412,10 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
         completed.unsuccessful = !run.reached_success_phase && server_exists;
         state.last_completed_run = Some(completed);
     }
+    // What was to be heard "this run" is over with it (Whistleblower's
+    // "the next time this run", Always Have a Backup Plan's "during the
+    // second run").
+    state.delayed.retain(|delayed| !delayed.this_run);
     // Back to the turn's start for a run begun there (`start_run`), with its
     // window, unless the run ended the game.
     if run.as_ref().is_some_and(|run| run.begun_as_the_turn_began) && !state.is_over() {

@@ -496,6 +496,8 @@ fn left_its_place(events: &[GameEvent], card_id: &CardId) -> bool {
         || events.iter().any(|e| match e {
             GameEvent::CardRemovedFromGame { side: Side::Corp, card } | GameEvent::CardHosted { card, .. } => card == card_id,
             GameEvent::AddedToScoreAreaAsAgenda { side: Side::Runner, card, .. } => card == card_id,
+            // Stolen by a card's text as it was accessed (Whistleblower).
+            GameEvent::AgendaStolen { card, .. } => card == card_id,
             _ => false,
         })
 }
@@ -955,10 +957,50 @@ pub fn resolve_steal(
     if !pending.mandatory_steal && pending.steal_cost.is_none() {
         return Err(RulesError::NotInAccessPhase);
     }
+    let mut events = steal(state, registry, card_id, pending.server, pending.install, pending.steal_cost.as_ref())?;
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
+    Ok(events)
+}
 
+/// Steals the agenda being accessed, ignoring all costs — Whistleblower's
+/// "steal it, ignoring all costs. (You are no longer accessing it.)"
+/// (`Effect::StealAccessedCard`), heard as the agenda is accessed and
+/// before the Runner's access decision is put to them. Nothing to steal —
+/// no agenda being accessed, or one the Runner cannot steal now — is
+/// nothing done. The access then ends as any card moved by a card's text
+/// ends it (CR 7.1.7, `left_its_place`).
+pub(crate) fn steal_accessed_ignoring_costs(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let Some(access) = run.access_state.as_ref() else { return Ok(Vec::new()) };
+    let Some(card_id) = access.currently_accessing.clone() else { return Ok(Vec::new()) };
+    let (server, install) = (access.server, access.pending_install);
+    if !registry.get(&card_id).is_some_and(|card| card.card_type == crate::dsl::CardType::Agenda)
+        || continuous::cannot_about(state, registry, Prohibition::StealOrTrash, &card_id)
+    {
+        return Ok(Vec::new());
+    }
+    steal(state, registry, &card_id, server, install, None)
+}
+
+/// The steal itself: `steal_cost` paid, if any, the agenda moved to the
+/// Runner's score area and `AgendaStolen` dispatched. What comes after —
+/// the access moving on — is the caller's.
+fn steal(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    server: ServerId,
+    install: Option<crate::rules::state::InstallId>,
+    steal_cost: Option<&Cost>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    struct Pending {
+        server: ServerId,
+        install: Option<crate::rules::state::InstallId>,
+    }
+    let pending = Pending { server, install };
     let mut events = Vec::new();
     let mut cost_events = Vec::new();
-    if let Some(cost) = &pending.steal_cost {
+    if let Some(cost) = steal_cost {
         // Asked of the scan the payment spends from: this was the credit
         // pool alone, which refused a steal that bad publicity's credits
         // or Methuselah's would have paid.
@@ -1019,8 +1061,6 @@ pub fn resolve_steal(
     // dispatch_cost_events`): Shackleton Grid hears a steal paid for with
     // bad publicity's credits.
     events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
-
-    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
 

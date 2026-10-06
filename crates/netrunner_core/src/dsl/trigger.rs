@@ -820,6 +820,15 @@ pub enum EventFilter {
 }
 
 impl EventFilter {
+    /// `CardFilter::ChosenName` written over as `card`, in a filter on the
+    /// card a moment is about (`Effect::with_chosen_name`).
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> EventFilter {
+        match self {
+            EventFilter::Card(filter) => EventFilter::Card(filter.with_chosen_name(card)),
+            other => other,
+        }
+    }
+
     /// Whether this filter says whose moment it is — "the Runner's", "the
     /// Corp installs" — which `listeners` then reads instead of the
     /// trigger's own "you".

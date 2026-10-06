@@ -483,6 +483,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::PendingChoiceResolved { .. }
         | GameEvent::NumberChoiceOffered { .. }
         | GameEvent::NumberChosen { .. }
+        | GameEvent::CardNameChosen { .. }
         | GameEvent::PsiBidsRevealed { .. }
         | GameEvent::PendingPaidChoiceOffered { .. }
         | GameEvent::PendingPaidChoiceAccepted { .. }

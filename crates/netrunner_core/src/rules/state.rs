@@ -1343,6 +1343,27 @@ pub enum PendingDecision {
         /// is public, as a secret choice being made is (CR 1.5.2b).
         secret: bool,
     },
+    /// `Effect::ChooseCardName` parked this: `chooser` names one of
+    /// `names` with `PlayerAction::ChooseCardName` — every playable card
+    /// the effect's filter admits, sorted by id, read when it was parked.
+    /// Public: the names are the pool's, and nothing here says what any
+    /// hidden card is.
+    ChooseCardName {
+        chooser: Side,
+        names: Vec<CardId>,
+        /// The `ChooseCardName` that parked this, whole — the name is
+        /// written into its `then`, and "repeat this process" resolves it
+        /// again (`again_if`).
+        effect: Box<Effect>,
+        /// `Effect::ChooseCardName::text`, the prompt.
+        text: String,
+        source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        prompting_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        source_install: Option<InstallId>,
+        resume: PendingChoiceResume,
+    },
     /// `Effect::PsiGame` parked this (CR 10.14.6): the Corp bids while
     /// `corp_bid` is `Awaiting`, then the Runner, each with
     /// `PlayerAction::ChooseNumber` from 0 to their `*_max` — 2, or less
@@ -1398,6 +1419,11 @@ pub enum PendingDecision {
         /// Gantulga's "you may choose a server".
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remember: bool,
+        /// The run is made ignoring any additional costs to run
+        /// (`Effect::PromptChooseServer::ignore_additional_costs`, Always
+        /// Have a Backup Plan's second run): `run::start_run_ignoring_costs`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_run_costs: bool,
         /// Seeded onto the resulting `run::RunState::on_success_effect` —
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,
@@ -1478,6 +1504,11 @@ pub struct CompletedRun {
     /// ice you passed during that run" (`Amount::IcePassedLastRun`).
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub ice_passed: u32,
+    /// `RunState::last_encountered` at conclusion — Always Have a Backup
+    /// Plan's "the last piece of ice you encountered during the first run"
+    /// (`CardFilter::LastEncounteredLastRun`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_encountered: Option<InstallId>,
 }
 
 impl CompletedRun {
@@ -1500,6 +1531,7 @@ impl CompletedRun {
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,
             ice_passed: run.ice_passed,
+            last_encountered: run.last_encountered,
         }
     }
 }

@@ -50,12 +50,15 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 60 | 5 | Stages 1–7 built (6 October 2026) |
+| 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **12 of 103
-`Effect` variants single-use, none unused, over 633 card files** (6 October
-2026, with Downfall Stage 7, which added no variant and gave
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
+`Effect` variants single-use, none unused, over 638 card files** (6 October
+2026, with Downfall Stage 8, which closed the set and added two:
+`ChooseCardName`, which Complete Image and Whistleblower share, and
+`StealAccessedCard`, Whistleblower's alone; Stage 7, at 12 of 103 over
+633, added no variant and gave
 `MoveRunToOutermost` its second card, Letheia Nisei; Stage 6, at 13 of 103
 over 627, added `ForEach` and generalised
 `WhenThisTurnEnds` into `LaterThisTurn`, now three cards'; Stage 5, at 14
@@ -387,6 +390,11 @@ PR that made this list (29 September 2026).
 - **“Baklan” Bochkin** (DF 5): "X hosted power counters" is every counter on it — the card is trashed with them, so a smaller X could only derez less.
 - **Reduced Service** (DF 6): "you may pay up to 4[credit]" loses the credits from the credit pool rather than paying them, as Focus Group's X does.
 - **In the Groove** (DF 6): "Play only as your first [click]" is the turn's first action (`NoActionTakenThisTurn`, Petty Cash's), which every first action in the pool spends a click on.
+- **Complete Image** (DF 8): the names offered are every playable Runner card, not the format's pool; and "repeat this process" reads only damage dealt in the same resolution, so damage an interrupt held for a later action ends the process.
+- **Whistleblower** (DF 8): the names offered are the playable agendas; and the steal is made as the agenda's access begins, before any other "when accessed" ability the agenda has would be asked about.
+- **Direct Access** (DF 8): the identities lose their abilities from the moment the run begins until it ends, not from the play of the event; and "this event" is a copy of it in the heap, which is where the event is by then.
+- **Always Have a Backup Plan** (DF 8): the second run is offered as a choice of one server; and the ice the first run encountered last is the engine's alone (`RunState::last_encountered`), so a bot's sample of the second run does not bypass it.
+- **MirrorMorph: Endless Iteration** (DF 8): "take another different action, paying [click] less" is a click gained and the next action refused if it is one already taken this turn, which lets a fourth click's action come before the extra one where the rules have the extra one first; nothing in the pool can tell the two apart. With no different action left to take, the Corp may end its turn with the click unspent, the extra action forgone.
 - **Hyoubu Institute** (DF 7): the top card of the stack is revealed by a one-card selection the Corp confirms, which shows it to the Corp a moment before the Runner.
 - **Khusyuk** (DF 7): the install cost is chosen from 1 to 10, Orca's printed 10 being the highest of a Runner card in the pool.
 - **The Class Act** (DF 7): drawn cards go straight to the grip once the interrupt has resolved, never into a set-aside zone first (CR 8.4.2, 8.4.5); "when a discard phase ends" hears the Runner's own, so a copy installed during the Corp's turn draws nothing at the Corp's; and a draw made while something else is parked for prevention is not announced (the Prevention Rule's one-slot rule), so it is not "the first time".
@@ -1007,8 +1015,10 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
    Project Yagi-Uda (a swap out of HQ into a root as well as ice), Letheia
    Nisei, Saisentan. Stage 7 is complete.
 8. **Naming a card, blanking an identity, memory across runs, action
-   kinds:** Whistleblower, Complete Image, Direct Access, Always Have a
-   Backup Plan, MirrorMorph.
+   kinds** (built, 6 October 2026): Whistleblower, Complete Image, Direct
+   Access, Always Have a Backup Plan, MirrorMorph. Stage 8 is complete, and
+   Downfall with it — and so is Standard, whose last unbuilt cards were
+   Downfall's.
 
 **Riskiest:**
 - Always Have a Backup Plan: the last ice of one run acted on in a second
@@ -1024,6 +1034,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 4** — nine cards and Lat's Sweep deck, Level Pegging, with one new `Effect` (`Repeat`): three amounts, an action-phase rez, the Runner's successful servers last turn, an agenda that forbids its own score, and a card returned to the bottom of the stack (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 8** — five cards and MirrorMorph's Sweep deck, Endless Loop, with two new `Effect`s (`ChooseCardName`, `StealAccessedCard`): a card name is chosen among the pool's playable cards and written into what follows, "repeat this process" resolves the choice again, both identities lose their abilities for a run, a run remembers the last ice it encountered for the next to bypass, a delayed ability can last a run, and the next action can be required to be a different one (`claude/serene-einstein-6bhlig`, 6 October 2026). **Downfall is complete: 65 of 65**, and Standard with it.
 - **Stage 7** — six cards and Hyoubu Institute's Sweep deck, Open Book, with no new `Effect`: a reveal is a moment heard by whoever revealed, the Runner's draw is announced and parked so an interrupt resolves before it, a card from HQ may be swapped into a root as well as for ice, a chosen number reaches the amounts and filters it is read in, and the run moves to the outermost position of the server it is on (`claude/serene-einstein-6bhlig`, 6 October 2026).
 - **Stage 6** — nine cards with one new `Effect` (`ForEach`): a delayed ability waits for any moment of the turn, once or every time; an upgrade's run cost counts its counters; a cost returns an installed card to the grip and the event reads its printed cost; and two interrupts, on a Corp card's "end the run" and on a trace's base strength (`claude/serene-einstein-6bhlig`, 6 October 2026).
 - **Stage 5** — nine cards with no new `Effect`: the encountered ice gains a subtype for the encounter, a piece of ice rezzed whenever a non-ice card could be on a run against its server, an install from a card's text limited to a central, and the card a trigger heard named in a choice parked behind a paid one (`claude/serene-einstein-6bhlig`, 5 October 2026).

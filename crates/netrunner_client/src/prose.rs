@@ -127,6 +127,9 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ThisCardStrength => "this program's strength".to_string(),
         Amount::TimesThisTurnOnThisCopy(trigger) => format!("the times \"{}\" has happened to this card this turn", humanize(format!("{trigger:?}"))),
         Amount::AboutToResolve => "the number about to happen".to_string(),
+        Amount::AgendaPoints(side) => format!("the {side:?}'s agenda points"),
+        Amount::ActionsThisTurn => "the actions taken this turn".to_string(),
+        Amount::DifferentActionsThisTurn => "the different actions taken this turn".to_string(),
     }
 }
 
@@ -246,6 +249,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::ThroughYourNextTurn => "until your next turn ends",
         EffectDuration::WhileRezzed => "while this card is rezzed",
         EffectDuration::WhileInstalled => "while this card is installed",
+        EffectDuration::NextAction => "for the next action",
     }
 }
 
@@ -281,6 +285,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::ThroughYourNextTurn => "your next turn",
                 EffectDuration::WhileRezzed => "the time this card is rezzed",
                 EffectDuration::WhileInstalled => "the time this card is installed",
+                EffectDuration::NextAction => "the next action",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -417,7 +422,15 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Surcharge(n)) => format!("install a card from the grip, paying {n} more"),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
-        Effect::LaterThisTurn { when, filter, every_time, effect } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true } => {
+            describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry).replace("this turn", "this run")
+        }
+        Effect::ChooseCardName { then, again_if, .. } => {
+            let first = format!("choose a card name, then {}", describe_effect(then, registry));
+            if again_if.is_some() { format!("{first}; if that trashed a card with the chosen name, do it again") } else { first }
+        }
+        Effect::StealAccessedCard => "steal it, ignoring all costs".to_string(),
         Effect::EndActionPhase => "your action phase ends".to_string(),
         Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
@@ -489,6 +502,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::ThroughYourNextTurn => "the rest of your next turn",
                 netrunner_core::dsl::EffectDuration::WhileRezzed => "as long as this card is rezzed",
                 netrunner_core::dsl::EffectDuration::WhileInstalled => "as long as this card is installed",
+                netrunner_core::dsl::EffectDuration::NextAction => "the next action",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -529,6 +543,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BreakSubroutinesOnIce, _) => "Runner card abilities cannot break subroutines on that ice",
                 (Prohibition::DeclaredSuccessful, _) => "this run cannot be declared successful",
                 (Prohibition::BreakWithNonIcebreakers, _) => "the Runner cannot use non-icebreaker cards to break subroutines",
+                (Prohibition::RepeatAnAction, _) => "the next action must be one not taken this turn",
             };
             format!("{what} {}", duration(until))
         }
@@ -542,8 +557,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
-        Effect::LoseAbilities { until, attacked_root: false } => format!("it loses all abilities {}", duration(until)),
-        Effect::LoseAbilities { until, attacked_root: true } => format!("cards in the root of the attacked server lose all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, identities: true, .. } => format!("each player's identity loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: false, .. } => format!("it loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: true, .. } => format!("cards in the root of the attacked server lose all abilities {}", duration(until)),
         Effect::LimitBreaks { at_most: 0, until } => format!("the Runner cannot break this ice's printed subroutines {}", duration(until)),
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
@@ -876,6 +892,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::BreakSubroutinesOnIce => "cannot break subroutines on this ice with Runner card abilities",
             Prohibition::DeclaredSuccessful => "cannot be declared successful",
             Prohibition::BreakWithNonIcebreakers => "cannot use non-icebreaker cards to break subroutines",
+            Prohibition::RepeatAnAction => "cannot take an action already taken this turn",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(
@@ -908,6 +925,7 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }
         | PendingDecision::ChooseServer { source_card, prompting_card, .. }
         | PendingDecision::ChooseNumber { source_card, prompting_card, .. }
+        | PendingDecision::ChooseCardName { source_card, prompting_card, .. }
         | PendingDecision::PsiGame { source_card, prompting_card, .. } => prompting_card.as_ref().or(source_card.as_ref()),
         PendingDecision::ChooseTriggerOrder { .. } => None,
     }
@@ -995,6 +1013,7 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
         // "Bigger Picture asks — Remove any number of tags (0 to 3)".
         PendingDecision::ChooseNumber { text, min, max, .. } if !text.is_empty() => asks(format!("{text} ({min} to {max})")),
         PendingDecision::ChooseNumber { min, max, .. } => asks(format!("choose a number from {min} to {max}")),
+        PendingDecision::ChooseCardName { text, names, .. } => asks(format!("{} ({} names)", if text.is_empty() { "choose a card name" } else { text.as_str() }, names.len())),
         PendingDecision::PsiGame { corp_bid: netrunner_core::rules::PsiBid::Awaiting, corp_max, .. } => {
             asks(format!("play a Psi Game: the Corp bids 0 to {corp_max} credits, in secret"))
         }

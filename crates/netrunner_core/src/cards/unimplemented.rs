@@ -23,7 +23,9 @@
 /// the day Standard's last pack lands, Standard is added here or the gate
 /// names it. Startup was verified complete on 29 September 2026 (Phase 5
 /// §25 Stage 0): System Gateway, Elevation and Vantage Point, 225 cards.
-pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup];
+/// Standard was, with Downfall Stage 8 (6 October 2026): its last unbuilt
+/// cards were Downfall's.
+pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup, crate::format::NsgFormat::Standard];
 
 /// *Vantage Point* (`vantage_point`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(&str, &str)] = &[];
@@ -51,13 +53,7 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.
-pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("always_have_a_backup_plan", "Always Have a Backup Plan"),
-    ("direct_access", "Direct Access"),
-    ("whistleblower", "Whistleblower"),
-    ("mirrormorph_endless_iteration", "MirrorMorph: Endless Iteration"),
-    ("complete_image", "Complete Image"),
-];
+pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.
 pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[

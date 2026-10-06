@@ -26421,4 +26421,195 @@ mod downfall {
         };
         assert_eq!(events_only.runner.heap.len(), 3, "no program to trash: no more damage");
     }
+
+    // ---- Stage 8: naming a card, blanking an identity, memory across runs, action kinds ----
+
+    fn named(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        pass_until_settled(apply_action(state, registry, PlayerAction::ChooseCardName { card: id(card) }).expect("name it").0, registry).0
+    }
+
+    fn names_offered(state: &GameState) -> Vec<CardId> {
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseCardName { names, .. }) => names.clone(),
+            other => panic!("not naming a card: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn complete_image_names_a_card_and_does_net_damage_again_while_it_trashes_one_of_that_name() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("complete_image")];
+        state.corp.resources.credits = Credits(10);
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("corroder")];
+        let play = PlayerAction::PlayOperation { card_id: id("complete_image") };
+        state.last_turn = {
+            let run = ran(runner_turn(), &registry, ServerId::Hq);
+            let mut run = run;
+            crate::rules::turn_log::rotate(&mut run);
+            run.last_turn
+        };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "the Runner has fewer than 3 agenda points");
+        state.runner.resources.agenda_points = AgendaPoints(3);
+        let (asked, _) = apply_action(&state, &registry, play).expect("play");
+        let names = names_offered(&asked);
+        assert!(names.contains(&id("sure_gamble")) && names.contains(&id("corroder")) && !names.contains(&id("hedge_fund")), "any of the Runner's cards");
+        let again = named(&asked, &registry, "sure_gamble");
+        assert_eq!(again.runner.grip.len() + again.runner.heap.len(), 3);
+        assert_eq!(again.runner.heap.len(), 1);
+        if again.runner.heap[0] == id("sure_gamble") {
+            assert!(matches!(again.pending_decision, Some(PendingDecision::ChooseCardName { .. })), "a card with the chosen name: repeat this process");
+        } else {
+            assert!(again.pending_decision.is_none(), "not that name: done");
+        }
+        let mut last = again;
+        while matches!(last.pending_decision, Some(PendingDecision::ChooseCardName { .. })) {
+            last = named(&last, &registry, "corroder");
+        }
+        assert!(!matches!(last.phase, GamePhase::Action(Side::Corp)), "after you resolve this operation, your action phase ends");
+    }
+
+    #[test]
+    fn whistleblower_trashes_itself_on_a_successful_run_to_steal_the_named_agenda_free_the_next_time_this_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("whistleblower", 2001)];
+        state.corp.installed = vec![root_at("sds_drone_deployment", 0)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (at, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let asked = until_parked(apply_action(&at, &registry, PlayerAction::CompleteRun).expect("successful").0, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|offer| offer.cost == crate::dsl::Cost::TrashSelf), "{:?}", asked.pending_paid_choice);
+        let (naming, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash it");
+        assert!(naming.runner.heap.contains(&id("whistleblower")));
+        let names = names_offered(&naming);
+        assert!(names.contains(&id("sds_drone_deployment")) && names.iter().all(|card| registry.get(card).is_some_and(|c| c.card_type == crate::dsl::CardType::Agenda)), "an agenda's name");
+        let stolen = until_parked(named(&naming, &registry, "sds_drone_deployment"), &registry);
+        assert_eq!(stolen.runner.scored_agendas.len(), 1, "stolen, ignoring the program SDS Drone Deployment asks for");
+        assert!(stolen.delayed.is_empty(), "the next time only");
+
+        let missed = until_parked(named(&naming, &registry, "hostile_takeover"), &registry);
+        assert!(missed.runner.scored_agendas.is_empty(), "another name: the steal is the agenda's own, which costs a program the Runner has not");
+        assert_eq!(missed.delayed.len(), 1);
+        let (passed, _) = apply_action(&missed, &registry, PlayerAction::PassAccessedCard { card_id: id("sds_drone_deployment") }).expect("pass on it");
+        let over = pass_until_settled(passed, &registry).0;
+        assert!(over.active_run.is_none() && over.delayed.is_empty(), "this run only");
+    }
+
+    #[test]
+    fn direct_access_blanks_both_identities_for_its_run_and_may_shuffle_itself_back() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("jinteki_personal_evolution"));
+        state.runner.grip = vec![id("direct_access"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("direct_access") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run it");
+        assert!(crate::rules::active::active_cards(&running, &registry).all(|active| active.place != crate::rules::active::Place::Identity), "each player's identity loses all abilities");
+        let accessed = accessing_remote_running(&running, &registry);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        let ended = until_parked(stolen, &registry);
+        assert_eq!(ended.runner.grip.len(), 2, "Personal Evolution's net damage is lost with its abilities");
+        let heap = toggles(&ended, &registry, Side::Runner);
+        assert_eq!(heap.len(), 1, "you may shuffle this event into your stack");
+        let (back, _) = pick(&ended, &registry, heap[0]);
+        assert!(back.runner.stack.contains(&id("direct_access")) && !back.runner.heap.contains(&id("direct_access")));
+        assert!(crate::rules::active::active_cards(&back, &registry).any(|active| active.place == crate::rules::active::Place::Identity), "only while resolving it");
+    }
+
+    #[test]
+    fn every_name_a_card_can_choose_has_a_slot() {
+        // `ActionSpace` gives each name a decision offers a slot of its
+        // own; the widest list is every playable card of one side.
+        let registry = registry();
+        for side in [Side::Corp, Side::Runner] {
+            let names = registry.iter().filter(|card| card.is_playable && card.side == side && card.card_type != crate::dsl::CardType::Identity).count();
+            assert!(names <= crate::rules::MAX_NAME_OPTIONS, "{side:?} has {names} names");
+        }
+    }
+
+    /// `accessing_remote` for a run already initiated.
+    fn accessing_remote_running(running: &GameState, registry: &CardRegistry) -> GameState {
+        let (running, _) = crate::rules::test_support::through_movement(running, registry).expect("to the server");
+        close_all_windows(apply_action(&running, registry, PlayerAction::CompleteRun).expect("breach").0, registry).0
+    }
+
+    #[test]
+    fn always_have_a_backup_plan_runs_again_after_an_unsuccessful_run_bypassing_the_ice_that_stopped_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("always_have_a_backup_plan")];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("always_have_a_backup_plan") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let offered = until_parked(running, &registry);
+        assert!(offered.active_run.is_none() && choosing(&offered), "ended by Ice Wall: you may run the attacked server again");
+        let (again, _) = apply_action(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("again");
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &again.pending_decision else { panic!("{:?}", again.pending_decision) };
+        assert_eq!(servers, &vec![ServerId::Hq], "the attacked server");
+        let (second, _) = apply_action(&again, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ again");
+        let (at, _) = crate::rules::test_support::through_movement(&second, &registry).expect("past the ice");
+        let run = at.active_run.as_ref().expect("still running");
+        assert!(run.encounters == 1 && run.ice_passed == 1, "Ice Wall encountered and bypassed: {run:?}");
+        assert!(!at.delayed.is_empty());
+        let accessing = pass_until_settled(apply_action(&at, &registry, PlayerAction::CompleteRun).expect("successful").0, &registry).0;
+        let (passed, _) = apply_action(&accessing, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("pass on it");
+        let over = pass_until_settled(passed, &registry).0;
+        assert!(over.active_run.is_none() && over.delayed.is_empty(), "during the second run only");
+    }
+
+    #[test]
+    fn mirrormorph_after_three_different_actions_gains_a_credit_or_a_fourth_different_action() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("mirrormorph_endless_iteration"));
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        let act = |state: &GameState, action: PlayerAction| pass_until_settled(apply_action(state, &registry, action).expect("act").0, &registry).0;
+        let one = act(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let two = act(&one, PlayerAction::DrawCardClick { side: Side::Corp });
+        let three = act(&two, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false });
+        assert!(choosing(&three), "three different actions: gain 1[credit] or take another");
+        let credit = choose(&three, &registry, 0);
+        assert_eq!(credit.corp.resources.credits, Credits(three.corp.resources.credits.0 + 1));
+
+        let extra = pass_until_settled(choose(&three, &registry, 1), &registry).0;
+        assert_eq!(extra.corp.resources.clicks, Clicks(1), "another action, paying [click] less");
+        assert!(apply_action(&extra, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).is_err(), "a different action");
+        assert!(apply_action(&extra, &registry, PlayerAction::EndTurn).is_err(), "a different action is there to take");
+        let advanced = act(&extra, PlayerAction::AdvanceCard { target: install_of(&extra, "hostile_takeover") });
+        assert!(!advanced.lingering.iter().any(|effect| effect.holds(&advanced) && matches!(effect.what, crate::rules::lingering::Lingering::Cannot(_))), "the next action only");
+
+        let same = act(&one, PlayerAction::GainCreditClick { side: Side::Corp });
+        let third = act(&same, PlayerAction::DrawCardClick { side: Side::Corp });
+        assert!(!choosing(&third), "the first two were the same action");
+    }
+
+    /// The 256-seed view sweep's seed 80: the click is for a different
+    /// action, and with none left to take the Corp had no legal action at
+    /// all. It may end its turn, the extra action forgone.
+    #[test]
+    fn mirrormorph_with_no_different_action_left_may_end_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("mirrormorph_endless_iteration"));
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = Vec::new();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = Vec::new();
+        let act = |state: &GameState, action: PlayerAction| pass_until_settled(apply_action(state, &registry, action).expect("act").0, &registry).0;
+        let one = act(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let two = act(&one, PlayerAction::DrawCardClick { side: Side::Corp });
+        let three = act(&two, PlayerAction::PlayOperation { card_id: id("hedge_fund") });
+        assert!(choosing(&three), "three different actions");
+        let extra = pass_until_settled(choose(&three, &registry, 1), &registry).0;
+        assert_eq!(extra.corp.resources.clicks, Clicks(1));
+        let legal = crate::rules::legal_actions_for(&extra, &registry, Side::Corp);
+        assert_eq!(legal, vec![PlayerAction::EndTurn], "nothing different to take: the turn may end");
+        let ended = act(&extra, PlayerAction::EndTurn);
+        assert!(!matches!(ended.phase, GamePhase::Action(Side::Corp)), "the click lost with the turn: {:?}", ended.phase);
+    }
 }

@@ -481,6 +481,7 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         | PlayerAction::SubmitCorpTraceBid { .. }
         | PlayerAction::SubmitRunnerTraceBid { .. }
         | PlayerAction::ChooseNumber { .. }
+        | PlayerAction::ChooseCardName { .. }
         | PlayerAction::AcceptPendingPaidChoice { .. }
         | PlayerAction::DeclinePendingPaidChoice
         | PlayerAction::ResolvePendingChoice { .. }
@@ -567,6 +568,10 @@ impl Prompt {
                 PendingDecision::ChooseNumber { text, min, max, source_card, prompting_card, .. } => Prompt {
                     title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a number" } else { text.as_str() }),
                     detail: format!("{min} to {max}"),
+                },
+                PendingDecision::ChooseCardName { text, names, source_card, prompting_card, .. } => Prompt {
+                    title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a card name" } else { text.as_str() }),
+                    detail: format!("any of {} names", names.len()),
                 },
                 // Who is bidding, and what the viewer may know of the other
                 // bid: the Corp's is shown to the Runner only as made.
@@ -715,7 +720,8 @@ impl Prompt {
         if let Some(decision) = &view.pending_decision {
             return match decision {
                 PendingDecision::ChooseEffect { chooser, source_card, prompting_card, .. }
-                | PendingDecision::ChooseNumber { chooser, source_card, prompting_card, .. } => {
+                | PendingDecision::ChooseNumber { chooser, source_card, prompting_card, .. }
+                | PendingDecision::ChooseCardName { chooser, source_card, prompting_card, .. } => {
                     view.viewer.is(*chooser).then(|| asked_by(prompting_card, source_card)).flatten()
                 }
                 // Both bid, so both are shown the card that asked.

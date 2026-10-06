@@ -475,6 +475,20 @@ pub enum CardFilter {
     /// own; and the paid choice parks, so the triggering event is gone by
     /// the time the agenda is chosen.
     ThatCard,
+    /// A card with **the chosen name** — Complete Image's "If you trash a
+    /// card with the chosen name this way" and Whistleblower's "an agenda
+    /// with the chosen name". A placeholder inside `Effect::ChooseCardName::
+    /// then`, written over as `AmongCards([name])` when the name is chosen
+    /// (`with_chosen_name`), as `ThatCard` is; unresolved it matches
+    /// nothing.
+    ChosenName,
+    /// The piece of ice the Runner encountered last during the last run
+    /// (`CompletedRun::last_encountered`) — Always Have a Backup Plan's
+    /// "whenever you encounter the last piece of ice you encountered during
+    /// the first run", asked during the second, when the first is still the
+    /// last run. Instance-level: a handle, not a card, so a second copy of
+    /// the same ice is not it.
+    LastEncounteredLastRun,
     /// A card that may be swapped into the place of the install the
     /// selection acts as (`run::swappable_into`, CR 8.8.2) — Project
     /// Yagi-Uda's "swap 1 card from HQ with 1 card in the root of or
@@ -527,6 +541,18 @@ impl CardFilter {
             CardFilter::InChosenServer => server.map_or(CardFilter::InChosenServer, CardFilter::InServer),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            other => other,
+        }
+    }
+
+    /// This filter with `ChosenName` written over as the card named
+    /// (`Effect::ChooseCardName`).
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> CardFilter {
+        match self {
+            CardFilter::ChosenName => CardFilter::AmongCards(vec![card.clone()]),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_name(card)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_name(card)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_name(card))),
             other => other,
         }
     }
@@ -726,7 +752,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
-        CardFilter::TrashedThisWay | CardFilter::ThatCard => false,
+        CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName => false,
+        CardFilter::LastEncounteredLastRun => true,
         CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,

@@ -591,6 +591,19 @@ pub enum Effect {
         /// no remote on the table the effect fails rather than park.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         only_in: Option<crate::dsl::ServerKind>,
+        /// Offer only the server the last run was on — Always Have a Backup
+        /// Plan's "you may run the attacked server again", asked as that
+        /// run ends (`GameState::last_completed_run`). A field for the
+        /// reason the three above are: what narrows a server offer is the
+        /// offer's, and no card file can name a server a run chose.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        last_run_server: bool,
+        /// The run is made "ignoring any additional costs to run" (Always
+        /// Have a Backup Plan): no run cost is paid as the server is
+        /// announced (`run::start_run_ignoring_costs`), and none narrows
+        /// the offer.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_additional_costs: bool,
     },
     /// Rezzes an already-installed Corp card, paying the same way
     /// `PlayerAction::RezIce` does but without its "ice only while it is
@@ -1366,6 +1379,13 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         every_time: bool,
         effect: Box<Effect>,
+        /// For the rest of the run only, not the turn — Whistleblower's
+        /// "the next time **this run** you access an agenda with the chosen
+        /// name" and Always Have a Backup Plan's "**during the second
+        /// run**, whenever you encounter …": the ability is dropped as the
+        /// run ends (`DelayedAbility::this_run`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        this_run: bool,
     },
     /// "After you resolve this operation, your action phase ends" — a
     /// terminal card's line (Active Policing, Bring Them Home): the rest of
@@ -1389,6 +1409,42 @@ pub enum Effect {
     /// priority and no window open, and Big Deal scores in the middle of its
     /// resolution, just before it ends that phase.
     Score,
+    /// `chooser` chooses a card name, among the playable cards `names`
+    /// admits, and `then` resolves with the name written over
+    /// `CardFilter::ChosenName` — Complete Image's "Choose a card name,
+    /// then do 1 net damage" (the Runner's cards) and Whistleblower's "to
+    /// choose a card name. The next time this run you access an agenda with
+    /// the chosen name" (agendas). Parks `state::PendingDecision::
+    /// ChooseCardName`, answered by `PlayerAction::ChooseCardName`. A name
+    /// is a card's id: two cards never share a title, and a reprint is the
+    /// same card.
+    ///
+    /// `again_if`: "If you trash a card with the chosen name this way,
+    /// repeat this process" — after `then`, if the requirement holds (read
+    /// with the name written in), the whole effect resolves again, a new
+    /// name chosen. A field rather than a loop of its own because the
+    /// process is this effect: the choice is the first step of every
+    /// repetition.
+    ///
+    /// Composition didn't work: every decision chooses among options the
+    /// card file writes out or among cards in a zone, and a name is
+    /// neither — the card named need not be anywhere the chooser can see.
+    ChooseCardName {
+        chooser: Side,
+        names: crate::dsl::CardFilter,
+        then: Box<Effect>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        again_if: Option<crate::dsl::EffectRequirement>,
+        text: String,
+    },
+    /// The Runner steals the agenda being accessed, ignoring all costs —
+    /// Whistleblower's "steal it, ignoring all costs. (You are no longer
+    /// accessing it.)", heard as the agenda is accessed. The steal is the
+    /// access decision's own (`run::access::resolve_steal`), with the
+    /// steal cost dropped; a "cannot steal" still forbids it. Composition
+    /// didn't work: a steal was only ever `PlayerAction::StealAgenda`, the
+    /// Runner's answer to the access, which pays what the agenda asks.
+    StealAccessedCard,
     /// The Runner breaches this server, with no run — Cataloguer's
     /// "[click], hosted power counter: Breach R&D" (CR 7.3.1; `run::engine::
     /// start_breach`). Accessed as any breach is, and nothing a run owes
@@ -1616,6 +1672,13 @@ pub enum Effect {
         /// `encountered_ice` are: what the loss is about is the effect's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         attacked_root: bool,
+        /// The cards that lose them are both players' identities — Direct
+        /// Access's "While you are resolving this event, each player's
+        /// identity loses all abilities" (`lingering::On::Install` of the
+        /// two identities' handles, which `rules::active` asks before
+        /// counting an identity active).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        identities: bool,
     },
     /// During each encounter with the ice the resolution acts as, for the
     /// duration, the Runner cannot break more than `at_most` of its printed
@@ -2165,6 +2228,19 @@ pub enum Amount {
     /// moment. Composition didn't work: no amount read the event a trigger
     /// heard beyond the card it was about.
     AboutToResolve,
+    /// The agenda points in `Side`'s score area — Complete Image's "Play
+    /// only if the Runner has 3 or more agenda points" (`AmountAtLeast`).
+    /// Composition didn't work: no amount read a score.
+    AgendaPoints(Side),
+    /// The actions taken this turn (`TurnLog::actions_finished`), and how
+    /// many different actions among them (`TurnLog::same_actions`, CR
+    /// 5.2.5) — MirrorMorph's "If the first, second, and third actions you
+    /// take on your turn are each different from one another, when the
+    /// third action completes", which is 3 of each. Not
+    /// `TimesThisTurn(OnActionFinished)`: the count of the trigger's own
+    /// moment is what `first_each_turn` says, and `validate` refuses it.
+    ActionsThisTurn,
+    DifferentActionsThisTurn,
 }
 
 impl Amount {
@@ -2235,6 +2311,12 @@ pub enum EffectDuration {
     /// WhileInstalled` of the card whose text this is, as `WhileRezzed`
     /// is. Not `WhileRezzed`, which a Runner card is never.
     WhileInstalled,
+    /// Until the controller's next action this turn has been taken (CR
+    /// 5.2): MirrorMorph's "take another different action", whose
+    /// prohibition on repeating an action binds that action and no other
+    /// (`Until::ActionsFinished`, counted off `TurnLog::actions_finished`).
+    /// It ends with the turn if no action follows.
+    NextAction,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -2434,6 +2516,12 @@ pub enum Prohibition {
     /// program with the icebreaker subtype. Not `BreakSubroutines`, which
     /// binds one install for a duration.
     BreakWithNonIcebreakers,
+    /// The Corp cannot take an action of a kind already taken this turn
+    /// (`turn_log::SameAction`, CR 5.2.5) — MirrorMorph's "take another
+    /// **different** action", for the one action that follows
+    /// (`EffectDuration::NextAction`). Asked by `engine::apply_action`'s
+    /// guard and so by the action list.
+    RepeatAnAction,
 }
 
 impl Prohibition {
@@ -2461,7 +2549,7 @@ impl Prohibition {
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
         }
     }
@@ -2473,7 +2561,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction => None,
         }
     }
 }
@@ -2575,6 +2663,46 @@ impl Effect {
     /// every choice, sequence, condition or paid choice around one — the
     /// shapes Divested Trust's is written in; any other effect is returned
     /// as it is.
+    /// `CardFilter::ChosenName` written over as `card` — what `Effect::
+    /// ChooseCardName::then` becomes once the name is chosen: in a
+    /// selection's filter, a condition (Complete Image's "if you trash a
+    /// card with the chosen name"), and a delayed ability's condition
+    /// (Whistleblower's "an agenda with the chosen name"). Stops at a nested
+    /// `ChooseCardName`, whose placeholder is that choice's.
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_chosen_name(card));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_name(card)).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter: filter.with_chosen_name(card),
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(boxed),
+                count,
+                up_to,
+            },
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_name(card), effect: boxed(effect) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            }
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => Effect::LaterThisTurn {
+                when,
+                filter: filter.map(|filter| filter.with_chosen_name(card)),
+                every_time,
+                effect: boxed(effect),
+                this_run,
+            },
+            other => other,
+        }
+    }
+
     pub fn with_that_card(self, card: &crate::dsl::CardId) -> Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_that_card(card));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_that_card(card)).collect();
@@ -2755,6 +2883,7 @@ impl Effect {
             | Effect::SetRunEndedEffect(effect)
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
+            | Effect::ChooseCardName { then: effect, .. }
             | Effect::Repeat { effect, .. }
             | Effect::ForEach { effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
@@ -2866,6 +2995,7 @@ impl Effect {
             | Effect::AllottedClicksNextTurn(..)
             | Effect::EndActionPhase
             | Effect::Score
+            | Effect::StealAccessedCard
             | Effect::Breach(_)
             | Effect::GainCreditsAmount(..) => {}
         }

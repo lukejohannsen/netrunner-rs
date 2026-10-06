@@ -8180,3 +8180,109 @@ of 65; `DF_UNIMPLEMENTED` 11 → 5.
 - **DSL ratio** (`pool_status.py`): 12 of 103 `Effect` variants
   single-use, none unused, over 633 card files — no variant added, and
   `MoveRunToOutermost` has its second card.
+
+#### Stage 8 — naming a card, blanking an identity, memory across runs, action kinds (6 October 2026)
+
+`claude/serene-einstein-6bhlig`: Complete Image, Whistleblower, Direct
+Access, Always Have a Backup Plan and MirrorMorph: Endless Iteration, and
+MirrorMorph's Sweep deck, Endless Loop. **Two new `Effect`s.** Downfall 65
+of 65; `DF_UNIMPLEMENTED` 5 → 0, and Standard joins Startup among the
+complete formats (`COMPLETE_FORMATS`): every card in the Standard pool is
+built.
+
+- **The words.**
+  - **A card name is chosen** (`Effect::ChooseCardName`, Complete Image's
+    and Whistleblower's "name a card", CR 1.15.1b): the names offered are
+    every playable card the filter admits, identities aside, sorted, and
+    the chooser answers with an action of its own,
+    `PlayerAction::ChooseCardName { card }`, **appended** to `ActionSpace`
+    (3261 → 3773, a slot per name up to `MAX_NAME_OPTIONS`, 512; no index
+    moved). The name is written into the effect that waits
+    (`Effect::with_chosen_name`, `CardFilter::ChosenName`), the State
+    Hygiene Rule's third case as a chosen number is, so it reaches a
+    filter on a later moment — Whistleblower's "when you access the named
+    agenda" — with no field anywhere. "Repeat this process" is `again_if`:
+    after the `then`, the requirement is asked with the name, and the
+    whole choice is offered again while it holds (Complete Image, for as
+    long as the damage trashed a card of the name).
+  - **A named agenda is stolen as it is accessed, ignoring all costs**
+    (`Effect::StealAccessedCard`, Whistleblower's alone): the access's own
+    steal (`run::steal_accessed_ignoring_costs`) with no steal cost asked,
+    and an agenda gone to the score area has left its place, so the access
+    moves on.
+  - **Both identities lose their abilities** (`LoseAbilities { identities
+    }`, Direct Access's "the Corp and the Runner lose all abilities on
+    their identity cards for the remainder of this run", CR 2.1.4): a
+    lingering effect on each identity's handle, which `rules::active` asks
+    before an identity hears anything.
+  - **A run remembers the last ice it encountered**
+    (`RunState::last_encountered`, kept in `CompletedRun`), and
+    `CardFilter::LastEncounteredLastRun` names it, so Always Have a Backup
+    Plan's second run bypasses it (`LaterThisTurn { this_run }`, a delayed
+    ability that ends with the run it was made in). The second run is on
+    "that server" (`PromptChooseServer { last_run_server }`) and "ignoring
+    all additional costs" (`ignore_additional_costs`, carried into the
+    decision as `ChooseServer::ignore_run_costs` and run by
+    `run::start_run_ignoring_costs`).
+  - **An action has a kind, and the next one can be required to differ**
+    (MirrorMorph's "take another different action", CR 5.2.5b):
+    `Amount::ActionsThisTurn` and `DifferentActionsThisTurn` read the turn
+    log (`TurnLog::different_actions`), and `Prohibition::RepeatAnAction`
+    for `EffectDuration::NextAction` (`Until::ActionsFinished`) refuses an
+    action already taken this turn (`RulesError::ActionRepeated`).
+    `Amount::AgendaPoints(side)` is Complete Image's "the Runner has at
+    least 3 agenda points".
+- **Two things the deep sweep found.**
+  - **A deadlock** (seed 80, Endless Loop against Tickets, please,
+    random seats): the Corp has three clicks, so MirrorMorph's is nearly
+    always its last, and with every action it could take one it had
+    taken that turn it had no legal action at all. While the click is
+    bound to a different action and none exists, the Corp may end its
+    turn, the extra action forgone and the click lost with the turn (CR
+    5.6.3c; `turn::forgoes_a_different_action`). Rejected: offering the
+    option only when a different action exists, a lookahead on every
+    `PresentChoice`; and lifting the prohibition, which would let the
+    click buy a repeat.
+  - **The fog gate read a name as a leak**: a list of names to choose
+    from named an agenda in the Corp's hidden HQ. The names are every
+    playable card the filter admits, read off the registry and not the
+    game, so the gate counts the decision's own list as shown.
+- **What composes.** Complete Image's "end your action phase" is Stage 6's
+  `EndActionPhase`, and its damage is Saisentan's `LastDamageTrashed`;
+  Whistleblower's trash is a paid choice's cost; Direct Access's shuffle
+  back is a run-ended effect over its own copy in the heap.
+- **Fidelity limits:** five, under Known limits — Complete Image's names
+  are the playable Runner cards, not the format's; Whistleblower steals as
+  the access begins; Direct Access's identities lose their abilities from
+  the run's start; Always Have a Backup Plan's last encountered ice is the
+  engine's alone; MirrorMorph's extra action can come after a fourth.
+- **Client.** A name is labelled "Name X" and logged "named X", with
+  words in `prose` for every new effect, duration, prohibition and amount.
+  A list of names is too long for a row of pills, so the desktop pop-up
+  shows more than twelve decisions as a drop-down (`LONG_DECISION_LIST`);
+  the terminal client's list already scrolls. `PendingDecision::
+  ChooseCardName` is drawn, and `ChooseServer::ignore_run_costs` is the
+  engine's (the run pays nothing extra, which the readouts show by not
+  changing); no ledger row.
+- **Decks.** Endless Loop is new: MirrorMorph: Endless Iteration with
+  Retirement Package's cards, Eternal-legal. Encore takes Whistleblower
+  for Verbal Plasticity, Picket Line Always Have a Backup Plan for
+  Overclock, Burn Rate Direct Access for Katorga Breakout and Open Book
+  Complete Image for Cultivate; every card given up is still in another
+  deck. A new Corp deck re-pairs every sweep seed, and the 256-seed card
+  gate then saw no Reprise (Hit List's alone) and no Alarm Clock (Spare
+  Parts' one copy), as it once missed Alarm Clock at Rebellion Without Rehearsal Stage 6a: Encore
+  takes two Reprise for two Overclock, behind Whistleblower's steal, and
+  Picket Line two Alarm Clock for two Docklands Pass.
+- **Measured.** `cargo test --workspace` is green and clippy is silent,
+  with the desktop crate run one test target at a time. Both sweeps are
+  green at 256 seeds, the card gate included, once the deadlock and the
+  gate's reading above were fixed. `coverage_identical.py` against
+  Stage 7 (7987e90; 192 games a report) is identical by view and by
+  index, and **random play is identical to Stage 7**: no sample deck
+  changed, and the new decision is reached only in Sweep decks. The
+  planner moves because `determinize` samples the new cards (Corp
+  agenda wins 61 → 62, flatlines 25 → 26; Runner agenda wins 102 → 100).
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 638 card files — `ChooseCardName` is two
+  cards', `StealAccessedCard` one's.

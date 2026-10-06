@@ -725,6 +725,10 @@ pub enum GameEvent {
     /// (`masking::mask_event_for_player`) and the answering action is
     /// concealed in their log.
     NumberChosen { chooser: Side, amount: u32, secret: bool },
+    /// `chooser` named `card` (`Effect::ChooseCardName`): Complete Image's
+    /// and Whistleblower's "choose a card name". Public: a name is said
+    /// aloud.
+    CardNameChosen { chooser: Side, card: CardId },
     /// Both bids of a psi game, revealed together once the Runner has bid
     /// (CR 10.14.6c) and spent after this (10.14.4) — the first moment the
     /// Runner learns the Corp's (`Effect::PsiGame`). Heard by no card: none
@@ -824,7 +828,7 @@ impl GameEvent {
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
-            | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. }
+            | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }
             | GameEvent::PendingPaidChoiceDeclined { .. } => false,
         }

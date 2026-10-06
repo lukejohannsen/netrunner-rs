@@ -3,7 +3,7 @@
   "name": "Encore",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both. Uprising Stage 5: two Makler for its two Marjanah, a fracter that pays a credit the first time each turn it fully breaks a piece of ice; Picket Line keeps Marjanah. Downfall Stage 3: two Bukhgalter for two Carmen, a killer that pays 2[credit] the first time each turn it fully breaks a piece of ice (banned in Standard, as Nyusha is).",
+  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both. Uprising Stage 5: two Makler for its two Marjanah, a fracter that pays a credit the first time each turn it fully breaks a piece of ice; Picket Line keeps Marjanah. Downfall Stage 3: two Bukhgalter for two Carmen, a killer that pays 2[credit] the first time each turn it fully breaks a piece of ice (banned in Standard, as Nyusha is). Downfall Stage 8: two Whistleblower for its two Verbal Plasticity, a connection that trashes itself on a successful run to name an agenda and steals it free the next time the run accesses it; and two Reprise for its two Overclock, because a new Corp deck re-paired the sweep's seeds and the 256-seed card gate then saw no Reprise in Hit List, where it was alone: here it follows the steal Whistleblower makes. Overclock is in other decks.",
   "style": [
     "pressure"
   ],
@@ -34,7 +34,7 @@
       "count": 3
     },
     {
-      "card": "overclock",
+      "card": "reprise",
       "count": 2
     },
     {
@@ -74,7 +74,7 @@
       "count": 2
     },
     {
-      "card": "verbal_plasticity",
+      "card": "whistleblower",
       "count": 2
     },
     {

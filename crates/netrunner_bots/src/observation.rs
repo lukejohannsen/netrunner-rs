@@ -847,7 +847,9 @@ fn encode_decision(view: &ClientView, features: &mut Vec<f32>) {
         // and what it offers is already in the action mask — the legal
         // numbers are a contiguous run of the `ChooseNumber` segment.
         // Revisit with the next deliberate reshape of the observation.
-        | PendingDecision::ChooseNumber { chooser, .. } => *chooser,
+        | PendingDecision::ChooseNumber { chooser, .. }
+        // A name decision likewise: the names offered are the mask's.
+        | PendingDecision::ChooseCardName { chooser, .. } => *chooser,
         PendingDecision::ChooseCards { side, .. } => *side,
         // A psi game is a number decision too, with no slot for the same
         // reason; its bidder is whoever has not bid.

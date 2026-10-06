@@ -41,7 +41,7 @@ pub use ability::{amount_on_table, check_requirement, evaluate_effect, process_c
 // (Phase 5 §36), asked of the zone as the engine will ask it.
 pub use pending_choice::eligible_positions;
 pub use action::{PlayerAction, ServerTarget, TargetZone};
-pub use action_mask::{get_action_mask, ActionSpace};
+pub use action_mask::{get_action_mask, ActionSpace, MAX_NAME_OPTIONS};
 pub use damage::apply_damage;
 pub use win::{agenda_value_in, score, scored_value};
 pub use deck::{validate_deck, Deck};

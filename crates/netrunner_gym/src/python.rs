@@ -193,9 +193,12 @@ mod tests {
     ///
     /// 3133 → 3261 for an ability used from a hand (VP Stage 7f, Tocsin),
     /// appended.
+    ///
+    /// 3261 → 3773 for a card name chosen (DF Stage 8, Complete Image and
+    /// Whistleblower), a slot per name up to `MAX_NAME_OPTIONS`, appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 3261);
+        assert_eq!(ACTION_SPACE_SIZE, 3773);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

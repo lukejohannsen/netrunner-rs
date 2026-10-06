@@ -874,6 +874,12 @@ impl TurnLog {
     }
 
     /// How many times `action` was taken this turn (CR 5.2.5a).
+    /// How many different actions have been taken this turn (CR 5.2.5) —
+    /// MirrorMorph's "each different from one another".
+    pub fn different_actions(&self) -> u32 {
+        self.same_actions.iter().flatten().count() as u32
+    }
+
     pub fn times_taken(&self, action: SameAction) -> u32 {
         self.same_actions.iter().flatten().find(|(taken, _)| *taken == action).map_or(0, |(_, count)| u32::from(*count))
     }

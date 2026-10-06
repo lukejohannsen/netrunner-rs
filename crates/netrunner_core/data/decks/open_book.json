@@ -3,7 +3,7 @@
   "name": "Open Book",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Hyoubu Institute's deck, built in Downfall Stage 7 so the sweeps reach a reveal heard as a moment and the Runner's draw parked ahead of The Class Act's look. Every card in it reveals or makes the Runner pay for what is revealed: the identity's click shows a grip card or the top of the stack and pays 1[credit] the first time each turn, Engram Flush and Bring Them Home reveal the grip, Public Health Portal the top of R&D, Snare! itself as it is accessed; Saisentan's net damage names a card type and does more for each card of it trashed, Letheia Nisei sends a Runner who loses its psi game back to the outermost ice, and Project Yagi-Uda banks its extra advancements to swap a card from HQ into the server being run. Of Jinteki and neutral cards, on Permafrost's and Second Site's frames, whose Core Set cards keep it out of Standard.",
+  "description": "Not a published list: Hyoubu Institute's deck, built in Downfall Stage 7 so the sweeps reach a reveal heard as a moment and the Runner's draw parked ahead of The Class Act's look. Every card in it reveals or makes the Runner pay for what is revealed: the identity's click shows a grip card or the top of the stack and pays 1[credit] the first time each turn, Engram Flush and Bring Them Home reveal the grip, Public Health Portal the top of R&D, Snare! itself as it is accessed; Saisentan's net damage names a card type and does more for each card of it trashed, Letheia Nisei sends a Runner who loses its psi game back to the outermost ice, and Project Yagi-Uda banks its extra advancements to swap a card from HQ into the server being run. Of Jinteki and neutral cards, on Permafrost's and Second Site's frames, whose Core Set cards keep it out of Standard. Downfall Stage 8: two Complete Image for its two Cultivate, a terminal operation that names a card and does net damage again for as long as it trashes one of that name; Second Site keeps Cultivate.",
   "style": [
     "glacier"
   ],
@@ -86,7 +86,7 @@
       "count": 2
     },
     {
-      "card": "cultivate",
+      "card": "complete_image",
       "count": 2
     },
     {

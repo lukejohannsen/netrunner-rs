@@ -74,6 +74,10 @@ pub struct DelayedAbility {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub every_time: bool,
     pub turn: u32,
+    /// For the rest of the run, not the turn (`Effect::LaterThisTurn::
+    /// this_run`): dropped as the run ends (`run::end_run`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub this_run: bool,
     pub effect: crate::dsl::Effect,
     /// What resolves it, as the card that made it would.
     pub card: CardId,
@@ -248,6 +252,11 @@ pub enum Until {
     /// lockdown is trashed as the Corp's next turn begins
     /// (`CorpState::play_area`, `PlayedOperation::handle`).
     WhileInPlay(InstallId),
+    /// Until `count` actions have been taken in turn `turn` (`TurnLog::
+    /// actions_finished`): MirrorMorph's "another different action",
+    /// whose prohibition binds the next action and no other
+    /// (`EffectDuration::NextAction`).
+    ActionsFinished { turn: u32, count: u32 },
 }
 
 impl LingeringEffect {
@@ -265,6 +274,7 @@ impl LingeringEffect {
                 state.runner.rig.iter().any(|card| card.install_id == install) || state.corp.installed.iter().any(|card| card.install_id == install)
             }
             Until::WhileInPlay(handle) => state.corp.play_area.iter().any(|played| played.handle == handle),
+            Until::ActionsFinished { turn, count } => state.turn == turn && state.this_turn.actions_finished() < count,
         }
     }
 }
@@ -291,6 +301,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::Turn => Ok(Until::EndOfTurn(state.turn)),
         EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
+        EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
     }
 }
 

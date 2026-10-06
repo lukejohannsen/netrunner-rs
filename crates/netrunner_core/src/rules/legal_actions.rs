@@ -60,6 +60,15 @@ pub fn legal_transitions_for(
         .collect()
 }
 
+/// Whether `side` has a legal action other than ending the turn — for
+/// `turn::end_turn`'s one exception (MirrorMorph's forgone action), which
+/// cannot ask `legal_actions` without proving `EndTurn` by itself.
+pub(crate) fn has_a_move_but_ending_the_turn(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
+    candidate_actions(state, registry).into_iter().filter(|action| *action != PlayerAction::EndTurn).any(|action| {
+        apply_action(state, registry, action.clone()).is_ok() && action_owner(state, registry, &action) == side
+    })
+}
+
 /// Every deduplicated candidate `apply_action` accepts, in candidate
 /// order, each passed to `keep` with what applying it produced.
 fn proven<T>(
@@ -365,7 +374,8 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. }
-        | PlayerAction::ChooseNumber { .. } => {
+        | PlayerAction::ChooseNumber { .. }
+        | PlayerAction::ChooseCardName { .. } => {
             // A parked payment is answered by `ChooseNumber` or a card's
             // `ToggleCardSelection` too, and comes first for the reason
             // `current_actor` gives.
@@ -468,6 +478,10 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         // range was settled when the decision was parked.
         Some(crate::rules::state::PendingDecision::ChooseNumber { min, max, .. }) => {
             (*min..=*max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
+        }
+        // Every name the card allows, read when it was parked.
+        Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) => {
+            names.iter().map(|card| PlayerAction::ChooseCardName { card: card.clone() }).collect()
         }
         // The bidder's every bid; who bids is `pending_decision_chooser`'s.
         Some(crate::rules::state::PendingDecision::PsiGame { corp_bid, corp_max, runner_max, .. }) => {
