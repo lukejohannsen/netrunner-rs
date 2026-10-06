@@ -264,6 +264,12 @@ pub struct PublicRunnerState {
     /// where the engine will.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// Never masked — `RunnerState::servers_run_successfully`, the
+    /// Runner's most recent turn's successful runs, which every player
+    /// watched succeed; a sample needs it to answer Daily Quest as the
+    /// engine will.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub servers_run_successfully: Vec<ServerId>,
     /// `RunnerState::discarded_this_discard_phase`, public like the heap it
     /// indexes into: a discard to hand size is made on the table. Carried
     /// so a parked Magdalene Keino-Chemutai choice can be re-evaluated from
@@ -822,7 +828,9 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
         // A number named aloud: how many tags, how many credits.
-        | PlayerAction::ChooseNumber { .. } => PublicAction::Visible(action.clone()),
+        | PlayerAction::ChooseNumber { .. }
+        // And a card's name.
+        | PlayerAction::ChooseCardName { .. } => PublicAction::Visible(action.clone()),
     }
 }
 
@@ -1169,6 +1177,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::PendingChoiceResolved { .. }
         | GameEvent::NumberChoiceOffered { .. }
         | GameEvent::NumberChosen { .. }
+        | GameEvent::CardNameChosen { .. }
         | GameEvent::PsiBidsRevealed { .. }
         | GameEvent::PendingPaidChoiceOffered { .. }
         | GameEvent::PendingPaidChoiceAccepted { .. }
@@ -1199,7 +1208,8 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
         PendingDecision::ChooseEffect { source_card, prompting_card, .. }
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }
         | PendingDecision::ChooseServer { source_card, prompting_card, .. }
-        | PendingDecision::ChooseNumber { source_card, prompting_card, .. } => {
+        | PendingDecision::ChooseNumber { source_card, prompting_card, .. }
+        | PendingDecision::ChooseCardName { source_card, prompting_card, .. } => {
             *source_card = conceal(source_card);
             *prompting_card = conceal(prompting_card);
         }
@@ -1532,6 +1542,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         // rig adds. It was a stored field that only the identity ever wrote.
         link_strength: crate::rules::continuous::link(state, registry),
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
+        servers_run_successfully: runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
         once_per_turn_used: runner.once_per_turn_used.iter().cloned().collect(),

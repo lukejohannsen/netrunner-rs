@@ -1,0 +1,57 @@
+{
+  "id": "sting",
+  "title": "Sting!",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Net",
+            {
+              "Increased": {
+                "amount": {
+                  "Fixed": 1
+                },
+                "by": {
+                  "CopiesInScoreArea": "Runner"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When a player scores or steals this agenda, do X net damage. X is equal to 1 plus the number of copies of Sting! in the other playerʼs score area."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Net",
+            {
+              "Increased": {
+                "amount": {
+                  "Fixed": 1
+                },
+                "by": {
+                  "CopiesInScoreArea": "Corp"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When a player scores or steals this agenda, do X net damage. X is equal to 1 plus the number of copies of Sting! in the other playerʼs score area."
+    }
+  ],
+  "built_from": 26041,
+  "is_playable": true
+}

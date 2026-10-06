@@ -44,7 +44,7 @@ use crate::rules::{RulesError, Side};
 /// leaves waiting for a moment, which resolves the next time that moment
 /// comes and then expires (9.6.13c) — Lightning Laboratory's "When this
 /// turn ends, derez 2 pieces of ice protecting that server", made by
-/// `Effect::WhenThisTurnEnds`. Kept beside the lingering effects because
+/// `Effect::LaterThisTurn`. Kept beside the lingering effects because
 /// the rules keep it there (9.6.13: "maintained by a lingering effect"),
 /// and like them it is made once, outlives what made it, and survives any
 /// parked decision.
@@ -52,7 +52,8 @@ use crate::rules::{RulesError, Side};
 /// **It is heard like a card's trigger** (`listeners::plan_for`): its
 /// resolution is one of the moment's reactions, its controller's to order
 /// among the others, and it is taken off this list when it is planned, so
-/// it resolves once. `turn` dates it: "this turn" is `GameState::turn` as it
+/// it resolves once, unless it is heard every time (`every_time`) for the
+/// rest of the turn. `turn` dates it: "this turn" is `GameState::turn` as it
 /// was made, and one left from an earlier turn is never heard. Its effect
 /// has already had what it named written in — "that server" is the
 /// attacked server, `Effect::with_attacked_server` — because the run is
@@ -64,7 +65,19 @@ pub struct DelayedAbility {
     /// turn ends" (CR 5.6.3d: the turn and the discard phase end at one
     /// step).
     pub when: crate::dsl::Trigger,
+    /// Which of those moments, as a trigger's `when` narrows them
+    /// (Climactic Showdown's breach of R&D or HQ).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<crate::dsl::EventFilter>,
+    /// Heard every time for the rest of the turn rather than once — In the
+    /// Groove's "for the remainder of this turn, whenever".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub every_time: bool,
     pub turn: u32,
+    /// For the rest of the run, not the turn (`Effect::LaterThisTurn::
+    /// this_run`): dropped as the run ends (`run::end_run`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub this_run: bool,
     pub effect: crate::dsl::Effect,
     /// What resolves it, as the card that made it would.
     pub card: CardId,
@@ -239,6 +252,11 @@ pub enum Until {
     /// lockdown is trashed as the Corp's next turn begins
     /// (`CorpState::play_area`, `PlayedOperation::handle`).
     WhileInPlay(InstallId),
+    /// Until `count` actions have been taken in turn `turn` (`TurnLog::
+    /// actions_finished`): MirrorMorph's "another different action",
+    /// whose prohibition binds the next action and no other
+    /// (`EffectDuration::NextAction`).
+    ActionsFinished { turn: u32, count: u32 },
 }
 
 impl LingeringEffect {
@@ -256,6 +274,7 @@ impl LingeringEffect {
                 state.runner.rig.iter().any(|card| card.install_id == install) || state.corp.installed.iter().any(|card| card.install_id == install)
             }
             Until::WhileInPlay(handle) => state.corp.play_area.iter().any(|played| played.handle == handle),
+            Until::ActionsFinished { turn, count } => state.turn == turn && state.this_turn.actions_finished() < count,
         }
     }
 }
@@ -282,6 +301,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::Turn => Ok(Until::EndOfTurn(state.turn)),
         EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
+        EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
     }
 }
 

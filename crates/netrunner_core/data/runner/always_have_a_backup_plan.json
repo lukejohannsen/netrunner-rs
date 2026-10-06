@@ -1,0 +1,66 @@
+{
+  "id": "always_have_a_backup_plan",
+  "title": "Always Have a Backup Plan",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "EffectIf": {
+                  "condition": "LastRunUnsuccessful",
+                  "effect": {
+                    "PresentChoice": {
+                      "chooser": "Runner",
+                      "options": [
+                        {
+                          "PromptChooseServer": {
+                            "chooser": "Runner",
+                            "rez_cost_delta": 0,
+                            "bonus_run_credits": 0,
+                            "last_run_server": true,
+                            "ignore_additional_costs": true,
+                            "on_start": {
+                              "LaterThisTurn": {
+                                "when": "OnEncounter",
+                                "filter": {
+                                  "Card": "LastEncounteredLastRun"
+                                },
+                                "every_time": true,
+                                "this_run": true,
+                                "effect": "BypassEncounteredIce"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "Sequence": []
+                        }
+                      ],
+                      "texts": [
+                        "you may run the attacked server again, ignoring any additional costs to run",
+                        ""
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server. When that run ends, if it was unsuccessful, you may run the attacked server again, ignoring any additional costs to run. During the second run, whenever you encounter the last piece of ice you encountered during the first run, bypass it."
+    }
+  ],
+  "built_from": 26011,
+  "is_playable": true
+}

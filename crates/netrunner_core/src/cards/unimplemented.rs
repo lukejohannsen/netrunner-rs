@@ -23,7 +23,9 @@
 /// the day Standard's last pack lands, Standard is added here or the gate
 /// names it. Startup was verified complete on 29 September 2026 (Phase 5
 /// §25 Stage 0): System Gateway, Elevation and Vantage Point, 225 cards.
-pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup];
+/// Standard was, with Downfall Stage 8 (6 October 2026): its last unbuilt
+/// cards were Downfall's.
+pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup, crate::format::NsgFormat::Standard];
 
 /// *Vantage Point* (`vantage_point`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(&str, &str)] = &[];
@@ -51,73 +53,7 @@ pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.
-pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("isolation", "Isolation"),
-    ("demolisher", "Demolisher"),
-    ("chisel", "Chisel"),
-    ("stargate", "Stargate"),
-    ("utae", "Utae"),
-    ("climactic_showdown", "Climactic Showdown"),
-    ("fencer_fueno", "Fencer Fueno"),
-    ("the_nihilist", "The Nihilist"),
-    ("trickster_taka", "Trickster Taka"),
-    ("az_mccaffrey_mechanical_prodigy", "Az McCaffrey: Mechanical Prodigy"),
-    ("always_have_a_backup_plan", "Always Have a Backup Plan"),
-    ("blueberry_diesel", "Blueberry!™ Diesel"),
-    ("flip_switch", "Flip Switch"),
-    ("lucky_charm", "Lucky Charm"),
-    ("masterwork_v37", "Masterwork (v37)"),
-    ("bukhgalter", "Bukhgalter"),
-    ("baklan_bochkin", "“Baklan” Bochkin"),
-    ("the_class_act", "The Class Act"),
-    ("lat_ethical_freelancer", "Lat: Ethical Freelancer"),
-    ("in_the_groove", "In the Groove"),
-    ("khusyuk", "Khusyuk"),
-    ("spec_work", "Spec Work"),
-    ("supercorridor", "Supercorridor"),
-    ("gauss", "Gauss"),
-    ("pelangi", "Pelangi"),
-    ("rezeki", "Rezeki"),
-    ("the_artist", "The Artist"),
-    ("direct_access", "Direct Access"),
-    ("rejig", "Rejig"),
-    ("whistleblower", "Whistleblower"),
-    ("mirrormorph_endless_iteration", "MirrorMorph: Endless Iteration"),
-    ("architect_deployment_test", "Architect Deployment Test"),
-    ("calvin_b4l3y", "Calvin B4L3Y"),
-    ("nanoetching_matrix", "Nanoetching Matrix"),
-    ("hagen", "Hagen"),
-    ("fully_operational", "Fully Operational"),
-    ("red_level_clearance", "Red Level Clearance"),
-    ("cold_site_server", "Cold Site Server"),
-    ("hyoubu_institute_absolute_clarity", "Hyoubu Institute: Absolute Clarity"),
-    ("project_yagi_uda", "Project Yagi-Uda"),
-    ("sting", "Sting!"),
-    ("public_health_portal", "Public Health Portal"),
-    ("storgotic_resonator", "Storgotic Resonator"),
-    ("saisentan", "Saisentan"),
-    ("complete_image", "Complete Image"),
-    ("letheia_nisei", "Letheia Nisei"),
-    ("remastered_edition", "Remastered Edition"),
-    ("daily_quest", "Daily Quest"),
-    ("tiered_subscription", "Tiered Subscription"),
-    ("congratulations", "Congratulations!"),
-    ("loot_box", "Loot Box"),
-    ("focus_group", "Focus Group"),
-    ("game_over", "Game Over"),
-    ("increased_drop_rates", "Increased Drop Rates"),
-    ("divested_trust", "Divested Trust"),
-    ("sds_drone_deployment", "SDS Drone Deployment"),
-    ("roughneck_repair_squad", "Roughneck Repair Squad"),
-    ("afshar", "Afshar"),
-    ("sandstone", "Sandstone"),
-    ("trebuchet", "Trebuchet"),
-    ("secure_and_protect", "Secure and Protect"),
-    ("reduced_service", "Reduced Service"),
-    ("vulnerability_audit", "Vulnerability Audit"),
-    ("csr_campaign", "CSR Campaign"),
-    ("rime", "Rime"),
-];
+pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.
 pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[

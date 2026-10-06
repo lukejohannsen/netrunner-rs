@@ -1,0 +1,109 @@
+{
+  "id": "endless_loop",
+  "name": "Endless Loop",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "mirrormorph_endless_iteration",
+  "cards": [
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "pulse",
+      "count": 2
+    },
+    {
+      "card": "caveat_emptor",
+      "count": 2
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 2
+    },
+    {
+      "card": "trieste_model_bioroids",
+      "count": 2
+    },
+    {
+      "card": "echo",
+      "count": 2
+    },
+    {
+      "card": "tranquility_home_grid",
+      "count": 2
+    },
+    {
+      "card": "vaporframe_fabricator",
+      "count": 2
+    },
+    {
+      "card": "vulnerability_audit",
+      "count": 2
+    },
+    {
+      "card": "bloop",
+      "count": 2
+    },
+    {
+      "card": "elivagar_bifurcation",
+      "count": 2
+    },
+    {
+      "card": "refuge_campaign",
+      "count": 2
+    },
+    {
+      "card": "midnight_3_arcology",
+      "count": 2
+    },
+    {
+      "card": "wave",
+      "count": 2
+    },
+    {
+      "card": "hakarl_1_0",
+      "count": 2
+    },
+    {
+      "card": "big_deal",
+      "count": 2
+    },
+    {
+      "card": "bass_ch1r180g4",
+      "count": 2
+    },
+    {
+      "card": "cerebral_overwriter",
+      "count": 2
+    },
+    {
+      "card": "drafter",
+      "count": 2
+    },
+    {
+      "card": "tyr",
+      "count": 1
+    },
+    {
+      "card": "next_activation_command",
+      "count": 2
+    },
+    {
+      "card": "napd_cordon",
+      "count": 2
+    },
+    {
+      "card": "megaprix_qualifier",
+      "count": 3
+    },
+    {
+      "card": "project_vacheron",
+      "count": 2
+    }
+  ]
+}

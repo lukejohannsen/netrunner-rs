@@ -1,0 +1,146 @@
+{
+  "id": "saisentan",
+  "title": "Saisentan",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 5,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Event"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Hardware"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Program"
+                  },
+                  "until": "Encounter"
+                }
+              },
+              {
+                "Remember": {
+                  "what": {
+                    "CardType": "Resource"
+                  },
+                  "until": "Encounter"
+                }
+              }
+            ],
+            "texts": [
+              "choose a card type — event",
+              "choose a card type — hardware",
+              "choose a card type — program",
+              "choose a card type — resource"
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, choose a card type. For the remainder of the encounter, whenever you trash a card of the chosen type with net damage from a subroutine on this ice, do 1 net damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "LastDamageTrashed": "OfChosenCardType"
+              },
+              "effect": {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "LastDamageTrashed": "OfChosenCardType"
+              },
+              "effect": {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "LastDamageTrashed": "OfChosenCardType"
+              },
+              "effect": {
+                "DealDamage": [
+                  "Net",
+                  1
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 26044,
+  "is_playable": true
+}

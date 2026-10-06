@@ -23,17 +23,38 @@ use super::*;
 /// payment's own answers are finite and each is a legal action. `None`
 /// when nothing is parked, or no answer goes through.
 pub(super) fn through_parked_payment(state: &GameState, registry: &CardRegistry, w: &Weights) -> Option<GameState> {
+    best_payment(state, registry, w).map(|paid| *paid)
+}
+
+/// `through_parked_payment`'s search, one boxed state per level.
+///
+/// A loop over boxes rather than the iterator chain it was: each adapter
+/// of `filter_map(..).map(..).max_by(..)` held a `GameState` by value, so
+/// a debug build spent about 350 KB of stack per parked question, and a
+/// rez whose payment asked four times in a row (*Downfall* Stage 4's
+/// not_so_subtle against sabbatical, game 19 of the index sweep)
+/// overflowed the test thread's 2 MB. The answer chosen is the same: the
+/// payer's best by their own reckoning, the last of equals.
+fn best_payment(state: &GameState, registry: &CardRegistry, w: &Weights) -> Option<Box<GameState>> {
     let payment = state.pending_payment.as_ref()?;
     let payer = payment.side;
-    payment
-        .question
-        .answers()
-        .into_iter()
-        .filter_map(|value| netrunner_core::rules::apply_action(state, registry, payment.question.action_for(value)).ok())
-        .map(|(next, _)| through_parked_payment(&next, registry, w).unwrap_or(next))
-        .map(|paid| (evaluate_state_with(&paid, payer, registry, w), paid))
-        .max_by(|(a, _), (b, _)| a.total_cmp(b))
-        .map(|(_, paid)| paid)
+    let mut best: Option<(f64, Box<GameState>)> = None;
+    for value in payment.question.answers() {
+        let Some(next) = answered(state, registry, payment.question.action_for(value)) else { continue };
+        let paid = best_payment(&next, registry, w).unwrap_or(next);
+        let score = evaluate_state_with(&paid, payer, registry, w);
+        if best.as_ref().is_none_or(|(top, _)| score.total_cmp(top).is_ge()) {
+            best = Some((score, paid));
+        }
+    }
+    best.map(|(_, paid)| paid)
+}
+
+/// One answer applied, the state boxed before it reaches the search's
+/// frame — the `(GameState, Vec<GameEvent>)` the engine returns lives
+/// only here.
+fn answered(state: &GameState, registry: &CardRegistry, action: netrunner_core::rules::PlayerAction) -> Option<Box<GameState>> {
+    netrunner_core::rules::apply_action(state, registry, action).ok().map(|(next, _)| Box::new(next))
 }
 
 /// A **lower bound** on what resolving the `PendingDecision` `side`
@@ -319,6 +340,7 @@ mod tests {
             used_by: None,
             access: false,
             from_hand: false,
+            part_of: None,
         }];
         let registry = CardRegistry::from_cards(vec![trasher, card("an_event", CardType::Event), card("a_program", CardType::Program)]);
         let mut state = GameState::new(0);

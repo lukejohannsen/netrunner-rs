@@ -291,7 +291,7 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
         if card.abilities.is_empty() || crate::rules::active::lost_abilities(state, registry, install) {
             return false;
         }
-        card.abilities.iter().any(|ability| {
+        card.abilities.iter().enumerate().any(|(index, ability)| {
             // An interrupt is not something to do in a window of one's own
             // choosing (`rules::prevention` says when): counting it opened
             // a window after every action for a player whose only move in
@@ -305,16 +305,17 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
                 && ability.effect.prevents().is_none()
                 && !ability.is_action()
                 && !ability.access
-                && ability_is_usable(state, registry, side, install, &card_id, ability)
+                && ability_is_usable(state, registry, side, install, &card_id, index)
         })
     })
 }
 
-/// Whether `side` could use `ability`, printed on `card_id`, from
-/// `install` now: its requirement met and its cost affordable, asked per
-/// *install* as `activate_ability` will resolve it — a
-/// `Cost::RemoveCounters` is affordable by the copy that holds the
-/// counters, and `OncePerTurn` is spent per copy — and not on a card that
+/// Whether `side` could use the `index`th ability printed on `card_id`,
+/// from `install` now: its requirement met and its cost affordable, asked
+/// per *install* and per printed ability as `activate_ability` will
+/// resolve it — a `Cost::RemoveCounters` is affordable by the copy that
+/// holds the counters, and `OncePerTurn` is spent per copy and per printed
+/// ability (CR 9.3.6g, The Artist's two) — and not on a card that
 /// has lost its abilities. Not whether a window is open, and not whether
 /// the effect would do anything (see `has_usable_paid_ability`, which asks
 /// it of every ability that may open a window).
@@ -322,12 +323,13 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 /// Public for the bots' evaluator, which prices an end-the-run the Corp
 /// holds for later in a run (`netrunner_bots::eval::corp`) — one
 /// definition of "could use it", never a copy in the bot.
-pub fn ability_is_usable(state: &GameState, registry: &CardRegistry, side: Side, install: InstallId, card_id: &CardId, ability: &crate::dsl::AbilityDef) -> bool {
+pub fn ability_is_usable(state: &GameState, registry: &CardRegistry, side: Side, install: InstallId, card_id: &CardId, index: usize) -> bool {
     let Some(card) = registry.get(card_id) else { return false };
+    let Some(ability) = card.abilities.get(index) else { return false };
     if crate::rules::active::lost_abilities(state, registry, install) {
         return false;
     }
-    let ctx = ability::ResolutionContext::for_install(install, card_id);
+    let ctx = ability::ResolutionContext::for_install(install, card_id).using(card, index);
     ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
         && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card), &ctx))
 }
@@ -506,7 +508,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..Default::default()
         });
         let mut state = base_state();

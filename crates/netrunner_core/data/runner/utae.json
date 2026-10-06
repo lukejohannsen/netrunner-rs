@@ -1,0 +1,93 @@
+{
+  "id": "utae",
+  "title": "Utae",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → X[credit]: Break X code gate subroutines. Use this ability only once per run.",
+      "cost": {
+        "CreditsX": {
+          "max": "EncounteredIceSubroutines"
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "ChosenNumber",
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": {
+        "And": [
+          {
+            "And": [
+              "DuringEncounter",
+              {
+                "Encountering": "CodeGate"
+              }
+            ]
+          },
+          "OncePerRun"
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine. Use this ability only if you have 3 or more installed virtual resources.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "AmountAtLeast": [
+              {
+                "RunnerInstalls": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    {
+                      "HasSubtype": "Virtual"
+                    }
+                  ]
+                }
+              },
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 26005,
+  "is_playable": true
+}

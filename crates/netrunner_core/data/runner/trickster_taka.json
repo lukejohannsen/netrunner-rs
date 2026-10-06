@@ -1,0 +1,67 @@
+{
+  "id": "trickster_taka",
+  "title": "Trickster Taka",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "UsingDuringRuns": {
+        "CardType": "Program"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins and whenever you steal an agenda, place 1[credit] on this resource."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "TrashCard": "ThisCard"
+              }
+            ],
+            "texts": [
+              "you must take 1 tag",
+              "trash this resource"
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, if there are 3 or more hosted credits, you must take 1 tag or trash this resource."
+    }
+  ],
+  "built_from": 26009,
+  "is_playable": true
+}

@@ -1,0 +1,128 @@
+{
+  "id": "the_nihilist",
+  "title": "The Nihilist",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "unique": true,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Virus"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "The first time each turn you install a virus program, place 2 virus counters on this resource."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "CountersOnOwnInstalls": "Virus"
+          },
+          2
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "HostsCounters": "Virus"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "RemoveCounters": {
+                          "Fixed": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnInstalled",
+                      "filter": {
+                        "HostsCounters": "Virus"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "RemoveCounters": {
+                          "Fixed": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "OfferPaidChoice": {
+                      "side": "Corp",
+                      "cost": {
+                        "Trash": {
+                          "from": "OwnRAndD",
+                          "filter": {
+                            "TopOfZone": 1
+                          },
+                          "count": 1
+                        }
+                      },
+                      "if_paid": {
+                        "Sequence": []
+                      },
+                      "if_declined": {
+                        "DrawCards": [
+                          "Runner",
+                          2
+                        ]
+                      },
+                      "text": "draw 2 cards unless the Corp trashes the top card of R&D"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may remove any 2 virus counters from your installed cards",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove any 2 virus counters from your installed cards. If you do, draw 2 cards unless the Corp trashes the top card of R&D."
+    }
+  ],
+  "built_from": 26008,
+  "is_playable": true
+}

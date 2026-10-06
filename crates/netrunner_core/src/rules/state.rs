@@ -294,10 +294,20 @@ pub struct RevealedCard {
 ///
 /// `card` is `None` only where a requirement is checked with no card in
 /// hand, which no card file can do.
+///
+/// **And which of its paid abilities**, because the limit is the
+/// ability's, not the card's (CR 9.3.6g: "An ability with this flag can
+/// only be used once per turn"): The Artist prints two once-per-turn
+/// [click] abilities, and a use of one left the other unspent only once
+/// `ability` was part of the key. `None` for a trigger, which is the
+/// card's one use of its own; a printed ability written as two entries
+/// says so (`AbilityDef::part_of`, Pauleʼs Café) and is one index here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OncePerTurnKey {
     pub card: Option<CardId>,
     pub install: Option<InstallId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability: Option<u8>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorpState {
@@ -752,6 +762,16 @@ pub struct RunnerState {
     /// same as a click. Public — both players watched the runs happen.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// Every server the Runner has made a successful run on during their
+    /// most recent turn, reset as their next turn starts with
+    /// `servers_run_this_turn` — so through the Corp's turn it is the
+    /// Runner's last turn's: Daily Quest's "if the Runner did not make a
+    /// successful run on this server during their last turn"
+    /// (`EffectRequirement::RunnerSucceededOnThisServerLastTurn`). A list
+    /// beside the turn log, as `servers_run_this_turn` is, because the log
+    /// counts remotes as one class (the Turn History Rule). Public.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub servers_run_successfully: Vec<ServerId>,
 }
 
 impl RunnerState {
@@ -973,6 +993,25 @@ pub enum WouldHappen {
     /// it. Named by the ice's handle: the ice is rezzed and being
     /// encountered, so it is public.
     EncounterAbility { ice: InstallId },
+    /// A Corp card's text would end the run on `server` (Lucky Charm's
+    /// "prevent a Corp card ability from ending the run"). The run and its
+    /// server are public.
+    RunEnds { server: crate::rules::run::ServerId },
+    /// A trace would be initiated at base strength `base`. It is
+    /// initiated whatever happens, from `PendingPrevention::waiting`; what
+    /// is prevented is its base strength (Flip Switch). Public, as the
+    /// trace is.
+    Trace { base: u32 },
+    /// `side` would draw `amount` cards — the Runner, the only side whose
+    /// draws are announced (`Trigger::OnDrawAboutToResolve`). **The first
+    /// thing parked here that no card prevents**: The Class Act's "look at
+    /// the top X cards of your stack. Add 1 of those cards to the bottom"
+    /// is an interrupt that changes what is drawn, not how many, so no
+    /// `Preventable` matches it and nobody is ever asked; the parking is
+    /// what lets the trigger resolve, and park a selection of its own,
+    /// before the cards are drawn. Public: how many cards a player draws
+    /// is.
+    Draw { side: Side, amount: u32 },
 }
 
 impl WouldHappen {
@@ -980,16 +1019,21 @@ impl WouldHappen {
     /// card.
     pub fn amount(&self) -> u32 {
         match self {
-            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } => *amount,
-            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } => 1,
+            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } => *amount,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } => 1,
         }
     }
 
     /// Who it happens to, and so who is asked first.
     pub fn affects(&self) -> Side {
         match self {
-            WouldHappen::Damage { .. } | WouldHappen::Tags { .. } | WouldHappen::EncounterAbility { .. } => Side::Runner,
+            WouldHappen::Damage { .. }
+            | WouldHappen::Tags { .. }
+            | WouldHappen::EncounterAbility { .. }
+            | WouldHappen::RunEnds { .. }
+            | WouldHappen::Trace { .. } => Side::Runner,
             WouldHappen::Trash { owner, .. } => *owner,
+            WouldHappen::Draw { side, .. } => *side,
         }
     }
 }
@@ -1026,7 +1070,9 @@ pub struct PendingPrevention {
     pub source_install: Option<InstallId>,
     pub resume: PreventionResume,
     /// The trigger a `WouldHappen::EncounterAbility` is: it resolves once
-    /// the asking is over, if it was not prevented. `None` for everything
+    /// the asking is over, if it was not prevented. The trace a
+    /// `WouldHappen::Trace` is, as a continuation: it resolves whatever was
+    /// prevented, at base strength 0 when that was. `None` for everything
     /// else, which `happen` makes happen from `what` alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting: Option<Box<DeferredTrigger>>,
@@ -1297,6 +1343,27 @@ pub enum PendingDecision {
         /// is public, as a secret choice being made is (CR 1.5.2b).
         secret: bool,
     },
+    /// `Effect::ChooseCardName` parked this: `chooser` names one of
+    /// `names` with `PlayerAction::ChooseCardName` — every playable card
+    /// the effect's filter admits, sorted by id, read when it was parked.
+    /// Public: the names are the pool's, and nothing here says what any
+    /// hidden card is.
+    ChooseCardName {
+        chooser: Side,
+        names: Vec<CardId>,
+        /// The `ChooseCardName` that parked this, whole — the name is
+        /// written into its `then`, and "repeat this process" resolves it
+        /// again (`again_if`).
+        effect: Box<Effect>,
+        /// `Effect::ChooseCardName::text`, the prompt.
+        text: String,
+        source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        prompting_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        source_install: Option<InstallId>,
+        resume: PendingChoiceResume,
+    },
     /// `Effect::PsiGame` parked this (CR 10.14.6): the Corp bids while
     /// `corp_bid` is `Awaiting`, then the Runner, each with
     /// `PlayerAction::ChooseNumber` from 0 to their `*_max` — 2, or less
@@ -1352,6 +1419,11 @@ pub enum PendingDecision {
         /// Gantulga's "you may choose a server".
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remember: bool,
+        /// The run is made ignoring any additional costs to run
+        /// (`Effect::PromptChooseServer::ignore_additional_costs`, Always
+        /// Have a Backup Plan's second run): `run::start_run_ignoring_costs`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_run_costs: bool,
         /// Seeded onto the resulting `run::RunState::on_success_effect` —
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,
@@ -1432,6 +1504,11 @@ pub struct CompletedRun {
     /// ice you passed during that run" (`Amount::IcePassedLastRun`).
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub ice_passed: u32,
+    /// `RunState::last_encountered` at conclusion — Always Have a Backup
+    /// Plan's "the last piece of ice you encountered during the first run"
+    /// (`CardFilter::LastEncounteredLastRun`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_encountered: Option<InstallId>,
 }
 
 impl CompletedRun {
@@ -1454,6 +1531,7 @@ impl CompletedRun {
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,
             ice_passed: run.ice_passed,
+            last_encountered: run.last_encountered,
         }
     }
 }

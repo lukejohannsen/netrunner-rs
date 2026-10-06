@@ -1,0 +1,43 @@
+{
+  "id": "sds_drone_deployment",
+  "title": "SDS Drone Deployment",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "CardType": "Program"
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentInstalled",
+            "filter": {
+              "CardType": "Program"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        }
+      ],
+      "text": "When you score this agenda, trash 1 installed program."
+    }
+  ],
+  "built_from": 26056,
+  "is_playable": true
+}

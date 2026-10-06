@@ -1,0 +1,57 @@
+{
+  "id": "trebuchet",
+  "title": "Trebuchet",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 7,
+  "strength": 6,
+  "subroutines": [
+    {
+      "text": "Trash 1 installed Runner card.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trace[6]. If successful, the Runner cannot steal or trash Corp cards for the remainder of this run.",
+      "effect": {
+        "Trace": {
+          "base": 6,
+          "on_success": {
+            "Prohibit": {
+              "what": "StealOrTrash",
+              "until": "Run"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, take 1 bad publicity."
+    }
+  ],
+  "built_from": 26060,
+  "is_playable": true
+}

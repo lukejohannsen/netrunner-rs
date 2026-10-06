@@ -186,9 +186,35 @@ impl Plugin for GamePlugin {
             .add_systems(Update, place_menu.run_if(in_state(AppScreen::Game)))
             // The sounds of what was applied, as the message lands; they
             // order against nothing on the board.
-            .add_systems(Update, play_sounds.run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, play_sounds.run_if(in_state(AppScreen::Game)))
+            // A long decision's drop-down: what it chooses is queued for
+            // `controls`, as a key is, so it needs no place in the chain.
+            .add_systems(Update, decision_list.run_if(in_state(AppScreen::Game)));
     }
 }
+
+/// The decision pop-up's drop-down (`DecisionList`), when a row is chosen:
+/// the entry it stands for, queued for `controls` as a key's press is.
+/// Row 0 is the head's "Choose…", which chooses nothing.
+fn decision_list(mut chosen: MessageReader<widgets::dropdown::DropdownChanged>, lists: Query<&DecisionList>, mut pending: ResMut<Pending>) {
+    for widgets::dropdown::DropdownChanged { dropdown, index } in chosen.read() {
+        let Ok(DecisionList(entries)) = lists.get(*dropdown) else { continue };
+        if let Some(entry) = index.checked_sub(1).and_then(|row| entries.get(row)) {
+            pending.0.push(Intent::Choose(*entry));
+        }
+    }
+}
+
+/// On the decision pop-up's drop-down: the action-map entry each of its
+/// rows after the first stands for.
+#[derive(Component, Debug, Clone)]
+struct DecisionList(Vec<usize>);
+
+/// More decisions than this are a drop-down rather than a row of pills —
+/// "only a list too long for pills is a drop-down" (`screens::new_game`'s
+/// rule): Complete Image's card name is any of the Runner's two hundred
+/// and more, and the pills wrapped off the window.
+const LONG_DECISION_LIST: usize = 12;
 
 /// Hands the model's queued sounds (`models::sound::cues`) to the sound
 /// bank, each a [`STAGGER`] after the one before, so an action that drew
@@ -3818,7 +3844,12 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     let remember = game.optional_prompt();
     let inner = POPUP_MIN_WIDTH - 2.0 * POPUP_PADDING;
     let lines = |text: &str, size: f32| layout::wrapped_lines(text, inner, size) as f32;
-    let label_rows: f32 = buttons.iter().filter_map(|index| game.actions.entries.get(*index)).map(|entry| lines(&entry.label, size::BODY) * 22.0 + 14.0 + layout::ROW_GAP).sum();
+    // A long list is one drop-down's head (`LONG_DECISION_LIST`).
+    let label_rows: f32 = if buttons.len() > LONG_DECISION_LIST {
+        22.0 + 14.0 + layout::ROW_GAP
+    } else {
+        buttons.iter().filter_map(|index| game.actions.entries.get(*index)).map(|entry| lines(&entry.label, size::BODY) * 22.0 + 14.0 + layout::ROW_GAP).sum()
+    };
     let chrome = 2.0 * 16.0
         + lines(&title, size::HEADING) * 30.0
         + 8.0
@@ -3971,12 +4002,24 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                             }
                         });
                 }
+                // A list too long for pills is a drop-down: its rows are the
+                // buttons' words, and choosing one submits that entry
+                // (`decision_list`). The list is measured against the
+                // window as it opens, so every name stays reachable.
+                if buttons.len() > LONG_DECISION_LIST {
+                    let mut rows = vec![widgets::dropdown::Choice::plain("Choose…")];
+                    rows.extend(buttons.iter().filter_map(|index| game.actions.entries.get(*index)).map(|entry| widgets::dropdown::Choice::plain(entry.label.clone())));
+                    panel.spawn(Node { width: percent(100), justify_content: JustifyContent::Center, ..rigid.clone() }).with_children(|row| {
+                        widgets::dropdown::spawn_dropdown(row, theme, "Choose", rows, 0, DecisionList(buttons.clone()));
+                    });
+                }
                 // The decisions are one centred row of pills, each as wide
                 // as its words (at least `POPUP_BUTTON_MIN`, at most the
                 // pill's cap), wrapping when the row is full: stacked at
                 // the panel's width, a wide pop-up's Keep and Mulligan were
                 // two bars across the window. `Val::Auto`, never a
                 // percentage, for `entry_button`'s reason.
+                let buttons: Vec<usize> = if buttons.len() > LONG_DECISION_LIST { Vec::new() } else { buttons.clone() };
                 panel
                     .spawn(Node {
                         flex_direction: FlexDirection::Row,

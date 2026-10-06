@@ -45,7 +45,7 @@ pub use pending_choice::eligible_positions;
 // question of one ability.
 pub use paid_ability::ability_is_usable;
 pub use action::{PlayerAction, ServerTarget, TargetZone};
-pub use action_mask::{get_action_mask, ActionSpace};
+pub use action_mask::{get_action_mask, ActionSpace, MAX_NAME_OPTIONS};
 pub use damage::apply_damage;
 pub use win::{agenda_value_in, score, scored_value};
 pub use deck::{validate_deck, Deck};

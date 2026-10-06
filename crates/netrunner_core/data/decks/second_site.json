@@ -3,7 +3,7 @@
   "name": "Second Site",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 3b: two Simulation Reset for two of its three Mindscaping. Uprising Stage 6: two Engram Flush for Urtica Cipher and Retribution, a card type chosen on encounter and the grip revealed.",
+  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 3b: two Simulation Reset for two of its three Mindscaping. Uprising Stage 6: two Engram Flush for Urtica Cipher and Retribution, a card type chosen on encounter and the grip revealed. Downfall Stage 5: two Public Health Portal for two Esca, an asset that shows the top of R&D and pays 2[credit] each turn; Esca is in another deck.",
   "style": [
     "traps"
   ],
@@ -43,10 +43,6 @@
     },
     {
       "card": "lionsmane",
-      "count": 2
-    },
-    {
-      "card": "esca",
       "count": 2
     },
     {
@@ -99,6 +95,10 @@
     },
     {
       "card": "engram_flush",
+      "count": 2
+    },
+    {
+      "card": "public_health_portal",
       "count": 2
     }
   ]

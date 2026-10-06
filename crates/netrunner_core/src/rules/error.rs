@@ -386,6 +386,12 @@ pub enum RulesError {
     #[error("{amount} is outside the {min}..={max} this pending decision asks for")]
     ChosenNumberOutOfRange { amount: u32, min: u32, max: u32 },
 
+    #[error("an action of that kind was already taken this turn, and the next action must be a different one")]
+    ActionRepeated,
+
+    #[error("{card:?} is not a name this pending decision offers")]
+    NameNotOffered { card: CardId },
+
     #[error("cannot take that action while a paid choice is pending ({side:?} must Accept or Decline it)")]
     ActionBlockedByPendingPaidChoice { side: Side },
 

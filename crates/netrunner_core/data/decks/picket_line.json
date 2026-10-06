@@ -3,21 +3,19 @@
   "name": "Picket Line",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Mercury: Chrome Libertador, The Automata Initiative's Criminal identity (Stage 6), on Stolen Goods' frame of run events and HQ pressure. Debbie “Downtown” Moreira banks a credit for every Jailbreak, Overclock, Tread Lightly and Bahia Bands and spends them on her own runs; Chrysopoeian Skimming asks the Corp for an agenda; Hannah “Wheels” Pilintra, Strike Fund and The Price on influence, The Price trashing Strike Funds off the stack for their 2[credit]. Standard, Eternal and Casual: no card in it is from the Core Set. The Automata Initiative Stage 7: two S-Dobrado and two Capybara, which removes itself from the game to derez what S-Dobrado bypasses, for two Sure Gamble, an Overclock and a Jailbreak. Parhelion Stage 2a: two Zenit Chip JZ-2MJ for two Jailbreak.",
-  "style": ["pressure"],
+  "description": "Not a published list: built so the sweeps reach Mercury: Chrome Libertador, The Automata Initiative's Criminal identity (Stage 6), on Stolen Goods' frame of run events and HQ pressure. Debbie “Downtown” Moreira banks a credit for every Jailbreak, Overclock, Tread Lightly and Bahia Bands and spends them on her own runs; Chrysopoeian Skimming asks the Corp for an agenda; Hannah “Wheels” Pilintra, Strike Fund and The Price on influence, The Price trashing Strike Funds off the stack for their 2[credit]. Standard, Eternal and Casual: no card in it is from the Core Set. The Automata Initiative Stage 7: two S-Dobrado and two Capybara, which removes itself from the game to derez what S-Dobrado bypasses, for two Sure Gamble, an Overclock and a Jailbreak. Parhelion Stage 2a: two Zenit Chip JZ-2MJ for two Jailbreak. Downfall Stage 6: two Lucky Charm for two Tread Lightly, an interrupt that keeps a Corp card from ending the run once the Runner has made a successful run on HQ that turn; and two Flip Switch for two Pennyshaver, a [trash] to jack out, to remove a tag, or to reduce a trace's base strength to 0, on the Runner's turn. Tread Lightly and Pennyshaver are in other decks. Downfall Stage 8: two Always Have a Backup Plan for its two Overclock, a run event for a run event: an unsuccessful run may be made again, bypassing the ice that stopped it; and two Alarm Clock for two Docklands Pass, because the same re-pairing left Spare Parts' one copy unseen by the 256-seed card gate. Docklands Pass is in other decks.",
+  "style": [
+    "pressure"
+  ],
   "identity": "mercury_chrome_libertador",
   "cards": [
     {
-      "card": "overclock",
+      "card": "always_have_a_backup_plan",
       "count": 2
     },
     {
       "card": "sure_gamble",
       "count": 1
-    },
-    {
-      "card": "tread_lightly",
-      "count": 2
     },
     {
       "card": "bahia_bands",
@@ -40,11 +38,7 @@
       "count": 2
     },
     {
-      "card": "docklands_pass",
-      "count": 2
-    },
-    {
-      "card": "pennyshaver",
+      "card": "alarm_clock",
       "count": 2
     },
     {
@@ -97,6 +91,14 @@
     },
     {
       "card": "zenit_chip_jz_2mj",
+      "count": 2
+    },
+    {
+      "card": "lucky_charm",
+      "count": 2
+    },
+    {
+      "card": "flip_switch",
       "count": 2
     }
   ]

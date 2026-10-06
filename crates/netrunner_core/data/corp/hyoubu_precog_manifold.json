@@ -21,7 +21,9 @@
       "trigger": "OnPlay",
       "subject": "This",
       "effects": [
-        "ChooseServer"
+        {
+          "ChooseServer": {}
+        }
       ],
       "text": "When you play this operation, choose a server."
     },

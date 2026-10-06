@@ -19,18 +19,16 @@
             ]
           },
           {
-            "PresentChoice": {
-              "chooser": "Runner",
-              "options": [
-                "EndTheRun",
-                {
-                  "Sequence": []
-                }
-              ],
-              "texts": [
-                "The Runner may jack out",
-                ""
-              ]
+            "OfferPaidChoice": {
+              "side": "Runner",
+              "cost": "JackOut",
+              "if_paid": {
+                "Sequence": []
+              },
+              "if_declined": {
+                "Sequence": []
+              },
+              "text": "The Runner may jack out"
             }
           }
         ]

@@ -73,10 +73,13 @@ pub fn apply_action(
         // (the legal-action probe applies every candidate). It is made only
         // where a question is possible at all (`payment::could_ask`).
         if !crate::rules::payment::could_ask(state, registry, &action) {
+            #[cfg(debug_assertions)]
+            let asked_by = format!("{action:?}");
             let applied = apply_action_once(state, registry, action);
+            #[cfg(debug_assertions)]
             debug_assert!(
                 !matches!(applied, Err(RulesError::PaymentChoiceNeeded { .. })),
-                "a payment asked where `payment::could_ask` said none could: its necessary condition is not one"
+                "a payment asked where `payment::could_ask` said none could: its necessary condition is not one ({asked_by}: {applied:?})"
             );
             return applied;
         }
@@ -264,6 +267,7 @@ fn apply_action_once(
                 | PlayerAction::ChooseServerForPendingDecision { .. }
                 | PlayerAction::ChooseTriggerToResolve { .. }
                 | PlayerAction::ChooseNumber { .. }
+                | PlayerAction::ChooseCardName { .. }
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
@@ -287,6 +291,15 @@ fn apply_action_once(
     // immediately below as well as by `open_post_action_window` at the end.
     let action_kind = classify_action(state, registry, &action);
     let finishes_action = counts_as_turn_action(state, registry, &action).then(|| same_action(state, registry, &action)).flatten();
+    // "Take another **different** action" (MirrorMorph): while the
+    // prohibition holds, an action already taken this turn is refused, so
+    // the action list offers only the others (`continuous::cannot`).
+    if let Some((_, same)) = finishes_action
+        && state.this_turn.times_taken(same) > 0
+        && continuous::cannot(state, registry, Prohibition::RepeatAnAction)
+    {
+        return Err(RulesError::ActionRepeated);
+    }
     // The action a run in progress is part of, finished once the run is.
     let run_was_part_of = state.active_run.as_ref().map(|run| run.finishes);
     // A run is itself an action in progress: no basic action may begin until
@@ -380,6 +393,11 @@ fn apply_action_once(
         PlayerAction::ChooseNumber { amount } => {
             let mut next = state.clone();
             let events = pending_choice::resolve_choose_number(&mut next, registry, amount)?;
+            Ok((next, events))
+        }
+        PlayerAction::ChooseCardName { card } => {
+            let mut next = state.clone();
+            let events = pending_choice::resolve_choose_card_name(&mut next, registry, card)?;
             Ok((next, events))
         }
     }?;
@@ -696,7 +714,8 @@ fn classify_action(state: &GameState, registry: &CardRegistry, action: &PlayerAc
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. }
-        | PlayerAction::ChooseNumber { .. } => ActionKind::Other,
+        | PlayerAction::ChooseNumber { .. }
+        | PlayerAction::ChooseCardName { .. } => ActionKind::Other,
     }
 }
 
@@ -755,12 +774,20 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    let drawn = match side {
-        Side::Runner => next.runner.stack.pop().map(|card| next.runner.grip.push(card)),
-        Side::Corp => next.corp.r_and_d.pop().map(|card| next.corp.hq.push(card)),
-    };
-    if drawn.is_some() {
-        events.push(GameEvent::CardDrawn { side });
+    match side {
+        // Announced first, as every draw of the Runner's is (The Class
+        // Act's "you would draw"), and drawn once what heard it is done —
+        // here, or after a selection it parked (`prevention::settle`).
+        Side::Runner => {
+            let mut ctx = ability::ResolutionContext::for_card(None);
+            events.extend(ability::runner_would_draw(&mut next, registry, 1, &mut ctx)?);
+        }
+        Side::Corp => {
+            if let Some(card) = next.corp.r_and_d.pop() {
+                next.corp.hq.push(card);
+                events.push(GameEvent::CardDrawn { side });
+            }
+        }
     }
 
     let basic_draw_event = GameEvent::BasicDrawActionTaken { side };
@@ -995,17 +1022,20 @@ fn rez_ice(
     // encounter's (6.9.3b) — and there is none in a breach (7.2). This used to let ICE be rezzed
     // at any of those moments too (ROADMAP Rules Audit T10), which is how
     // a heuristic Corp rezzed its whole board pre-emptively at home.
-    if matches!(card_def.card_type, CardType::Ice(_)) {
-        let approached = state.active_run.as_ref().is_some_and(|run| {
-            run.phase == RunPhase::ApproachIce && run.ice.get(run.position).is_some_and(|at| at.install_id == ice)
-        });
-        if !approached {
-            return Err(RulesError::IceNotBeingApproached { card: ice_id });
+    // Rime's "during runs against this server, you can rez this ice any
+    // time you could rez non-ice cards" (`continuous::rezzed_as_non_ice`)
+    // adds those moments to its approach, so it falls through to them.
+    let is_ice = matches!(card_def.card_type, CardType::Ice(_));
+    let approached = state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce && run.ice.get(run.position).is_some_and(|at| at.install_id == ice));
+    if is_ice && !approached && !continuous::rezzed_as_non_ice(state, registry, ice) {
+        return Err(RulesError::IceNotBeingApproached { card: ice_id });
+    }
+    if !(is_ice && approached) {
+        if state.paid_ability_window.is_none() {
+            require_phase(state, GamePhase::Action(side))?;
+        } else if !paid_ability::window_permits_rez(state) {
+            return Err(RulesError::NotPermittedInThisWindow);
         }
-    } else if state.paid_ability_window.is_none() {
-        require_phase(state, GamePhase::Action(side))?;
-    } else if !paid_ability::window_permits_rez(state) {
-        return Err(RulesError::NotPermittedInThisWindow);
     }
     // An agenda is never flipped faceup on the table — except under
     // BANGUN: When Disaster Strikes, whose "you may install agendas
@@ -1381,6 +1411,9 @@ fn complete_run(
     if let Some(run) = next.active_run.as_mut() {
         run.declared_successful = true;
     }
+    if !next.runner.servers_run_successfully.contains(&server) {
+        next.runner.servers_run_successfully.push(server);
+    }
     let succeeded = GameEvent::RunSucceeded { server };
     let mut events = vec![succeeded.clone()];
     events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);
@@ -1520,7 +1553,14 @@ fn play_event(
         cost_events = ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
-    let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
+    let paid_with: Vec<CardId> = cost_events
+        .iter()
+        .filter_map(|event| match event {
+            GameEvent::CardTrashed { card, .. } | GameEvent::CardAddedToHand { card: Some(card), .. } => Some(card.clone()),
+            _ => None,
+        })
+        .collect();
+    let played_event = GameEvent::EventPlayed { side, card: card_id.clone(), paid_with };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
     // As `play_operation_card` does: the cost's events after.
     events.extend(ability::dispatch_cost_events(&mut next, registry, &price_events)?);
@@ -1837,6 +1877,12 @@ pub(crate) fn can_install_runner_card_from_zone(
     can_install_runner_card_from_zone_with_discount(state, registry, card_id, source, 0)
 }
 
+/// `cost` less an effect's `discount`, never below 0; a negative discount
+/// is a surcharge (Masterwork (v37)'s "paying 1[credit] more").
+fn discounted(cost: u32, discount: i32) -> u32 {
+    (i64::from(cost) - i64::from(discount)).clamp(0, i64::from(u32::MAX)) as u32
+}
+
 /// `can_install_runner_card_from_zone` with an effect-granted discount off
 /// the price (Illumination's "paying 1[c] less"); 0 for every other install.
 pub(crate) fn can_install_runner_card_from_zone_with_discount(
@@ -1844,7 +1890,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
     registry: &CardRegistry,
     card_id: &CardId,
     source: RunnerCardSource,
-    discount: u32,
+    discount: i32,
 ) -> bool {
     if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
@@ -1863,7 +1909,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
         CardType::Hardware | CardType::Resource => {}
         _ => return false,
     }
-    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
+    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= discounted(preview_runner_install_cost(state, registry, card_def), discount)
 }
 
 /// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
@@ -1903,7 +1949,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     registry: &CardRegistry,
     card_id: CardId,
     source: RunnerCardSource,
-    discount: u32,
+    discount: i32,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
     let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
@@ -1919,8 +1965,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             events.extend(crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?);
-            let cost = continuous::install_cost_of(next, registry, &card_def)
-                .saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
@@ -1928,7 +1973,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
-            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
@@ -1936,7 +1981,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
-            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = discounted(continuous::install_cost_of(next, registry, &card_def), discount);
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
@@ -2325,6 +2370,13 @@ fn ability_ctx<'a>(is_identity: bool, target: InstallId, card_id: &'a CardId) ->
     }
 }
 
+/// `ability_ctx` for asking and spending paid ability `index`'s
+/// requirement: its use limit is keyed by the printed ability
+/// (`OncePerTurnKey::ability`).
+fn use_ctx<'a>(is_identity: bool, target: InstallId, card_id: &'a CardId, card: &crate::dsl::CardDefinition, index: usize) -> ability::ResolutionContext<'a> {
+    ability_ctx(is_identity, target, card_id).using(card, index)
+}
+
 fn activate_ability(
     state: &GameState,
     registry: &CardRegistry,
@@ -2478,7 +2530,7 @@ fn activate_ability(
         return Err(RulesError::NotInActionPhase { actual: state.phase });
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, &ability_ctx(is_identity, target, &card_id), registry)?;
+        ability::check_requirement(state, requirement, side, &use_ctx(is_identity, target, &card_id, card_def, ability_index), registry)?;
     }
 
     let mut next = state.clone();
@@ -2547,7 +2599,7 @@ fn activate_ability(
     // activated any number of times per turn. Mirrors
     // `process_card_triggers`'s own check-then-consume ordering.
     if let Some(requirement) = &ability.requirement {
-        ability::consume_requirement(&mut next, requirement, side, &ability_ctx(is_identity, target, &card_id));
+        ability::consume_requirement(&mut next, requirement, side, &use_ctx(is_identity, target, &card_id, card_def, ability_index));
     }
     if interrupting {
         paid_ability::note_interrupt(&mut next, side);
@@ -2588,7 +2640,7 @@ fn activate_hand_ability(
     }
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
-    let ctx = ability::ResolutionContext::for_card(Some(&card_id));
+    let ctx = ability::ResolutionContext::for_card(Some(&card_id)).using(card_def, ability_index);
     if let Some(requirement) = &ability.requirement {
         ability::check_requirement(state, requirement, side, &ctx, registry)?;
     }
@@ -3478,6 +3530,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Draw { side: Side::Runner, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Runner },
                 GameEvent::BasicDrawActionTaken { side: Side::Runner },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
@@ -4793,7 +4846,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone() },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new() },
                 // Trashed as it finishes resolving (CR 3.7.1).
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
@@ -4829,7 +4882,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id, paid_with: Vec::new() },
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
@@ -5576,7 +5629,7 @@ mod tests {
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -6855,7 +6908,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
 
@@ -6891,7 +6944,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
         registry.insert(CardDefinition {
@@ -6901,7 +6954,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             ..test_card("corp_bank", Side::Corp, CardType::Asset, 0, None)
         });
         let mut state = runner_state(3, 5, 0);
@@ -7443,7 +7496,7 @@ mod tests {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
             },
-            cost_discount_if: None, used_by: None, access: false, from_hand: false });
+            cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None });
         registry.insert(card);
 
         // Runner boosts; priority passes to Corp.

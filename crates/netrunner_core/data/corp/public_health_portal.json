@@ -1,0 +1,37 @@
+{
+  "id": "public_health_portal",
+  "title": "Public Health Portal",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 1
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "When your turn begins, reveal the top card of R&D and gain 2[credit]."
+    }
+  ],
+  "built_from": 26042,
+  "is_playable": true
+}

@@ -1,0 +1,38 @@
+{
+  "id": "csr_campaign",
+  "title": "CSR Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may draw 1 card."
+    }
+  ],
+  "built_from": 26064,
+  "is_playable": true
+}

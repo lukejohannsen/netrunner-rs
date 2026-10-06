@@ -1,0 +1,67 @@
+{
+  "id": "chisel",
+  "title": "Chisel",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice gets −1 strength for each hosted virus counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "EncounteredIceStrength",
+                  1
+                ]
+              }
+            },
+            "effect": {
+              "TrashCard": "HostIce"
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                "ThisCardIsInstalled",
+                {
+                  "AmountAtLeast": [
+                    "EncounteredIceStrength",
+                    1
+                  ]
+                }
+              ]
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "Whenever you encounter host ice, if its strength is 0 or less, trash it. Otherwise, place 1 virus counter on this program."
+    }
+  ],
+  "counter_kind": "Virus",
+  "built_from": 26003,
+  "is_playable": true
+}

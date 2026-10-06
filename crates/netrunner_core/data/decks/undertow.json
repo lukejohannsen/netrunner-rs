@@ -3,7 +3,7 @@
   "name": "Undertow",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Thule Subsea: Safety Below, Parhelion's Haas-Bioroid identity, whose every steal costs the Runner a core damage unless they spend [click] and 2[credit]. Retirement Package's frame after The Automata Initiative, with two Distributed Tracing, two Djupstad Grid, two Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper Function for its two Brasília Government Grid, two Caveat Emptor, two Retirement Plan, two Synchrocyclotron and a Sleipnir: a steal is taxed and answered with a tag, a tag with advancement counters, and a score from Djupstad Grid's server with core damage. Standard-legal: Engineering the Future was the frame's one Core Set card. Parhelion Stage 3a: two Ontological Dependence for its two Lightning Laboratory, a 4-point requirement the core damage it deals lowers. Parhelion Stage 3b: two Hypoxia for its two Corporate Hospitality, played on the tags it gives, and two Mr. Hendrik for its two Warm Reception. Parhelion Stage 7: two Nightmare Archive for its two Working Prototype, an ambush whose core damage lowers Ontological Dependence's requirement and whose refusal costs the Runner a point.",
+  "description": "Not a published list: built so the sweeps reach Thule Subsea: Safety Below, Parhelion's Haas-Bioroid identity, whose every steal costs the Runner a core damage unless they spend [click] and 2[credit]. Retirement Package's frame after The Automata Initiative, with two Distributed Tracing, two Djupstad Grid, two Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper Function for its two Brasília Government Grid, two Caveat Emptor, two Retirement Plan, two Synchrocyclotron and a Sleipnir: a steal is taxed and answered with a tag, a tag with advancement counters, and a score from Djupstad Grid's server with core damage. Standard-legal: Engineering the Future was the frame's one Core Set card. Parhelion Stage 3a: two Ontological Dependence for its two Lightning Laboratory, a 4-point requirement the core damage it deals lowers. Parhelion Stage 3b: two Hypoxia for its two Corporate Hospitality, played on the tags it gives, and two Mr. Hendrik for its two Warm Reception. Parhelion Stage 7: two Nightmare Archive for its two Working Prototype, an ambush whose core damage lowers Ontological Dependence's requirement and whose refusal costs the Runner a point. Downfall Stage 2: two Calvin B4L3Y for two Active Policing, two cards a turn that come again when the Runner trashes it, and two Red Level Clearance for two Bran 1.0, two of a draw, a gain, an install and a click. Downfall Stage 4: two Fully Operational for two Perfect Recall, two credits or two cards once and again for each protected remote with a root card. Downfall Stage 5: two Rime for two Sorocaban Blade, a piece of ice rezzed whenever a non-ice card could be on a run against its server and +1 strength to every piece of ice there; Deterrence keeps Sorocaban Blade.",
   "style": [
     "glacier"
   ],
@@ -14,11 +14,11 @@
       "count": 3
     },
     {
-      "card": "perfect_recall",
+      "card": "fully_operational",
       "count": 2
     },
     {
-      "card": "bran_1_0",
+      "card": "red_level_clearance",
       "count": 2
     },
     {
@@ -42,10 +42,6 @@
       "count": 2
     },
     {
-      "card": "sorocaban_blade",
-      "count": 2
-    },
-    {
       "card": "mr_hendrik",
       "count": 2
     },
@@ -54,7 +50,7 @@
       "count": 2
     },
     {
-      "card": "active_policing",
+      "card": "calvin_b4l3y",
       "count": 2
     },
     {
@@ -99,6 +95,10 @@
     },
     {
       "card": "nightmare_archive",
+      "count": 2
+    },
+    {
+      "card": "rime",
       "count": 2
     }
   ]

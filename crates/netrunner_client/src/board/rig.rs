@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(hardware(&view, &registry, None), [("cyberfeeder".to_string(), 2), ("cyberfeeder".to_string(), 1)], "a counter on one copy");
 
         view.runner.rig = vec![install("cyberfeeder", 1), install("cyberfeeder", 2)];
-        view.runner.once_per_turn_used = vec![OncePerTurnKey { card: Some(netrunner_core::dsl::CardId("cyberfeeder".into())), install: Some(InstallId(2)) }];
+        view.runner.once_per_turn_used = vec![OncePerTurnKey { card: Some(netrunner_core::dsl::CardId("cyberfeeder".into())), install: Some(InstallId(2)), ability: Some(0) }];
         assert_eq!(hardware(&view, &registry, None).len(), 2, "one copy's once-per-turn spent");
 
         view.runner.once_per_turn_used.clear();

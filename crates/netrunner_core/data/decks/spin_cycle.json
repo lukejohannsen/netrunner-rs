@@ -3,7 +3,7 @@
   "name": "Spin Cycle",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Pravdivost Consulting: Political Solutions, Midnight Sun's NBN identity, which answers the Runner's first successful run each turn with an advancement counter on a card it can advance, and the NBN cards of Midnight Sun Stage 1. On Paid Content's frame after Parhelion Stage 8, its identity swapped: two Artificial Cryptocrash for two of its three Kingmaking, agenda point for agenda point; two Ubiquitous Vig for its two Balanced Coverage, an advanceable asset for an advanceable asset, which the identity's counters pay; and two Vasilisa for its two Capacitor, a sentry that pays a credit to place a counter as the Runner meets it. Paid Content keeps every card given up here. Standard-legal, where its frame is not: NBN: Making News was the frame's one Core Set card. Midnight Sun Stage 4: two Mestnichestvo for its two Virtual Service Agent. Midnight Sun Stage 7a: two Backroom Machinations for its two Your Digital Life, paid for with a tag that Lethe, Behold, Oracle Thinktank, Unsmiling Tsarevna and Vasilisa give; Paid Content keeps Your Digital Life.",
+  "description": "Not a published list: built so the sweeps reach Pravdivost Consulting: Political Solutions, Midnight Sun's NBN identity, which answers the Runner's first successful run each turn with an advancement counter on a card it can advance, and the NBN cards of Midnight Sun Stage 1. On Paid Content's frame after Parhelion Stage 8, its identity swapped: two Artificial Cryptocrash for two of its three Kingmaking, agenda point for agenda point; two Ubiquitous Vig for its two Balanced Coverage, an advanceable asset for an advanceable asset, which the identity's counters pay; and two Vasilisa for its two Capacitor, a sentry that pays a credit to place a counter as the Runner meets it. Paid Content keeps every card given up here. Standard-legal, where its frame is not: NBN: Making News was the frame's one Core Set card. Midnight Sun Stage 4: two Mestnichestvo for its two Virtual Service Agent. Midnight Sun Stage 7a: two Backroom Machinations for its two Your Digital Life, paid for with a tag that Lethe, Behold, Oracle Thinktank, Unsmiling Tsarevna and Vasilisa give; Paid Content keeps Your Digital Life. Downfall Stage 2: two Remastered Edition for two Freedom of Information, point for point, an advancement counter banked for later, and two Tiered Subscription for two B-1001, a credit on the turn's first run. Downfall Stage 3: two Congratulations! for two Grubber, a code gate that pays the Corp on every subroutine and every pass.",
   "style": [
     "fast-advance"
   ],
@@ -18,7 +18,7 @@
       "count": 2
     },
     {
-      "card": "grubber",
+      "card": "congratulations",
       "count": 2
     },
     {
@@ -38,7 +38,7 @@
       "count": 1
     },
     {
-      "card": "freedom_of_information",
+      "card": "remastered_edition",
       "count": 2
     },
     {
@@ -58,7 +58,7 @@
       "count": 2
     },
     {
-      "card": "b_1001",
+      "card": "tiered_subscription",
       "count": 2
     },
     {

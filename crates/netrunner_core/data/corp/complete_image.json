@@ -1,0 +1,63 @@
+{
+  "id": "complete_image",
+  "title": "Complete Image",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "trash_cost": 2,
+  "play_requirement": {
+    "And": [
+      {
+        "AmountAtLeast": [
+          {
+            "AgendaPoints": "Runner"
+          },
+          3
+        ]
+      },
+      {
+        "AmountAtLeast": [
+          {
+            "TimesLastTurn": "OnSuccessfulRun"
+          },
+          1
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseCardName": {
+            "chooser": "Corp",
+            "names": {
+              "CardTypeOneOf": [
+                "Event",
+                "Hardware",
+                "Program",
+                "Resource"
+              ]
+            },
+            "then": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            },
+            "again_if": {
+              "LastDamageTrashed": "ChosenName"
+            },
+            "text": "Choose a card name"
+          }
+        },
+        "EndActionPhase"
+      ],
+      "text": "Choose a card name, then do 1 net damage. If you trash a card with the chosen name this way, repeat this process."
+    }
+  ],
+  "built_from": 26045,
+  "is_playable": true
+}

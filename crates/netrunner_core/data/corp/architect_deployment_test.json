@@ -1,0 +1,60 @@
+{
+  "id": "architect_deployment_test",
+  "title": "Architect Deployment Test",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "LookAtTopOfDeck": {
+            "deck": "Corp",
+            "count": 5
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "All": [
+                {
+                  "TopOfZone": 5
+                },
+                {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "ignore_costs": true,
+                "rez": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, look at the top 5 cards of R&D. You may install and rez 1 of those cards, ignoring all costs."
+    }
+  ],
+  "built_from": 26032,
+  "is_playable": true
+}

@@ -77,6 +77,17 @@ pub struct AbilityDef {
     /// and `validate` holds it to that.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_hand: bool,
+    /// This entry is the same printed ability as the earlier entry at this
+    /// index, written as two because the card prices its first use apart —
+    /// Pauleʼs Café's "1[credit]: Install 1 hosted card. The first card you
+    /// install this way during each of your turns costs … less", whose
+    /// plain install reads the discounted one's `OncePerTurn`. A use limit
+    /// is the printed ability's (CR 9.3.6g, `OncePerTurnKey::ability`), so
+    /// the two entries share one. `None`, the common case, is an ability of
+    /// its own; `validate` holds the index to an earlier entry that names a
+    /// `OncePerTurn`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part_of: Option<usize>,
 }
 
 impl AbilityDef {
@@ -195,6 +206,16 @@ pub enum EffectRequirement {
     /// resolution that dealt no damage answers "not met" rather than
     /// inheriting an earlier action's discards.
     LastDamageTrashedOddCostCard,
+    /// The most recent `Effect::DealDamage` in this same resolution
+    /// discarded a card the filter admits — Saisentan's "whenever you
+    /// trash a card **of the chosen type** with net damage from a
+    /// subroutine on this ice, do 1 net damage" (`OfChosenCardType`, the
+    /// type the ice remembered as it was encountered). Read from
+    /// `ResolutionContext::damage_discarded`, as `LastDamageTrashedOdd
+    /// CostCard` is. Composition didn't work: that one asks one fixed
+    /// question of the discards, and this card's is a filter; Diviner's
+    /// stays, because no filter says "an odd printed cost".
+    LastDamageTrashed(crate::dsl::CardFilter),
     /// The most recently concluded run (`GameState::last_completed_run`)
     /// targeted HQ or R&D — e.g. Zahya Sadeghi's "when a run on HQ or R&D
     /// ends."
@@ -275,6 +296,27 @@ pub enum EffectRequirement {
     /// catalog gives only the front's (`docs/roadmap/nsg-card-pool.md`,
     /// Known limits).
     IdentityMatches(crate::dsl::CardFilter),
+    /// The card the triggering event is about is of the Runner identity's
+    /// faction — Storgotic Resonator's "a card that matches the faction of
+    /// the Runner's identity". Composition didn't work: a `when` filter is
+    /// read off the card's definition alone, with no state to find the
+    /// Runner's identity in, and `IdentityMatches` reads the controller's
+    /// identity, not the card that was trashed.
+    TriggeringCardOfRunnersFaction,
+    /// It is the controller's action phase — Daily Quest's "Rez only during
+    /// your action phase" (`CardDefinition::rez_requirement`). Not
+    /// `DuringYourTurn`, which holds through the windows as the turn begins
+    /// and in the discard phase.
+    DuringYourActionPhase,
+    /// The Runner made a successful run on the server the acting card is
+    /// installed in during their last turn — Daily Quest's "if the Runner
+    /// did not make a successful run on this server during their last
+    /// turn", asked as the Corp's turn begins. Read off
+    /// `RunnerState::servers_run_successfully`, which holds the Runner's
+    /// most recent turn's until their next begins. Composition didn't work:
+    /// the turn log counts the remotes as one class, and "this server" is
+    /// one of them.
+    RunnerSucceededOnThisServerLastTurn,
     /// The controller's identity is copy `n` of itself (`CorpState::
     /// identity_copy`, set by `Effect::SetIdentityCopy`) — the gate on
     /// each of Méliès U's three reverse sides ("Side 1: When you flip this
@@ -605,6 +647,18 @@ pub enum EffectRequirement {
 impl EffectRequirement {
     /// See `Effect::with_chosen_number`: a condition inside a chosen
     /// number's `then` may read the number ("if you removed 2 or more").
+    /// See `Effect::with_chosen_name`: Complete Image's "if you trash a
+    /// card with the chosen name this way".
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> EffectRequirement {
+        match self {
+            EffectRequirement::LastDamageTrashed(filter) => EffectRequirement::LastDamageTrashed(filter.with_chosen_name(card)),
+            EffectRequirement::ActingCardMatches(filter) => EffectRequirement::ActingCardMatches(filter.with_chosen_name(card)),
+            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.with_chosen_name(card))),
+            EffectRequirement::And(a, b) => EffectRequirement::And(Box::new(a.with_chosen_name(card)), Box::new(b.with_chosen_name(card))),
+            other => other,
+        }
+    }
+
     pub fn with_chosen_number(self, number: u32) -> EffectRequirement {
         match self {
             EffectRequirement::AmountAtLeast(crate::dsl::Amount::ChosenNumber, at_least) => {
@@ -824,7 +878,7 @@ mod tests {
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }
         );
         assert_eq!(
             bundle.abilities[1],
@@ -834,7 +888,7 @@ mod tests {
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
                 effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }
         );
         assert_eq!(
             bundle.subroutines[0],

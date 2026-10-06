@@ -137,10 +137,18 @@ pub enum Kind {
     /// apart from both so a card has one column and each of "a double
     /// event" and "a run event" still reads it (`all_of`, `kinds`).
     DoubleRunEvent,
+    /// A **job** resource and a **connection** resource, the sixth and
+    /// seventh subtypes given a column, for Az McCaffrey: Mechanical
+    /// Prodigy's "the first job resource, connection resource, or piece of
+    /// hardware you install each turn" — installed faceup, as public as any
+    /// resource. No card in the catalog is both, or either and a
+    /// companion, so a card has one column.
+    JobResource,
+    ConnectionResource,
 }
 
 impl Kind {
-    const COUNT: usize = 18;
+    const COUNT: usize = 20;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -160,16 +168,21 @@ impl Kind {
         Kind::CompanionResource,
         Kind::RunEvent,
         Kind::DoubleRunEvent,
+        Kind::JobResource,
+        Kind::ConnectionResource,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
-    /// mandate, virus, companion or run (and a double run event's own).
+    /// mandate, virus, companion, job, connection or run (and a double run
+    /// event's own).
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
         let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
         let virus = definition.subtypes.contains(&CardSubtype::Virus);
         let companion = definition.subtypes.contains(&CardSubtype::Companion);
         let run = definition.subtypes.contains(&CardSubtype::Run);
+        let job = definition.subtypes.contains(&CardSubtype::Job);
+        let connection = definition.subtypes.contains(&CardSubtype::Connection);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
@@ -178,6 +191,8 @@ impl Kind {
             Kind::Event if run => Kind::RunEvent,
             Kind::Program if virus => Kind::VirusProgram,
             Kind::Resource if companion => Kind::CompanionResource,
+            Kind::Resource if job => Kind::JobResource,
+            Kind::Resource if connection => Kind::ConnectionResource,
             kind => kind,
         }
     }
@@ -188,7 +203,7 @@ impl Kind {
             Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent, Kind::RunEvent, Kind::DoubleRunEvent],
             Kind::Program => vec![Kind::Program, Kind::VirusProgram],
-            Kind::Resource => vec![Kind::Resource, Kind::CompanionResource],
+            Kind::Resource => vec![Kind::Resource, Kind::CompanionResource, Kind::JobResource, Kind::ConnectionResource],
             kind => vec![kind],
         }
     }
@@ -196,7 +211,7 @@ impl Kind {
     /// A Runner card's type: every Runner card trashed goes faceup to the
     /// heap, from wherever it was, so both players see what it was.
     fn is_runners(self) -> bool {
-        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent | Kind::RunEvent | Kind::DoubleRunEvent)
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::JobResource | Kind::ConnectionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent | Kind::RunEvent | Kind::DoubleRunEvent)
     }
 
     fn of(card_type: &CardType) -> Kind {
@@ -292,7 +307,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // An ability is used on a faceup card, or on one its cost reveals
         // (Tocsin, from HQ).
         | Trigger::OnActionTaken
-        | Trigger::OnAbilityUsed => false,
+        | Trigger::OnAbilityUsed
+        // Revealed is shown to both players (CR 1.21.3).
+        | Trigger::OnCardRevealed => false,
         // An ambush asks for credits face down (Cerebral Overwriter, Esca),
         // seen by the Runner who accessed it and by no spectator.
         Trigger::OnAbilityTookCredits => true,
@@ -336,6 +353,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnCardsTrashedFromGripOrStack
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
+        | Trigger::OnDrawAboutToResolve
         | Trigger::OnDamageSuffered
         | Trigger::OnCreditsSpentFromInstalledCard
         | Trigger::OnIdentityFlipped
@@ -576,8 +594,22 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
             Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
             Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram]),
             Some((CardType::Resource, CardSubtype::Companion)) => return Ok(vec![Kind::CompanionResource]),
+            Some((CardType::Resource, CardSubtype::Job)) => return Ok(vec![Kind::JobResource]),
+            Some((CardType::Resource, CardSubtype::Connection)) => return Ok(vec![Kind::ConnectionResource]),
             _ => {}
         }
+    }
+    // "A, B or C": every column any of them is counted in.
+    if let CardFilter::AnyOf(parts) = filter {
+        let mut all = Vec::new();
+        for part in parts {
+            for kind in kinds(part)? {
+                if !all.contains(&kind) {
+                    all.push(kind);
+                }
+            }
+        }
+        return Ok(all);
     }
     let card_types = match filter {
         CardFilter::Any => return Ok(Kind::ALL.to_vec()),
@@ -842,6 +874,12 @@ impl TurnLog {
     }
 
     /// How many times `action` was taken this turn (CR 5.2.5a).
+    /// How many different actions have been taken this turn (CR 5.2.5) —
+    /// MirrorMorph's "each different from one another".
+    pub fn different_actions(&self) -> u32 {
+        self.same_actions.iter().flatten().count() as u32
+    }
+
     pub fn times_taken(&self, action: SameAction) -> u32 {
         self.same_actions.iter().flatten().find(|(taken, _)| *taken == action).map_or(0, |(_, count)| u32::from(*count))
     }

@@ -1,0 +1,105 @@
+{
+  "id": "moonlighting",
+  "name": "Moonlighting",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Az McCaffrey: Mechanical Prodigy, Downfall's Criminal identity, whose first job resource, connection resource or piece of hardware installed each turn is a credit cheaper. On Picket Line's frame, its identity swapped: Red Team a job; Smartware Distributor, Debbie “Downtown” Moreira and Hannah “Wheels” Pilintra connections; Docklands Pass, Pennyshaver, T400 Memory Diamond, Capybara and Zenit Chip JZ-2MJ hardware; and two Isolation for its two Strike Fund, seven credits for a resource the deck has already cashed. Picket Line keeps every card given up here. Downfall Stage 3: two Masterwork (v37) for two Pennyshaver, a console that draws on the turn's first hardware and installs another as a run begins for a credit more. Downfall Stage 5: two “Baklan” Bochkin for two Red Team, a connection Az discounts that loads a power counter on each run's first encounter and trades itself and a tag for a derez of ice no stronger than its counters; Red Team is in nine other decks. Downfall Stage 7: two The Class Act for its two Verbal Plasticity, a connection that draws 4 the turn it is installed and looks past the top of the stack before each turn's first draw.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "az_mccaffrey_mechanical_prodigy",
+  "cards": [
+    {
+      "card": "overclock",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 1
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "bahia_bands",
+      "count": 3
+    },
+    {
+      "card": "chrysopoeian_skimming",
+      "count": 3
+    },
+    {
+      "card": "isolation",
+      "count": 2
+    },
+    {
+      "card": "the_price",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "masterwork_v37",
+      "count": 2
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 2
+    },
+    {
+      "card": "the_class_act",
+      "count": 2
+    },
+    {
+      "card": "debbie_downtown_moreira",
+      "count": 2
+    },
+    {
+      "card": "hannah_wheels_pilintra",
+      "count": 1
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 2
+    },
+    {
+      "card": "s_dobrado",
+      "count": 2
+    },
+    {
+      "card": "capybara",
+      "count": 2
+    },
+    {
+      "card": "zenit_chip_jz_2mj",
+      "count": 2
+    },
+    {
+      "card": "baklan_bochkin",
+      "count": 2
+    }
+  ]
+}

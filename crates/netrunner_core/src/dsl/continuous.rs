@@ -217,6 +217,17 @@ pub enum ContinuousKind {
     /// because it is a static ability of the card's, read wherever the card
     /// is, like every `Scope::This` effect.
     RevealedWhileAccessed,
+    /// "You can rez this ice any time you could rez non-ice cards" —
+    /// Rime's, `while` a run is against its server
+    /// (`RunAgainstThisServer`): the windows marked (R) (CR 9.2.7c) and the
+    /// Corp's own action phase, beside the approach of the ice itself,
+    /// never instead of it. About `This`, on ice; the rez handler asks it
+    /// (`continuous::rezzed_as_non_ice`), and with it the action list,
+    /// whose probe applies the rez. A kind because it is a static ability
+    /// of the card's, read face down as every `Scope::This` effect is.
+    /// Composition didn't work: when a card may be rezzed was the rez
+    /// handler's rule, read off the card's type alone.
+    RezzedAsNonIce,
     /// A card may be installed onto this one — Hackerspace's "You can
     /// install unique companion resources and unique connection resources
     /// onto this resource". A permission, and so a standing effect of the
@@ -392,6 +403,14 @@ pub enum Scope {
     /// `Installing`: both price a card from the hand, and `first_each_turn`
     /// counts plays here as it counts installs there.
     Playing(CardFilter),
+    /// A card the Runner is accessing, matching the filter — Demolisher's
+    /// "The trash cost of each Corp card is lowered by 1[credit]", in HQ
+    /// and R&D as much as in a root. Asked about the accessed card itself
+    /// (`continuous::Target::Card`), beside the install's own question that
+    /// `RootOfThisServer` answers (`continuous::trash_cost_delta`).
+    /// Composition didn't work: every other scope that reaches a Corp card
+    /// reaches an install, and a card accessed out of HQ is none.
+    Accessing(CardFilter),
     /// An agenda the Runner is stealing, matching the filter — Magistrate
     /// Revontulet's "an agenda".
     Stealing(CardFilter),

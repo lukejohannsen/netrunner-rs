@@ -1,0 +1,63 @@
+{
+  "id": "baklan_bochkin",
+  "title": "“Baklan” Bochkin",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "EncountersThisRun",
+            2
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time you encounter a piece of ice during each run, place 1 power counter on this resource."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "DuringEncounter",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "MoreThan": [
+                    "EncounteredIceStrength",
+                    "HostedCounters"
+                  ]
+                }
+              },
+              "effect": {
+                "DerezCard": "EncounteredIce"
+              }
+            }
+          },
+          {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        ]
+      },
+      "text": "[trash], X hosted power counters: Derez the ice you are encountering if its strength is X or less. Take 1 tag."
+    }
+  ],
+  "counter_kind": "Power",
+  "built_from": 26017,
+  "is_playable": true
+}

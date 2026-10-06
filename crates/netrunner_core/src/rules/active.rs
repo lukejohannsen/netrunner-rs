@@ -66,8 +66,16 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
     // An installed agenda is active only faceup by its own text.
     let inactive_when_rezzed =
         move |card: &CardId| registry.get(card).is_some_and(|definition| definition.card_type == CardType::Agenda && !definition.installs_faceup);
-    let identity =
-        state.corp.identity.iter().map(|card| ActiveCard { side: Side::Corp, card, install: None, server: None, place: Place::Identity });
+    // An identity that has lost its abilities (Direct Access's) has
+    // nothing an active card is asked for — no trigger, no standing effect,
+    // no paid ability — so it is not asked at all. Its handle is the one
+    // `ActivateAbility` names it by.
+    let identity = state
+        .corp
+        .identity
+        .iter()
+        .filter(|_| !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::CORP_IDENTITY))
+        .map(|card| ActiveCard { side: Side::Corp, card, install: None, server: None, place: Place::Identity });
     let scored = state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| ActiveCard {
         side: Side::Corp,
         card: &scored.card,
@@ -95,8 +103,12 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
 }
 
 pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
-    let identity =
-        state.runner.identity.iter().map(|card| ActiveCard { side: Side::Runner, card, install: None, server: None, place: Place::Identity });
+    let identity = state
+        .runner
+        .identity
+        .iter()
+        .filter(|_| !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::RUNNER_IDENTITY))
+        .map(|card| ActiveCard { side: Side::Runner, card, install: None, server: None, place: Place::Identity });
     let rig = state.runner.rig.iter().map(|installed| ActiveCard {
         side: Side::Runner,
         card: &installed.card,

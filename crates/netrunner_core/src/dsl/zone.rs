@@ -333,6 +333,13 @@ pub enum CardFilter {
     /// re-finds the card by) the whole of R&D. The top of R&D and of the
     /// stack is the *end* of the `Vec` — see `zone_card_ids`.
     TopOfZone(u32),
+    /// `TopOfZone` of a number read as the selection is offered — The
+    /// Class Act's "look at the top X cards of your stack", X the cards
+    /// about to be drawn plus 1 (`Amount::AboutToResolve`). Written over
+    /// as `TopOfZone` by `with_resolution`; unresolved, it matches nothing.
+    /// A word beside `TopOfZone` rather than an `Amount` in it, so the
+    /// cards that print a number keep writing the number.
+    TopOf(Box<crate::dsl::Amount>),
     /// A card revealed in its owner's hand by the ability still resolving
     /// (`GameState::revealed`) — Burner's "Add 2 of the revealed cards to
     /// the top and/or bottom of R&D". Instance-level, like `TopOfZone`:
@@ -457,6 +464,40 @@ pub enum CardFilter {
     /// middle of its own resolution, and a discard pile has no order to
     /// read (CR 4.4.2).
     TrashedThisWay,
+    /// **That card**: the one the moment a trigger heard is about —
+    /// Divested Trust's "add **the stolen agenda** to HQ", chosen out of the
+    /// Runner's score area by a selection only it passes. A placeholder,
+    /// written over as the card when the trigger fires
+    /// (`CardFilter::with_that_card`, from `listeners::card_about`), the
+    /// convention `TrashedThisWay` follows; unresolved it matches nothing.
+    /// Composition didn't work: `acts_on_subject` moves every effect of the
+    /// trigger onto the stolen agenda, and Divested Trust's forfeit is its
+    /// own; and the paid choice parks, so the triggering event is gone by
+    /// the time the agenda is chosen.
+    ThatCard,
+    /// A card with **the chosen name** — Complete Image's "If you trash a
+    /// card with the chosen name this way" and Whistleblower's "an agenda
+    /// with the chosen name". A placeholder inside `Effect::ChooseCardName::
+    /// then`, written over as `AmongCards([name])` when the name is chosen
+    /// (`with_chosen_name`), as `ThatCard` is; unresolved it matches
+    /// nothing.
+    ChosenName,
+    /// The piece of ice the Runner encountered last during the last run
+    /// (`CompletedRun::last_encountered`) — Always Have a Backup Plan's
+    /// "whenever you encounter the last piece of ice you encountered during
+    /// the first run", asked during the second, when the first is still the
+    /// last run. Instance-level: a handle, not a card, so a second copy of
+    /// the same ice is not it.
+    LastEncounteredLastRun,
+    /// A card that may be swapped into the place of the install the
+    /// selection acts as (`run::swappable_into`, CR 8.8.2) — Project
+    /// Yagi-Uda's "swap 1 card from HQ with 1 card in the root of or
+    /// protecting the attacked server", whose card from HQ is chosen
+    /// inside the `then` of the choice of the installed one: ice for ice,
+    /// and for a root only what that root may hold. Instance-level: the
+    /// answer is the table's. Composition didn't work: a type filter says
+    /// "ice", never "what fits where that card is".
+    SwappableIntoThis,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -477,7 +518,15 @@ impl CardFilter {
         match self {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
+            CardFilter::TopOf(count) => CardFilter::TopOfZone(amount(&count)),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
+            // A discount read off the resolution (Rejig's "paying X[credit]
+            // less", X the printed cost of the card its cost returned) is
+            // the number it is now: the selection is answered on a later
+            // action, which has no payment to read it from.
+            CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
+                CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Credits(amount(&of)))
+            }
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
             other => other,
@@ -492,6 +541,34 @@ impl CardFilter {
             CardFilter::InChosenServer => server.map_or(CardFilter::InChosenServer, CardFilter::InServer),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            other => other,
+        }
+    }
+
+    /// This filter with `ChosenName` written over as the card named
+    /// (`Effect::ChooseCardName`).
+    pub fn with_chosen_name(self, card: &crate::dsl::CardId) -> CardFilter {
+        match self {
+            CardFilter::ChosenName => CardFilter::AmongCards(vec![card.clone()]),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_name(card)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_name(card)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_name(card))),
+            other => other,
+        }
+    }
+
+    /// This filter with a chosen number written into the amounts it reads
+    /// (`Amount::with_chosen_number`): Khusyuk's "your installed cards with
+    /// that printed install cost".
+    pub fn with_chosen_number(self, number: u32) -> CardFilter {
+        let amount = |amount: Box<crate::dsl::Amount>| Box::new(amount.with_chosen_number(number));
+        match self {
+            CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(amount(at_most)),
+            CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
+            CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_number(number))),
             other => other,
         }
     }
@@ -548,6 +625,7 @@ impl CardFilter {
                 | CardFilter::Advanced
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
+                | CardFilter::TopOf(_)
                 | CardFilter::Revealed
                 | CardFilter::NotInstalledThisTurn
                 | CardFilter::NotAdvancedThisTurn
@@ -565,6 +643,28 @@ impl CardFilter {
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_attacked_server(server))),
+            other => other,
+        }
+    }
+
+    /// Whether `ThatCard` is in this filter, through `All`, `AnyOf` and
+    /// `Not`.
+    pub fn names_that_card(&self) -> bool {
+        match self {
+            CardFilter::ThatCard => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::names_that_card),
+            CardFilter::Not(filter) => filter.names_that_card(),
+            _ => false,
+        }
+    }
+
+    /// `ThatCard` written over as `card`, through `All`, `AnyOf` and `Not`.
+    pub fn with_that_card(self, card: &crate::dsl::CardId) -> CardFilter {
+        match self {
+            CardFilter::ThatCard => CardFilter::AmongCards(vec![card.clone()]),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_that_card(card))),
             other => other,
         }
     }
@@ -642,7 +742,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::TopOf(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
@@ -652,7 +752,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
-        CardFilter::TrashedThisWay => false,
+        CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName => false,
+        CardFilter::LastEncounteredLastRun => true,
+        CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
             _ => false,

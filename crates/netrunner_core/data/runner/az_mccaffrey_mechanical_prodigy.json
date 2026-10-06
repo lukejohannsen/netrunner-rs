@@ -1,0 +1,52 @@
+{
+  "id": "az_mccaffrey_mechanical_prodigy",
+  "title": "Az McCaffrey: Mechanical Prodigy",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Installing": {
+          "AnyOf": [
+            {
+              "All": [
+                {
+                  "CardType": "Resource"
+                },
+                {
+                  "HasSubtype": "Job"
+                }
+              ]
+            },
+            {
+              "All": [
+                {
+                  "CardType": "Resource"
+                },
+                {
+                  "HasSubtype": "Connection"
+                }
+              ]
+            },
+            {
+              "CardType": "Hardware"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "text": "The first job resource, connection resource, or piece of hardware you install each turn costs 1[credit] less to install."
+    }
+  ],
+  "triggers": [],
+  "built_from": 26010,
+  "is_playable": true
+}

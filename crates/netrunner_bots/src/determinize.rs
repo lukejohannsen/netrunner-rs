@@ -880,6 +880,9 @@ fn determinize_run(
         // Public, and what Into the Depths' "for each time you passed ice"
         // reads.
         ice_passed: run.ice_passed,
+        // The engine's: the view's run does not carry it (`RunState::
+        // last_encountered`).
+        last_encountered: None,
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.
@@ -1052,6 +1055,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         set_aside: view.runner.set_aside.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
+        servers_run_successfully: view.runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
     };
@@ -1423,7 +1427,7 @@ mod tests {
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
                 heap: Vec::new(),
-                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,
@@ -2221,9 +2225,9 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![install(1, true), install(2, false)];
-        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)) };
+        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)), ability: Some(0) };
         state.corp.once_per_turn_used = [used(1), used(2)].into_iter().collect();
-        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)) };
+        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)), ability: Some(0) };
         state.runner.once_per_turn_used = [telework.clone()].into_iter().collect();
 
         for side in [Side::Corp, Side::Runner] {

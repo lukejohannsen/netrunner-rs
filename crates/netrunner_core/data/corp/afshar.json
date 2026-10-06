@@ -1,0 +1,42 @@
+{
+  "id": "afshar",
+  "title": "Afshar",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 1,
+  "continuous": [
+    {
+      "kind": {
+        "BreakLimit": {
+          "at_most": 1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "Hq"
+      },
+      "text": "While this ice is protecting HQ, the Runner cannot break more than 1 of its printed subroutines during each encounter."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner loses 2[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 26058,
+  "is_playable": true
+}

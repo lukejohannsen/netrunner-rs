@@ -1,0 +1,85 @@
+{
+  "id": "calvin_b4l3y",
+  "title": "Calvin B4L3Y",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 2 cards",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may draw 2 cards."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 2 cards",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may draw 2 cards."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "DrawCards": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "Once per turn → [click]: Draw 2 cards."
+    }
+  ],
+  "built_from": 26033,
+  "is_playable": true
+}

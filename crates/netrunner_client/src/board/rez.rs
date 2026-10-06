@@ -1,6 +1,6 @@
 //! A rez that gives the card nothing to do: a trap's.
 //!
-//! Byte!, Cerebral Overwriter, Chekist Scion, Esca, Ganked!, Snare! and Urtica Cipher do their work when the Runner accesses
+//! Byte!, Cerebral Overwriter, Chekist Scion, Esca, Ganked!, Increased Drop Rates, Snare! and Urtica Cipher do their work when the Runner accesses
 //! them, face down — the subject of a moment hears it wherever it is (the
 //! Listener Rule), and an access interaction resolves on the card as
 //! accessed. Rezzing one gains the Corp nothing and shows the Runner what
@@ -66,7 +66,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let mut idle: Vec<&str> = registry.iter().filter(|card| card.side == Side::Corp && card.card_type != CardType::Agenda && card.card_type != CardType::Identity && gains_nothing(card)).map(|card| card.id.0.as_str()).collect();
         idle.sort_unstable();
-        assert_eq!(idle, ["behold", "byte", "cerebral_overwriter", "chekist_scion", "esca", "ganked", "mr_hendrik", "nightmare_archive", "snare", "urtica_cipher"]);
+        assert_eq!(idle, ["behold", "byte", "cerebral_overwriter", "chekist_scion", "esca", "ganked", "increased_drop_rates", "mr_hendrik", "nightmare_archive", "snare", "urtica_cipher"]);
     }
 
     /// The Corp's view of an unrezzed Urtica Cipher (install 1) and an

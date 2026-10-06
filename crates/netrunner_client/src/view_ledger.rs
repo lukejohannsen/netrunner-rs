@@ -112,6 +112,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         scored_worth: _,        // drawn: hud::score_area, each row's points
         points_to_win: _,       // drawn: as the Corp's
         servers_run_this_turn: _, // engine's: Red Team's legality and the evaluator; each run is in the log
+        servers_run_successfully: _, // engine's: Daily Quest's turn-start gain, asked by the engine and a sample; each success is in the log
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
         identity_flipped: _,    // drawn: hud::identity_side
         once_per_turn_used: _,  // engine's: as the Corp's
@@ -272,6 +273,16 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 resume: _,         // engine's
                 secret: _,         // drawn: the other seat's log reads "Choose in secret" (actions)
             } => {}
+            PendingDecision::ChooseCardName {
+                chooser: _,        // drawn: Prompt::card, only to the chooser
+                names: _,          // drawn: the buttons, "Name Sure Gamble" each (actions); the desktop pop-up's drop-down, the terminal's list
+                effect: _,         // engine's: what the name is written into
+                text: _,           // drawn: Prompt::of's title (the printed clause)
+                source_card: _,    // drawn: Prompt::of
+                prompting_card: _, // drawn: Prompt::of
+                source_install: _, // engine's
+                resume: _,         // engine's
+            } => {}
             PendingDecision::PsiGame {
                 corp_bid: _,       // drawn: Prompt::of — "the Corp is bidding" / "has bid"; the Corp's own "you bid 2"
                 corp_max: _,       // drawn: Prompt::of's detail and the buttons, to the Corp
@@ -292,6 +303,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 install: _,         // drawn: placement::Placement
                 move_to_root: _,    // drawn: placement::Placement's question
                 remember: _,        // drawn: Prompt::of's "choose a server" and the buttons' "Choose HQ" (actions)
+                ignore_run_costs: _, // engine's: the run it starts pays nothing extra, which the readouts show by not changing
                 on_success: _,      // engine's
                 source_card: _,     // drawn: Prompt::of
                 prompting_card: _,  // drawn: Prompt::of
