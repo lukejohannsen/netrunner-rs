@@ -30,7 +30,10 @@
 //! the seven System Gateway-only lists plus every System Gateway +
 //! *Elevation* list whose cards are implemented (ROADMAP Phase 1 §8 lands
 //! those one or two decks at a time; `cards::embedded::ELEV_UNIMPLEMENTED`
-//! names what is still missing). They exist so every consumer needing a
+//! names what is still missing), and — since Standard was complete (6
+//! October 2026) — twelve Standard tournament lists published on
+//! NetrunnerDB, written by `scripts/tournament_decks.py` and never edited
+//! by hand. They exist so every consumer needing a
 //! real, playable pair of decks (self-play training, the gym environment,
 //! the single-player CLI) draws from one source of truth instead of
 //! hand-rolling a fixture. Authored one-file-per-deck under `data/decks/`,
@@ -65,9 +68,11 @@ pub struct DeckEntry {
 /// deck's category decides whether the policy network ever trains on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum DeckCategory {
-    /// One of Null Signal Games' published sample decklists. **The only
-    /// category `matchups()` yields**, and therefore the only one self-play
-    /// and the gym environment ever see.
+    /// A published decklist: one of Null Signal Games' sample decklists,
+    /// or a Standard tournament list from NetrunnerDB
+    /// (`scripts/tournament_decks.py`, ids `tournament_<identity>`). **The
+    /// only category `matchups()` yields**, and therefore the only one
+    /// self-play and the gym environment ever see.
     Sample,
     /// One of Null Signal Games' *Learn to Play* starter decks, played to
     /// 6 agenda points (`match_rules`).
@@ -397,10 +402,11 @@ pub fn matchups() -> Vec<(DeckFile, DeckFile)> {
 /// filter existed still reproduces.
 ///
 /// Filtered a deck at a time rather than a pairing at a time: a deck's
-/// legality is `validate` under every rule of the format, and 28 decks
-/// asked once is cheaper than 192 pairs asked twice. NetrunnerDB's lists
-/// have banned cards nine of the sample decks hold, so a Startup pass is
-/// 90 of the 192 pairings, and the gap between the two is why
+/// legality is `validate` under every rule of the format, and 40 decks
+/// asked once is cheaper than 391 pairs asked twice. NetrunnerDB's lists
+/// have banned cards nine of the sample decks hold, and no tournament list
+/// is Startup, so a Startup pass is 90 of the 391 pairings (it was 90 of
+/// 192 before the tournament lists joined), and the gap between the two is why
 /// `coverage_identical.py` refuses to compare passes of different sizes.
 pub fn matchups_in(format: NsgFormat, registry: &CardRegistry) -> Vec<(DeckFile, DeckFile)> {
     let legal = |side| -> Vec<DeckFile> {
@@ -561,6 +567,26 @@ mod tests {
             ("quick_returns", &not_startup),
             ("the_syndicate_boosted", &not_startup),
             ("the_syndicate_starter", &not_startup),
+            // The Standard tournament lists (`scripts/tournament_decks.py`,
+            // 6 October 2026) were played under the Standard Balance Update
+            // 26.08, which unbans NBN: Reality Plus and Svyatogor Excavator.
+            // NetrunnerDB still names Ban List 26.03 as Standard's active
+            // list, and `formats.json` is NetrunnerDB's, so these two read
+            // as not Standard until NetrunnerDB moves and the catalog is
+            // synced. Every other tournament list is Standard, and none is
+            // Startup.
+            ("tournament_au_co_the_gold_standard_in_clones", &not_startup),
+            ("tournament_haas_bioroid_precision_design", &not_startup),
+            ("tournament_leo_construction_labor_solutions", &not_startup),
+            ("tournament_magdalene_keino_chemutai_cryptarchitect", &not_startup),
+            ("tournament_muslihat_multifarious_marketeer", &not_startup),
+            ("tournament_nbn_reality_plus", &neither),
+            ("tournament_nebula_talent_management_making_stars", &not_startup),
+            ("tournament_nuvem_sa_law_of_the_land", &not_startup),
+            ("tournament_ob_superheavy_logistics_extract_export_excel", &neither),
+            ("tournament_rene_loup_arcemont_party_animal", &not_startup),
+            ("tournament_sebastiao_souza_pessoa_activist_organizer", &not_startup),
+            ("tournament_virtual_intelligence_p_i_you_can_call_me_vic", &not_startup),
             ("gimbatul", &not_standard),
             ("not_so_subtle", &not_standard),
             ("pork_chops", &not_standard),
@@ -643,8 +669,8 @@ mod tests {
         assert_eq!(tally.influence_limit, Some(15));
     }
 
-    /// Every published sample decklist this crate embeds, pinned to what
-    /// Null Signal Games printed: id, side, card count, influence spent
+    /// Every published decklist this crate embeds, pinned to what Null
+    /// Signal Games printed or the player published: id, side, card count, influence spent
     /// and (for a Corp deck) agenda points. One table, extended a stage at
     /// a time as *Elevation* lands (ROADMAP Phase 1 §8), so a card-data
     /// edit that changes an agenda's points, an identity's minimum deck
@@ -682,6 +708,22 @@ mod tests {
         ("shootin_n_lootin", Side::Runner, 45, 15, 0),
         ("stolen_goods", Side::Runner, 40, 14, 0),
         ("tickets_please", Side::Runner, 40, 15, 0),
+        // The Standard tournament lists, as NetrunnerDB publishes them
+        // (`scripts/tournament_decks.py`): one per identity in the 2026
+        // World Championship's top cut, the best-placed list published from
+        // that event and the three 2026 Online Continentals.
+        ("tournament_au_co_the_gold_standard_in_clones", Side::Corp, 49, 14, 20),
+        ("tournament_haas_bioroid_precision_design", Side::Corp, 44, 13, 18),
+        ("tournament_leo_construction_labor_solutions", Side::Corp, 49, 12, 20),
+        ("tournament_magdalene_keino_chemutai_cryptarchitect", Side::Runner, 56, 15, 0),
+        ("tournament_muslihat_multifarious_marketeer", Side::Runner, 45, 12, 0),
+        ("tournament_nbn_reality_plus", Side::Corp, 44, 13, 18),
+        ("tournament_nebula_talent_management_making_stars", Side::Corp, 49, 15, 20),
+        ("tournament_nuvem_sa_law_of_the_land", Side::Corp, 54, 12, 22),
+        ("tournament_ob_superheavy_logistics_extract_export_excel", Side::Corp, 49, 15, 20),
+        ("tournament_rene_loup_arcemont_party_animal", Side::Runner, 51, 15, 0),
+        ("tournament_sebastiao_souza_pessoa_activist_organizer", Side::Runner, 60, 14, 0),
+        ("tournament_virtual_intelligence_p_i_you_can_call_me_vic", Side::Runner, 46, 14, 0),
     ];
 
     /// See `PUBLISHED`. Also the guard that the pool is exactly the

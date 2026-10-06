@@ -1,0 +1,102 @@
+{
+  "id": "tournament_au_co_the_gold_standard_in_clones",
+  "name": "Cavalry Charge AuCo (3&17@EMEA)",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "Cavalry Charge AuCo (3&17@EMEA), published on NetrunnerDB by AugustusCaesar (https://netrunnerdb.com/en/decklist/feba2e22-c508-4d91-b656-ae8ee79ccdcc). AugustusCaesar played it to 7th in the top cut of the 2026 EMEA Online Continental (5 September 2026).",
+  "identity": "au_co_the_gold_standard_in_clones",
+  "cards": [
+    {
+      "card": "anemone",
+      "count": 3
+    },
+    {
+      "card": "bladderwort",
+      "count": 3
+    },
+    {
+      "card": "boto",
+      "count": 2
+    },
+    {
+      "card": "cohort_guidance_program",
+      "count": 3
+    },
+    {
+      "card": "fujii_asset_retrieval",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 2
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 2
+    },
+    {
+      "card": "hybrid_release",
+      "count": 2
+    },
+    {
+      "card": "let_them_dream",
+      "count": 1
+    },
+    {
+      "card": "lionsmane",
+      "count": 1
+    },
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "measured_response",
+      "count": 1
+    },
+    {
+      "card": "moon_pool",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "phat_gioan_baotixita",
+      "count": 3
+    },
+    {
+      "card": "regenesis",
+      "count": 3
+    },
+    {
+      "card": "semak_samun",
+      "count": 2
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 1
+    },
+    {
+      "card": "sleipnir",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 2
+    },
+    {
+      "card": "tatu_bola",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    }
+  ]
+}

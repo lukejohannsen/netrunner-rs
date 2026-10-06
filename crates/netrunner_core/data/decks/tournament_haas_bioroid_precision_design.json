@@ -1,0 +1,82 @@
+{
+  "id": "tournament_haas_bioroid_precision_design",
+  "name": "High Speed Rail 3.0",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "High Speed Rail 3.0 (15-3, 1st/9th&17th@EMEA IRL/Online), published on NetrunnerDB by Athlici (https://netrunnerdb.com/en/decklist/06a1125c-5dec-4c67-9580-76bd3562a531). wowarlok played it to 9th in the top cut of the 2026 EMEA Online Continental (5 September 2026).",
+  "identity": "haas_bioroid_precision_design",
+  "cards": [
+    {
+      "card": "ablative_barrier",
+      "count": 2
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 3
+    },
+    {
+      "card": "drafter",
+      "count": 3
+    },
+    {
+      "card": "flood_the_market",
+      "count": 2
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "fully_operational",
+      "count": 3
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 2
+    },
+    {
+      "card": "melies_city_luxury_line",
+      "count": 3
+    },
+    {
+      "card": "nanomanagement",
+      "count": 1
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "scatter_field",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "synchrocyclotron",
+      "count": 3
+    },
+    {
+      "card": "the_powers_that_be",
+      "count": 2
+    },
+    {
+      "card": "top_down_solutions",
+      "count": 3
+    },
+    {
+      "card": "tree_line",
+      "count": 1
+    },
+    {
+      "card": "wage_workers",
+      "count": 3
+    }
+  ]
+}

@@ -609,7 +609,17 @@ pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
 /// make that turn, its play is under the sweep. Deep Dive (Midnight Sun
 /// Stage 6b, in *Safety Net*) plays on the same condition, for the same
 /// reason.
+///
+/// Orca is a 10[c] program, two copies in one sweep deck (*Dead
+/// Reckoning*). When the twelve Standard tournament lists joined the pool
+/// (6 October 2026) the Runner rotation grew from 27 decks to 32, and at
+/// 256 seeds *Dead Reckoning* is played 8 seeds, 24 games — exactly the
+/// card gate's floor — in which the view sweep never drew and installed
+/// one. The index sweep saw it at 256 seeds, and the view sweep at 512
+/// (1,536 games, 48 of them the deck's) saw it with every other gate
+/// green, so it is demanded from that batch up.
 pub const CARDS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
+    ("orca", "a 10[c] program, two copies in one sweep deck played at the gate's floor of 24 games at 256 seeds; seen at 512", 1536),
     ("the_toolbox", "a 9[c] console in one sweep deck, installed only by a random seat: the heuristic Runner has no term for a pool card", 2048),
     ("chain_reaction", "needs successful runs on all three centrals in one turn; 0 of 768 deep-sweep games, so no batch demands it", 1_000_000),
     ("deep_dive", "plays only after successful runs on all three centrals in one turn, Chain Reaction's condition; its per-card test reaches it", 1_000_000),
@@ -684,9 +694,12 @@ fn pairing_cycle(corps: u64, runners: u64) -> u64 {
 /// every non-identity card of every deck `sweep_decks_for_seed` plays in
 /// at least `MIN_GAMES_FOR_CARD_GATE` games across the sweep (three
 /// seatings per seed). At 32 seeds over the twelve System Gateway
-/// matchups every deck qualifies; at 256 seeds every deck qualifies
-/// whatever the pool, so the deep run demands every card exactly as
-/// before. In between, a deck the default run reaches for fewer seeds is
+/// matchups every deck qualifies; at 256 seeds a deck qualifies while
+/// its side's rotation is at most 32 decks (eight seeds each) — the
+/// Runner's is exactly 32 since the Standard tournament lists joined.
+/// The Corp's was already past it (36 decks before the lists, 43 now),
+/// so at 256 seeds no Corp deck is played eight seeds and the card gate
+/// demands Corp cards only of a deeper run (512 seeds). In between, a deck the default run reaches for fewer seeds is
 /// left to the deep run: at *Elevation* Stage 3 (nine Runner decks, four
 /// seeds each) *Wildcat Strike* went unplayed in Party Hard's twelve
 /// games, which is sampling, not a finding — the gate was only ever

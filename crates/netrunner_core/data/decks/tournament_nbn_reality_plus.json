@@ -1,0 +1,86 @@
+{
+  "id": "tournament_nbn_reality_plus",
+  "name": "Worlds R+",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "Worlds R+, published on NetrunnerDB by jxue16 (https://netrunnerdb.com/en/decklist/b0b8a2f3-b225-4277-83e6-a40d225644fa). jxue16 played it to 5th in the top cut of the 2026 World Championship (2 October 2026).",
+  "identity": "nbn_reality_plus",
+  "cards": [
+    {
+      "card": "behold",
+      "count": 2
+    },
+    {
+      "card": "bigger_picture",
+      "count": 1
+    },
+    {
+      "card": "f2p",
+      "count": 2
+    },
+    {
+      "card": "freedom_of_information",
+      "count": 1
+    },
+    {
+      "card": "kingmaking",
+      "count": 3
+    },
+    {
+      "card": "let_them_dream",
+      "count": 2
+    },
+    {
+      "card": "moon_pool",
+      "count": 3
+    },
+    {
+      "card": "nihilo_agent",
+      "count": 3
+    },
+    {
+      "card": "oppo_research",
+      "count": 3
+    },
+    {
+      "card": "oracle_thinktank",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 1
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "shipment_from_vladisibirsk",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "starlit_knight",
+      "count": 1
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 3
+    },
+    {
+      "card": "top_down_solutions",
+      "count": 2
+    },
+    {
+      "card": "your_digital_life",
+      "count": 3
+    }
+  ]
+}
