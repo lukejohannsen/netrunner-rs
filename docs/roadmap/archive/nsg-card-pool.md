@@ -7976,3 +7976,109 @@ Divested Trust. **No new `Effect`.** Downfall 45 of 65; `DF_UNIMPLEMENTED`
   single-use, none unused, over 618 card files — `GainIceSubtype` has its
   second card. Stage 4's ratio was 15 of 102 over 609 (recorded above);
   the live roadmap had written it as 101.
+
+#### Stage 6 — triggers created by a played card, costs to run, interrupts (6 October 2026)
+
+`claude/serene-einstein-6bhlig`: In the Groove, Climactic Showdown, Cold
+Site Server, Reduced Service, Game Over, Rejig, Utae, Lucky Charm and Flip
+Switch, with Game Over (from Stage 4) and Rejig (from Stage 5) built where
+they were moved. **One new `Effect`** (`ForEach`). Downfall 54 of 65;
+`DF_UNIMPLEMENTED` 20 → 11.
+
+- **The words.**
+  - **`Effect::LaterThisTurn`** replaces `WhenThisTurnEnds`: a delayed
+    conditional ability (CR 9.6.13) waits for any moment of the turn
+    (`when`), narrowed as a trigger's condition is (`filter`, judged by
+    `listeners::when_admits` as the card's controller hears it), and is
+    heard once, or every time for the rest of the turn (`every_time`).
+    Climactic Showdown's "the first time this turn you breach either R&D
+    or HQ, access 2 additional cards" is `OnBreach` on `Server([RnD,
+    Hq])`; In the Groove's "for the remainder of this turn, whenever you
+    install a card with a printed install cost of 1[credit] or greater" is
+    `OnInstall` on a `Card` filter, every time. Lightning Laboratory's file
+    names its moment. `LaterThisTurn` has three cards where
+    `WhenThisTurnEnds` had one.
+  - **`Effect::ForEach`** (Game Over's "For each card that would be
+    trashed this way, the Runner may pay 3[credit] to prevent that card
+    from being trashed"): `effect` once for each card in an installed zone
+    that the filter admits, the card named as `CardTarget::Install` of its
+    handle (written over `InstallId::PLACEHOLDER`, the convention
+    `HostRigCardOnInstall` follows), rewritten into a `Sequence` as
+    `Repeat` is, so each paid choice parks and the rest wait. `Repeat`
+    counts and names nothing; a selection's `then` acts as the card chosen,
+    whose side would have been who trashed it.
+  - **`CardTarget::Install`**: an install by its handle, whoever's. The
+    trash goes through the prevention window like any other.
+  - **`Cost::ClicksAmount`** and run costs read as their card: Cold Site
+    Server's "[click] and 1[credit] for each hosted power counter" and
+    Reduced Service's "2[credit] for each hosted power counter" are counted
+    off the upgrade's own counters when the server is announced
+    (`continuous::run_costs`), and `validate` admits a run cost on an
+    upgrade's `RunsOnThisServer`.
+  - **`Cost::AddInstalledToHand`** (Rejig's "As an additional cost to play
+    this event, add 1 installed program or piece of hardware to your
+    grip"), asked one card at a time as `Cost::Trash` is. **What an
+    event's additional cost took rides on `GameEvent::EventPlayed`
+    (`paid_with`)** into the event's own resolution
+    (`ResolutionContext::paid_with`), and a selection writes its printed
+    cost into the discount of the install it parks (`Effect::
+    with_paid_card_cost`, and a `Discount::Amount` in its filter read as it
+    is offered), since the install resolves on a later action.
+  - **`ChooseServer::only_protected_by_ice`** (Climactic Showdown's "Choose
+    a server protected by ice"), and a selection reads the chosen server
+    (`CardFilter::InChosenServer`, which only an event filter had read).
+  - **Two interrupts** (CR 9.9.1). `Preventable::RunEnding` (Lucky Charm):
+    a Corp card's "end the run" waits in the prevention window when an
+    interrupt could be used on it (`WouldHappen::RunEnds`), after Shred's
+    standing prevention. `Preventable::TraceBaseStrength` (Flip Switch):
+    a trace waits to be initiated (`WouldHappen::Trace`, the trace in
+    `PendingPrevention::waiting`), and is initiated whatever was done, at
+    base strength 0 when the interrupt was used (CR 9.9.6d).
+- **A loop the first test found.** Once nobody had used Flip Switch, the
+  waiting trace was resolved again as `Effect::Trace`, which asked again,
+  so the window never closed: a debug test ran to 7 GB passing priority.
+  The asking now initiates the trace directly (`ability::start_trace`).
+- **A gap the view sweep found.** SDS Drone Deployment's steal cost
+  (Stage 2's "trash 1 installed program") asks which program when two are
+  installed, and the steal was not on `payment::could_ask`'s list, so the
+  action was applied without the copy a question needs and the debug
+  assertion in `engine::apply_action` failed. The new pairings of the
+  schedule first put it against a rig of two programs. A steal now asks
+  `could_ask` about its agenda's printed and standing steal costs, and the
+  assertion names the action that asked.
+- **What composes.** Utae is Lobisomem's X break once a run (`OncePerRun`)
+  and Odore's three virtual resources. Cold Site Server's counters are a
+  [click] ability and a turn-start removal; Reduced Service's are bought
+  with `ChooseNumber` and placed with `Repeat`, and one goes on a
+  successful run on a central (`OnSuccessfulRun` on the three centrals).
+  Lucky Charm's "if you made a successful run on HQ this turn" is Paule's
+  Café's `TimesThisTurnWhen`. Flip Switch's tag removal is an ordinary
+  `[trash]` ability; every ability asks `DuringYourTurn`. Climactic
+  Showdown removes itself, has the Runner choose, and offers the Corp the
+  trash or the delayed ability.
+- **Fidelity limits:** three, under Known limits. Reduced Service's "pay"
+  loses the credits, as Focus Group's does; In the Groove's "first [click]"
+  is the turn's first action; Flip Switch's jack-out is paid with its
+  trash, as Lionsmane's is offered.
+- **Client.** The waiting delayed ability is read out in the HUD in its
+  own words (`prose::describe_later_this_turn`) instead of "when this turn
+  ends" for every one, and the prevention prompt and log name the run's
+  end and the trace's base strength. `DelayedAbility`'s two new fields
+  ride in `ClientView::delayed`, already drawn; no ledger row.
+- **Decks.** Pay As You Go takes two Utae for two Abaasy and two Climactic
+  Showdown for two Hush; Level Pegging two In the Groove for two Joy Ride
+  and two Rejig for two Spark of Inspiration; Picket Line two Lucky Charm
+  for two Tread Lightly and two Flip Switch for two Pennyshaver;
+  Deterrence two Cold Site Server for two Tithe; Supply Chain two Reduced
+  Service for two Regolith Mining License; Pay to Win two Game Over for
+  two Digital Rights Management. Every card given up is still in another
+  deck, and every deck keeps its formats.
+- **Measured.** `cargo test --workspace` is green and clippy is silent,
+  with the desktop crate run one test target at a time. Both sweeps are
+  green at 256 seeds, the card gate included. `coverage_identical.py`
+  against Stage 5 (6c9f0d2; 192 games a report) has random identical, by
+  view and by index. The planner moves because `determinize` samples the
+  new cards, with every end reason unchanged.
+- **DSL ratio** (`pool_status.py`): 13 of 103 `Effect` variants
+  single-use, none unused, over 627 card files — `ForEach` is single-use,
+  and `LaterThisTurn` has three cards where `WhenThisTurnEnds` had one.

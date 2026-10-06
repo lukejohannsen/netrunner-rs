@@ -73,10 +73,13 @@ pub fn apply_action(
         // (the legal-action probe applies every candidate). It is made only
         // where a question is possible at all (`payment::could_ask`).
         if !crate::rules::payment::could_ask(state, registry, &action) {
+            #[cfg(debug_assertions)]
+            let asked_by = format!("{action:?}");
             let applied = apply_action_once(state, registry, action);
+            #[cfg(debug_assertions)]
             debug_assert!(
                 !matches!(applied, Err(RulesError::PaymentChoiceNeeded { .. })),
-                "a payment asked where `payment::could_ask` said none could: its necessary condition is not one"
+                "a payment asked where `payment::could_ask` said none could: its necessary condition is not one ({asked_by}: {applied:?})"
             );
             return applied;
         }
@@ -1526,7 +1529,14 @@ fn play_event(
         cost_events = ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
-    let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
+    let paid_with: Vec<CardId> = cost_events
+        .iter()
+        .filter_map(|event| match event {
+            GameEvent::CardTrashed { card, .. } | GameEvent::CardAddedToHand { card: Some(card), .. } => Some(card.clone()),
+            _ => None,
+        })
+        .collect();
+    let played_event = GameEvent::EventPlayed { side, card: card_id.clone(), paid_with };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
     // As `play_operation_card` does: the cost's events after.
     events.extend(ability::dispatch_cost_events(&mut next, registry, &price_events)?);
@@ -4811,7 +4821,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone() },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new() },
                 // Trashed as it finishes resolving (CR 3.7.1).
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
@@ -4847,7 +4857,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id, paid_with: Vec::new() },
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },

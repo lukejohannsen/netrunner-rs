@@ -1830,7 +1830,12 @@ impl CardDefinition {
                     return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
                 }
                 (ContinuousKind::RunCost(_), Scope::Runs(_)) => {}
-                (ContinuousKind::RunCost(_), _) => return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`)"),
+                // Cold Site Server's and Reduced Service's "to run this
+                // server": an upgrade's, about the server it is in.
+                (ContinuousKind::RunCost(_), Scope::RunsOnThisServer) if self.card_type == CardType::Upgrade => {}
+                (ContinuousKind::RunCost(_), _) => {
+                    return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`), or on an upgrade's own (`RunsOnThisServer`)");
+                }
                 (_, Scope::Runs(_)) => return misfit("Runs", "only an additional cost to run is about the runs on a kind of server"),
                 (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AdvancementRequirement(_), _) => {

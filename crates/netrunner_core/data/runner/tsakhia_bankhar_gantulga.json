@@ -12,7 +12,9 @@
           "PresentChoice": {
             "chooser": "Runner",
             "options": [
-              "ChooseServer",
+              {
+                "ChooseServer": {}
+              },
               {
                 "Sequence": []
               }

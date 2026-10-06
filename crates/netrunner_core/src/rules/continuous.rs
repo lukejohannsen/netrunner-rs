@@ -673,11 +673,24 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
 /// The additional costs to run `server` (CR 6.3.2b: Earth Station: SEA
 /// Headquarters), in the order their cards are asked, paid together as the
 /// server is announced (`run::start_run`).
+///
+/// A count in one is read here, as the card that prints it — Cold Site
+/// Server's "[click] and 1[credit] for each hosted power counter" is that
+/// upgrade's counters — and paid as the number it came to, since the
+/// payment has no card to read it as.
 pub(crate) fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
+    fn fixed(cost: &Cost, ctx: &ability::ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> Cost {
+        match cost {
+            Cost::CreditsAmount(amount) => Cost::Credits(ability::resolve_amount(amount, ctx, state, registry)),
+            Cost::ClicksAmount(amount) => Cost::Clicks(ability::resolve_amount(amount, ctx, state, registry)),
+            Cost::AllOf(parts) => Cost::AllOf(parts.iter().map(|part| fixed(part, ctx, state, registry)).collect()),
+            other => other.clone(),
+        }
+    }
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, _| {
+    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, ctx| {
         if let ContinuousKind::RunCost(cost) = &effect.kind {
-            costs.push(cost.clone());
+            costs.push(fixed(cost, ctx, state, registry));
         }
     });
     costs

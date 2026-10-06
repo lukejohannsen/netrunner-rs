@@ -489,6 +489,13 @@ impl CardFilter {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
+            // A discount read off the resolution (Rejig's "paying X[credit]
+            // less", X the printed cost of the card its cost returned) is
+            // the number it is now: the selection is answered on a later
+            // action, which has no payment to read it from.
+            CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
+                CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Credits(amount(&of)))
+            }
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
             other => other,

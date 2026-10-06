@@ -232,7 +232,16 @@ pub enum GameEvent {
         to: ServerId,
     },
     RunInitiated { server: ServerId },
-    EventPlayed { side: Side, card: CardId },
+    /// `paid_with`: the cards the event's additional cost took (Rejig's
+    /// program added to the grip, Sell Out's resource trashed), so its own
+    /// resolution can read them (`ResolutionContext::paid_with`). Every one
+    /// was an installed Runner card, and so public.
+    EventPlayed {
+        side: Side,
+        card: CardId,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        paid_with: Vec<CardId>,
+    },
     /// `from_archives`: the card was played out of Archives rather than
     /// HQ (`CardDefinition::playable_from_archives`, Petty Cash) — read by
     /// `EffectRequirement::PlayedFromArchives` off the triggering event.

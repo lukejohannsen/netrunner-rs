@@ -160,6 +160,7 @@ pub fn describe_cost(cost: &Cost) -> String {
             format!("{} from {}", plural(*n, "credit", "credits"), humanize(format!("{from:?}")).to_lowercase())
         }
         Cost::CreditsAmount(amount) => format!("credits equal to {}", describe_amount(amount)),
+        Cost::ClicksAmount(amount) => format!("clicks equal to {}", describe_amount(amount)),
         Cost::CreditsX { .. } => "X credits".to_string(),
         Cost::CreditsFrom { amount, from } => format!("credits equal to {}, from {}", describe_amount(amount), humanize(format!("{from:?}")).to_lowercase()),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
@@ -183,6 +184,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::RevealAndTrashSelf => "reveal and trash this card from your hand".to_string(),
         Cost::RevealSelf => "reveal this card".to_string(),
         Cost::DerezSelf => "derez this card".to_string(),
+        Cost::AddInstalledToHand { filter, count } => format!("add {} installed {} to your hand", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::TurnHostedFacedown => "turn 1 hosted card facedown".to_string(),
@@ -214,6 +216,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::ThisCard => "this card".to_string(),
         CardTarget::CorpInstalled { card, server } => format!("{} in {}", title(card, registry), describe_server(*server)),
         CardTarget::RunnerRig(card) => title(card, registry),
+        CardTarget::Install(_) => "that card".to_string(),
         CardTarget::TopOfStack { side, .. } => format!("the top card of {}'s deck", who(*side)),
         CardTarget::HostIce => "the host ice".to_string(),
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
@@ -333,6 +336,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         },
         Effect::Prevent(Preventable::Tags(n)) => format!("prevent {n} tag{}", if *n == 1 { "" } else { "s" }),
         Effect::Prevent(Preventable::EncounterAbility) => "prevent a \"when encountered\" ability on a piece of ice".to_string(),
+        Effect::Prevent(Preventable::RunEnding) => "prevent a Corp card ability from ending the run".to_string(),
+        Effect::Prevent(Preventable::TraceBaseStrength) => "reduce the base trace strength of a trace to 0".to_string(),
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
@@ -360,6 +365,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             describe_effect(then, registry)
         ),
         Effect::Repeat { times, effect } => format!("{}, as many times as {}", describe_effect(effect, registry), describe_amount(times)),
+        Effect::ForEach { filter, effect, .. } => {
+            format!("for each installed card ({}): {}", humanize(format!("{filter:?}")).to_lowercase(), describe_effect(effect, registry))
+        }
         Effect::ResolveSomeOf { chooser, count, options, .. } => format!(
             "{} chooses {} of: {}",
             who(*chooser),
@@ -408,7 +416,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Surcharge(n)) => format!("install a card from the grip, paying {n} more"),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
-        Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
+        Effect::LaterThisTurn { when, filter, every_time, effect } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
         Effect::EndActionPhase => "your action phase ends".to_string(),
         Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
@@ -539,7 +547,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
         }
-        Effect::ChooseServer => "choose a server".to_string(),
+        Effect::ChooseServer { only_protected_by_ice: false } => "choose a server".to_string(),
+        Effect::ChooseServer { only_protected_by_ice: true } => "choose a server protected by ice".to_string(),
         Effect::RevealHand(Side::Corp) => "reveal HQ".to_string(),
         Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
         Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
@@ -587,6 +596,26 @@ pub fn humanize(debug: String) -> String {
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
+/// A delayed ability's sentence (`Effect::LaterThisTurn`): "when this turn
+/// ends, …" for the turn's end, and otherwise the moment it waits for, once
+/// or every time, and what it will do. The hud reads a waiting one the same
+/// way.
+pub fn describe_later_this_turn(when: netrunner_core::dsl::Trigger, filter: Option<&EventFilter>, every_time: bool, effect: &Effect, registry: &CardRegistry) -> String {
+    let what = describe_effect(effect, registry);
+    if when == netrunner_core::dsl::Trigger::OnDiscardPhaseEnd && filter.is_none() {
+        return format!("when this turn ends, {what}");
+    }
+    let mut moment = humanize(format!("{when:?}")).to_lowercase();
+    if let Some(filter) = filter {
+        moment = format!("{moment}, {}", describe_when(filter));
+    }
+    if every_time {
+        format!("for the rest of this turn, every time ({moment}): {what}")
+    } else {
+        format!("the next time this turn ({moment}): {what}")
+    }
+}
+
 /// The words for a trigger's `when`, after the trigger's own: "on HQ", "of
 /// a virus program". A conjunction says each of its parts.
 fn describe_when(filter: &EventFilter) -> String {

@@ -52,26 +52,17 @@ pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Downfall* (`downfall`): tranche 7 of the NSG plan.
 pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("utae", "Utae"),
-    ("climactic_showdown", "Climactic Showdown"),
     ("always_have_a_backup_plan", "Always Have a Backup Plan"),
-    ("flip_switch", "Flip Switch"),
-    ("lucky_charm", "Lucky Charm"),
     ("the_class_act", "The Class Act"),
-    ("in_the_groove", "In the Groove"),
     ("khusyuk", "Khusyuk"),
     ("direct_access", "Direct Access"),
-    ("rejig", "Rejig"),
     ("whistleblower", "Whistleblower"),
     ("mirrormorph_endless_iteration", "MirrorMorph: Endless Iteration"),
-    ("cold_site_server", "Cold Site Server"),
     ("hyoubu_institute_absolute_clarity", "Hyoubu Institute: Absolute Clarity"),
     ("project_yagi_uda", "Project Yagi-Uda"),
     ("saisentan", "Saisentan"),
     ("complete_image", "Complete Image"),
     ("letheia_nisei", "Letheia Nisei"),
-    ("game_over", "Game Over"),
-    ("reduced_service", "Reduced Service"),
 ];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.

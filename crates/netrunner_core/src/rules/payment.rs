@@ -708,6 +708,15 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
             .get(card_id)
             .and_then(|def| def.additional_play_cost.as_ref())
             .is_some_and(crate::dsl::Cost::may_ask),
+        // A steal cost that takes cards asks which: SDS Drone
+        // Deployment's "trash 1 installed program" with two installed. Left
+        // off this list until the 256-seed view sweep's debug assertion
+        // found it, when Downfall Stage 6's decks first paired it with a
+        // rig of two programs.
+        PlayerAction::StealAgenda { card_id } => registry.get(card_id).is_some_and(|def| {
+            def.steal_cost.as_ref().is_some_and(crate::dsl::Cost::may_ask)
+                || crate::rules::continuous::steal_costs_added(state, registry, def).iter().any(crate::dsl::Cost::may_ask)
+        }),
         // A card that prints another way to pay for its rez asks which,
         // and what the way it names takes.
         PlayerAction::RezIce { ice } => state

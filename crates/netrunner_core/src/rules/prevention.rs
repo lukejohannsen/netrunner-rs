@@ -72,6 +72,8 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
             card.and_then(|card| registry.get(card)).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (Preventable::EncounterAbility, WouldHappen::EncounterAbility { .. }) => true,
+        (Preventable::RunEnding, WouldHappen::RunEnds { .. }) => true,
+        (Preventable::TraceBaseStrength, WouldHappen::Trace { base }) => *base > 0,
         _ => false,
     }
 }
@@ -81,7 +83,7 @@ fn prevents_up_to(word: &Preventable) -> u32 {
     match word {
         Preventable::Damage { up_to, .. } => *up_to,
         Preventable::Tags(amount) => *amount,
-        Preventable::Trash(_) | Preventable::EncounterAbility => 1,
+        Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength => 1,
     }
 }
 
@@ -196,6 +198,52 @@ pub(crate) fn encounter_ability(state: &mut GameState, registry: &CardRegistry, 
         source_install: Some(ice),
         resume: PreventionResume::None,
         waiting: Some(Box::new(due.clone())),
+    });
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::AboutToResolve { what })?;
+    events.extend(settle_within(state, registry, None)?.unwrap_or_default());
+    Ok(Some(events))
+}
+
+/// A trace is about to be initiated by `ctx`'s card at base strength
+/// `base`: if somebody could lower it (Flip Switch's interrupt), the trace
+/// waits in `PendingPrevention::waiting` while they are asked, and `Some`
+/// is the asking. `None` when it starts as it would have: nothing to
+/// lower, no card to resume it as, something already parked, or nobody
+/// able to.
+pub(crate) fn trace(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    base: u32,
+    on_success: &Effect,
+    ctx: &ResolutionContext<'_>,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let what = WouldHappen::Trace { base };
+    let Some(card) = ctx.acting_card else { return Ok(None) };
+    if base == 0 || state.pending_prevention.is_some() || !could_prevent(state, registry, &what) {
+        return Ok(None);
+    }
+    let due = DeferredTrigger {
+        announce: None,
+        card: card.clone(),
+        install: ctx.acting_install,
+        trigger: Trigger::OnPlay,
+        target: None,
+        target_install: None,
+        event: ctx.triggering_event.cloned(),
+        continuation: Some(Effect::Trace { base, on_success: Box::new(on_success.clone()) }),
+        heard: Default::default(),
+        not_the_first_this_turn: false,
+        fired: 0,
+    };
+    state.pending_prevention = Some(PendingPrevention {
+        what: what.clone(),
+        prevented: 0,
+        interrupted: None,
+        source_card: Some(card.clone()),
+        source_install: ctx.acting_install,
+        resume: PreventionResume::None,
+        waiting: Some(Box::new(due)),
     });
     let mut events = Vec::new();
     dispatcher::emit(state, registry, &mut events, GameEvent::AboutToResolve { what })?;
@@ -382,10 +430,19 @@ fn finish_within(
         state.paid_ability_window = Some(window);
     }
     let left = pending.what.amount() - prevented;
-    // Not prevented: the ability resolves, as it would have.
-    if left > 0
+    // A trace starts whatever was prevented: its base strength is what was
+    // (Flip Switch's "to 0").
+    // Started here rather than resolved again as `Effect::Trace`, which
+    // would ask again.
+    if let (WouldHappen::Trace { base }, Some(due)) = (&pending.what, &pending.waiting) {
+        if let Some(Effect::Trace { on_success, .. }) = &due.continuation {
+            let base = if prevented > 0 { 0 } else { *base };
+            events.extend(ability::start_trace(state, base, on_success, Some(due.card.clone()), due.install));
+        }
+    } else if left > 0
         && let Some(due) = &pending.waiting
     {
+        // Not prevented: the ability resolves, as it would have.
         events.extend(ability::fire_card_triggers(state, registry, due, true)?);
     } else if left > 0 {
         let responsible = responsible_for(registry, pending.source_card.as_ref());
@@ -457,6 +514,10 @@ fn happen(
         // Dispatched here, where the trash happens, as the tags above are.
         // Resolved from `PendingPrevention::waiting` by `finish_within`.
         WouldHappen::EncounterAbility { .. } => Ok(Vec::new()),
+        // Not prevented: the run ends as the text said, if it is still on.
+        WouldHappen::RunEnds { .. } => ability::end_the_run(state, registry),
+        // Started from `PendingPrevention::waiting` by `finish_within`.
+        WouldHappen::Trace { .. } => Ok(Vec::new()),
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             // Carried out, so it is one of the encountered ice's trashes

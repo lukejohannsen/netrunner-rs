@@ -123,6 +123,15 @@ pub enum CardTarget {
     /// reason: a `PromptChooseCards` with a `count` of every set-aside card
     /// parks a choice of everything, and no `Amount` counts the zone.
     SetAside,
+    /// The install with this handle, whoever's it is — what
+    /// `Effect::ForEach` writes over `InstallId::PLACEHOLDER` with, for
+    /// each card it names (Game Over's "for each card that would be
+    /// trashed this way"). Authored as the placeholder; nothing happens if
+    /// the install has left the table by the time it resolves. Composition
+    /// didn't work: `RunnerRig` names a card and takes its first copy, and
+    /// `ThisCard` is the acting card, whose side is who carries out the
+    /// trash.
+    Install(crate::rules::InstallId),
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -1010,6 +1019,18 @@ pub enum Effect {
     /// (`ChooseNumber`) would decide every repetition before the first
     /// draw could inform the next.
     Repeat { times: Amount, effect: Box<Effect> },
+    /// `effect` once for each card in `source` that `filter` admits as it
+    /// resolves, the card named in it as `CardTarget::Install` of its
+    /// handle — Game Over's "Trash all installed non-icebreaker cards of
+    /// the chosen type. For each card that would be trashed this way, the
+    /// Runner may pay 3[credit] to prevent that card from being trashed",
+    /// an `OfferPaidChoice` whose decline trashes `Install(PLACEHOLDER)`.
+    /// Rewritten into a `Sequence`, as `Repeat` is, so each choice parks
+    /// and the rest wait behind it, resolving as the card whose text it is.
+    /// `source` is an installed zone, from the controller's side. Composition
+    /// didn't work: `Repeat` counts and names nothing, and a selection's
+    /// `then` acts as the card chosen, whose side would be who trashed it.
+    ForEach { source: crate::dsl::CardZoneRef, filter: crate::dsl::CardFilter, effect: Box<Effect> },
     /// `chooser` names a number from `min` to `max` and `then` resolves
     /// with it as `Amount::ChosenNumber` — "remove **any number of** tags"
     /// (Bigger Picture), "lose **up to 5** credits" (Account Siphon),
@@ -1317,16 +1338,35 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         encountered_ice: bool,
     },
-    /// Leaves `Box<Effect>` waiting until this turn ends, then resolves it
-    /// as the card that made it (a `lingering::DelayedAbility`, CR 9.6.13)
-    /// — Lightning Laboratory's "When this turn ends, derez 2 pieces of ice
-    /// protecting that server". "That server" is the attacked server, and
-    /// the run is over by then, so `CardFilter::InAttackedServer` is
-    /// written over with the server as the ability is made
-    /// (`Effect::with_attacked_server`). Composition didn't work: nothing
-    /// resolved later than the resolution that asked for it, but the run's
-    /// own end (`SetRunEndedEffect`, one slot on the run).
-    WhenThisTurnEnds(Box<Effect>),
+    /// Leaves `effect` waiting for a moment later this turn, then resolves
+    /// it as the card that made it (a `lingering::DelayedAbility`, CR
+    /// 9.6.13) — Lightning Laboratory's "When this turn ends, derez 2 pieces
+    /// of ice protecting that server" (`when: OnDiscardPhaseEnd`), Climactic
+    /// Showdown's "the first time this turn you breach either R&D or HQ,
+    /// access 2 additional cards" (`OnBreach`, `filter: Server([RnD,
+    /// Hq])`), and In the Groove's "For the remainder of this turn, whenever
+    /// you install a card with a printed install cost of 1[credit] or
+    /// greater" (`OnInstall`, a `Card` filter, `every_time`). `filter` is
+    /// the trigger condition's `EventFilter`, judged as a card's `when` is
+    /// (`listeners::when_admits`), and the moment is heard as the card's
+    /// controller hears it. Once (CR 9.6.13c) unless `every_time`, which
+    /// keeps it for the rest of the turn. "That server" is the attacked
+    /// server, written over as the ability is made
+    /// (`Effect::with_attacked_server`), since the run is over by the time
+    /// Lightning Laboratory's resolves.
+    ///
+    /// Composition didn't work: nothing resolved later than the resolution
+    /// that asked for it, but the run's own end (`SetRunEndedEffect`). It
+    /// was `WhenThisTurnEnds`, the turn's end alone, until two cards waited
+    /// for other moments.
+    LaterThisTurn {
+        when: crate::dsl::Trigger,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<crate::dsl::EventFilter>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        every_time: bool,
+        effect: Box<Effect>,
+    },
     /// "After you resolve this operation, your action phase ends" — a
     /// terminal card's line (Active Policing, Bring Them Home): the rest of
     /// the resolving card's controller's action phase is skipped and their
@@ -1599,7 +1639,15 @@ pub enum Effect {
     /// remembers rather than runs (`remember`), over the servers that
     /// exist. Composition didn't work: every server choice started a run,
     /// installed or moved a card, and the mark is chosen at random.
-    ChooseServer,
+    ///
+    /// `only_protected_by_ice` narrows the offer to servers a piece of ice
+    /// protects, rezzed or not — Climactic Showdown's "Choose a server
+    /// protected by ice" — as `PromptChooseServer`'s field of that name
+    /// narrows a run's.
+    ChooseServer {
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        only_protected_by_ice: bool,
+    },
     /// For the rest of the encounter, whenever the Corp would resolve a
     /// subroutine on the encountered ice, it resolves instead the acting
     /// card's own printed subroutine — Tsakhia "Bankhar" Gantulga's
@@ -2183,6 +2231,17 @@ pub enum Preventable {
     /// only damage, tags and a trash, each something a card's text does,
     /// and this is an ability that would resolve.
     EncounterAbility,
+    /// "Prevent a Corp card ability from ending the run" (Lucky Charm): an
+    /// "end the run" a Corp card's text resolves, about to end the run
+    /// (`WouldHappen::RunEnds`). A Runner card's own "end the run" and a
+    /// jack-out are not it. Composition didn't work: the one prevention of
+    /// a run's end (Shred's) stands for a duration and asks nobody.
+    RunEnding,
+    /// "Reduce the base trace strength of a trace to 0" (Flip Switch): a
+    /// trace about to be initiated (`WouldHappen::Trace`), which starts all
+    /// the same, at base strength 0 when this was used. Composition didn't
+    /// work: nothing could act between a trace's initiation and its bids.
+    TraceBaseStrength,
 }
 
 /// Which ice an `Effect::ModifyStrength` changes.
@@ -2439,6 +2498,48 @@ impl Effect {
         named
     }
 
+    /// `CardTarget::Install(PLACEHOLDER)` written over as `install`, the card
+    /// an `Effect::ForEach` is resolving for, through the shapes Game
+    /// Over's is written in; any other effect is returned as it is.
+    pub fn with_each_install(self, install: crate::rules::InstallId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_each_install(install));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_each_install(install)).collect();
+        let target = |target: CardTarget| match target {
+            CardTarget::Install(crate::rules::InstallId::PLACEHOLDER) => CardTarget::Install(install),
+            other => other,
+        };
+        match self {
+            Effect::TrashCard(t) => Effect::TrashCard(target(t)),
+            Effect::DerezCard(t) => Effect::DerezCard(target(t)),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            }
+            other => other,
+        }
+    }
+
+    /// `Amount::PaidCardPrintedCost` written over as `cost` in an install's
+    /// discount — Rejig's "paying X[credit] less", read as the selection
+    /// that installs is offered, since the install resolves on a later
+    /// action with no payment to read it from. The shapes Rejig's is
+    /// written in; any other effect is returned as it is.
+    pub fn with_paid_card_cost(self, cost: u32) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_paid_card_cost(cost));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_paid_card_cost(cost)).collect();
+        match self {
+            Effect::InstallRunnerCardFromGripWithDiscount(Discount::Amount(of)) if *of == Amount::PaidCardPrintedCost => {
+                Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(cost))
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            other => other,
+        }
+    }
+
     /// `CardFilter::ThatCard` written over as `card`, the card the moment a
     /// trigger heard is about, in every selection the effect makes and
     /// every choice, sequence, condition or paid choice around one — the
@@ -2622,9 +2723,10 @@ impl Effect {
             Effect::EffectIf { effect, .. }
             | Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
-            | Effect::WhenThisTurnEnds(effect)
+            | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::Repeat { effect, .. }
+            | Effect::ForEach { effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
                 if_paid.for_each_effect(f);
@@ -2726,7 +2828,7 @@ impl Effect {
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::LoseAbilities { .. }
             | Effect::LimitBreaks { .. }
-            | Effect::ChooseServer
+            | Effect::ChooseServer { .. }
             | Effect::ReplaceSubroutines
             | Effect::MoveRunToOutermost(..)
             | Effect::InstallAgendaFromRunnerScoreArea

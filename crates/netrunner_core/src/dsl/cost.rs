@@ -25,6 +25,12 @@ pub enum Cost {
     /// `CreditsFrom`'s. Composition didn't work: no cost took a number the
     /// state decides.
     CreditsAmount(Amount),
+    /// Clicks reckoned when the cost is paid — Cold Site Server's "the
+    /// Runner must spend [click] and 1[credit] for each hosted power
+    /// counter" (`Amount::HostedCounters`, the upgrade's own, read through
+    /// `continuous::run_costs`). `CreditsAmount`'s twin: `Clicks` is a
+    /// printed number.
+    ClicksAmount(Amount),
     /// "X[credit]" — Lobisomem's "Interface → X[credit], hosted power
     /// counter: Break X barrier subroutines". The payer chooses and
     /// announces X, 0 to `max`, before paying (CR 1.16.2c), asked by the
@@ -245,6 +251,16 @@ pub enum Cost {
     /// installed. Composition didn't work: every other way off the table is
     /// a trash or a removal from the game.
     AddSelfToHq,
+    /// `count` of the payer's own installed cards that `filter` admits go
+    /// back to their hand — Rejig's "As an additional cost to play this
+    /// event, add 1 installed program or piece of hardware to your grip".
+    /// Asked one card at a time by replay, as `Trash` is
+    /// (`pending_choice::pick_for_cost`), and the card is what the payment
+    /// was made with (`GameEvent::EventPlayed::paid_with`), so the effect
+    /// it pays for can read its printed cost (`Amount::PaidCardPrintedCost`).
+    /// Composition didn't work: every cost that took the payer's cards
+    /// trashed them, forfeited them or turned them facedown.
+    AddInstalledToHand { filter: CardFilter, count: u32 },
     /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
     /// "unless the Corp reveals and trashes X cards from HQ at random",
     /// built by the engine into the `OfferPaidChoice` it parks (X is the
@@ -331,7 +347,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

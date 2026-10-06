@@ -993,6 +993,15 @@ pub enum WouldHappen {
     /// it. Named by the ice's handle: the ice is rezzed and being
     /// encountered, so it is public.
     EncounterAbility { ice: InstallId },
+    /// A Corp card's text would end the run on `server` (Lucky Charm's
+    /// "prevent a Corp card ability from ending the run"). The run and its
+    /// server are public.
+    RunEnds { server: crate::rules::run::ServerId },
+    /// A trace would be initiated at base strength `base`. It is
+    /// initiated whatever happens, from `PendingPrevention::waiting`; what
+    /// is prevented is its base strength (Flip Switch). Public, as the
+    /// trace is.
+    Trace { base: u32 },
 }
 
 impl WouldHappen {
@@ -1001,14 +1010,18 @@ impl WouldHappen {
     pub fn amount(&self) -> u32 {
         match self {
             WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } => *amount,
-            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } => 1,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } => 1,
         }
     }
 
     /// Who it happens to, and so who is asked first.
     pub fn affects(&self) -> Side {
         match self {
-            WouldHappen::Damage { .. } | WouldHappen::Tags { .. } | WouldHappen::EncounterAbility { .. } => Side::Runner,
+            WouldHappen::Damage { .. }
+            | WouldHappen::Tags { .. }
+            | WouldHappen::EncounterAbility { .. }
+            | WouldHappen::RunEnds { .. }
+            | WouldHappen::Trace { .. } => Side::Runner,
             WouldHappen::Trash { owner, .. } => *owner,
         }
     }
@@ -1046,7 +1059,9 @@ pub struct PendingPrevention {
     pub source_install: Option<InstallId>,
     pub resume: PreventionResume,
     /// The trigger a `WouldHappen::EncounterAbility` is: it resolves once
-    /// the asking is over, if it was not prevented. `None` for everything
+    /// the asking is over, if it was not prevented. The trace a
+    /// `WouldHappen::Trace` is, as a continuation: it resolves whatever was
+    /// prevented, at base strength 0 when that was. `None` for everything
     /// else, which `happen` makes happen from `what` alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting: Option<Box<DeferredTrigger>>,

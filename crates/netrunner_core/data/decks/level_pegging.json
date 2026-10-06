@@ -3,7 +3,7 @@
   "name": "Level Pegging",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Lat: Ethical Freelancer, Downfall's Shaper identity, who draws a card at the end of a discard phase that leaves the grip the size of HQ. On Safety Net's frame, its identity swapped, with two Blueberry!™ Diesel for two of its three Net Shield: a look at the top of the stack and two cards for nothing. Safety Net keeps every card given up here.",
+  "description": "Not a published list: built so the sweeps reach Lat: Ethical Freelancer, Downfall's Shaper identity, who draws a card at the end of a discard phase that leaves the grip the size of HQ. On Safety Net's frame, its identity swapped, with two Blueberry!™ Diesel for two of its three Net Shield: a look at the top of the stack and two cards for nothing. Safety Net keeps every card given up here. Downfall Stage 6: two In the Groove for two Joy Ride, an event played as the first click that pays a card or a credit for every install of a card costing 1[credit] or more that turn; and two Rejig for two Spark of Inspiration, an event whose additional cost returns an installed program or piece of hardware to the grip and whose install is that card's printed cost cheaper. Safety Net keeps Joy Ride and Spark of Inspiration.",
   "style": [
     "rig"
   ],
@@ -38,10 +38,6 @@
       "count": 2
     },
     {
-      "card": "spark_of_inspiration",
-      "count": 2
-    },
-    {
       "card": "baker",
       "count": 1
     },
@@ -51,10 +47,6 @@
     },
     {
       "card": "the_artist",
-      "count": 2
-    },
-    {
-      "card": "joy_ride",
       "count": 2
     },
     {
@@ -108,6 +100,14 @@
     {
       "card": "harmony_ar_therapy",
       "count": 1
+    },
+    {
+      "card": "in_the_groove",
+      "count": 2
+    },
+    {
+      "card": "rejig",
+      "count": 2
     }
   ]
 }

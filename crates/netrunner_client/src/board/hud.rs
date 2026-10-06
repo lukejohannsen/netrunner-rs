@@ -478,7 +478,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // in the words the card inspector uses, since it is a sentence of
         // the card's that has not resolved yet.
         .chain(view.delayed.iter().map(|delayed| {
-            format!("{}: when this turn ends, {}", title(&delayed.card), crate::prose::describe_effect(&delayed.effect, registry))
+            format!("{}: {}", title(&delayed.card), crate::prose::describe_later_this_turn(delayed.when, delayed.filter.as_ref(), delayed.every_time, &delayed.effect, registry))
         }))
         // A card revealed in a hand and not moved yet (Burner's three out
         // of HQ while the Runner chooses): both players were shown it.

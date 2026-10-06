@@ -619,6 +619,8 @@ impl Prompt {
                 WouldHappen::EncounterAbility { .. } => {
                     format!("Prevent {}'s \"when encountered\" ability?", title_of(prevention.source_card.as_ref(), registry))
                 }
+                WouldHappen::RunEnds { .. } => format!("Prevent {} from ending the run?", title_of(prevention.source_card.as_ref(), registry)),
+                WouldHappen::Trace { base } => format!("Reduce {}'s trace, base strength {base}, to 0?", title_of(prevention.source_card.as_ref(), registry)),
             };
             return Some(Prompt { title, detail: format!("{} offers to", title_of(prevention.source_card.as_ref(), registry)) });
         }

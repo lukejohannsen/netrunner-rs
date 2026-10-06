@@ -159,7 +159,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None }
     };
     match event {
-        GameEvent::EventPlayed { side, card: played } => {
+        GameEvent::EventPlayed { side, card: played, .. } => {
             let about = card(played, None);
             vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
         }
@@ -409,7 +409,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // pool is printed about; a tag or a trash about to happen is an
         // occurrence of nothing until a card listens for one.
         GameEvent::AboutToResolve { what: WouldHappen::Damage { kind, .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Damage(*kind), None)],
-        GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } } => Vec::new(),
+        GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
         GameEvent::AboutToBeUninstalled { card: card_id, install } => {
@@ -547,7 +547,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     // goes in beside its side's entries, and resolves as the card that
     // made it. `dispatcher::dispatch_event` takes it off the list.
     for moment in &moments {
-        for delayed in state.delayed.iter().filter(|delayed| delayed_hears(state, delayed, moment.trigger)) {
+        for delayed in state.delayed.iter().filter(|delayed| delayed_hears(state, delayed, moment.trigger) && delayed_admits(state, registry, delayed, event)) {
             let side = registry.get(&delayed.card).map_or(Side::Corp, |card| card.side);
             let due = DeferredTrigger { announce: None,
                 card: delayed.card.clone(),
@@ -576,6 +576,41 @@ pub(crate) fn delayed_hears(state: &GameState, delayed: &crate::rules::lingering
 
 pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger, turn: u32) -> bool {
     delayed.when == trigger && delayed.turn == turn
+}
+
+/// Whether `event` is one of the occurrences the delayed ability `delayed`
+/// waits for, by its filter: judged as a card's trigger condition is
+/// (`when_admits`), the card that made it hearing as its controller —
+/// In the Groove's "whenever **you** install".
+pub(crate) fn delayed_admits(state: &GameState, registry: &CardRegistry, delayed: &crate::rules::lingering::DelayedAbility, event: &GameEvent) -> bool {
+    if delayed.filter.is_none() {
+        return true;
+    }
+    let controller = registry.get(&delayed.card).map_or(Side::Corp, |card| card.side);
+    let triggered = TriggeredEffect {
+        trigger: delayed.when,
+        subject: None,
+        when: delayed.filter.clone(),
+        acts_on_subject: false,
+        first_each_turn: false,
+        first_each_encounter: false,
+        granted: false,
+        from_heap: false,
+        from_runner_score_area: false,
+        text: None,
+        effects: Vec::new(),
+        requirement: None,
+    };
+    when_admits(state, registry, &triggered, controller, &delayed.card, delayed.install, Some(event))
+}
+
+/// Whether the delayed ability `delayed` is done with once `event` has
+/// been heard: one from an earlier turn, or one heard once (CR 9.6.13c).
+pub(crate) fn delayed_spent_by(state: &GameState, registry: &CardRegistry, delayed: &crate::rules::lingering::DelayedAbility, event: &GameEvent) -> bool {
+    delayed.turn < state.turn
+        || (!delayed.every_time
+            && moments(state, event).iter().any(|moment| delayed_hears(state, delayed, moment.trigger))
+            && delayed_admits(state, registry, delayed, event))
 }
 
 /// Whether the occurrence `as_of` counted is the first this turn of what
