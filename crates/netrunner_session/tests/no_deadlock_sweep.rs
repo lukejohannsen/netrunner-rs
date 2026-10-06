@@ -260,6 +260,9 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
         let mut runner = RandomAgent::new(seed);
         let universe = deck_card_universe(&corp_deck.to_deck(), &runner_deck.to_deck());
         let mut session = Session::new(state, registry, Seat::External, Seat::External);
+        // Faceup cards both chairs watched go back to a hand, with the
+        // turn they went: `assert_no_concealed_card_is_named_in_log`.
+        let mut returned_to_hand: Vec<(u32, String)> = Vec::new();
 
         loop {
             match session.step() {
@@ -296,8 +299,15 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                     for viewer in [Viewer::Player(Side::Corp), Viewer::Player(Side::Runner), Viewer::Spectator] {
                         let entry = session.last_entry_for(viewer).expect("the session records history");
                         let view = session.view_for(viewer);
-                        assert_no_concealed_card_is_named_in_log(&entry, &view, session.state(), seed, &matchup, viewer);
+                        let watched: Vec<&str> = returned_to_hand.iter().filter(|(turn, _)| *turn == entry.turn_number).map(|(_, card)| card.as_str()).collect();
+                        assert_no_concealed_card_is_named_in_log(&entry, &view, session.state(), &watched, seed, &matchup, viewer);
                         assert_every_install_event_keeps_its_handle(&entry, seed, &matchup, viewer);
+                    }
+                    let entry = session.last_entry_for(Viewer::Spectator).expect("the session records history");
+                    for event in &entry.events {
+                        if let GameEvent::CardAddedToHand { card: Some(card), faceup: true, .. } = event {
+                            returned_to_hand.push((entry.turn_number, card.0.clone()));
+                        }
                     }
                 }
                 // An action resolved with nothing further owed — keep pumping.
@@ -522,11 +532,19 @@ fn assert_no_concealed_card_is_named_in_log(
     entry: &PublicHistoryEntry,
     view: &netrunner_core::view::ClientView,
     state: &GameState,
+    watched_to_hand: &[&str],
     seed: u64,
     matchup: &str,
     side: Viewer,
 ) {
     let mut visible = visible_card_ids(view);
+    // A faceup card watched go back to a hand earlier this turn: the
+    // entry-local rule below, carried across entries. Wall to Wall's
+    // "resolve up to 3 in any order" takes "add this asset to HQ" as one
+    // entry and "gain 1[credit]" as the next, which names the asset from
+    // HQ (seed 152, Hostile Bid against Burn Rate, first reached on
+    // Phase 5 §45's branch).
+    visible.extend(watched_to_hand.iter().copied());
     for event in &entry.events {
         if let GameEvent::CardsSelected { cards, revealed: true, .. } = event {
             visible.extend(cards.iter().map(|c| c.0.as_str()));
