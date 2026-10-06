@@ -38,3 +38,5 @@ What the item covers, so none of it is discovered halfway:
 
 **Planned for the NSG sets (26 September 2026): [nsg-card-pool.md](nsg-card-pool.md).** The order is Vantage Point, which completes Startup, then Standard from newest to oldest, then the three reprint packs: 454 + 91 unbuilt cards. The decks are built here as `Sweep` lists, because NSG published none for these sets. The observation vocabulary is grown once in a Stage 0 that also brings the catalog and the formats in from NetrunnerDB. Stage entries are recorded there, not here.
 
+**Planned for the Fantasy Flight Games sets (6 October 2026): [ffg-card-pool.md](ffg-card-pool.md).** The Core Set's 68 unbuilt cards join the NSG plan's last tranche, so the embedded catalog is complete first. Then a Stage 0 brings in the 57 sets the catalog lacks and grows the observation vocabulary once, and the cycles follow newest first: Snapshot complete after Creation and Control, Eternal complete after Genesis and the last three sets.
+
