@@ -30,7 +30,13 @@ surveys are one reading of each card's text against the DSL as it stood at
 - **The reprint packs are the last NSG tranche.** System Update 2021,
   Salvaged Memories and the Magnum Opus Reprint are NSG products of FFG
   designs, and none of them is in Standard. They are the bridge into the
-  FFG plan.
+  FFG plan ([ffg-card-pool.md](ffg-card-pool.md)).
+- **The Core Set's remainder rides with the reprint packs** (6 October
+  2026, the person's). The 2012 Core Set is the one FFG set embedded in
+  the catalog from the start, and 68 of its cards are neither built nor
+  reprinted in a reprint pack, so no tranche reached them. Tranche 8 takes
+  them, which leaves the embedded catalog complete before the FFG sets are
+  brought in.
 - **The observation vocabulary grows once, up front** (Stage 0), with a
   rank reserved per pack. The alternative was one reshape and one retrain
   per set.
@@ -51,7 +57,7 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 11, 1, 0, 27 | 71, 17, 6, — | not started (the built ones are Core reprints; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
 `Effect` variants single-use, none unused, over 638 card files** (6 October
@@ -104,7 +110,7 @@ earlier tranche.
 | 5 | Midnight Sun + Booster Pack | `msbp` 32001–32007, `ms` 33001–33065 | 72 | 65 | 35 / 30 | 5 | Drago Ivanov, Endurance, Nyusha "Sable" Sintashta, Svyatogor Excavator |
 | 6 | Uprising + Booster Pack | `urbp` 27001–27007, `ur` 26066–26130 | 72 | 65 | 35 / 30 | 3 | Bellona, Cayambe Grid, Cyberdex Sandbox, Engram Flush, Gold Farmer, Hoshiko Shiro, Moshing, Project Vacheron |
 | 7 | Downfall | `df` 26001–26065 | 65 | 65 | 35 / 30 | 4 | Bukhgalter, Rezeki, Sting! |
-| 8 | NSG reprint packs | `su21` 31001–31082, `sm` 29001–29018, `mor` 28001–28006 | 106 | 91 | 47 / 44 | 8 | — (not in Standard) |
+| 8 | NSG reprint packs and the Core Set's remainder | `su21` 31001–31082, `sm` 29001–29018, `mor` 28001–28006, `core` 01001–01113 | 219 | 91 + 68 | 47 / 44 + 39 / 29 | 8 + 0 | — (not in Standard) |
 
 **454 unbuilt cards for Standard and 91 for the reprints.** Standard 2026
 (`standard_2026_vantage_point`, 613 cards) is System Gateway, Ashes
@@ -114,7 +120,9 @@ Rehearsal), Elevation and Vantage Point. Midnight Sun and Uprising each
 reprint their own booster pack's 7 cards, so each tranche counts 7 fewer
 than it prints. In the reprint packs, 11 System Update 2021 titles (The
 Maker’s Eye and two identities among them) and Salvaged Memories'
-Scorched Earth are already built.
+Scorched Earth are already built. The Core Set's 68 are the cards it
+alone prints and nobody built: the 18 it shares with a reprint pack are
+counted there, and its 27 built ones include all seven identities.
 
 A card on a ban list is still built, because Eternal allows it. Within its
 set it goes last.
@@ -1040,15 +1048,25 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 5** — nine cards with no new `Effect`: the encountered ice gains a subtype for the encounter, a piece of ice rezzed whenever a non-ice card could be on a run against its server, an install from a card's text limited to a central, and the card a trigger heard named in a choice parked behind a paid one (`claude/serene-einstein-6bhlig`, 5 October 2026).
 - **Stage 3** — ten cards with no new `Effect`: a trash cost asked of any card being accessed, a surcharge on an install, hosted credits for the rest of a successful run and for programs during runs, and a requirement on the trashed card's faction (`claude/serene-einstein-6bhlig`, 5 October 2026).
 
-### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)
+### 8. The reprint packs and the Core Set's remainder — 159 cards (C 95 / V 45 / M 20)
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
-Opus Reprint (6). All are FFG designs, and none is in Standard.
+Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
+(C 60 / V 5 / M 3, surveyed 6 October 2026 at `3cec1a7`, below). All are
+FFG designs, and none is in Standard. The tranche closes with a `core`
+gate (`every_core_set_card_is_implemented_or_explicitly_excluded`, a
+`CORE_UNIMPLEMENTED` list that only shrinks, and `core` in
+`pool_status.py`'s gated packs), so every set the catalog embeds is
+gated and Eternal's in-catalog count reads complete.
 
 **Decks:** Sweep decks on the eight System Update 2021 identities not yet
-built.
+built. The Core Set's cards go into the Sweep decks the seven Core
+identities already head (Pay As You Go, Hit List, Safety Net, A Thousand
+Cuts, Retirement Package, Paid Content, Hostile Bid), each card a swap
+for one other decks still carry.
 
-The survey's ten stages, in order:
+The survey's eleven stages, in order (the Core Set's cards join the first
+nine by kind):
 1. Runner, composes (two stages).
 2. Corp ice and upgrades, composes.
 3. Corp agendas and operations, composes.
@@ -1070,9 +1088,60 @@ The survey's ten stages, in order:
    - Subliminal Messaging and Crowdfunding: abilities from Archives and
      the heap.
    - Slot Machine.
+10. **Expose** (CR 1.21.4): Infiltration, Lemuria Codecracker and Zaibatsu
+    Loyalty, from the Core Set.
 
 Most of what this tranche needs has been built by the time it arrives; the
-exceptions are Magnet, and abilities that work from Archives or the heap.
+exceptions are Magnet, abilities that work from Archives or the heap, and
+expose.
+
+**The Core Set's remainder** — read against the DSL at `3cec1a7`, where
+most of what these 2012 cards print has since been built for a later
+card:
+- **C (60), each joining the reprint stage of its kind:**
+  - Runner economy and rig: Access to Globalsec, Akamatsu Mem Chip,
+    Armitage Codebusting, Bank Job (an access replacement, as Stargate's),
+    Data Dealer, Desperado, Easy Mark, Grimoire (Cookbook's "it"), Magnum
+    Opus, Rabbit Hole, The Personal Touch (`Scope::Host`), Wyldside.
+  - Runner events: Déjà Vu, Demolition Run (an access ability on the
+    run's event), Modded, Special Order, Tinkering (a subtype gained for a
+    duration).
+  - Breakers and a virus: Aurora, Battering Ram, Ninja, Pipeline, Yog.0;
+    Datasucker (a lingering −1 strength for the encounter).
+  - Corp ice: Cell Portal (`MoveRunToOutermost`, a jack-out, a derez of
+    itself), Data Mine, Data Raven (an encounter's choice and a hosted
+    power counter's ability), Hadrian's Wall and Shadow (advanceable,
+    Ice Wall's strength), Heimdall 1.0, Ichi 1.0 and Viktor 1.0 (the
+    bioroid click break), Hunter, Matrix Analyzer, Neural Katana, Wall of
+    Thorns.
+  - Corp assets, upgrades and agendas: Adonis Campaign (Daily Casts'
+    counter pool), Aggressive Secretary, Ghost Branch and Project Junebug
+    (ambushes paid on access, as Snare!), Akitaro Watanabe and
+    Experiential Data (`Scope::IceProtectingThisServer`), Melange Mining
+    Corp., Red Herrings (persistent, an additional cost to steal),
+    Research Station, Security Subcontract (`Cost::Trash`); Accelerated
+    Beta Test, AstroScript Pilot Program, Breaking News, Posted Bounty,
+    Priority Requisition, Private Security Force.
+  - Corp operations: Aggressive Negotiation, Anonymous Tip, Beanstalk
+    Royalties, Closed Accounts, Neural EMP, Precognition (VP's arranging
+    of R&D), SEA Source (a trace), Shipment from Kaguya, Shipment from
+    MirrorMorph.
+- **V (5), to stage 5 or stage 6:**
+  - Chum: a delayed ability on the next encounter, with a strength boost
+    for that ice and "if the Runner did not fully break that ice".
+  - Crypsis: "if you used this program to break a subroutine during that
+    encounter", heard as the encounter ends.
+  - Djinn: hosted programs whose memory does not count against the limit
+    (a `ContinuousKind` beside `MayHost`).
+  - Stimhack: damage that "cannot be prevented" (CR 9.3.3g), the first
+    in the pool.
+  - Wyrm: a break limited to ice of strength 0 or less.
+- **M (3), a stage of their own after stage 9: expose** (CR 1.21.4).
+  Infiltration, Lemuria Codecracker and Zaibatsu Loyalty. To expose a
+  card is to reveal an installed, unrezzed card, and the reveal is a
+  moment, which Stage 7 of Downfall built. Zaibatsu Loyalty is the
+  interrupt that has waited on it since the Prevention Rule (a
+  `Preventable::Expose` and a `WouldHappen` arm).
 
 **Riskiest:**
 - Magnet: cuts across Trojan hosting and the continuous layer.
