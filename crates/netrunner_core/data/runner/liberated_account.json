@@ -1,0 +1,56 @@
+{
+  "id": "liberated_account",
+  "title": "Liberated Account",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 6,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 16
+        }
+      ],
+      "text": "When you install this resource, load 16[credit] onto it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": {
+              "Fixed": 4
+            }
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              4
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Take 4[credit] from this resource."
+    }
+  ],
+  "built_from": 31010,
+  "is_playable": true
+}

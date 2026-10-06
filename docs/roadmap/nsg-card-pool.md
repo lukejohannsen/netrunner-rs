@@ -57,11 +57,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 11, 1, 0, 27 | 71, 17, 6, — | not started (the built ones are Core reprints; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 21, 1, 0, 27 | 61, 17, 6, — | in progress: Stage 1a (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 638 card files** (6 October
-2026, with Downfall Stage 8, which closed the set and added two:
+`Effect` variants single-use, none unused, over 648 card files** (6 October
+2026, with tranche 8 Stage 1a, which added no variant; Downfall Stage 8, at
+13 of 105 over 638, closed the set and added two:
 `ChooseCardName`, which Complete Image and Whistleblower share, and
 `StealAccessedCard`, Whistleblower's alone; Stage 7, at 12 of 103 over
 633, added no variant and gave
@@ -1050,6 +1051,10 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 
 ### 8. The reprint packs and the Core Set's remainder — 159 cards (C 95 / V 45 / M 20)
 
+**Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
+
+- **Stage 1a** — ten System Update 2021 Runner cards, composed, with no new `Effect` and no change to the engine (Mimic, Abagnale, Legwork, Dirty Laundry, Career Fair, Professional Contacts, Liberated Account, Earthrise Hotel, Scrubber, Xanadu) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
+
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
 (C 60 / V 5 / M 3, surveyed 6 October 2026 at `3cec1a7`, below). All are
@@ -1067,7 +1072,8 @@ for one other decks still carry.
 
 The survey's eleven stages, in order (the Core Set's cards join the first
 nine by kind):
-1. Runner, composes (two stages).
+1. Runner, composes (two stages): **1a closed**, ten System Update 2021
+   cards; 1b takes the rest.
 2. Corp ice and upgrades, composes.
 3. Corp agendas and operations, composes.
 4. Trigger words: Ken “Express” Tenma, Near-Earth Hub, Turtlebacks,
