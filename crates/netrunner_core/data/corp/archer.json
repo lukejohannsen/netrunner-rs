@@ -1,0 +1,69 @@
+{
+  "id": "archer",
+  "title": "Archer",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 6,
+  "triggers": [],
+  "rez_alternatives": [
+    {
+      "cost": {
+        "Forfeit": 1
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 31075,
+  "is_playable": true
+}

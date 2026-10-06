@@ -27021,4 +27021,179 @@ mod reprints {
         let (derezzed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("derez");
         assert!(!derezzed.corp.installed[0].rezzed);
     }
+
+    // ---- Stage 2: the reprints' Corp ice and upgrades that compose ----
+
+    /// The encounter on HQ's only ice with both players passing, so its
+    /// subroutines fire.
+    fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        let at_ice = encounter(state, registry);
+        let (state, _) = apply_action(&at_ice, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes encounter: subroutines fire").0
+    }
+
+    fn root_of_hq(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { slot: InstallSlot::Root, ..ice_at_hq(card) }
+    }
+
+    #[test]
+    fn rototurret_trashes_a_program_and_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder", 2)];
+        state.corp.installed = vec![ice_at_hq("rototurret")];
+        let asked = fire(&state, &registry);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select Corroder");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        let (done, _) = pass_until_settled(done, &registry);
+        assert!(done.runner.rig.is_empty() && done.runner.heap.contains(&id("corroder")));
+        assert!(done.active_run.is_none(), "the second subroutine ended the run");
+    }
+
+    #[test]
+    fn eli_lets_the_runner_lose_a_click_to_break_a_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("eli_1_0")];
+        let at_ice = encounter(&state, &registry);
+        let (broken, events) = use_ability(&at_ice, &registry, "eli_1_0", 0).expect("lose [click]: break 1 subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.clicks, Clicks(at_ice.runner.resources.clicks.0 - 1));
+        let (broken, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (both, _) = use_ability(&broken, &registry, "eli_1_0", 0).expect("and the second");
+        let (passed, _) = apply_action(&both, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (passed, _) = apply_action(&passed, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        assert!(passed.active_run.is_some(), "both subroutines broken: the run goes on");
+    }
+
+    #[test]
+    fn wraparound_gets_seven_strength_until_a_fracter_is_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("wraparound")];
+        let strength = |state: &GameState| {
+            let at_ice = encounter(state, &registry);
+            crate::rules::continuous::ice_strength(&at_ice, &registry, &at_ice.active_run.as_ref().expect("a run").ice[0])
+        };
+        state.runner.rig = vec![rig("gordian_blade", 2)];
+        assert_eq!(strength(&state), 7, "a decoder is not a fracter");
+        state.runner.rig = vec![rig("corroder", 2)];
+        assert_eq!(strength(&state), 0);
+    }
+
+    #[test]
+    fn pop_up_window_gains_a_credit_on_encounter_and_ends_the_run_unless_the_runner_pays() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("pop_up_window")];
+        let corp_credits = state.corp.resources.credits;
+        let at_ice = encounter(&state, &registry);
+        assert_eq!(at_ice.corp.resources.credits, Credits(corp_credits.0 + 1));
+        let asked = fire(&state, &registry);
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1[credit]");
+        assert!(paid.active_run.is_some());
+        assert_eq!(paid.runner.resources.credits, Credits(state.runner.resources.credits.0 - 1));
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert!(declined.active_run.is_none());
+    }
+
+    #[test]
+    fn archer_cannot_be_rezzed_without_an_agenda_to_forfeit() {
+        let registry = registry();
+        let approach = |agendas: Vec<&str>| {
+            let mut state = runner_turn();
+            state.corp.resources.credits = Credits(4);
+            state.corp.scored_agendas = agendas.iter().map(|card| crate::rules::ScoredAgenda::plain(id(card))).collect();
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("archer") }];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            crate::rules::test_support::continue_run(&state, &registry).expect("approach").0
+        };
+        let state = approach(vec![]);
+        assert!(apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "archer") }).is_err(), "nothing to forfeit");
+        let state = approach(vec!["hostile_takeover"]);
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "archer") }).expect("forfeit and pay 4");
+        assert!(rezzed.corp.installed[0].rezzed);
+        assert!(rezzed.corp.scored_agendas.is_empty());
+        assert_eq!(rezzed.corp.resources.credits, Credits(0));
+    }
+
+    #[test]
+    fn archer_gains_two_trashes_two_programs_and_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder", 2), rig("gordian_blade", 2)];
+        state.corp.installed = vec![ice_at_hq("archer")];
+        let corp_credits = state.corp.resources.credits;
+        let mut asked = fire(&state, &registry);
+        for _ in 0..2 {
+            asked = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select a program").0;
+            asked = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it").0;
+        }
+        let (done, _) = pass_until_settled(asked, &registry);
+        assert_eq!(done.corp.resources.credits, Credits(corp_credits.0 + 2));
+        assert!(done.runner.rig.is_empty());
+        assert!(done.active_run.is_none());
+    }
+
+    #[test]
+    fn border_control_gains_a_credit_per_ice_on_its_server_and_trashes_itself_to_end_a_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("border_control")];
+        let corp_credits = state.corp.resources.credits;
+        let (fired, _) = pass_until_settled(fire(&state, &registry), &registry);
+        assert_eq!(fired.corp.resources.credits, Credits(corp_credits.0 + 1), "one piece of ice protects HQ");
+        assert!(fired.active_run.is_none());
+
+        let at_ice = encounter(&state, &registry);
+        let (corp_window, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = use_ability(&corp_window, &registry, "border_control", 0).expect("[trash]: end the run");
+        assert!(ended.active_run.is_none());
+        assert!(ended.corp.installed.is_empty() && ended.corp.archives.iter().any(|archived| archived.card == id("border_control")));
+        assert!(use_ability(&state, &registry, "border_control", 0).is_err(), "only during a run on this server");
+    }
+
+    #[test]
+    fn hokusai_grid_does_a_net_damage_on_each_successful_run_on_its_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![root_of_hq("hokusai_grid")];
+        let (ran, _) = run_to_completion(state.clone(), &registry, ServerId::Hq);
+        assert_eq!(ran.runner.grip.len(), 1);
+
+        let (elsewhere, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert_eq!(elsewhere.runner.grip.len(), 2, "not this server");
+    }
+
+    #[test]
+    fn embolus_buys_power_counters_that_a_successful_run_wears_down_and_spends_one_to_end_a_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_of_hq("embolus")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let credits = state.corp.resources.credits;
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (asked, _) = close_all_windows(state, &registry);
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1[credit]");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert_eq!(paid.corp.installed[0].counters, 1);
+        assert!(paid.corp.resources.credits.0 < credits.0 + 1, "the credit was paid");
+
+        let mut runner = paid.clone();
+        runner.phase = GamePhase::Action(Side::Runner);
+        runner.corp.installed[0].counters = 2;
+        let (ran, _) = run_to_completion(runner.clone(), &registry, ServerId::Archives);
+        let (ran, _) = pass_until_settled(ran, &registry);
+        assert_eq!(ran.corp.installed[0].counters, 1, "any successful run removes one");
+
+        runner.corp.installed.push(ice_at_hq("ice_wall"));
+        let at_ice = encounter(&runner, &registry);
+        let (running, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = use_ability(&running, &registry, "embolus", 0).expect("hosted power counter: end the run");
+        assert!(ended.active_run.is_none());
+        assert_eq!(ended.corp.installed[0].counters, 1);
+        assert!(use_ability(&runner, &registry, "embolus", 0).is_err(), "only during a run on this server");
+    }
 }

@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 25, 5, 1, 28 | 57, 13, 5, — | in progress: Stages 1a–1b (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 31, 5, 3, 31 | 51, 13, 3, — | in progress: Stages 1a–2 (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 656 card files** (6 October
-2026, with tranche 8 Stage 1b, which added no variant; Stage 1a, at 13 of 105
+`Effect` variants single-use, none unused, over 664 card files** (6 October
+2026, with tranche 8 Stage 2, which added no variant; Stage 1b, at 13 of 105
+over 656, added none; Stage 1a, at 13 of 105
 over 648, added none; Downfall Stage 8, at
 13 of 105 over 638, closed the set and added two:
 `ChooseCardName`, which Complete Image and Whistleblower share, and
@@ -1115,6 +1116,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 
 - **Stage 1a** — ten System Update 2021 Runner cards, composed, with no new `Effect` and no change to the engine (Mimic, Abagnale, Legwork, Dirty Laundry, Career Fair, Professional Contacts, Liberated Account, Earthrise Hotel, Scrubber, Xanadu) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
 - **Stage 1b** — eight more Runner cards across the three reprint packs, composed, with no new `Effect` and no change to the engine (Cache, Lucky Find, Prepaid VoicePAD, Indexing, Retrieval Run, Labor Rights, Aesop’s Pawnshop, Emergency Shutdown) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
+- **Stage 2** — eight Corp ice and upgrades, composed, with no new `Effect` and no change to the engine (Rototurret, Eli 1.0, Wraparound, Pop-up Window, Archer, Border Control, Hokusai Grid, Embolus) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1134,7 +1136,7 @@ for one other decks still carry.
 The survey's eleven stages, in order (the Core Set's cards join the first
 nine by kind):
 1. Runner, composes (two stages): **1a and 1b closed**, eighteen cards.
-2. Corp ice and upgrades, composes.
+2. Corp ice and upgrades, composes: **closed**, eight cards.
 3. Corp agendas and operations, composes.
 4. Trigger words: Ken “Express” Tenma, Near-Earth Hub, Turtlebacks,
    Hostile Infrastructure, Clot.

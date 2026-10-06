@@ -3,7 +3,7 @@
   "name": "Permafrost",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Issuaq Adaptics: Sustaining Diversity, Parhelion's Jinteki identity, which earns a power counter for each agenda scored that was not installed or advanced that turn, and needs a point less to win for each. A Thousand Cuts' frame under a new identity, with two Seamless Launch for its two Mindscaping: placing counters is not advancing, so an agenda installed on an earlier turn and launched over its requirement is scored the Issuaq way (Parhelion Stage 7). Parhelion Stage 8: two Hafrún for two Lionsmane, ice for ice. Midnight Sun Stage 7b: two Mitosis for its two Seamless Launch, an operation that advances for one that advances, two new remotes with two counters each that its traps make the Runner check; Brutal Efficiency and The Syndicate keep Seamless Launch. Downfall Stage 3: two Storgotic Resonator for two Front Company, a power counter the first time each turn the Corp trashes a card of the Runner's faction, spent for net damage.",
+  "description": "Not a published list: built so the sweeps reach Issuaq Adaptics: Sustaining Diversity, Parhelion's Jinteki identity, which earns a power counter for each agenda scored that was not installed or advanced that turn, and needs a point less to win for each. A Thousand Cuts' frame under a new identity, with two Seamless Launch for its two Mindscaping: placing counters is not advancing, so an agenda installed on an earlier turn and launched over its requirement is scored the Issuaq way (Parhelion Stage 7). Parhelion Stage 8: two Hafrún for two Lionsmane, ice for ice. Midnight Sun Stage 7b: two Mitosis for its two Seamless Launch, an operation that advances for one that advances, two new remotes with two counters each that its traps make the Runner check; Brutal Efficiency and The Syndicate keep Seamless Launch. Downfall Stage 3: two Storgotic Resonator for two Front Company, a power counter the first time each turn the Corp trashes a card of the Runner's faction, spent for net damage. Reprints Stage 2: two Hokusai Grid for its two The Red Room and two Embolus for its two Tributary; both are still in Open Book.",
   "style": [
     "traps"
   ],
@@ -26,7 +26,7 @@
       "count": 1
     },
     {
-      "card": "the_red_room",
+      "card": "hokusai_grid",
       "count": 2
     },
     {
@@ -66,7 +66,7 @@
       "count": 2
     },
     {
-      "card": "tributary",
+      "card": "embolus",
       "count": 2
     },
     {
