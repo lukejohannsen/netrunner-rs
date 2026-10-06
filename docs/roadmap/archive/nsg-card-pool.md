@@ -8335,3 +8335,50 @@ card files, decks and tests. System Update 2021 21 of 82;
   at 256 seeds, the card gate included, so every new card is seen in play.
   The random `--all-matchups` report cannot move: Sweep decks are not in
   `matchups()`.
+
+#### Stage 1b — the rest of the reprints' Runner cards that compose (6 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Cache, Lucky Find, Prepaid VoicePAD,
+Indexing, Retrieval Run, Labor Rights, Aesop’s Pawnshop and Emergency
+Shutdown, from all three reprint packs (Aesop’s Pawnshop is a Core Set
+card System Update 2021 reprints). **No new `Effect`, and no change to
+the engine.** System Update 2021 25 of 82, Salvaged Memories 5 of 18,
+the Magnum Opus Reprint 1 of 6; `SU21_UNIMPLEMENTED` 61 → 57,
+`SM_UNIMPLEMENTED` 17 → 13, `MOR_UNIMPLEMENTED` 6 → 5.
+
+- **What each is made of.** Cache is a virus program whose counter is the
+  cost of its ability (Dr. Nuka Vrolyck's `RemoveCounters` cost), and the
+  purge roster test now names it. Lucky Find is Corporate Hospitality's
+  additional [click]. Prepaid VoicePAD is Mystic Maemi's
+  `Playing(Event)` on one recurring credit. Indexing is Cataloguer's
+  arrange as an optional access replacement on a run event; Retrieval Run
+  the same replacement on Archives with Beta Build's install ignoring all
+  costs, out of the heap (`InstallRunnerCardFromZone`). Labor Rights is
+  The Price's `Mill` of the Runner's own stack and Harmony AR Therapy's
+  shuffle from the heap, removed from the game as Kompromat is. Aesop’s
+  Pawnshop is a turn-start selection of the Runner's other installs
+  (`NotSourceCard`), its trash and gain behind The Price's `CardsSelected`
+  guard. Emergency Shutdown is Chain Reaction's "successful run on HQ this
+  turn" (`TimesThisTurnWhen`) and Maglectric Rapid's derez over rezzed
+  ice.
+- **Two things the tests caught before they shipped.** A selection that
+  may choose nothing still resolves its `then`, and Aesop’s Pawnshop's
+  "trash it" with nothing chosen trashed the pawnshop itself — the
+  `then` is guarded by `AmountAtLeast(CardsSelected, 1)`, as The Price's
+  is. Labor Rights' "shuffle 3 cards" is exact with fewer than three in
+  the heap (all of them go back) by three `EffectIf`s on the heap's size,
+  asked **smallest first**: a list's later conditions are asked after the
+  earlier ones resolve, so asked largest first, a heap of four left one
+  behind for the "exactly one" branch to shuffle back too.
+- **Fidelity limits:** none found.
+- **Client.** Nothing added to the view, the log or a decision.
+- **Decks.** Burn Rate takes two Retrieval Run for two Chain Reaction, two
+  Labor Rights for two of The Toolbox and two Prepaid VoicePAD for its
+  Banner; Side Quest two Lucky Find for two Chain Reaction; Street Gallery
+  two Indexing for its Decoy and two Aesop’s Pawnshop for two
+  Sacrificial Construct; Encore two Cache for its Leech and two Emergency
+  Shutdown for two Sure Gamble. Every card given up is still in another
+  deck, and every edited deck was already pinned outside Standard and
+  Startup.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 656 card files.

@@ -1,0 +1,52 @@
+{
+  "id": "aesops_pawnshop",
+  "title": "Aesop’s Pawnshop",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": "NotSourceCard",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "TrashCard": "ThisCard"
+                    },
+                    {
+                      "GainCredits": [
+                        "Runner",
+                        3
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash 1 of your other installed cards. If you do, gain 3[credit]."
+    }
+  ],
+  "built_from": 31035,
+  "is_playable": true
+}
