@@ -1369,8 +1369,8 @@ pub struct Weights {
     /// See `BLUFF_WEIGHT`.
     pub bluff_weight: f64,
     /// Corp only, "glacier then fast advance": the fort terms fall away
-    /// once the Runner's rig covers every piece of the fort and their
-    /// credits cover the break (`read::fort_beaten`). A condition inside
+    /// once the Runner's rig breaks every subtype of ICE and their
+    /// credits cover the break into the fort (`read::fort_beaten`). A condition inside
     /// the fort terms, never a switch between weight sets: with it off
     /// the fort is priced all game, which is glacier alone.
     pub fort_until_beaten: bool,

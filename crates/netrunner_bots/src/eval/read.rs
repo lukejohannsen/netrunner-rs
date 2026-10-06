@@ -1216,28 +1216,28 @@ pub(super) fn ice_out_of_order(state: &GameState, registry: &CardRegistry) -> us
         .sum()
 }
 
-/// Whether the Runner has beaten the wall in front of `fort`: there is a
-/// wall — at least `depth` pieces, the fort's own cap — their rig covers
-/// the subtype of every piece on it, face down or not, and their credits
-/// cover what breaking in would cost with the Corp's affordable rezzes
-/// made (`taxing_cost`). "Once the Runner has spent everything building
-/// a rig that beats the wall, score the last points from hand, where that
-/// rig is no use." A remote with no ICE is not a wall anyone beat: read
-/// without the depth, every fresh remote was "beaten" the turn it was
-/// made and the fort terms fell away before there was a fort. See
-/// `Weights::fort_until_beaten`.
-pub(super) fn fort_beaten(state: &GameState, fort: netrunner_core::rules::ServerId, depth: usize, registry: &CardRegistry) -> bool {
-    use netrunner_core::rules::InstallSlot;
-    let rig = rig_coverage(state, registry);
-    let wall: Vec<&InstalledCard> = state.corp.installed.iter().filter(|card| card.server == fort && card.slot == InstallSlot::Ice).collect();
-    if wall.len() < depth.max(1) {
-        return false;
-    }
-    let covered = wall.iter().all(|card| match registry.get(&card.card).map(|def| &def.card_type) {
-        Some(CardType::Ice(subtype)) => subtype_slot(*subtype).map_or(rig.iter().all(|c| *c), |slot| rig[slot]),
-        _ => true,
-    });
-    covered && taxing_cost(state, fort, registry).is_some_and(|cost| cost <= state.runner.resources.credits.0)
+/// Whether the Runner has beaten the wall: their rig breaks every
+/// subtype of ICE, and their credits cover what breaking into `fort` would
+/// cost with the Corp's affordable rezzes made (`taxing_cost`; nothing
+/// with no fort). "Once the Runner has spent everything building a rig
+/// that beats the wall, score the last points from hand, where that rig
+/// is no use." See `Weights::fort_until_beaten`.
+///
+/// **Read off the Runner's side, so the Corp cannot unbeat it** (§45).
+/// It was the rig covering the pieces the fort has, once there were at
+/// least the fort's depth of them — and so a count the Corp moves itself:
+/// one piece too few was no wall anyone beat, and the whole of the fort
+/// terms came back. LEO Construction's trash of its own Bumi 1.0 at a
+/// run's initiation scored +13.0 for that (10.0 of it the central ICE),
+/// and adding the piece that made the depth read as losing it. Every
+/// subtype is what a Corp could still put in front of the rig; the
+/// credits are the one part the wall moves, and that part only one way —
+/// another piece costs more to break. The depth rule was there because a
+/// remote with no ICE had been "covered" (nothing to cover) the turn it
+/// was made, which a rig that breaks every subtype is not.
+pub(super) fn fort_beaten(state: &GameState, fort: Option<netrunner_core::rules::ServerId>, registry: &CardRegistry) -> bool {
+    rig_coverage(state, registry).iter().all(|covered| *covered)
+        && fort.map_or(Some(0), |fort| taxing_cost(state, fort, registry)).is_some_and(|cost| cost <= state.runner.resources.credits.0)
 }
 
 // ---------------------------------------------------------------------
