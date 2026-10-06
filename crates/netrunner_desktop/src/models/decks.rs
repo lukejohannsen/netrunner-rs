@@ -347,7 +347,7 @@ fn category_order(category: DeckCategory) -> u8 {
 
 fn category_words(category: DeckCategory) -> (&'static str, &'static str) {
     match category {
-        DeckCategory::Sample => ("Sample decks", "Null Signal Games' published sample decklists. Copy one to build from it."),
+        DeckCategory::Sample => ("Sample decks", "Published lists: Null Signal Games' sample decklists and Standard tournament lists from NetrunnerDB. Copy one to build from it."),
         DeckCategory::Starter => ("Learn to Play decks", "The starter decks, played to six points."),
         DeckCategory::Boosted => ("Boosted starter decks", "A starter deck with its booster pack."),
         DeckCategory::Sweep => ("Test decks", "Built to reach rules no published list prints; Eternal-legal only."),

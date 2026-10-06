@@ -38,9 +38,10 @@ here**: Stage 0 brings the text in and writes one. The commands are under
 - **Decks, as in the NSG plan:** `DeckCategory::Sweep` decks built here for
   every stage. At each milestone (Snapshot complete, Eternal complete)
   current tournament lists for that format join the `Sample` pool and
-  `decks::tests::PUBLISHED` pins them. **The same step is owed for
-  Standard now**, by the NSG plan's decision of 26 September 2026, and
-  comes before this plan's Stage 0.
+  `decks::tests::PUBLISHED` pins them. **Standard's step is done** (6
+  October 2026, `scripts/tournament_decks.py`; the NSG plan records it),
+  and is the shape to repeat: one rule for which lists, a script that
+  writes them, nothing edited by hand.
 - **The printed card is NetrunnerDB's current text.** NSG's errata to FFG
   cards are in the v3 text the sync brings in, and the Linked Clause Rule's
   quote gate holds every clause to it. Every card is judged by the current

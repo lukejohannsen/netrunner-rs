@@ -1,0 +1,82 @@
+{
+  "id": "tournament_nebula_talent_management_making_stars",
+  "name": "A Kingly Gift* 👑",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "A Kingly Gift* 👑 [1st and 3rd @Americas MC, 1st @Conts], published on NetrunnerDB by nervousnightjar (https://netrunnerdb.com/en/decklist/10901091-12a9-4b02-af6c-6561665d611b). nervousnightjar played it to 4th in the top cut of the 2026 EMEA Online Continental (5 September 2026).",
+  "identity": "nebula_talent_management_making_stars",
+  "cards": [
+    {
+      "card": "embedded_reporting",
+      "count": 3
+    },
+    {
+      "card": "f2p",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "kingmaking",
+      "count": 3
+    },
+    {
+      "card": "moon_pool",
+      "count": 3
+    },
+    {
+      "card": "nonequivalent_exchange",
+      "count": 2
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "piranhas",
+      "count": 3
+    },
+    {
+      "card": "post_truth_dividend",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "sudden_commandment",
+      "count": 3
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 3
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "top_down_solutions",
+      "count": 3
+    },
+    {
+      "card": "unsmiling_tsarevna",
+      "count": 3
+    },
+    {
+      "card": "your_digital_life",
+      "count": 3
+    }
+  ]
+}

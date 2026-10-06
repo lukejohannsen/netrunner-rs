@@ -26,7 +26,8 @@ surveys are one reading of each card's text against the DSL as it stood at
   NSG set in this plan has any. Each set is therefore reached by
   `DeckCategory::Sweep` decks built here. When Standard is complete,
   current Standard tournament lists from NetrunnerDB join the `Sample` pool
-  and `decks::tests::PUBLISHED` pins them.
+  and `decks::tests::PUBLISHED` pins them. **Done 6 October 2026** — see
+  [Standard's tournament lists](#standards-tournament-lists--done-6-october-2026).
 - **The reprint packs are the last NSG tranche.** System Update 2021,
   Salvaged Memories and the Magnum Opus Reprint are NSG products of FFG
   designs, and none of them is in Standard. They are the bridge into the
@@ -96,6 +97,64 @@ its Stage 7b was not re-measured at its close). The baseline at Stage 0a was 26
 of 70 single-use, 3 unused, over 184 files: 334 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
+
+## Standard's tournament lists — DONE (6 October 2026)
+
+Owed by the 26 September decision once Standard was complete, and blocked
+until the cloud environment could reach NetrunnerDB and Always Be Running.
+Twelve published lists joined the `Sample` pool, and `matchups()` went from
+16 × 12 = 192 pairings to 23 × 17 = 391.
+
+- **Which lists, by one rule, so nobody chose them by taste.** The meta is
+  the 2026 World Championship's top cut (284 players, 2 October 2026): every
+  identity a top-sixteen player brought. Each identity's list is the
+  best-placed one *published* — linked from Always Be Running to
+  NetrunnerDB — from the championships played under the current card pool
+  and balance update: Worlds, then the EMEA, Americas and APAC Online
+  Continentals, largest event first and by top-cut rank within one. Only
+  three of Worlds' top sixteen published, which is why one event was not
+  enough. Mercury: Chrome Libertador is the one identity with no published
+  list in those events, and is left out rather than filled from elsewhere.
+- **A script writes them, never a hand** (`scripts/tournament_decks.py`;
+  `--check` names a file that differs from the sources). Each deck is
+  `tournament_<identity card id>`, under its published title, with the
+  author, placing and NetrunnerDB link as its description. The bot's style
+  is left empty (balanced): how a list wants to be played is a reading this
+  project writes, and a published list arrives without one.
+- **The lists:** Corp — AU Co. (*Cavalry Charge*), Precision Design (*High
+  Speed Rail 3.0*), LEO Construction (*She*), Reality Plus (*Worlds R+*),
+  Nebula (*A Kingly Gift*), Nuvem SA (*Myoshued Regards*), Ob Superheavy
+  (*worlds ob*); Runner — Magdalene (*Didn't Get Gamelossed*), MuslihaT
+  (*Thieving hands*), René (*Werewolf*), Sebastião (*Seb Seb Seb*), Vic
+  (*worlds vic*). Every card in them was already built; none needed a change.
+- **Two read as not Standard, and that is NetrunnerDB's list, not the
+  decks.** The events were played under the Standard Balance Update 26.08,
+  which unbans NBN: Reality Plus and Svyatogor Excavator; NetrunnerDB's v3
+  `formats/standard` still names Ban List 26.03 as active, and
+  `formats.json` is what `catalog_sync.py` reads from it. The Reality Plus
+  and Ob lists are pinned Eternal and Casual until NetrunnerDB moves and the
+  catalog is synced; the other ten are Standard. None is Startup, so the
+  Startup pass stays 90 pairings.
+- **The new lists found one bug, in the bots' sampling.** At seed 27 of
+  the view sweep (Quick and Dirty against the Magdalene list, a random
+  Corp and the planner Runner) Muse installed a program out of the stack
+  short of memory, and the payment asking which program to trash was
+  parked over the stack selection. `ClientView::selection` is the
+  payment's candidates then, and `determinize::seat_selection` seated them
+  into the stack: rig cards over stack positions, and the selected card a
+  guess. The planner's sample held Daily Casts there, which installs with
+  no question, and its replay of the answer left it unused — the debug
+  assertion in `engine::settle_payment`. A payment parked over a selection
+  now seats only the card its install question names, at the one position
+  selected (`a_payment_parked_over_a_stack_selection_keeps_the_selected_card`).
+- **The sweeps.** Both 256-seed sweeps are green, the index one as it
+  stood and the view one with one reasoned entry: the Runner rotation went
+  from 27 decks to 32, so *Dead Reckoning* is played exactly the card
+  gate's floor (8 seeds, 24 games) and its two Orcas, a 10[c] program,
+  went unseen; at 512 seeds (1,536 games) the view sweep saw it with every
+  gate green, so `CARDS_RARE_WITH_SWEEP_DECKS` demands it from that batch.
+  The Corp rotation (43 decks) was already past the floor at 256 seeds, so
+  the deep run demands no Corp deck's cards; 512 seeds does.
 
 ## Inventory and order
 

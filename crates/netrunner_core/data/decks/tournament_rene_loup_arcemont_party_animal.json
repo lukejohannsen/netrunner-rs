@@ -1,0 +1,94 @@
+{
+  "id": "tournament_rene_loup_arcemont_party_animal",
+  "name": "Werewolf (10-2, 1st&6th@Nottingham EMEA Conts)",
+  "side": "Runner",
+  "category": "Sample",
+  "description": "Werewolf (10-2, 1st&6th@Nottingham EMEA Conts), published on NetrunnerDB by Athlici (https://netrunnerdb.com/en/decklist/4a7b4931-e2ce-4763-a53e-40fd623ceb17). AugustusCaesar played it to 7th in the top cut of the 2026 EMEA Online Continental (5 September 2026).",
+  "identity": "rene_loup_arcemont_party_animal",
+  "cards": [
+    {
+      "card": "audrey_v2",
+      "count": 2
+    },
+    {
+      "card": "botulus",
+      "count": 3
+    },
+    {
+      "card": "chisel",
+      "count": 3
+    },
+    {
+      "card": "cookbook",
+      "count": 2
+    },
+    {
+      "card": "cupellation",
+      "count": 1
+    },
+    {
+      "card": "devil_charm",
+      "count": 3
+    },
+    {
+      "card": "dr_nuka_vrolyck",
+      "count": 2
+    },
+    {
+      "card": "fencer_fueno",
+      "count": 1
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    },
+    {
+      "card": "gachapon",
+      "count": 3
+    },
+    {
+      "card": "gourmand",
+      "count": 3
+    },
+    {
+      "card": "keiko",
+      "count": 2
+    },
+    {
+      "card": "paladin_poemu",
+      "count": 3
+    },
+    {
+      "card": "pinhole_threading",
+      "count": 3
+    },
+    {
+      "card": "rising_tide",
+      "count": 1
+    },
+    {
+      "card": "simulchip",
+      "count": 3
+    },
+    {
+      "card": "solidarity_badge",
+      "count": 2
+    },
+    {
+      "card": "steelskin_scarring",
+      "count": 3
+    },
+    {
+      "card": "strike_fund",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "the_twinning",
+      "count": 2
+    }
+  ]
+}
