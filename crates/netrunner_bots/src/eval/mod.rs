@@ -79,6 +79,7 @@ use read::*;
 
 pub use read::{breaker_coverage, covers, damage_grows_with_advancement, is_hand_trap, is_lure_trap, is_unrezzed_threat, punishes_access_with_damage, punishes_runs, server_break_cost};
 pub use stage::{horizon, stage, Stage};
+pub(crate) use fundamentals::{picked_before, searched_answers};
 
 // ---------------------------------------------------------------------
 // Economy at the guide's rate (Phase 5 §25 Stage 5). **Every constant in

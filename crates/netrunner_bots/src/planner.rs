@@ -155,7 +155,7 @@ use netrunner_core::view::ClientView;
 
 use crate::agent::{is_regressive, BotAgent};
 use crate::determinize::determinize;
-use crate::eval::{evaluate_state_with, Weights};
+use crate::eval::{evaluate_state_with, picked_before, searched_answers, Weights};
 use crate::knowledge::Knowledge;
 use crate::plans::Style;
 
@@ -612,7 +612,7 @@ impl Search<'_> {
                 // the module docs. `None` when no chain of answers goes
                 // through, which `payment::could_ask` says cannot happen
                 // for a parked action.
-                let Some((_, path)) = self.answer_payment(&state) else { return (state, Standing::Leaf) };
+                let Some((_, path)) = self.answer_payment(&state, None) else { return (state, Standing::Leaf) };
                 for answer in path {
                     if steps.len() >= PLAN_MAX_LINE {
                         return (state, Standing::Leaf);
@@ -668,11 +668,13 @@ impl Search<'_> {
     /// answer tried (the evaluator prices the credit pool alone, so it
     /// would pick it anyway), and the rest only if that one is refused.
     /// Which card a cost takes, which of a card's printed prices, and an
-    /// X are real choices and are all tried.
-    fn answer_payment(&mut self, state: &GameState) -> Option<(f64, Vec<PlayerAction>)> {
+    /// X are real choices and are all tried; an install's trash picks are
+    /// tried as sets, in ascending order (`eval::searched_answers`, Phase 5
+    /// §48), with `after` the position the chain picked last.
+    fn answer_payment(&mut self, state: &GameState, after: Option<u32>) -> Option<(f64, Vec<PlayerAction>)> {
         let payment = state.pending_payment.as_ref()?;
         let ask = &payment.question;
-        let mut answers = ask.answers();
+        let mut answers = searched_answers(ask, after);
         if let Ask::Pools(question) = ask {
             answers.retain(|answer| *answer != question.max);
             answers.insert(0, question.max);
@@ -683,7 +685,7 @@ impl Search<'_> {
             self.applications += 1;
             let Ok((next, _)) = apply_action(state, self.registry, action.clone()) else { continue };
             let found = if next.pending_payment.as_ref().is_some_and(|p| p.side == self.side) {
-                self.answer_payment(&next).map(|(score, mut path)| {
+                self.answer_payment(&next, picked_before(ask, answer, &next)).map(|(score, mut path)| {
                     path.insert(0, action);
                     (score, path)
                 })
@@ -1187,6 +1189,86 @@ mod tests {
             state = apply_action(&state, registry, action).expect("the plan's action applies").0;
         }
         (played, state)
+    }
+
+    /// `corp_with_a_scorable_hand` with `n` walls on HQ and one in hand,
+    /// and the install of it over them that trashes first, parked on its
+    /// first pick.
+    fn trash_first_over(n: u32, registry: &mut CardRegistry) -> (GameState, GameState) {
+        let mut state = corp_with_a_scorable_hand(registry);
+        state.corp.resources.credits = Credits(30);
+        state.corp.hq = vec![CardId("wall".to_string())];
+        state.corp.installed.retain(|card| card.server != ServerId::Hq);
+        state.corp.installed.extend((0..n).map(|i| ice(100 + i, ServerId::Hq)));
+        state.next_install_id = 200;
+        let install =
+            PlayerAction::InstallCard { card_id: CardId("wall".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: true };
+        let parked = apply_action(&state, registry, install).expect("the install parks").0;
+        assert!(parked.pending_payment.is_some(), "the premise: the first pick is asked");
+        (state, parked)
+    }
+
+    /// An install's trash picks are searched as sets (Phase 5 §48): ten
+    /// walls on HQ is every non-empty subset once — tried in every order
+    /// it was 16,099,400 applications, about 49 minutes (§47) — and the
+    /// chain found is one the engine takes to the end of the payment.
+    #[test]
+    fn the_payment_search_tries_each_set_of_trash_picks_once() {
+        let mut registry = CardRegistry::new();
+        let (_, parked) = trash_first_over(10, &mut registry);
+        let weights = Weights::default();
+        let mut rng = StdRng::seed_from_u64(1);
+        let legal = Vec::new();
+        let mut search = Search {
+            side: Side::Corp,
+            registry: &registry,
+            weights: &weights,
+            root_turn: parked.turn,
+            root_legal: &legal,
+            deciding: false,
+            applications: 0,
+            answering: 0,
+            rng: &mut rng,
+        };
+        let (_, path) = search.answer_payment(&parked, None).expect("a chain of answers goes through");
+        // One application per node of the ascending tree: 2¹⁰ − 1 picks,
+        // and a "no more" after each of them but the one that leaves
+        // nothing to ask about — all ten picked.
+        assert_eq!(search.applications, 1023 + 1022, "each subset once");
+        let mut state = parked;
+        for answer in path {
+            state = apply_action(&state, &registry, answer).expect("each answer applies").0;
+        }
+        assert!(state.pending_payment.is_none(), "the payment is made");
+    }
+
+    /// The evaluator prices a trash-first install by its best set of picks,
+    /// and searching sets loses none: over four walls its price is the best
+    /// of all fifteen subsets, each applied in ascending order.
+    #[test]
+    fn the_evaluator_prices_a_trash_first_install_by_its_best_set() {
+        let mut registry = CardRegistry::new();
+        let (_, parked) = trash_first_over(4, &mut registry);
+        let weights = Weights::default();
+        let positions: Vec<u32> = match &parked.pending_payment.as_ref().expect("parked").question {
+            Ask::Install(question) => question.eligible.iter().map(|candidate| candidate.position).collect(),
+            other => panic!("an install's question, not {other:?}"),
+        };
+        let mut best = f64::NEG_INFINITY;
+        for subset in 1u32..(1 << positions.len()) {
+            let mut state = parked.clone();
+            for (i, position) in positions.iter().enumerate() {
+                if subset & (1 << i) != 0 {
+                    state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: *position as usize }).expect("a pick applies").0;
+                }
+            }
+            if state.pending_payment.is_some() {
+                state = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("no more").0;
+            }
+            assert!(state.pending_payment.is_none(), "subset {subset:b} pays");
+            best = best.max(evaluate_state_with(&state, Side::Corp, &registry, &weights));
+        }
+        assert_eq!(evaluate_state_with(&parked, Side::Corp, &registry, &weights), best);
     }
 
     /// One ply chooses the card a one-card selection sends where it is

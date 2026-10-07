@@ -3471,3 +3471,29 @@ The count is exact — a(n) = n·a(n−1) + 2n, every subset in every order — 
 **How far real play gets** (a scratch counter on every first trash-first pick, the same binary otherwise; `diag precepts --deck-styles`, 391 planner games over the Casual pool, seed 1, sharing the machine with the ladder): **324,112 questions**, by candidates 2: 250,000, 3: 56,124, 4: 13,491, 5: 4,445, 6: 46, **7: 6** — the six at 10.6–17.1 s each; none at 8 or more, so no game stalled. All but 55 were the planner's own `answer_payment` (the evaluator's 55 were at 5 candidates or fewer). Answering them took **2,737 of about 10,400 thread-seconds, about a quarter of the pass**, most of it in the small questions (2 candidates: 829 s).
 
 **Verified.** No code changed; the tree is `main`'s.
+
+
+## 48. An install's trash picks are searched as sets, not in every order: ten pieces of ice on a server is 2,045 applications where it was 16,099,400 — DONE (`fix/trash-picks-searched-as-sets`, 7 October 2026)
+
+**The debt §43 left and §47 measured.** An install that trashes first is asked one pick at a time (`payment::Ask::Install`), because the trashes are made in the order picked (CR 8.5.7) and a person chooses that order. The planner's `answer_payment` and the evaluator's `fundamentals::through_parked_payment` took the question as asked and walked every order of every subset: a(n) = n·a(n−1) + 2n applications for *n* pieces of ice, 293 s at nine, about 49 minutes at ten, outside `PLAN_BUDGET` — and about a quarter of a planner pass's thread time spent on the small questions.
+
+**What it is now** (`eval::fundamentals::{searched_answers, picked_before}`, both searches): within one install's picks, a candidate is tried only at a higher position than the last one picked, so each subset is tried once, in ascending order — 2ⁿ rather than about n!·e. A question is the same install's next pick when it names the same card and offers what was left once the pick went; any other question, and the first after "no more", is searched whole, so a second install in the same action is not narrowed by the first. "No more" is always tried. The engine is unchanged: a person still picks from the full list, in their own order.
+
+**Rejected.** Narrowing the engine's question to ascending positions: the order is the player's (CR 8.5.7), and a client would have lost it. A greedy pick — the best single card, then whether another helps, O(n²): sets are exact and 2ⁿ is small at the depths play reaches (seven in §47's pass), and a greedy answer is a reading of the board the evaluator was never asked to make. What a search gives up is only the order the same cards reach Archives, which no reading of a board prices.
+
+Tests: `the_payment_search_tries_each_set_of_trash_picks_once` (ten walls: exactly 1,023 picks and 1,022 "no more"s, 0.26 s, and the chain found pays — the same search took about 49 minutes before), `the_evaluator_prices_a_trash_first_install_by_its_best_set` (over four walls the evaluator's price is the best of all fifteen subsets).
+
+**Measured** (pinned binaries, `main` at `0a1cb81` against this branch; each run alone on 20 threads):
+
+| | before | after |
+|---|---|---|
+| planner self-paired, 384 games, seed 1 | 283 s, Corp 0.500 | **247 s**, Corp 0.534 (+0.034, z +1.22, 113 discordant) |
+| planner self-paired, 384 games, seed 2 | 390 s, Corp 0.576 | **257 s**, Corp 0.570 (−0.005, z −0.20, 98 discordant) |
+| `diag precepts --deck-styles`, casual 391 games | 310 s, Corp 0.504 | **259 s**, Corp 0.537 (z +1.21 paired, 51 / 64) |
+| `diag precepts --deck-styles`, startup 90 games | 73 s, Corp 0.689 | **64 s**, Corp 0.600 (z −1.51 paired, 18 / 10) |
+
+Every run is faster. The games are not the same games — 15 of 391 casual records and 4 of 90 startup are identical — because the search no longer makes the same jitter draws, so the timings compare passes, not games. No win effect is claimed: the four paired shifts go both ways and none is beyond 1.6 sd, inside the band.
+
+**Found on the way, fixed separately** (`fix/trigger-order-masked`, #376): the new trajectories reached a fog leak on `main` — `GameEvent::TriggerOrderChosen` passed the log mask unmasked, so the 256-seed view sweep's seed 92 named Lycian Multi-Munition to a spectator in the entry where its own trigger derezzed it. It is now withheld from whoever its card is concealed from, as `TriggerFired` is.
+
+**Verified.** On the masking fix: `cargo test --workspace` green (2,839, the desktop crate included), clippy silent, both 256-seed sweeps green in release. Rebased onto tranche 8 Stages 2 and 3 (#373, #375): both 256-seed sweeps, `netrunner_bots`' tests and clippy again green. The timings above were taken before that rebase, on `0a1cb81`.
