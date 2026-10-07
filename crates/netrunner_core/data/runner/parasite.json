@@ -1,0 +1,53 @@
+{
+  "id": "parasite",
+  "title": "Parasite",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "host_must_be_rezzed": true,
+  "counter_kind": "Virus",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice gets -1 strength for each hosted virus counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn begins, place 1 virus counter on this program."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostIceStrength",
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "TrashCard": "HostIce"
+        }
+      ],
+      "text": "When the strength of host ice is 0 or less, trash it."
+    }
+  ],
+  "built_from": 29002,
+  "is_playable": true
+}

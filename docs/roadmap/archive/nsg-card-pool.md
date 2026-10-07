@@ -8606,3 +8606,63 @@ existing effect.** System Update 2021 44 of 82, Salvaged Memories 9 of
       Retirement Package keeps.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 681 card files.
+
+#### Stage 5b — a breaker of exactly equal strength, a static condition (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Atman from System Update 2021 and
+Parasite from Salvaged Memories. **No new `Effect`; one new `Trigger`, one
+`Amount` and one word on a Trojan.** System Update 2021 45 of 82, Salvaged
+Memories 10 of 18; `SU21_UNIMPLEMENTED` 38 → 37, `SM_UNIMPLEMENTED` 9 → 8.
+
+- **A conditional ability with a static condition** (CR 9.6.7,
+  `Trigger::WhileTrue`). Parasite's "When the strength of host ice is 0 or
+  less, trash it" waits for no event: the strength falls when a virus
+  counter lands at the Runner's turn start, and could fall when a
+  lingering effect runs out. The condition is the entry's `requirement`.
+  - `checkpoint::static_conditions` marks pending every active card whose
+    condition is true (9.6.7a) and queues it as a `DeferredTrigger`, one
+    instance per source (9.6.7c).
+  - It is asked once, at the end of every action, after the last
+    checkpoint, and what it queued is drained and checked again there.
+    **Deviation, recorded:** the rules ask at every checkpoint, and the
+    engine asks at the action's last one. A condition that turns true
+    mid-action is still true at its end, and no card in the pool can tell
+    the difference. The one ask per action also stands in for 9.6.7d: an
+    ability that resolved and changed nothing is not marked again until
+    the next action.
+  - `validate` refuses a `WhileTrue` with no `requirement`, or with a
+    `when` or a first time, which are a moment's.
+- **`Amount::HostIceStrength`** is the acting Trojan's host's strength,
+  never below 0 (`continuous::installed_ice_strength`). That function is
+  `ice_strength` for an install named outside a run.
+- **"Install only on a rezzed piece of ice"** is `host_must_be_rezzed` on
+  a Trojan. The action list and `install_program_on_ice` both ask it.
+  Whether ice is rezzed is public, so the narrower list leaks nothing. It
+  is an install restriction, never a hosting one, so a host derezzed
+  later keeps its Parasite.
+- **Atman is Reduced Service's spend.** Its install trigger is a
+  `ChooseNumber` capped at the Runner's credits, then that many credits
+  lost and that many power counters placed. +1 strength per counter is a
+  `This` strength. Its interface requires `Not(MoreThan(ThisCardStrength,
+  EncounteredIceStrength))`, and the break itself refuses the other
+  direction.
+  - **Correction to Stage 5a,** which deferred Atman because "a lose
+    would not be a spend". Reduced Service already reads "spend … to
+    place" as a loss from the credit pool. Outside a run and outside an
+    ability, no pool but the credit pool pays for it.
+  - **Known limit:** both strengths are read clamped at 0. An Atman with
+    no counters therefore interfaces with ice of negative strength.
+- **Decks.** Two swaps, each in its deck's faction:
+  - Level Pegging takes two Atman for its two Self-Modifying Code, which
+    Safety Net keeps.
+  - Side Quest takes two Parasite for its two Hantu, which three other
+    decks keep.
+- **Tests.**
+  - Purge's real-card roster now names Parasite. Its fixture hosts
+    Parasite on a piece of ice and gives each rig card an install of its
+    own.
+  - Three new tests: Atman's spend and its equal-strength interface,
+    Parasite's rezzed host, and Parasite trashing its host (and itself)
+    on the second turn on Enigma.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 683 card files.

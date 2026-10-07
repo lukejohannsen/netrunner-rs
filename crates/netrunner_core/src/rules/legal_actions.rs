@@ -716,19 +716,23 @@ fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry)
     // Hosts are collected as `InstallId`s, never `CardId`s. Unrezzed ICE is
     // a legal host, so a `CardId` here put the identity of a card the
     // Runner's own `ClientView` masks straight into their `legal_actions`.
-    let host_ice: Vec<InstallId> = state
+    let host_ice: Vec<(InstallId, bool)> = state
         .corp
         .installed
         .iter()
         .filter(|c| c.slot == InstallSlot::Ice)
-        .map(|c| c.install_id)
+        .map(|c| (c.install_id, c.rezzed))
         .collect();
     let mut candidates = Vec::new();
     let any_program_installed = program_installed(state, registry);
     for card_id in &state.runner.playable_hand() {
         let Some(card) = registry.get(card_id) else { continue };
         if card.card_type == CardType::Program && card.installs_on_ice {
-            for host in &host_ice {
+            // Parasite's "install only on a rezzed piece of ice".
+            for (host, rezzed) in &host_ice {
+                if card.host_must_be_rezzed && !rezzed {
+                    continue;
+                }
                 for trash_first in [false, true] {
                     if trash_first && !any_program_installed {
                         continue;

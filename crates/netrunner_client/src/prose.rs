@@ -116,6 +116,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::Link => "the Runner's link".to_string(),
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
+        Amount::HostIceStrength => "the strength of host ice".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),

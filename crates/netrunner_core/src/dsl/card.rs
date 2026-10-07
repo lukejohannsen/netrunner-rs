@@ -585,6 +585,14 @@ pub struct CardDefinition {
     /// installed ICE.
     #[serde(default)]
     pub installs_on_ice: bool,
+    /// "Install only on a **rezzed** piece of ice" (Parasite): of the hosts
+    /// `installs_on_ice` admits, only a rezzed one. An install restriction,
+    /// never a hosting one — a host derezzed afterwards keeps its Trojan.
+    /// Whether a piece of ice is rezzed is public, so the narrower list of
+    /// hosts tells the Runner nothing their view did not. Composition
+    /// didn't work: a Trojan's host was every installed piece of ice.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub host_must_be_rezzed: bool,
     /// Cards hosted on this card may be played or installed through the
     /// ordinary grip actions — Bling's "you can play or install hosted
     /// cards as if they were in your grip". Seeded onto
@@ -1065,6 +1073,10 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: \"install only on a rezzed piece of ice\" (`host_must_be_rezzed`) narrows a Trojan's hosts, and this card installs on none")]
+    RezzedHostOffATrojan(CardId),
+    #[error("card {0:?}: a static condition (`Trigger::WhileTrue`, CR 9.6.7) is its `requirement`, and a first time is a moment's — this one has none, or counts one")]
+    StaticConditionWithoutACondition(CardId),
     #[error("card {0:?}: \"not trashed until your next turn begins\" is an operation's (a lockdown's, CR 3.5.1c); `engine::play_operation_card` is what reads it")]
     NotTrashedOffAnOperation(CardId),
     #[error("card {0:?}: \"install only if\" (`install_requirement`) is asked as a Runner card goes into the rig — a program, hardware or resource")]
@@ -1173,6 +1185,7 @@ impl Default for CardDefinition {
             recurring_credits: None,
             memory_cost: None,
             installs_on_ice: false,
+            host_must_be_rezzed: false,
             hosted_cards_playable_from_grip: false,
             hosts_facedown: false,
             dividends: None,
@@ -1383,6 +1396,9 @@ impl CardDefinition {
                 return Err(CardValidationError::PartOfNothing(self.id.clone(), index));
             }
         }
+        if self.host_must_be_rezzed && !self.installs_on_ice {
+            return Err(CardValidationError::RezzedHostOffATrojan(self.id.clone()));
+        }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
         }
@@ -1390,6 +1406,9 @@ impl CardDefinition {
         // wrong quietly. A Rust fixture that skips `validate` gets the
         // lenient reading `rules::listeners` documents; a card file never does.
         for triggered in &self.triggers {
+            if triggered.trigger == Trigger::WhileTrue && (triggered.requirement.is_none() || triggered.first_each_turn || triggered.first_each_encounter || triggered.when.is_some()) {
+                return Err(CardValidationError::StaticConditionWithoutACondition(self.id.clone()));
+            }
             match (triggered.trigger.names_a_subject(), triggered.subject) {
                 (true, None) => return Err(CardValidationError::TriggerMissingSubject(self.id.clone(), triggered.trigger)),
                 (false, Some(_)) => return Err(CardValidationError::TriggerSubjectWithNothingToName(self.id.clone(), triggered.trigger)),

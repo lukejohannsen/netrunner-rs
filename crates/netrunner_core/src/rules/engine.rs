@@ -446,6 +446,13 @@ fn apply_action_once(
     // unique card turned faceup by one. After the drain: a deferred trigger
     // is part of this action.
     events.extend(checkpoint::state_based(&mut next, registry, None));
+    // A static condition that is true now is marked pending and resolves
+    // with this action (CR 9.6.7a) — Parasite trashing its host — then the
+    // standing checks once more for what that changed.
+    if checkpoint::static_conditions(&mut next, registry) {
+        events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+        events.extend(checkpoint::state_based(&mut next, registry, None));
+    }
 
     // The run's ICE list follows the board (`run::reconcile_ice`): a
     // handler or a deferred trigger may have installed, trashed, rezzed,
@@ -2222,6 +2229,9 @@ fn install_program_on_ice(
         state.corp.installed.iter().find(|c| c.install_id == host).ok_or(RulesError::InstallNotFound(host))?;
     if host_install.slot != InstallSlot::Ice {
         return Err(RulesError::HostIsNotIce(host_install.card.clone()));
+    }
+    if card_def.host_must_be_rezzed && !host_install.rezzed {
+        return Err(RulesError::HostIsNotRezzed(host));
     }
 
     let memory_cost = card_def.memory_cost.unwrap_or(0);

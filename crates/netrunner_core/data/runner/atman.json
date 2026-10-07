@@ -1,0 +1,93 @@
+{
+  "id": "atman",
+  "title": "Atman",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each hosted power counter"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "min": 0,
+            "max": {
+              "Fixed": 30
+            },
+            "of": {
+              "Credits": "Runner"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Runner",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "Repeat": {
+                    "times": "ChosenNumber",
+                    "effect": {
+                      "AddCounters": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "text": "you may spend any number of credits to place that many power counters on it"
+          }
+        }
+      ],
+      "text": "When you install this program, you may spend any number of credits to place that many power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Not": {
+              "MoreThan": [
+                "ThisCardStrength",
+                "EncounteredIceStrength"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 31030,
+  "is_playable": true
+}

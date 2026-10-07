@@ -70,7 +70,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("security_testing", "Security Testing"),
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
     ("test_run", "Test Run"),
-    ("atman", "Atman"),
     ("chameleon", "Chameleon"),
     ("egret", "Egret"),
     ("paricia", "Paricia"),
@@ -100,7 +99,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.
 pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("medium", "Medium"),
-    ("parasite", "Parasite"),
     ("e3_feedback_implants", "e3 Feedback Implants"),
     ("cerberus_lady_h1", "Cerberus \"Lady\" H1"),
     ("next_silver", "NEXT Silver"),
