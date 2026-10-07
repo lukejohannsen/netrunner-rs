@@ -2854,19 +2854,33 @@ pub(crate) fn fire_card_triggers(
         // "That card", the one the moment is about, is written in too, so
         // it outlives a choice parked ahead of it (Divested Trust's "add
         // the stolen agenda to HQ", behind its forfeit).
+        // X, for the play of a card that costs X (Psychographics), written
+        // into its own resolution as any chosen number is.
+        let played_for_x = match triggering_event {
+            Some(GameEvent::OperationPlayed { card, x: Some(x), .. }) if trigger == Trigger::OnPlay && card == card_id => Some(*x),
+            _ => None,
+        };
+        let with_x: Vec<Effect>;
+        let triggered_effects: &[Effect] = match played_for_x {
+            Some(x) => {
+                with_x = triggered.effects.iter().cloned().map(|effect| effect.with_chosen_number(x)).collect();
+                &with_x
+            }
+            None => &triggered.effects,
+        };
         let that_card = triggering_event
-            .filter(|_| triggered.effects.iter().any(Effect::names_that_card))
+            .filter(|_| triggered_effects.iter().any(Effect::names_that_card))
             .and_then(|event| listeners::card_about(state, event, trigger));
         match (triggering_event, that_card) {
             (Some(GameEvent::CardsTrashedFromGripOrStack { cards, .. }), _) => {
-                let effects: Vec<Effect> = triggered.effects.iter().cloned().map(|effect| effect.with_those_trashed(cards)).collect();
+                let effects: Vec<Effect> = triggered_effects.iter().cloned().map(|effect| effect.with_those_trashed(cards)).collect();
                 events.extend(evaluate_sequence(state, &effects, &mut effect_ctx, registry)?);
             }
             (_, Some(card)) => {
-                let effects: Vec<Effect> = triggered.effects.iter().cloned().map(|effect| effect.with_that_card(&card)).collect();
+                let effects: Vec<Effect> = triggered_effects.iter().cloned().map(|effect| effect.with_that_card(&card)).collect();
                 events.extend(evaluate_sequence(state, &effects, &mut effect_ctx, registry)?);
             }
-            _ => events.extend(evaluate_sequence(state, &triggered.effects, &mut effect_ctx, registry)?),
+            _ => events.extend(evaluate_sequence(state, triggered_effects, &mut effect_ctx, registry)?),
         }
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side, &owner_ctx);

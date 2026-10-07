@@ -3,7 +3,7 @@
   "name": "Brutal Efficiency",
   "side": "Corp",
   "category": "Sample",
-  "description": "Nine upgrades and cheap ICE around three-advancement agendas: score fast, and let Precision Design refill the hand.",
+  "description": "Nine upgrades and cheap ICE around three-advancement agendas: score fast, and let Precision Design refill the hand. Tranche 8 Stage 8c: two Corporate Troubleshooter for its two Mahkota Langit Grid, an upgrade for an upgrade, which trashes itself for X[credit] to give a rezzed piece of ice protecting its server +X strength for the turn; six other decks keep Mahkota Langit Grid.",
   "style": ["fast-advance"],
   "identity": "haas_bioroid_precision_design",
   "cards": [
@@ -52,10 +52,6 @@
       "count": 2
     },
     {
-      "card": "mahkota_langit_grid",
-      "count": 2
-    },
-    {
       "card": "manegarm_skunkworks",
       "count": 3
     },
@@ -86,6 +82,10 @@
     {
       "card": "bumi_1_0",
       "count": 3
+    },
+    {
+      "card": "corporate_troubleshooter",
+      "count": 2
     }
   ]
 }

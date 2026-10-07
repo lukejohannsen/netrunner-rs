@@ -65,10 +65,8 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
     ("marilyn_campaign", "Marilyn Campaign"),
     ("magnet", "Magnet"),
-    ("corporate_troubleshooter", "Corporate Troubleshooter"),
     ("project_beale", "Project Beale"),
     ("daily_business_show", "Daily Business Show"),
-    ("psychographics", "Psychographics"),
     ("sansan_city_grid", "SanSan City Grid"),
     ("subliminal_messaging", "Subliminal Messaging"),
 ];

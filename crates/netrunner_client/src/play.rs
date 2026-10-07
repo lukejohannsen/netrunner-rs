@@ -95,6 +95,17 @@ use crate::llm::{ApiKey, HttpTransport, LlmAgent, LlmProfile, ScriptedTransport,
 use crate::record::{self, BotKind, RecordReport, SeatRecord, SeatRecordSpec};
 use crate::remote::Joined;
 
+/// The stack a thread that plays a match gets: the bot in a seat plans on
+/// it. A thread's default is 2 MiB, and an unoptimised build's planner
+/// frames are large (measured 7 October 2026: `Search::opponents_answer`
+/// 290 KB, `settle` 170 KB, `best_line` 273 KB, the engine's
+/// `replay_with` 227 KB), so a line that answered the opponent's paid
+/// choice twice, inside a parked payment's replay, overflowed it: the
+/// onward test's planner seat, once tranche 8 Stage 8c's decks moved its
+/// games. An optimised build needs a fraction of this; a dev build of
+/// either client runs its bots here too.
+pub const MATCH_STACK: usize = 16 * 1024 * 1024;
+
 /// Who sits in the bot's chair: a rung of the ladder, or a language
 /// model the person configured (`crate::llm`), with the rung whose planner
 /// plays every decision the model is not asked about or fails.
@@ -399,6 +410,7 @@ impl MatchHandle {
         let mirror = Arc::clone(&history);
         let thread = thread::Builder::new()
             .name("netrunner-match".to_string())
+            .stack_size(MATCH_STACK)
             .spawn(move || drive(session, human, record, &mirror, command_rx, message_tx, notices))
             .map_err(|e| format!("could not start the match thread: {e}"))?;
         Ok(Self {
@@ -459,6 +471,7 @@ impl MatchHandle {
         let words = LessonWords { title, steps };
         let thread = thread::Builder::new()
             .name("netrunner-lesson".to_string())
+            .stack_size(MATCH_STACK)
             .spawn(move || drive_lesson(session, first, &words, &mirror, command_rx, message_tx))
             .map_err(|e| format!("could not start the lesson thread: {e}"))?;
         Ok(Self {

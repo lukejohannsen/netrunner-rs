@@ -1116,7 +1116,7 @@ pub enum CardValidationError {
     ChosenNumberNobodyChose(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
-    #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost, or on something that is not an ability; X is chosen before anything is paid (CR 1.16.2c)")]
+    #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost or an operation's additional cost to play; X is chosen before anything is paid (CR 1.16.2c)")]
     XCostNotFirst(CardId),
     #[error("card {0:?} resolves something for each card of a random reveal (`Effect::RevealAtRandom::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
     RevealedCardsCannotWait(CardId),
@@ -1649,8 +1649,20 @@ impl CardDefinition {
         if self.abilities.iter().filter_map(|ability| ability.cost.as_ref()).any(|cost| cost.names_x() && !x_first(cost)) {
             return Err(CardValidationError::XCostNotFirst(self.id.clone()));
         }
-        let x_effects: Vec<&Effect> =
-            self.abilities.iter().filter(|ability| ability.cost.as_ref().is_some_and(crate::dsl::Cost::names_x)).map(|ability| &ability.effect).collect();
+        // An operation that costs X to play (Psychographics) prints it as
+        // its additional cost, and its own `OnPlay` reads it
+        // (`GameEvent::OperationPlayed::x`); nothing else hears a play's X.
+        let x_to_play = self.additional_play_cost.as_ref().is_some_and(crate::dsl::Cost::names_x);
+        if x_to_play && (self.card_type != CardType::Operation || !self.additional_play_cost.as_ref().is_some_and(x_first)) {
+            return Err(CardValidationError::XCostNotFirst(self.id.clone()));
+        }
+        let x_effects: Vec<&Effect> = self
+            .abilities
+            .iter()
+            .filter(|ability| ability.cost.as_ref().is_some_and(crate::dsl::Cost::names_x))
+            .map(|ability| &ability.effect)
+            .chain(self.triggers.iter().filter(|triggered| x_to_play && triggered.trigger == crate::dsl::Trigger::OnPlay).flat_map(|triggered| &triggered.effects))
+            .collect();
         for root in roots {
             root.for_each_effect(&mut |effect| {
                 if let Effect::RevealAtRandom { each: Some(each), .. } = effect {

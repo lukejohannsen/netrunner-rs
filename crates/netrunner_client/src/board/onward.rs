@@ -229,8 +229,19 @@ mod tests {
     /// Real games, random and heuristic seats: whenever a seat is offered
     /// one of the three actions, it is offered exactly one, the view names
     /// a step, and taking it and letting it happen lands on that step.
+    /// On a thread with a match's stack (`play::MATCH_STACK`), because
+    /// the planner seats plan on it as they would in a match.
     #[test]
     fn the_label_names_what_the_engine_does_next() {
+        std::thread::Builder::new()
+            .stack_size(crate::play::MATCH_STACK)
+            .spawn(the_label_names_what_the_engine_does_next_on_a_match_stack)
+            .expect("a thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+    }
+
+    fn the_label_names_what_the_engine_does_next_on_a_match_stack() {
         let registry = crate::decks::sample_deck_registry();
         let mut checked: BTreeMap<String, usize> = BTreeMap::new();
         let mut parked = 0;
