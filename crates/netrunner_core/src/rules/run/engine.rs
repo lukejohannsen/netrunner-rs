@@ -153,11 +153,47 @@ mod run_precondition_tests {
     }
 }
 
+/// What running `server` costs beside the click, all at once (CR
+/// 1.16.10b), or `None` — Earth Station: SEA Headquarters' 1[credit] to run
+/// HQ (`continuous::run_costs`).
+fn run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> Option<crate::dsl::Cost> {
+    match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
+        [] => None,
+        [one] => Some(one.clone()),
+        many => Some(crate::dsl::Cost::AllOf(many.to_vec())),
+    }
+}
+
+/// Whether the Runner could pay what running `server` costs beside the
+/// click — what `start_run` refuses a run over (CR 1.16.10a: a run that
+/// cannot pay is not made), asked by every offer of a run so the offer and
+/// the run agree. A card's "Run HQ" whose choice of server was parked with
+/// no server left it could pay for was a decision nothing could resolve
+/// (Transfer of Wealth against Earth Station, a deadlock the 256-seed
+/// sweep found).
+pub(crate) fn may_pay_run_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
+    run_cost(state, registry, server).is_none_or(|cost| {
+        let ctx = crate::rules::ability::ResolutionContext::for_card(None);
+        crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx)
+    })
+}
+
 /// Begins a run on `server`, paying its additional costs (CR 6.3.2b) as the
 /// server is announced. Returns what the payment emitted, for the caller to
 /// put ahead of `RunInitiated` and to dispatch after it
 /// (`ability::dispatch_cost_events`, the payer's half of the Payment Rule).
 pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    start_run_paying(state, registry, server, true)
+}
+
+/// `start_run`, "ignoring any additional costs to run" (Always Have a
+/// Backup Plan's second run): no run cost is paid as the server is
+/// announced, and none refuses the run.
+pub fn start_run_ignoring_costs(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    start_run_paying(state, registry, server, false)
+}
+
+fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: ServerId, pay_run_costs: bool) -> Result<Vec<GameEvent>, RulesError> {
     // A run a card's text starts as the Runner's turn begins — Alarm
     // Clock's "When your turn begins, you may run HQ" (CR 5.7.1d, before
     // the action phase) — is run in the action phase's shape, which is the
@@ -184,15 +220,10 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     // announced as the attacked server" (CR 6.3.2b) — before the run's bad
     // publicity credits exist (6.3.3), which cannot pay them. All at once
     // (1.16.10b), and a run that cannot pay is not made.
-    let paid = match crate::rules::continuous::run_costs(state, registry, server).as_slice() {
-        [] => Vec::new(),
-        costs => {
-            let cost = match costs {
-                [one] => one.clone(),
-                many => crate::dsl::Cost::AllOf(many.to_vec()),
-            };
-            let ctx = crate::rules::ability::ResolutionContext::for_card(None);
-            if !crate::rules::ability::cost_is_affordable(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx) {
+    let paid = match run_cost(state, registry, server).filter(|_| pay_run_costs) {
+        None => Vec::new(),
+        Some(cost) => {
+            if !may_pay_run_cost(state, registry, server) {
                 return Err(RulesError::CannotAffordRunCost { server });
             }
             crate::rules::ability::pay_cost(state, registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None)?
@@ -215,7 +246,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -436,6 +467,7 @@ fn force_encounter_elsewhere(state: &mut GameState, registry: &CardRegistry, ins
     run.fully_broken = false;
     run.ice_bypassed = false;
     run.encounters += 1;
+    run.last_encountered = run.ice.first().map(|ice| ice.install_id);
     add_own_subroutines(run, 0, own);
     add_gained_for_the_run(run, 0, may_gain);
     let nothing_to_break = fully_broken_with_nothing_to_break(run, 0);
@@ -514,6 +546,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
     run.encounters += 1;
+    run.last_encountered = run.ice.get(position).map(|ice| ice.install_id);
     add_own_subroutines(run, position, own);
     add_gained_for_the_run(run, position, may_gain);
     let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
@@ -937,6 +970,37 @@ pub(crate) fn move_run_to_outermost(
     Ok(events)
 }
 
+/// Whether `card_id` may be swapped into the place of `install`, a Corp
+/// install (CR 8.8.2: "a card can only ever be swapped into a location it
+/// is normally allowed to occupy"): a piece of ice for a piece of ice, and
+/// into a root only what may be installed there — an upgrade, or an agenda
+/// or asset in a remote whose root holds no other — and never a second
+/// region (3.6.5e) or an upgrade where its "only" forbids it (8.5.12). The
+/// card leaving the place is not counted against it. The one question the
+/// offer (`CardFilter::SwappableIntoThis`) and the swap both ask.
+pub(crate) fn swappable_into(state: &GameState, registry: &CardRegistry, card_id: &CardId, install: crate::rules::state::InstallId) -> bool {
+    use crate::dsl::{CardSubtype, CardType};
+    let (Some(place), Some(card)) = (state.find_corp_install(install), registry.get(card_id)) else { return false };
+    match (place.slot, &card.card_type) {
+        (InstallSlot::Ice, CardType::Ice(_)) => true,
+        (InstallSlot::Root, CardType::Upgrade | CardType::Agenda | CardType::Asset) => {
+            let agenda_or_asset = matches!(card.card_type, CardType::Agenda | CardType::Asset);
+            let region = card.subtypes.contains(&CardSubtype::Region);
+            let others_clash = state
+                .corp
+                .installed
+                .iter()
+                .filter(|other| other.server == place.server && other.slot == InstallSlot::Root && other.install_id != install)
+                .filter_map(|other| registry.get(&other.card))
+                .any(|other| {
+                    (agenda_or_asset && matches!(other.card_type, CardType::Agenda | CardType::Asset)) || (region && other.subtypes.contains(&CardSubtype::Region))
+                });
+            (!agenda_or_asset || matches!(place.server, ServerId::Remote(_))) && card.may_be_installed_in(place.server) && !others_clash
+        }
+        _ => false,
+    }
+}
+
 /// Swaps the ice the Runner is approaching with `card_id`, a piece of ice
 /// in `origin` (HQ or Archives) — Mitra Aman. The install keeps its
 /// position and handle and takes the new card **unrezzed** (it arrives
@@ -953,8 +1017,10 @@ pub(crate) fn swap_approached_ice_with_card(
     origin: &crate::dsl::CardZoneRef,
     this_ice: Option<crate::rules::state::InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    // The ice in the slot: the one named (Tatu-Bola's "swap it"), or the
-    // one being approached (Mitra Aman's), which only an approach has.
+    // The card in the place: the one named (Tatu-Bola's "swap it", and
+    // Project Yagi-Uda's card "in the root of or protecting the attacked
+    // server", which may be a root card), or the ice being approached
+    // (Mitra Aman's), which only an approach has.
     let approached = match this_ice {
         Some(install) => install,
         None => {
@@ -966,10 +1032,7 @@ pub(crate) fn swap_approached_ice_with_card(
             approached
         }
     };
-    if !state.find_corp_install(approached).is_some_and(|installed| installed.slot == crate::rules::state::InstallSlot::Ice) {
-        return Ok(Vec::new());
-    }
-    if !registry.get(card_id).is_some_and(|def| matches!(def.card_type, crate::dsl::CardType::Ice(_))) {
+    if !swappable_into(state, registry, card_id, approached) {
         return Ok(Vec::new());
     }
     // Take the incoming card out of its zone first: if it is not there any
@@ -1003,6 +1066,10 @@ pub(crate) fn swap_approached_ice_with_card(
     // `seen_by_runner` — Tatu-Bola is always rezzed as it swaps.
     installed.seen_by_runner = false;
     installed.this_turn = Default::default();
+    // "Any cards or counters hosted on it are trashed" (CR 8.8.4b): the
+    // counters went above; a Trojan on the ice that left goes too, rather
+    // than staying on the handle the new card keeps.
+    let mut hosted = crate::rules::ability::cascade_trash_hosted_programs(state, approached);
     match origin {
         crate::dsl::CardZoneRef::OwnHq => state.corp.hq.push(displaced.clone()),
         _ => crate::rules::turn_log::file_in_archives(state, if was_rezzed {
@@ -1022,6 +1089,7 @@ pub(crate) fn swap_approached_ice_with_card(
         a_card: Some(displaced.clone()),
         b_card: Some(card_id.clone()),
     }];
+    events.append(&mut hosted);
     // The run's own copy of the ice is stale now; rebuilding it here rather
     // than waiting for the next step keeps the approach pointed at the card
     // that is actually there.
@@ -1101,6 +1169,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.fully_broken = false;
             run.this_encounter = Default::default();
             run.encounters += 1;
+            run.last_encountered = run.ice.get(position).map(|ice| ice.install_id);
             add_own_subroutines(run, position, own);
             add_gained_for_the_run(run, position, may_gain);
             let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
@@ -1343,6 +1412,10 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
         completed.unsuccessful = !run.reached_success_phase && server_exists;
         state.last_completed_run = Some(completed);
     }
+    // What was to be heard "this run" is over with it (Whistleblower's
+    // "the next time this run", Always Have a Backup Plan's "during the
+    // second run").
+    state.delayed.retain(|delayed| !delayed.this_run);
     // Back to the turn's start for a run begun there (`start_run`), with its
     // window, unless the run ended the game.
     if run.as_ref().is_some_and(|run| run.begun_as_the_turn_began) && !state.is_over() {

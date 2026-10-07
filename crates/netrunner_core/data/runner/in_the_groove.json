@@ -1,0 +1,57 @@
+{
+  "id": "in_the_groove",
+  "title": "In the Groove",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": "NoActionTakenThisTurn",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "LaterThisTurn": {
+            "when": "OnInstall",
+            "filter": {
+              "Card": {
+                "Not": {
+                  "PrintedCostAtMost": {
+                    "Fixed": 0
+                  }
+                }
+              }
+            },
+            "every_time": true,
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ],
+                "texts": [
+                  "draw 1 card",
+                  "gain 1[credit]"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "For the remainder of this turn, whenever you install a card with a printed install cost of 1[credit] or greater, draw 1 card or gain 1[credit]."
+    }
+  ],
+  "built_from": 26020,
+  "is_playable": true
+}

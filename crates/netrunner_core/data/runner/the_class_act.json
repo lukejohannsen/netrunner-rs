@@ -1,0 +1,57 @@
+{
+  "id": "the_class_act",
+  "title": "The Class Act",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "ActingCardMatches": "InstalledThisTurn"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            4
+          ]
+        }
+      ],
+      "text": "When a discard phase ends, if you installed this resource this turn, draw 4 cards."
+    },
+    {
+      "trigger": "OnDrawAboutToResolve",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "TopOf": {
+                "Increased": {
+                  "amount": "AboutToResolve",
+                  "by": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddToDeck": "Bottom"
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you would draw any number of cards, look at the top X cards of your stack. Add 1 of those cards to the bottom of your stack."
+    }
+  ],
+  "built_from": 26018,
+  "is_playable": true
+}

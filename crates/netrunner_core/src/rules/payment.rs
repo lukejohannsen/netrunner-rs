@@ -309,6 +309,7 @@ impl Breadth {
 fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
     match (word, other) {
         (PaysFor::Using(mine), PaysFor::Using(theirs))
+        | (PaysFor::UsingDuringRuns(mine), PaysFor::Using(theirs) | PaysFor::UsingDuringRuns(theirs))
         | (PaysFor::Installing(mine), PaysFor::Installing(theirs))
         | (PaysFor::Playing(mine), PaysFor::Playing(theirs)) => filter_implies(mine, theirs),
         _ => word == other,
@@ -455,6 +456,8 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
+        (PaysFor::DuringSuccessfulRuns, _) => during_a_successful_run(state),
+        (PaysFor::UsingDuringRuns(filter), Purpose::Ability(card)) => state.active_run.is_some() && card_matches_filter(card, filter),
         (PaysFor::DuringItsRun, _) => {
             let hosting = host.and_then(|host| state.find_rig_install(host)).map(|card| &card.card);
             hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
@@ -474,6 +477,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::RezzingInThisServer
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
+            | PaysFor::UsingDuringRuns(_)
             | PaysFor::Playing(_)
             | PaysFor::RemovingTags,
             _,
@@ -704,6 +708,15 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
             .get(card_id)
             .and_then(|def| def.additional_play_cost.as_ref())
             .is_some_and(crate::dsl::Cost::may_ask),
+        // A steal cost that takes cards asks which: SDS Drone
+        // Deployment's "trash 1 installed program" with two installed. Left
+        // off this list until the 256-seed view sweep's debug assertion
+        // found it, when Downfall Stage 6's decks first paired it with a
+        // rig of two programs.
+        PlayerAction::StealAgenda { card_id } => registry.get(card_id).is_some_and(|def| {
+            def.steal_cost.as_ref().is_some_and(crate::dsl::Cost::may_ask)
+                || crate::rules::continuous::steal_costs_added(state, registry, def).iter().any(crate::dsl::Cost::may_ask)
+        }),
         // A card that prints another way to pay for its rez asks which,
         // and what the way it names takes.
         PlayerAction::RezIce { ice } => state
@@ -712,6 +725,12 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
             .is_some_and(|def| !def.rez_alternatives.is_empty()),
         _ => false,
     }
+}
+
+/// Whether the run in progress has been declared successful — Fencer
+/// Fueno's "for the remainder of that run" (`PaysFor::DuringSuccessfulRuns`).
+fn during_a_successful_run(state: &GameState) -> bool {
+    state.active_run.as_ref().is_some_and(|run| run.declared_successful)
 }
 
 /// Whether a run on HQ, R&D or Archives is in progress — Cezve's "during
@@ -741,7 +760,8 @@ pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, p
         // run it is as broad as the credit pool, and Cyberfeeder's credit
         // goes before Methuselah's unasked, as it would before the pool's.
         let during_a_run = (state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun)))
-            || (during_a_central_run(state) && words.contains(&PaysFor::DuringRunsOnCentralServers));
+            || (during_a_central_run(state) && words.contains(&PaysFor::DuringRunsOnCentralServers))
+            || (during_a_successful_run(state) && words.contains(&PaysFor::DuringSuccessfulRuns));
         Class {
             breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
             life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },

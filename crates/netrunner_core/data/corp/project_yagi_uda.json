@@ -1,0 +1,68 @@
+{
+  "id": "project_yagi_uda",
+  "title": "Project Yagi-Uda",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "dividends": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "InAttackedServer",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "SwappableIntoThis",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "Sequence": [
+                  {
+                    "SwapApproachedIceWithCard": {
+                      "origin": "OwnHq",
+                      "this_ice": true
+                    }
+                  },
+                  {
+                    "OfferPaidChoice": {
+                      "side": "Runner",
+                      "cost": "JackOut",
+                      "if_paid": {
+                        "Sequence": []
+                      },
+                      "if_declined": {
+                        "Sequence": []
+                      },
+                      "text": "The Runner may jack out"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "text": "Hosted agenda counter: Swap 1 card from HQ with 1 card in the root of or protecting the attacked server. The Runner may jack out. Use this ability only during a run."
+    }
+  ],
+  "built_from": 26040,
+  "is_playable": true
+}

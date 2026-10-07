@@ -1,0 +1,94 @@
+{
+  "id": "tournament_muslihat_multifarious_marketeer",
+  "name": "Thieving hands - 1st @ Worlds Showdown",
+  "side": "Runner",
+  "category": "Sample",
+  "description": "Thieving hands - 1st @ Worlds Showdown, published on NetrunnerDB by davz131 (https://netrunnerdb.com/en/decklist/cfee0599-4d5d-43e9-b55b-0ff193018d96). Evendur played it to 15th in the top cut of the 2026 World Championship (2 October 2026).",
+  "identity": "muslihat_multifarious_marketeer",
+  "cards": [
+    {
+      "card": "bahia_bands",
+      "count": 3
+    },
+    {
+      "card": "bravado",
+      "count": 3
+    },
+    {
+      "card": "carpe_diem",
+      "count": 3
+    },
+    {
+      "card": "cezve",
+      "count": 2
+    },
+    {
+      "card": "clean_getaway",
+      "count": 3
+    },
+    {
+      "card": "concerto",
+      "count": 2
+    },
+    {
+      "card": "curupira",
+      "count": 2
+    },
+    {
+      "card": "fencer_fueno",
+      "count": 1
+    },
+    {
+      "card": "hermes",
+      "count": 2
+    },
+    {
+      "card": "malandragem",
+      "count": 2
+    },
+    {
+      "card": "mystic_maemi",
+      "count": 1
+    },
+    {
+      "card": "paladin_poemu",
+      "count": 1
+    },
+    {
+      "card": "pinhole_threading",
+      "count": 3
+    },
+    {
+      "card": "reprise",
+      "count": 1
+    },
+    {
+      "card": "revolver",
+      "count": 3
+    },
+    {
+      "card": "sang_kancil",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tailgate",
+      "count": 1
+    },
+    {
+      "card": "the_class_act",
+      "count": 2
+    },
+    {
+      "card": "the_twinning",
+      "count": 2
+    },
+    {
+      "card": "transfer_of_wealth",
+      "count": 3
+    }
+  ]
+}

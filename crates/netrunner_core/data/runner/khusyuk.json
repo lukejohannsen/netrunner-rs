@@ -1,0 +1,90 @@
+{
+  "id": "khusyuk",
+  "title": "Khusyuk",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "RnD",
+            "effect": {
+              "ChooseNumber": {
+                "chooser": "Runner",
+                "min": 1,
+                "max": {
+                  "Fixed": 10
+                },
+                "then": {
+                  "Sequence": [
+                    {
+                      "Repeat": {
+                        "times": {
+                          "Reduced": {
+                            "amount": {
+                              "InZone": {
+                                "zone": "OwnInstalled",
+                                "filter": {
+                                  "PrintedCostExactly": "ChosenNumber"
+                                }
+                              }
+                            },
+                            "by": {
+                              "Reduced": {
+                                "amount": {
+                                  "InZone": {
+                                    "zone": "OwnInstalled",
+                                    "filter": {
+                                      "PrintedCostExactly": "ChosenNumber"
+                                    }
+                                  }
+                                },
+                                "by": {
+                                  "Fixed": 6
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "effect": {
+                          "SetAsideFromTopUntil": {
+                            "filter": "Any",
+                            "count": 1,
+                            "deck": "Corp"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "Access": {
+                        "from": "OpponentSetAside",
+                        "filter": "Any",
+                        "count": 1,
+                        "then": {
+                          "ShuffleIntoDeck": [
+                            "OpponentSetAside"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "text": "choose an install cost greater than 0[credit]"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, instead of breaching R&D, choose an install cost greater than 0[credit]. The Corp sets aside the top X cards of R&D faceup, where X is equal to the number of your installed cards with that printed install cost, up to 6. Access 1 of the set-aside cards. The Corp shuffles the set-aside cards into R&D."
+    }
+  ],
+  "built_from": 26021,
+  "is_playable": true
+}

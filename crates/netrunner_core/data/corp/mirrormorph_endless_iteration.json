@@ -1,0 +1,83 @@
+{
+  "id": "mirrormorph_endless_iteration",
+  "title": "MirrorMorph: Endless Iteration",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnActionFinished",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ActionsThisTurn",
+              3
+            ]
+          },
+          {
+            "And": [
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    "ActionsThisTurn",
+                    4
+                  ]
+                }
+              },
+              {
+                "AmountAtLeast": [
+                  "DifferentActionsThisTurn",
+                  3
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "GainClicks": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "Prohibit": {
+                      "what": "RepeatAnAction",
+                      "until": "NextAction"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              "take another different action, paying [click] less",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "If the first, second, and third actions you take on your turn are each different from one another, when the third action completes, you may gain 1[credit] or take another different action, paying [click] less."
+    }
+  ],
+  "built_from": 26031,
+  "is_playable": true
+}

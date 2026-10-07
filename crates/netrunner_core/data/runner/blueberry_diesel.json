@@ -1,0 +1,46 @@
+{
+  "id": "blueberry_diesel",
+  "title": "Blueberry!™ Diesel",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "LookAtTopOfDeck": {
+            "deck": "Runner",
+            "count": 2
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "TopOfZone": 2
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddToDeck": "Bottom"
+            }
+          }
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "Look at the top 2 cards of your stack. You may add 1 of those cards to the bottom of your stack. Draw 2 cards."
+    }
+  ],
+  "built_from": 26012,
+  "is_playable": true
+}

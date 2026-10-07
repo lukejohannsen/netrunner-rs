@@ -1,0 +1,55 @@
+{
+  "id": "cold_site_server",
+  "title": "Cold Site Server",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "RunCost": {
+          "AllOf": [
+            {
+              "ClicksAmount": "HostedCounters"
+            },
+            {
+              "CreditsAmount": "HostedCounters"
+            }
+          ]
+        }
+      },
+      "applies_to": "RunsOnThisServer",
+      "text": "As an additional cost to run this server, the Runner must spend [click] and 1[credit] for each hosted power counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": "HostedCounters"
+        }
+      ],
+      "text": "When your turn begins, remove all hosted power counters."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 1
+      },
+      "text": "[click]: Place 1 power counter on this upgrade."
+    }
+  ],
+  "built_from": 26038,
+  "is_playable": true
+}

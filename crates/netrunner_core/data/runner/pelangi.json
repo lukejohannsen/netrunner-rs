@@ -1,0 +1,68 @@
+{
+  "id": "pelangi",
+  "title": "Pelangi",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this program, place 2 virus counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "DuringEncounter"
+        ]
+      },
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "GainIceSubtype": {
+                "subtype": "Barrier",
+                "ice": "Encountered"
+              }
+            },
+            {
+              "GainIceSubtype": {
+                "subtype": "CodeGate",
+                "ice": "Encountered"
+              }
+            },
+            {
+              "GainIceSubtype": {
+                "subtype": "Sentry",
+                "ice": "Encountered"
+              }
+            }
+          ],
+          "texts": [
+            "Choose an ice subtype — barrier",
+            "Choose an ice subtype — code gate",
+            "Choose an ice subtype — sentry"
+          ]
+        }
+      },
+      "text": "Once per turn → Hosted virus counter: Choose an ice subtype. The ice you are encountering gains that subtype for the remainder of this encounter."
+    }
+  ],
+  "counter_kind": "Virus",
+  "built_from": 26025,
+  "is_playable": true
+}

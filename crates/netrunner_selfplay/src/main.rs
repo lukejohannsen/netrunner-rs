@@ -1127,10 +1127,14 @@ mod tests {
         let all_corp: std::collections::BTreeSet<String> =
             fixtures::matchups().iter().map(|m| m.decks().0.identity.0.clone()).collect();
 
+        // The stride `run_iteration_loop.py` gives a 96-game screen of a
+        // full arena (every pairing from both chairs): 4 over the 192
+        // pairings of the samples alone, 8 since the tournament lists.
+        let stride = (fixtures::matchups().len() * 2 / 96).to_string();
         let narrow = corp_decks(&cli("1"));
-        let strided = corp_decks(&cli("4"));
+        let strided = corp_decks(&cli(&stride));
         assert!(narrow.len() < strided.len(), "stride 1 over 48 pairs is the narrow one: {} against {}", narrow.len(), strided.len());
-        assert_eq!(strided.len(), all_corp.len(), "stride 4 reaches every Corp identity in the pool");
+        assert_eq!(strided.len(), all_corp.len(), "stride {stride} reaches every Corp identity in the pool");
     }
 
     /// The regression test for a bias that was worth 0.0755 and cleared

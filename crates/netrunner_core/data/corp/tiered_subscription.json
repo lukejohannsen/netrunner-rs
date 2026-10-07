@@ -1,0 +1,26 @@
+{
+  "id": "tiered_subscription",
+  "title": "Tiered Subscription",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn a run begins, gain 1[credit]."
+    }
+  ],
+  "built_from": 26049,
+  "is_playable": true
+}

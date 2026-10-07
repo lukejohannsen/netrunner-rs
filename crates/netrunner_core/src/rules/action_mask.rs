@@ -82,6 +82,13 @@ pub const MAX_COST_CHOICE_OPTIONS: usize = 2;
 /// against this and the other per-card caps.
 pub const MAX_PENDING_CHOICE_OPTIONS: usize = 4;
 
+/// The most names a `PendingDecision::ChooseCardName` can offer, and so
+/// the width of `ChooseCardName`'s segment: every playable Runner card is
+/// 259 today (Complete Image names one of them), with room for the
+/// reprint packs. The pool outgrowing it is caught by
+/// `every_name_a_card_can_choose_has_a_slot`.
+pub const MAX_NAME_OPTIONS: usize = 512;
+
 /// `Hq`/`RnD`/`Archives` plus `MAX_REMOTE_SERVERS` numbered remotes.
 const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
 
@@ -256,13 +263,20 @@ const INSTALL_RESOURCE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SI
 const HAND_ABILITY_START: usize = INSTALL_RESOURCE_ON_HOST_START + INSTALL_RESOURCE_ON_HOST_LEN;
 const HAND_ABILITY_LEN: usize = 2 * MAX_HAND_SIZE * MAX_ABILITIES_PER_CARD;
 
+/// `ChooseCardName` (Complete Image, Whistleblower): the name's place in
+/// the parked decision's list, which is sorted, so a slot means the same
+/// name for as long as the decision is parked. **Appended** (Downfall
+/// Stage 8), so nothing moved: 3261 → 3773.
+const CHOOSE_CARD_NAME_START: usize = HAND_ABILITY_START + HAND_ABILITY_LEN;
+const CHOOSE_CARD_NAME_LEN: usize = MAX_NAME_OPTIONS;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = HAND_ABILITY_START + HAND_ABILITY_LEN;
+    pub const SIZE: usize = CHOOSE_CARD_NAME_START + CHOOSE_CARD_NAME_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -421,6 +435,12 @@ impl ActionSpace {
                 (*amount <= MAX_TRACE_BID).then_some(RUNNER_TRACE_BID_START + *amount as usize)
             }
             PlayerAction::ChooseNumber { amount } => (*amount <= MAX_CHOSEN_NUMBER).then_some(CHOOSE_NUMBER_START + *amount as usize),
+            PlayerAction::ChooseCardName { card } => match &state.pending_decision {
+                Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) => {
+                    names.iter().position(|name| name == card).filter(|slot| *slot < MAX_NAME_OPTIONS).map(|slot| CHOOSE_CARD_NAME_START + slot)
+                }
+                _ => None,
+            },
 
             PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match cost_option_index {
                 None => Some(ACCEPT_PENDING_PAID_CHOICE_START),
@@ -639,6 +659,10 @@ impl ActionSpace {
             let hand = if hand_slot < MAX_HAND_SIZE { &state.corp.hq } else { &state.runner.grip };
             let card_id = hand.get(hand_slot % MAX_HAND_SIZE)?.clone();
             return Some(PlayerAction::ActivateHandAbility { card_id, ability_index });
+        }
+        if let Some(local) = in_segment(index, CHOOSE_CARD_NAME_START, CHOOSE_CARD_NAME_LEN) {
+            let Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) = &state.pending_decision else { return None };
+            return names.get(local).map(|card| PlayerAction::ChooseCardName { card: card.clone() });
         }
         None
     }
@@ -911,7 +935,7 @@ mod tests {
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None },
                 AbilityDef {
                     text: None,
                     trigger: Trigger::Paid,
@@ -921,7 +945,7 @@ mod tests {
                         count: crate::dsl::SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None },
             ],
             strength: Some(2),
             is_playable: true,
@@ -1434,6 +1458,7 @@ mod tests {
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
             move_to_root: false,
             remember: false,
+            ignore_run_costs: false,
             install: None,
             chooser: Side::Runner,
             rez_cost_delta: 3,
@@ -1534,7 +1559,10 @@ mod tests {
         // 7c, Hackerspace), appended.** Hand slot by rig slot (512).
         // **3133 → 3261: an ability used from a hand (VP Stage 7f,
         // Tocsin), appended.** Each hand's slot by ability slot (128).
-        assert_eq!(ActionSpace::SIZE, 3261);
+        // **3261 → 3773: a card name chosen (Downfall Stage 8, Complete
+        // Image and Whistleblower), appended.** A slot a name (512).
+        assert_eq!(ActionSpace::SIZE, 3773);
+        assert_eq!(CHOOSE_CARD_NAME_START, 3261, "appended after an ability used from a hand");
         assert_eq!(HAND_ABILITY_START, 3133, "appended after a resource installed onto a rig card");
         assert_eq!(INSTALL_RESOURCE_ON_HOST_START, 2621, "appended after the installs that trash first");
         assert_eq!(CHOOSE_NUMBER_START, 1646, "appended: nothing before it moved");

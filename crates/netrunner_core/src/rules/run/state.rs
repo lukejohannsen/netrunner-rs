@@ -736,6 +736,13 @@ pub struct RunState {
     /// nothing (CR 6.5.9a). A run's own count, as `encounters` is.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub ice_passed: u32,
+    /// The piece of ice encountered last this run, by its handle — set as
+    /// each encounter begins and kept into `CompletedRun::last_encountered`
+    /// for Always Have a Backup Plan's "the last piece of ice you
+    /// encountered during the first run". The engine's: a view's run
+    /// carries the encounter as it happens, and no client draws a past one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_encountered: Option<crate::rules::state::InstallId>,
     /// The action this run (or breach) is part of, which finishes when it
     /// ends: a run is an action in progress until it is over (CR 5.2.2a),
     /// and so is the event or ability that began one (Dirty Laundry,
@@ -879,6 +886,7 @@ impl Default for RunState {
             breached: None,
             encounters: 0,
             ice_passed: 0,
+            last_encountered: None,
             on_success_card: None,
             on_success_install: None,
         }

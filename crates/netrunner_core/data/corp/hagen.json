@@ -1,0 +1,67 @@
+{
+  "id": "hagen",
+  "title": "Hagen",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 6,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1,
+          "of": "InstalledIcebreakerCount"
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gets −1 strength for each installed icebreaker."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed program that is not a decoder, fracter, or killer.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "Not": {
+                  "AnyOf": [
+                    {
+                      "HasSubtype": "Decoder"
+                    },
+                    {
+                      "HasSubtype": "Fracter"
+                    },
+                    {
+                      "HasSubtype": "Killer"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "built_from": 26035,
+  "is_playable": true
+}

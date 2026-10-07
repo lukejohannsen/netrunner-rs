@@ -1,0 +1,134 @@
+{
+  "id": "tournament_magdalene_keino_chemutai_cryptarchitect",
+  "name": "Didn't Get Gamelossed (13th @ EMEA Online)",
+  "side": "Runner",
+  "category": "Sample",
+  "description": "Didn't Get Gamelossed (13th @ EMEA Online), published on NetrunnerDB by Nakron (https://netrunnerdb.com/en/decklist/ca7f11fa-0c5d-42aa-9c31-3c812a7c1d40). Nakron played it to 13th in the top cut of the 2026 EMEA Online Continental (5 September 2026).",
+  "identity": "magdalene_keino_chemutai_cryptarchitect",
+  "cards": [
+    {
+      "card": "azimat",
+      "count": 1
+    },
+    {
+      "card": "burner",
+      "count": 1
+    },
+    {
+      "card": "coalescence",
+      "count": 3
+    },
+    {
+      "card": "creative_commission",
+      "count": 3
+    },
+    {
+      "card": "cupellation",
+      "count": 1
+    },
+    {
+      "card": "daily_casts",
+      "count": 3
+    },
+    {
+      "card": "deep_dive",
+      "count": 2
+    },
+    {
+      "card": "dr_nuka_vrolyck",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "echelon",
+      "count": 1
+    },
+    {
+      "card": "environmental_testing",
+      "count": 1
+    },
+    {
+      "card": "fermenter",
+      "count": 1
+    },
+    {
+      "card": "gauss",
+      "count": 1
+    },
+    {
+      "card": "gourmand",
+      "count": 1
+    },
+    {
+      "card": "hannah_wheels_pilintra",
+      "count": 1
+    },
+    {
+      "card": "hush",
+      "count": 1
+    },
+    {
+      "card": "illumination",
+      "count": 1
+    },
+    {
+      "card": "knickknack_obrian",
+      "count": 1
+    },
+    {
+      "card": "lilypad",
+      "count": 2
+    },
+    {
+      "card": "muse",
+      "count": 2
+    },
+    {
+      "card": "pelangi",
+      "count": 2
+    },
+    {
+      "card": "pichacao",
+      "count": 1
+    },
+    {
+      "card": "pinhole_threading",
+      "count": 3
+    },
+    {
+      "card": "propeller",
+      "count": 3
+    },
+    {
+      "card": "revolver",
+      "count": 1
+    },
+    {
+      "card": "ritual",
+      "count": 3
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "simulchip",
+      "count": 3
+    },
+    {
+      "card": "spec_work",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "unity",
+      "count": 1
+    }
+  ]
+}

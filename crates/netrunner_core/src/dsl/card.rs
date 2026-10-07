@@ -1040,6 +1040,20 @@ pub enum PaysFor {
     /// server list on `DuringRuns`, which every card that prints it would
     /// then have to write out.
     DuringRunsOnCentralServers,
+    /// Anything, for the remainder of a run once it has been declared
+    /// successful — Fencer Fueno's "Whenever you make a successful run, you
+    /// can spend hosted credits for the remainder of that run" (the trash
+    /// costs and steal costs of its breach). `DuringRuns` narrowed by
+    /// `RunState::declared_successful`, and as broad as the credit pool
+    /// then, as `DuringRuns` is during any.
+    DuringSuccessfulRuns,
+    /// The cost of a paid ability on a card the filter admits, while a run
+    /// is in progress — Trickster Taka's "You can spend hosted credits to
+    /// use programs during runs". Composition didn't work: a card's words
+    /// are alternatives, any one of which covers a payment, and this is
+    /// `Using` *and* `DuringRuns`; a program's ability used outside a run
+    /// (Stargate's, Self-modifying Code's) is not covered.
+    UsingDuringRuns(crate::dsl::CardFilter),
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1063,7 +1077,7 @@ pub enum CardValidationError {
     HeapTriggerOnCorpCard(CardId),
     #[error("card {0:?}: a trigger active in the Runner's score area (`from_runner_score_area`) is an agenda's")]
     ScoreAreaTriggerOffAnAgenda(CardId),
-    #[error("card {0:?}: `GainIceSubtype` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on")]
+    #[error("card {0:?}: `GainIceSubtype` about `This` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on, and no card says \"each piece of ice gains\"")]
     SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
@@ -1071,6 +1085,8 @@ pub enum CardValidationError {
     DeckRuleOffAnIdentity(CardId),
     #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
     HandAbilityNotAnAction(CardId),
+    #[error("card {0:?}: ability {1} is `part_of` an ability that is not an earlier entry naming a `OncePerTurn`")]
+    PartOfNothing(CardId, usize),
     #[error("card {0:?}: only a Runner card's paid ability can be a mid-access ability (`access`, CR 9.3.6b)")]
     AccessFlagOnWhatCannotBeOne(CardId),
     #[error("card {0:?} says what its hosted credits pay for but hosts no credits (`counter_kind: Credit`), or is an event or operation, which hosts nothing")]
@@ -1105,7 +1121,7 @@ pub enum CardValidationError {
     TriggerSubjectWithNothingToName(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger's `when` filters on something its moment is not about (a card filter needs a trigger about a card, a server filter one about a server)")]
     TriggerFilterOfTheWrongKind(CardId, Trigger),
-    #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`)")]
+    #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`) or name it (`CardFilter::ThatCard`)")]
     TriggerActsOnNoCard(CardId, Trigger),
     #[error("card {0:?}: a {1:?} ability given to another card (`granted`) is that card's, so its effects act on it (`acts_on_subject`)")]
     GrantedActsOnSubject(CardId, Trigger),
@@ -1193,6 +1209,13 @@ impl Default for CardDefinition {
 }
 
 impl CardDefinition {
+    /// Which printed ability the paid ability at `index` is, for its use
+    /// limit (`OncePerTurnKey::ability`): its own index, or the earlier
+    /// entry it is `part_of`.
+    pub fn printed_ability(&self, index: usize) -> u8 {
+        self.abilities.get(index).and_then(|ability| ability.part_of).unwrap_or(index) as u8
+    }
+
     /// How many copies of this card a deck led by `identity` may hold: its
     /// own `deck_limit`, else `default` (CR 1.4.7's three, which each
     /// validator states for itself), and never more than the identity's
@@ -1348,6 +1371,18 @@ impl CardDefinition {
         if self.abilities.iter().any(|ability| ability.from_hand && (!ability.is_action() || ability.access)) {
             return Err(CardValidationError::HandAbilityNotAnAction(self.id.clone()));
         }
+        // `part_of` says two entries are one printed ability, for its use
+        // limit: an entry that is part of nothing, or of an ability with
+        // no limit to share, is a card that reads as split and is not.
+        for (index, ability) in self.abilities.iter().enumerate() {
+            if let Some(whole) = ability.part_of
+                && !(whole < index
+                    && ability.requirement.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn)
+                    && self.abilities[whole].requirement.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn))
+            {
+                return Err(CardValidationError::PartOfNothing(self.id.clone(), index));
+            }
+        }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
         }
@@ -1375,7 +1410,9 @@ impl CardDefinition {
             if !filter_fits {
                 return Err(CardValidationError::TriggerFilterOfTheWrongKind(self.id.clone(), triggered.trigger));
             }
-            if triggered.acts_on_subject && about != TriggerAbout::Card {
+            // "That card" (`CardFilter::ThatCard`) is written over as the
+            // card the moment is about, so the moment must be about one.
+            if (triggered.acts_on_subject || triggered.effects.iter().any(Effect::names_that_card)) && about != TriggerAbout::Card {
                 return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
             }
             // A granted ability is the subject's, so it acts on the subject.
@@ -1458,32 +1495,41 @@ impl CardDefinition {
         // A use limit needs something that uses the card. A trigger that
         // fires and a paid ability that resolves do; nothing that reads a
         // standing effect does, so a `OncePerTurn` there would never be
-        // spent. And the key is the card and which copy, so two once-per-
-        // turn abilities on one card would share a use — no card prints two.
-        // An ability that only reads the use (`Not`) spends nothing, and
-        // is the other half of one printed limit (Pauleʼs Café); and
-        // triggers that print one sentence between them (`text`) are one
-        // ability, whose use they share (The Back's "the first time each
-        // turn you use a piece of hardware during a run", heard as a paid
-        // ability and as credits spent off the card).
+        // spent. The key is the card, which copy, and which printed paid
+        // ability (`OncePerTurnKey`, CR 9.3.6g), so each ability has a use
+        // of its own (The Artist prints two) and the card's triggers share
+        // one — two triggers that each spend it would share a use. An
+        // ability that only reads the use (`Not`) spends nothing, and is
+        // `part_of` the one that does (Pauleʼs Café); and triggers that
+        // print one sentence between them (`text`) are one ability, whose
+        // use they share (The Back's "the first time each turn you use a
+        // piece of hardware during a run", heard as a paid ability and as
+        // credits spent off the card).
         if self.continuous.iter().any(|effect| effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn)) {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerTurn`"));
         }
-        let once_per_turn = self.triggers.iter().filter_map(|triggered| triggered.requirement.as_ref()).chain(self.abilities.iter().filter_map(|ability| ability.requirement.as_ref()));
         let spending_triggers: Vec<Option<&String>> =
             self.triggers.iter().filter(|triggered| triggered.requirement.as_ref().is_some_and(EffectRequirement::spends_once_per_turn)).map(|triggered| triggered.text.as_ref()).collect();
         let one_printed_ability = spending_triggers.len() > 1 && spending_triggers[0].is_some() && spending_triggers.iter().all(|text| *text == spending_triggers[0]);
-        let spenders = once_per_turn.clone().filter(|requirement| requirement.spends_once_per_turn()).count() - if one_printed_ability { spending_triggers.len() - 1 } else { 0 };
-        if spenders > 1 {
-            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
+        if spending_triggers.len() > 1 && !one_printed_ability {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn triggers on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
+        }
+        let spends = |requirement: &EffectRequirement| requirement.spends_once_per_turn();
+        if self.abilities.iter().enumerate().any(|(index, ability)| {
+            ability.requirement.as_ref().is_some_and(spends)
+                && self.abilities[..index].iter().enumerate().any(|(earlier, other)| {
+                    self.printed_ability(earlier) == self.printed_ability(index) && other.requirement.as_ref().is_some_and(spends)
+                })
+        }) {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two entries of one printed ability (`part_of`) would each spend its one use"));
         }
         // The same two rules hold for the run's use limit, which is keyed
         // the same way.
         if self.continuous.iter().any(|effect| effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_run)) {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerRun`"));
         }
-        if once_per_turn.filter(|requirement| requirement.mentions_once_per_run()).count() > 1 {
-            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-run abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
+        if self.triggers.iter().filter_map(|triggered| triggered.requirement.as_ref()).filter(|requirement| requirement.mentions_once_per_run()).count() > 1 {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-run triggers on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
         // Which breaker broke the printed subroutines is read off a pass
         // (`GameEvent::IcePassed`), so only a pass's trigger can ask it; and
@@ -1637,7 +1683,7 @@ impl CardDefinition {
                 && match duration {
                     EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
                     EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
-                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed | EffectDuration::WhileInstalled => false,
+                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed | EffectDuration::WhileInstalled | EffectDuration::NextAction => false,
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
@@ -1659,14 +1705,20 @@ impl CardDefinition {
         // "This ice gains the chosen subtypes" acts on the acting install,
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
-        let mut gains = |effect: &Effect| effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype(subtype) = e { gained.push(*subtype) });
+        let mut gains = |effect: &Effect| {
+            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice } = e { gained.push((*subtype, *ice)) })
+        };
         self.triggers.iter().flat_map(|triggered| &triggered.effects).for_each(&mut gains);
         self.abilities.iter().map(|ability| &ability.effect).for_each(&mut gains);
         self.subroutines.iter().map(|subroutine| &subroutine.effect).for_each(&mut gains);
-        if gained.contains(&IceType::Other) {
+        if gained.iter().any(|(subtype, _)| *subtype == IceType::Other) {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
         }
-        if !gained.is_empty() && !matches!(self.card_type, CardType::Ice(_)) {
+        // "The ice you are encountering gains" (Pelangi) may be said by
+        // anything; "each piece of ice gains" by nothing in the pool.
+        if gained.iter().any(|(_, ice)| *ice == crate::dsl::StrengthOf::EachIce)
+            || (gained.iter().any(|(_, ice)| *ice == crate::dsl::StrengthOf::This) && !matches!(self.card_type, CardType::Ice(_)))
+        {
             return Err(CardValidationError::SubtypeGainedByNonIce(self.id.clone()));
         }
         // A continuous effect that does not fit parses and then applies to
@@ -1699,9 +1751,13 @@ impl CardDefinition {
                     return misfit("Strength", "this card prints no strength to change");
                 }
                 // A Trojan's server is its host's (Monkeywrench's "each other
-                // piece of ice protecting this server").
-                (_, Scope::IceProtectingThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice => {
-                    return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, and only a Trojan is hosted on its ice");
+                // piece of ice protecting this server"), and a piece of ice's
+                // is the one it protects (Rime's "each piece of ice
+                // protecting this server").
+                (_, Scope::IceProtectingThisServer(_))
+                    if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice && !matches!(self.card_type, CardType::Ice(_)) =>
+                {
+                    return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, only a Trojan is hosted on its ice, and only ice protects it");
                 }
                 (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice(_) | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
                 (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, ice, or the rig's cards"),
@@ -1730,8 +1786,9 @@ impl CardDefinition {
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice(_) | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
-                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
-                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
+                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}
+                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root, or that of a card being accessed"),
+                (_, Scope::Accessing(_)) => return misfit("Accessing", "only a trash cost is asked of a card being accessed"),
                 (ContinuousKind::GainSubtype(IceType::Other), _) => {
                     return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
                 }
@@ -1773,7 +1830,12 @@ impl CardDefinition {
                     return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
                 }
                 (ContinuousKind::RunCost(_), Scope::Runs(_)) => {}
-                (ContinuousKind::RunCost(_), _) => return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`)"),
+                // Cold Site Server's and Reduced Service's "to run this
+                // server": an upgrade's, about the server it is in.
+                (ContinuousKind::RunCost(_), Scope::RunsOnThisServer) if self.card_type == CardType::Upgrade => {}
+                (ContinuousKind::RunCost(_), _) => {
+                    return misfit("RunCost", "an additional cost to run is about the runs on a kind of server (`Runs`), or on an upgrade's own (`RunsOnThisServer`)");
+                }
                 (_, Scope::Runs(_)) => return misfit("Runs", "only an additional cost to run is about the runs on a kind of server"),
                 (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AdvancementRequirement(_), _) => {
@@ -1796,6 +1858,10 @@ impl CardDefinition {
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
                 }
+                (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::RezzedAsNonIce, _) => {
+                    return misfit("RezzedAsNonIce", "when a piece of ice may be rezzed is said by the ice of itself (`This`)");
+                }
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
@@ -1809,7 +1875,13 @@ impl CardDefinition {
                     return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`)");
                 }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
-                (ContinuousKind::Cannot(_), _) => return misfit("Cannot", "a prohibition is about the player it binds (`Player`)"),
+                // An agenda about its own score (Vulnerability Audit's "You
+                // cannot score this agenda if it was installed this
+                // turn"), asked of the install by `continuous::cannot_install`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::ScoreAgendas), Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::Cannot(_), _) => {
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), or an agenda's about its own score (`This`)");
+                }
             }
         }
         Ok(())
@@ -1942,7 +2014,7 @@ mod tests {
                     // Netrunner only permits them while encountering ICE.
                     requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None },
                 AbilityDef {
                     text: Some("Interface → 1[credit]: Break 1 barrier subroutine.".to_string()),
                     trigger: Trigger::Paid,
@@ -1954,7 +2026,7 @@ mod tests {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None },
             ]
         );
     }
@@ -2214,6 +2286,7 @@ mod tests {
                 used_by: None,
                 access: false,
                 from_hand: false,
+                part_of: None,
             }],
             ..Default::default()
         };
@@ -2334,11 +2407,46 @@ mod tests {
                 used_by: None,
                 access: false,
                 from_hand: true,
+                part_of: None,
             }],
             ..CardDefinition::default()
         };
         assert_eq!(ice(Cost::AllOf(vec![Cost::Clicks(1), Cost::RevealAndTrashSelf])).validate(), Ok(()));
         assert_eq!(ice(Cost::RevealAndTrashSelf).validate(), Err(CardValidationError::HandAbilityNotAnAction(CardId("alarm".to_string()))));
+    }
+
+    /// A use limit is the printed ability's (CR 9.3.6g): two once-per-turn
+    /// abilities each have one (The Artist), and an entry may be `part_of`
+    /// an earlier one only to share a limit that one names, without
+    /// spending it twice.
+    #[test]
+    fn validate_reads_once_per_turn_per_printed_ability() {
+        let ability = |requirement: Option<EffectRequirement>, part_of: Option<usize>| AbilityDef {
+            trigger: Trigger::Paid,
+            text: None,
+            cost: Some(Cost::Clicks(1)),
+            requirement,
+            effect: Effect::EndTheRun,
+            cost_discount_if: None,
+            used_by: None,
+            access: false,
+            from_hand: false,
+            part_of,
+        };
+        let card = |abilities: Vec<AbilityDef>| CardDefinition {
+            id: CardId("artist".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Resource,
+            abilities,
+            ..CardDefinition::default()
+        };
+        let once = Some(EffectRequirement::OncePerTurn);
+        let read_only = Some(EffectRequirement::Not(Box::new(EffectRequirement::OncePerTurn)));
+        assert_eq!(card(vec![ability(once.clone(), None), ability(once.clone(), None)]).validate(), Ok(()), "two abilities, two uses");
+        assert_eq!(card(vec![ability(once.clone(), None), ability(read_only.clone(), Some(0))]).validate(), Ok(()), "Pauleʼs Café's shape");
+        assert!(matches!(card(vec![ability(once.clone(), None), ability(once.clone(), Some(0))]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))), "one use spent twice");
+        assert_eq!(card(vec![ability(None, None), ability(read_only.clone(), Some(0))]).validate(), Err(CardValidationError::PartOfNothing(CardId("artist".to_string()), 1)), "no limit to share");
+        assert_eq!(card(vec![ability(read_only, Some(1)), ability(once, None)]).validate(), Err(CardValidationError::PartOfNothing(CardId("artist".to_string()), 0)), "an earlier entry");
     }
 
     /// A gained subroutine is the encountered ice's for the encounter, so
@@ -2359,7 +2467,7 @@ mod tests {
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
-                effects: vec![Effect::GainIceSubtype(subtype)],
+                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This }],
                 requirement: None,
             }],
             ..Default::default()
@@ -2549,6 +2657,7 @@ mod tests {
                 used_by: None,
                 access: true,
                 from_hand: false,
+                part_of: None,
             }],
             ..CardDefinition::default()
         };

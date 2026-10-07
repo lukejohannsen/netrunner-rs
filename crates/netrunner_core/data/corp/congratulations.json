@@ -1,0 +1,48 @@
+{
+  "id": "congratulations",
+  "title": "Congratulations!",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Gain 2[credit]. The Runner gains 1[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner passes this ice, gain 1[credit]."
+    }
+  ],
+  "built_from": 26050,
+  "is_playable": true
+}

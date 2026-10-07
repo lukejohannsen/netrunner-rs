@@ -1,0 +1,26 @@
+{
+  "id": "legwork",
+  "title": "Legwork",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 2
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 31019,
+  "is_playable": true
+}

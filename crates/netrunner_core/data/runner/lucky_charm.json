@@ -1,0 +1,36 @@
+{
+  "id": "lucky_charm",
+  "title": "Lucky Charm",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "RemoveSelfFromGame",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Hq"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "Prevent": "RunEnding"
+      },
+      "text": "Remove this hardware from the game: Prevent a Corp card ability from ending the run."
+    }
+  ],
+  "built_from": 26014,
+  "is_playable": true
+}

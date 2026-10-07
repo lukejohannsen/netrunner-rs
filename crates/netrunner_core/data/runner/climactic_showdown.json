@@ -1,0 +1,110 @@
+{
+  "id": "climactic_showdown",
+  "title": "Climactic Showdown",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveFromGame": "ThisCard"
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "filter": "Ice",
+                "count": 1
+              }
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "ChooseServer": {
+                    "only_protected_by_ice": true
+                  }
+                },
+                {
+                  "PresentChoice": {
+                    "chooser": "Corp",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnInstalled",
+                          "filter": {
+                            "All": [
+                              "Ice",
+                              "InChosenServer"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "destination": "OwnArchives"
+                        }
+                      },
+                      {
+                        "LaterThisTurn": {
+                          "when": "OnBreach",
+                          "filter": {
+                            "Server": [
+                              "RnD",
+                              "Hq"
+                            ]
+                          },
+                          "effect": {
+                            "Sequence": [
+                              {
+                                "EffectIf": {
+                                  "condition": {
+                                    "Breaching": "Hq"
+                                  },
+                                  "effect": {
+                                    "AddAdditionalAccess": {
+                                      "server": "Hq",
+                                      "count": 2
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "EffectIf": {
+                                  "condition": {
+                                    "Breaching": "RnD"
+                                  },
+                                  "effect": {
+                                    "AddAdditionalAccess": {
+                                      "server": "RnD",
+                                      "count": 2
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ],
+                    "texts": [
+                      "The Corp may trash 1 piece of ice protecting that server",
+                      "If they do not, the first time this turn you breach either R&D or HQ, access 2 additional cards"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, remove this resource from the game. Choose a server protected by ice. The Corp may trash 1 piece of ice protecting that server. If they do not, the first time this turn you breach either R&D or HQ, access 2 additional cards."
+    }
+  ],
+  "built_from": 26006,
+  "is_playable": true
+}

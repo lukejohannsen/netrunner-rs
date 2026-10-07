@@ -110,8 +110,16 @@ pub enum GameEvent {
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
     /// accessing it in R&D (`ContinuousKind::RevealedWhileAccessed`), which
     /// is how the Corp learns which of its cards was accessed there. Public
-    /// by definition; no card hears a reveal yet.
-    CardRevealed { side: Side, card: CardId },
+    /// by definition. `by` is the player who revealed it, which is not
+    /// always its owner — Engram Flush has the Corp reveal the grip — and is
+    /// who Hyoubu Institute's "the first time each turn **you** reveal a
+    /// card" hears (`Trigger::OnCardRevealed`).
+    CardRevealed {
+        side: Side,
+        card: CardId,
+        #[serde(default = "crate::rules::event::the_corp")]
+        by: Side,
+    },
     /// `cards`, `side`'s, went faceup into the set-aside zone, in that
     /// order (The Wizard's Chest, `Effect::SetAsideFromTopUntil`). Public:
     /// set aside faceup, so shown to both (CR 4.8.6). No card hears it.
@@ -232,7 +240,16 @@ pub enum GameEvent {
         to: ServerId,
     },
     RunInitiated { server: ServerId },
-    EventPlayed { side: Side, card: CardId },
+    /// `paid_with`: the cards the event's additional cost took (Rejig's
+    /// program added to the grip, Sell Out's resource trashed), so its own
+    /// resolution can read them (`ResolutionContext::paid_with`). Every one
+    /// was an installed Runner card, and so public.
+    EventPlayed {
+        side: Side,
+        card: CardId,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        paid_with: Vec<CardId>,
+    },
     /// `from_archives`: the card was played out of Archives rather than
     /// HQ (`CardDefinition::playable_from_archives`, Petty Cash) — read by
     /// `EffectRequirement::PlayedFromArchives` off the triggering event.
@@ -708,6 +725,10 @@ pub enum GameEvent {
     /// (`masking::mask_event_for_player`) and the answering action is
     /// concealed in their log.
     NumberChosen { chooser: Side, amount: u32, secret: bool },
+    /// `chooser` named `card` (`Effect::ChooseCardName`): Complete Image's
+    /// and Whistleblower's "choose a card name". Public: a name is said
+    /// aloud.
+    CardNameChosen { chooser: Side, card: CardId },
     /// Both bids of a psi game, revealed together once the Runner has bid
     /// (CR 10.14.6c) and spent after this (10.14.4) — the first moment the
     /// Runner learns the Corp's (`Effect::PsiGame`). Heard by no card: none
@@ -807,9 +828,15 @@ impl GameEvent {
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
-            | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. }
+            | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }
             | GameEvent::PendingPaidChoiceDeclined { .. } => false,
         }
     }
+}
+
+/// `CardRevealed::by`'s default, for a record written before the field: the
+/// Corp, whose cards nearly every reveal before Hyoubu Institute was of.
+pub(crate) fn the_corp() -> Side {
+    Side::Corp
 }

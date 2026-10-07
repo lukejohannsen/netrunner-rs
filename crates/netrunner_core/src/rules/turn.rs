@@ -162,13 +162,31 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     // to `side` regardless of who actually holds it.
     paid_ability::require_no_window(state)?;
     let clicks = state.resources(side).clicks.0;
-    if clicks > 0 {
+    if clicks > 0 && !forgoes_a_different_action(state, registry, side) {
         return Err(RulesError::ClicksRemain { side, clicks });
     }
 
     let mut next = state.clone();
     let events = end_action_phase(&mut next, side, registry)?;
     Ok((next, events))
+}
+
+/// MirrorMorph's "take another different action": the click it gives is
+/// for a different action alone (`Prohibition::RepeatAnAction`), and when
+/// every action the Corp could take is one it has taken this turn, there
+/// is no such action to take. The Corp may then end its action phase with
+/// the click unspent, lost with the turn (CR 5.6.3c) — the extra action
+/// forgone. Without this the Corp had no legal action at all (the
+/// 256-seed view sweep, seed 80, Endless Loop against Tickets, Please).
+///
+/// Rejected: offering the click option only when a different action
+/// exists, which asks the same question of every `PresentChoice` option
+/// before the click is even gained; and lifting the prohibition when it
+/// has nothing left to allow, which would let the click buy a repeat.
+/// Asked only while the prohibition binds, so the probe is rare.
+fn forgoes_a_different_action(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
+    continuous::cannot(state, registry, Prohibition::RepeatAnAction)
+        && !crate::rules::legal_actions::has_a_move_but_ending_the_turn(state, registry, side)
 }
 
 /// "The Corp's action phase formally ends. Conditions related to the
@@ -371,7 +389,10 @@ pub(crate) fn enter_start_of_turn(
         // earlier turn — Seamless Launch's "did not install this turn"
         // eligibility.
         Side::Corp => next.corp.installed.iter_mut().for_each(|installed| installed.installed_this_turn = false),
-        Side::Runner => next.runner.servers_run_this_turn.clear(),
+        Side::Runner => {
+            next.runner.servers_run_this_turn.clear();
+            next.runner.servers_run_successfully.clear();
+        }
     }
 
     events.push(paid_ability::open_window_for(next, next_side, WindowCheckpoint::TurnBeginning { side: next_side }));
@@ -707,7 +728,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 3),
-                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }],
             is_playable: true,
             ..Default::default()
         });

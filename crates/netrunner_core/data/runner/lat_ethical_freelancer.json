@@ -1,0 +1,67 @@
+{
+  "id": "lat_ethical_freelancer",
+  "title": "Lat: Ethical Freelancer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "MoreThan": [
+                {
+                  "CardsInHand": "Runner"
+                },
+                {
+                  "CardsInHand": "Corp"
+                }
+              ]
+            }
+          },
+          {
+            "Not": {
+              "MoreThan": [
+                {
+                  "CardsInHand": "Corp"
+                },
+                {
+                  "CardsInHand": "Runner"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DrawCards": [
+                  "Runner",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your discard phase ends, if you have the same number of cards in your grip as the Corp has in HQ, you may draw 1 card."
+    }
+  ],
+  "built_from": 26019,
+  "is_playable": true
+}

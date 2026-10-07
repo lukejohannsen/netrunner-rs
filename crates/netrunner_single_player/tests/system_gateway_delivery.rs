@@ -207,8 +207,10 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
     // at this call rather than added to the shared allowlist.
     // Nor an interrupt, so nothing is ever prevented here; nor two pools of
     // credits that could compete for one payment, so no payer is ever asked;
-    // nor a trace, whose first card is Uprising's Scapenet.
-    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger", "Prevented", "PaymentChoiceOffered", "SubmitCorpTraceBid", "SubmitRunnerTraceBid"]);
+    // nor a trace, whose first card is Uprising's Scapenet; nor a card name
+    // to choose, whose first cards are Downfall's Complete Image and
+    // Whistleblower (the view sweep reaches it).
+    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger", "Prevented", "PaymentChoiceOffered", "SubmitCorpTraceBid", "SubmitRunnerTraceBid", "ChooseCardName"]);
     assert!(
         failures.is_empty(),
         "rules never reached across {} index-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \

@@ -1,0 +1,65 @@
+{
+  "id": "letheia_nisei",
+  "title": "Letheia Nisei",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "unique": true,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "subject": "This",
+      "requirement": "OncePerRun",
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Sequence": []
+            },
+            "on_differ": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "TrashCard": "ThisCard"
+                      },
+                      {
+                        "MoveRunToOutermost": null
+                      },
+                      {
+                        "OfferPaidChoice": {
+                          "side": "Runner",
+                          "cost": "JackOut",
+                          "if_paid": {
+                            "Sequence": []
+                          },
+                          "if_declined": {
+                            "Sequence": []
+                          },
+                          "text": "They may jack out"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may trash this upgrade. If you do, the Runner moves to the outermost position of this server",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time the Runner approaches this server during each run, play a Psi Game."
+    }
+  ],
+  "built_from": 26046,
+  "is_playable": true
+}

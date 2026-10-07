@@ -1,0 +1,102 @@
+{
+  "id": "tournament_nuvem_sa_law_of_the_land",
+  "name": "Myoshued Regards (real) (1st APAC MC)",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "Myoshued Regards (real) (1st APAC MC), published on NetrunnerDB by Jai (https://netrunnerdb.com/en/decklist/abbd2251-0e27-4e94-812e-ca0f30a3f7a0). Santa played it to 2nd in the top cut of the 2026 Americas Online Continental (15 August 2026).",
+  "identity": "nuvem_sa_law_of_the_land",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "afshar",
+      "count": 1
+    },
+    {
+      "card": "anthill_excavation_contract",
+      "count": 3
+    },
+    {
+      "card": "cultivate",
+      "count": 3
+    },
+    {
+      "card": "event_horizon",
+      "count": 3
+    },
+    {
+      "card": "flywheel",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "key_performance_indicators",
+      "count": 3
+    },
+    {
+      "card": "let_them_dream",
+      "count": 3
+    },
+    {
+      "card": "malapert_data_vault",
+      "count": 1
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "myoshu",
+      "count": 1
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "pharos",
+      "count": 3
+    },
+    {
+      "card": "reanimation_protocol",
+      "count": 3
+    },
+    {
+      "card": "seamless_launch",
+      "count": 3
+    },
+    {
+      "card": "slash_and_burn_agriculture",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "the_basalt_spire",
+      "count": 3
+    },
+    {
+      "card": "tocsin",
+      "count": 3
+    },
+    {
+      "card": "tree_line",
+      "count": 3
+    },
+    {
+      "card": "winchester",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "id": "tournament_ob_superheavy_logistics_extract_export_excel",
+  "name": "worlds ob",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "worlds ob, published on NetrunnerDB by liadahlia (https://netrunnerdb.com/en/decklist/4d5cfd9b-38b7-44d9-91fb-06bc624ee770). liadahlia played it to 14th in the top cut of the 2026 World Championship (2 October 2026).",
+  "identity": "ob_superheavy_logistics_extract_export_excel",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "afshar",
+      "count": 1
+    },
+    {
+      "card": "anthill_excavation_contract",
+      "count": 2
+    },
+    {
+      "card": "azef_protocol",
+      "count": 3
+    },
+    {
+      "card": "envelopment",
+      "count": 2
+    },
+    {
+      "card": "event_horizon",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 1
+    },
+    {
+      "card": "kessleroid",
+      "count": 1
+    },
+    {
+      "card": "key_performance_indicators",
+      "count": 2
+    },
+    {
+      "card": "maskirovka",
+      "count": 3
+    },
+    {
+      "card": "mavirus",
+      "count": 3
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "sandstone",
+      "count": 1
+    },
+    {
+      "card": "slash_and_burn_agriculture",
+      "count": 2
+    },
+    {
+      "card": "sleipnir",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "stavka",
+      "count": 1
+    },
+    {
+      "card": "svyatogor_excavator",
+      "count": 2
+    },
+    {
+      "card": "the_basalt_spire",
+      "count": 2
+    },
+    {
+      "card": "the_holo_man",
+      "count": 1
+    },
+    {
+      "card": "tithe",
+      "count": 1
+    },
+    {
+      "card": "tranquility_home_grid",
+      "count": 1
+    },
+    {
+      "card": "tucana",
+      "count": 1
+    },
+    {
+      "card": "winchester",
+      "count": 1
+    }
+  ]
+}

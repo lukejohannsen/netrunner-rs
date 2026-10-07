@@ -1,0 +1,128 @@
+{
+  "id": "labor_rights",
+  "title": "Labor Rights",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 3
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "ZoneHasAtLeast": {
+                    "zone": "OwnHeap",
+                    "count": 1,
+                    "filter": "Any"
+                  }
+                },
+                {
+                  "Not": {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnHeap",
+                      "count": 2,
+                      "filter": "Any"
+                    }
+                  }
+                }
+              ]
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnHeap",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnStack"
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "ZoneHasAtLeast": {
+                    "zone": "OwnHeap",
+                    "count": 2,
+                    "filter": "Any"
+                  }
+                },
+                {
+                  "Not": {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnHeap",
+                      "count": 3,
+                      "filter": "Any"
+                    }
+                  }
+                }
+              ]
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnHeap",
+                "filter": "Any",
+                "min": 2,
+                "max": 2,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnStack"
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnHeap",
+                "count": 3,
+                "filter": "Any"
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnHeap",
+                "filter": "Any",
+                "min": 3,
+                "max": 3,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnStack"
+              }
+            }
+          }
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Trash the top 3 cards of your stack. Shuffle 3 cards from your heap into your stack. Draw 1 card. Remove this event from the game instead of trashing it."
+    }
+  ],
+  "built_from": 28001,
+  "is_playable": true
+}

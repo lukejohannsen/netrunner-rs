@@ -1,0 +1,110 @@
+{
+  "id": "tournament_sebastiao_souza_pessoa_activist_organizer",
+  "name": "Seb Seb Seb (King of Swiss, 5th @ Worlds 2026)",
+  "side": "Runner",
+  "category": "Sample",
+  "description": "Seb Seb Seb (King of Swiss, 5th @ Worlds 2026), published on NetrunnerDB by jxue16 (https://netrunnerdb.com/en/decklist/e9bd52a2-85ec-49ac-97e3-1b6723fd4f72). jxue16 played it to 5th in the top cut of the 2026 World Championship (2 October 2026).",
+  "identity": "sebastiao_souza_pessoa_activist_organizer",
+  "cards": [
+    {
+      "card": "amanuensis",
+      "count": 3
+    },
+    {
+      "card": "arruaceiras_crew",
+      "count": 3
+    },
+    {
+      "card": "audrey_v2",
+      "count": 2
+    },
+    {
+      "card": "botulus",
+      "count": 2
+    },
+    {
+      "card": "buffer_drive",
+      "count": 1
+    },
+    {
+      "card": "devil_charm",
+      "count": 3
+    },
+    {
+      "card": "dr_nuka_vrolyck",
+      "count": 1
+    },
+    {
+      "card": "eru_ayase_pessoa",
+      "count": 1
+    },
+    {
+      "card": "fermenter",
+      "count": 2
+    },
+    {
+      "card": "friend_of_a_friend",
+      "count": 3
+    },
+    {
+      "card": "gourmand",
+      "count": 3
+    },
+    {
+      "card": "hannah_wheels_pilintra",
+      "count": 3
+    },
+    {
+      "card": "lago_paranoa_shelter",
+      "count": 3
+    },
+    {
+      "card": "leech",
+      "count": 1
+    },
+    {
+      "card": "manuel_lattes_de_moura",
+      "count": 2
+    },
+    {
+      "card": "privileged_access",
+      "count": 3
+    },
+    {
+      "card": "raindrops_cut_stone",
+      "count": 3
+    },
+    {
+      "card": "rising_tide",
+      "count": 3
+    },
+    {
+      "card": "solidarity_badge",
+      "count": 3
+    },
+    {
+      "card": "steelskin_scarring",
+      "count": 3
+    },
+    {
+      "card": "strike_fund",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 2
+    },
+    {
+      "card": "the_price",
+      "count": 3
+    },
+    {
+      "card": "transfer_of_wealth",
+      "count": 3
+    },
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 1
+    }
+  ]
+}

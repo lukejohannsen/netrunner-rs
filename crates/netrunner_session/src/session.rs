@@ -356,6 +356,7 @@ impl Session {
                 | PendingDecision::ChooseEffect { source_card, prompting_card, .. }
                 | PendingDecision::ChooseServer { source_card, prompting_card, .. }
                 | PendingDecision::ChooseNumber { source_card, prompting_card, .. }
+                | PendingDecision::ChooseCardName { source_card, prompting_card, .. }
                 | PendingDecision::PsiGame { source_card, prompting_card, .. } => {
                     prompting_card.clone().or_else(|| source_card.clone())
                 }

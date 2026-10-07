@@ -880,6 +880,9 @@ fn determinize_run(
         // Public, and what Into the Depths' "for each time you passed ice"
         // reads.
         ice_passed: run.ice_passed,
+        // The engine's: the view's run does not carry it (`RunState::
+        // last_encountered`).
+        last_encountered: None,
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.
@@ -1052,6 +1055,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         set_aside: view.runner.set_aside.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
+        servers_run_successfully: view.runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
     };
@@ -1163,10 +1167,33 @@ fn sample_decision(view: &ClientView, rng: &mut impl Rng) -> Option<PendingDecis
 /// (Phase 5 §40). A copy of the card already elsewhere in the zone is
 /// swapped into place, so the sample keeps its count of each card; one
 /// that is not is written over the guess, as `seat_revealed` does.
+///
+/// **A payment parked over the selection owns `ClientView::selection`.** It
+/// lists the payment's candidates — an install's question names the rig
+/// cards it could trash — not the zone the selection was made from, so
+/// seating it here wrote rig cards over the stack and left the selected
+/// card a guess. Muse confirming a program out of the stack, short of
+/// memory, then asked a sample whose card at that position was Daily
+/// Casts, which installs without a question, and the planner's replay of
+/// the answer was left with it unused (seed 27 of the view sweep, once
+/// the Standard tournament lists joined the pool). What the chooser
+/// still knows then is the card the install's question names, which is
+/// the one card selected; nothing else of the zone is seated.
 fn seat_selection(state: &mut GameState, view: &ClientView) {
     use netrunner_core::dsl::CardZoneRef;
-    let Some(PendingDecision::ChooseCards { side: chooser, source, .. }) = &view.pending_decision else { return };
-    if !source.shows_the_chooser_hidden_cards() || view.selection.is_empty() {
+    use netrunner_core::rules::PaymentAsk as Ask;
+    let Some(PendingDecision::ChooseCards { side: chooser, source, selected, .. }) = &view.pending_decision else { return };
+    if !source.shows_the_chooser_hidden_cards() {
+        return;
+    }
+    let installing: Option<(usize, CardId)> = match &state.pending_payment {
+        None => None,
+        Some(payment) => match (&payment.action, &payment.question, selected.as_slice()) {
+            (netrunner_core::rules::PlayerAction::ConfirmCardSelection, Ask::Install(question), [position]) => Some((*position, question.card.clone())),
+            _ => return,
+        },
+    };
+    if installing.is_none() && view.selection.is_empty() {
         return;
     }
     let opponent = match chooser {
@@ -1187,8 +1214,10 @@ fn seat_selection(state: &mut GameState, view: &ClientView) {
         CardZoneRef::TopOfOwnStack => len.checked_sub(1 + position),
         _ => (position < len).then_some(position),
     };
-    let shown: Vec<(usize, &CardId)> =
-        view.selection.iter().filter_map(|candidate| Some((index(candidate.position, zone.len())?, candidate.card.as_ref()?))).collect();
+    let shown: Vec<(usize, &CardId)> = match &installing {
+        Some((position, card)) => index(*position, zone.len()).map(|at| (at, card)).into_iter().collect(),
+        None => view.selection.iter().filter_map(|candidate| Some((index(candidate.position, zone.len())?, candidate.card.as_ref()?))).collect(),
+    };
     let pinned: HashSet<usize> = shown.iter().map(|(at, _)| *at).collect();
     for (at, card) in shown {
         if zone[at] == *card {
@@ -1423,7 +1452,7 @@ mod tests {
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
                 heap: Vec::new(),
-                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,
@@ -2100,6 +2129,66 @@ mod tests {
         }
     }
 
+    /// A payment parked over a selection out of the stack — Muse's program,
+    /// short of memory, asking which program to trash — keeps the selected
+    /// card at its position in every sample. The view's `selection` is the
+    /// payment's then, and the card is the one its question names; seated
+    /// from the selection, the stack took rig cards and the selected card
+    /// was a guess the payment's replay could not retrace (`seat_selection`).
+    #[test]
+    fn a_payment_parked_over_a_stack_selection_keeps_the_selected_card() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef, Effect};
+        use netrunner_core::rules::{InstallCandidate, InstallId, InstallQuestion, PaymentAsk, PendingChoiceResume, PendingDecision, PendingPayment, PlayerAction};
+
+        let mut registry = netrunner_core::cards::CardRegistry::new();
+        for index in 0..12 {
+            registry.insert(blank_card(&format!("decoy_{index}"), Side::Runner, CardType::Event));
+        }
+        let target = CardId("target_program".to_string());
+        registry.insert(blank_card(&target.0, Side::Runner, CardType::Program));
+        registry.insert(blank_card("rig_program", Side::Runner, CardType::Program));
+
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.stack = (0..9).map(|i| CardId(format!("decoy_{i}"))).collect();
+        state.runner.stack.insert(3, target.clone());
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: CardZoneRef::OwnStack,
+            filter: CardFilter::CardType(CardType::Program),
+            min: 0,
+            max: 1,
+            reveal: false,
+            shuffle_after: true,
+            destination: None,
+            then: Some(Box::new(Effect::InstallProgramOnHost { card: None, from: CardZoneRef::OwnStack })),
+            selected: vec![3],
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        state.pending_payment = Some(PendingPayment {
+            side: Side::Runner,
+            action: PlayerAction::ConfirmCardSelection,
+            answers: Vec::new(),
+            amount: 1,
+            question: PaymentAsk::Install(InstallQuestion {
+                card: target.clone(),
+                eligible: vec![InstallCandidate { position: 0, card: CardId("rig_program".to_string()), install: InstallId(1) }],
+                may_stop: false,
+                memory_short: 1,
+            }),
+        });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        for seed in 0..25u64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+            assert_eq!(sampled.runner.stack[3], target, "seed {seed}: the selected card stays where it was selected");
+        }
+    }
+
     /// Public state the view carries must survive sampling.
     ///
     /// Each of these was previously hard-coded to zero/`None` here, which
@@ -2221,9 +2310,9 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![install(1, true), install(2, false)];
-        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)) };
+        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)), ability: Some(0) };
         state.corp.once_per_turn_used = [used(1), used(2)].into_iter().collect();
-        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)) };
+        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)), ability: Some(0) };
         state.runner.once_per_turn_used = [telework.clone()].into_iter().collect();
 
         for side in [Side::Corp, Side::Runner] {

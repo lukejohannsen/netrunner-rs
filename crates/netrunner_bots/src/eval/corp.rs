@@ -198,12 +198,12 @@ fn held_end_the_run_price(state: &GameState, registry: &CardRegistry, w: &Weight
         .chain(installed)
         .chain(scored)
         .filter_map(|(install, card)| registry.get(card).map(|def| (install, card, def)))
-        .flat_map(|(install, card, def)| def.abilities.iter().map(move |ability| (install, card, ability)))
-        .filter(|(_, _, ability)| {
+        .flat_map(|(install, card, def)| def.abilities.iter().enumerate().map(move |(index, ability)| (install, card, index, ability)))
+        .filter(|(_, _, _, ability)| {
             ability.trigger == Trigger::Paid && !ability.is_action() && !ability.access && ability.effect.prevents().is_none() && ability.effect.can_end_the_run()
         })
-        .filter(|(install, card, ability)| ability_is_usable(state, registry, Side::Corp, *install, card, ability))
-        .filter_map(|(install, card, ability)| end_the_run_cost(state, registry, w, rig, horizon, install, card, ability.cost.as_ref()))
+        .filter(|(install, card, index, _)| ability_is_usable(state, registry, Side::Corp, *install, card, *index))
+        .filter_map(|(install, card, _, ability)| end_the_run_cost(state, registry, w, rig, horizon, install, card, ability.cost.as_ref()))
         .min_by(f64::total_cmp)
 }
 

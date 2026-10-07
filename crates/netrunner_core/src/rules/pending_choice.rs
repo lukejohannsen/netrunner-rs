@@ -29,6 +29,7 @@ pub(crate) fn pending_decision_chooser(state: &GameState) -> Option<Side> {
         PendingDecision::ChooseServer { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseTriggerOrder { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseNumber { chooser, .. } => Some(*chooser),
+        PendingDecision::ChooseCardName { chooser, .. } => Some(*chooser),
         PendingDecision::PsiGame { corp_bid: PsiBid::Awaiting, .. } => Some(Side::Corp),
         PendingDecision::PsiGame { .. } => Some(Side::Runner),
     }
@@ -51,6 +52,7 @@ pub(crate) fn mark_parked_resume_subroutines(state: &mut GameState) {
         | Some(PendingDecision::ChooseServer { resume, .. })
         | Some(PendingDecision::ChooseTriggerOrder { resume, .. })
         | Some(PendingDecision::ChooseNumber { resume, .. })
+        | Some(PendingDecision::ChooseCardName { resume, .. })
         | Some(PendingDecision::PsiGame { resume, .. }) => {
             *resume = PendingChoiceResume::ResumeSubroutines
         }
@@ -418,6 +420,13 @@ fn instance_matches_filter(
             let len = zone_card_ids(state, chooser, zone, source).len();
             position >= len.saturating_sub(*count as usize)
         }
+        // Read as the selection was offered (`with_resolution`); left
+        // unread, nothing.
+        CardFilter::TopOf(_) => false,
+        // The install the selection acts as is the place.
+        CardFilter::SwappableIntoThis => source.is_some_and(|place| {
+            zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| crate::rules::run::swappable_into(state, registry, card, place))
+        }),
         // Only a hand holds a revealed card, and only its owner's.
         CardFilter::Revealed => {
             let owner = owning_side(chooser, zone);
@@ -534,6 +543,9 @@ pub(crate) fn advanced_this_turn(state: &GameState, scored: &crate::rules::state
 pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, install: Option<InstallId>) -> bool {
     use crate::dsl::CardFilter;
     let Some(install) = install else { return true };
+    if let CardFilter::LastEncounteredLastRun = filter {
+        return state.last_completed_run.as_ref().and_then(|run| run.last_encountered) == Some(install);
+    }
     let installed = state.find_corp_install(install);
     let scored = state.corp.find_scored(install);
     if installed.is_none() && scored.is_none() {
@@ -1042,6 +1054,42 @@ pub(crate) fn resolve_choose_number(
     Ok(events)
 }
 
+/// Resolves `PlayerAction::ChooseCardName`: `then` with the name written
+/// over `CardFilter::ChosenName`, and, when the card says to repeat the
+/// process (`ChooseCardName::again_if`), the whole effect again after it
+/// if the requirement holds of the name — Complete Image's "If you trash a
+/// card with the chosen name this way, repeat this process". Resolved as
+/// the card that asked.
+pub(crate) fn resolve_choose_card_name(state: &mut GameState, registry: &CardRegistry, card: CardId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingDecision::ChooseCardName { names, .. }) = state.pending_decision.as_ref() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    if !names.contains(&card) {
+        return Err(RulesError::NameNotOffered { card });
+    }
+    let Some(PendingDecision::ChooseCardName { chooser, effect, source_card, prompting_card, source_install, resume, .. }) = state.pending_decision.take() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    let Effect::ChooseCardName { then, again_if, .. } = (*effect).clone() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    let named = then.with_chosen_name(&card);
+    let resolved = match again_if {
+        Some(again) => Effect::Sequence(vec![named, Effect::EffectIf { condition: again.with_chosen_name(&card), effect }]),
+        None => named,
+    };
+    let mut events = vec![GameEvent::CardNameChosen { chooser, card }];
+    let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+    ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &resolved, &mut ctx, registry)?);
+    if resume == PendingChoiceResume::ResumeSubroutines {
+        // As `resolve_choose_number`.
+        mark_parked_resume_subroutines(state);
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
 /// The most either player may bid in a psi game (CR 10.14.6b).
 pub(crate) const PSI_MAX_BID: u32 = 2;
 
@@ -1264,6 +1312,10 @@ pub(crate) fn resolve_confirm_card_selection(
         return Err(RulesError::NoPendingDecision);
     };
 
+    // Something parked before this selection was made — the draw The
+    // Class Act's selection is heard ahead of — is not something the
+    // selection's `then` waits behind (below): it is what waits for it.
+    let parked_before = state.pending_prevention.is_some();
     let count = selected.len();
     if count < min as usize || count > max as usize {
         // Selection is discarded (not re-parked) on an invalid confirm —
@@ -1305,7 +1357,10 @@ pub(crate) fn resolve_confirm_card_selection(
     } else {
         selected.clone()
     };
-    let mut events = vec![GameEvent::CardsSelected { side, cards: named, revealed: reveal }];
+    // Dispatched: a selection that reveals is its chooser revealing
+    // (Hyoubu Institute's "you reveal a card").
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardsSelected { side, cards: named, revealed: reveal })?;
     // Cards the Corp trashes out of HQ, counted for one batch event —
     // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
     // does it in its deck).
@@ -1365,6 +1420,18 @@ pub(crate) fn resolve_confirm_card_selection(
                     }),
                     None => None,
                 },
+                // A stolen agenda taken back out of the Runner's score area
+                // — Divested Trust's "add the stolen agenda to HQ" — takes
+                // its points with it (CR 1.17.1), as a forfeit does.
+                CardZoneRef::OpponentScoreArea if side == Side::Corp => {
+                    let position = state.runner.scored_agendas.iter().position(|scored| &scored.card == card_id && scored.as_agenda.is_none());
+                    position.map(|position| {
+                        let taken = state.runner.scored_agendas.remove(position);
+                        let points = crate::rules::win::scored_value(state, registry, &taken, Side::Runner);
+                        state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(-points);
+                        true
+                    })
+                }
                 _ if is_corp_archives(side, &source) => {
                     let pos = state.corp.archives.iter().position(|a| &a.card == card_id);
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)
@@ -1399,8 +1466,12 @@ pub(crate) fn resolve_confirm_card_selection(
                     // The Corp trashing its own cards out of HQ/R&D (Longevity
                     // Serum, Hansei Review, Anoetic Void) lands them facedown —
                     // the Runner has not seen them. A rezzed install it trashes
-                    // was on the table and stays faceup.
-                    crate::rules::turn_log::file_in_archives(state, if was_public {
+                    // was on the table and stays faceup, and so does a card
+                    // the selection revealed (CR 4.4.6b: "visible to the
+                    // Runner when it is trashed") — Stargate's "reveal the
+                    // top 3 cards of R&D. Trash 1 of the revealed cards", as
+                    // `trash_as_cost` already read it.
+                    crate::rules::turn_log::file_in_archives(state, if was_public || reveal {
                         ArchivedCard::faceup(card_id.clone())
                     } else {
                         ArchivedCard::facedown(card_id.clone())
@@ -1556,7 +1627,7 @@ pub(crate) fn resolve_confirm_card_selection(
         };
         // The trash above was parked for prevention: the `then` waits its
         // turn behind it, as the rest of a `Sequence` does.
-        if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some()) {
+        if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some() && !parked_before) {
             state.deferred_triggers.push(crate::rules::state::DeferredTrigger { announce: None,
                 card: card.clone(),
                 trigger: crate::dsl::Trigger::OnPlay,
@@ -1577,6 +1648,7 @@ pub(crate) fn resolve_confirm_card_selection(
             if side == Side::Corp && is_corp_archives(side, &source) && destination.is_none() {
                 ctx.selected_facedown = positions.first().and_then(|p| state.corp.archives.get(*p)).map(|archived| archived.facedown);
             }
+            ctx.selected_in_stack = side == Side::Runner && matches!(source, CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack) && destination.is_none();
             // The `then` acts *as* the selection (above) but *is* still the
             // prompting card's text, so anything it parks is attributed to
             // that card — see `ResolutionContext::prompting_card`.
@@ -1629,7 +1701,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, remember, source_card, prompting_card, source_install, resume } =
+    let PendingDecision::ChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, remember, ignore_run_costs, source_card, prompting_card, source_install, resume } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -1736,15 +1808,16 @@ pub(crate) fn resolve_choose_server(
         // revealed (CR 8.5.13d), since the Runner could otherwise not tell
         // that the "install and rez" was carried out. Eminent Domain's is
         // the first that may install an agenda.
-        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| {
+        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| -> Result<(), RulesError> {
             if let Some(installed) = state.corp.installed.iter_mut().find(|c| Some(c.install_id) == landed) {
                 installed.seen_by_runner = true;
-                events.push(GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone() });
+                dispatcher::emit(state, registry, events, GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone(), by: Side::Corp })?;
             }
+            Ok(())
         };
         let rezzable = !matches!(registry.get(&card_id).map(|c| &c.card_type), Some(crate::dsl::CardType::Agenda));
         if pending_install.rez && !rezzable {
-            reveal(state, &mut events);
+            reveal(state, &mut events)?;
         }
         if let (true, true, Some(install)) = (pending_install.rez, rezzable, landed) {
             let rest = pending_install.discount - install_takes;
@@ -1762,7 +1835,7 @@ pub(crate) fn resolve_choose_server(
                 // rezzed (CR 1.16.4b–c).
                 Err(
                     RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. },
-                ) => reveal(state, &mut events),
+                ) => reveal(state, &mut events)?,
                 Err(other) => return Err(other),
             }
         }
@@ -1786,7 +1859,7 @@ pub(crate) fn resolve_choose_server(
         return Ok(events);
     }
 
-    let paid = run::start_run(state, registry, server)?;
+    let paid = if ignore_run_costs { run::start_run_ignoring_costs(state, registry, server)? } else { run::start_run(state, registry, server)? };
     // "During that run, the rez cost of each piece of ice is increased by
     // 3[credit]" (Tread Lightly): an effect with a duration, so an entry on
     // `GameState::lingering` that holds while the run does. It was a number

@@ -1,0 +1,32 @@
+{
+  "id": "isolation",
+  "title": "Isolation",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "CardType": "Resource"
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            7
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 26001,
+  "is_playable": true
+}

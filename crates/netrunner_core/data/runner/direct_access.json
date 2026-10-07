@@ -1,0 +1,53 @@
+{
+  "id": "direct_access",
+  "title": "Direct Access",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "Sequence": [
+                {
+                  "LoseAbilities": {
+                    "until": "Run",
+                    "identities": true
+                  }
+                },
+                {
+                  "SetRunEndedEffect": {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnHeap",
+                      "filter": {
+                        "AmongCards": [
+                          "direct_access"
+                        ]
+                      },
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": true,
+                      "destination": "OwnStack"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "While you are resolving this event, each playerʼs identity loses all abilities. Run any server. When that run ends, you may shuffle this event into your stack."
+    }
+  ],
+  "built_from": 26028,
+  "is_playable": true
+}

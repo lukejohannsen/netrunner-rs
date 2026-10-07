@@ -3,7 +3,7 @@
   "name": "Ground Control",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Earth Station: SEA Headquarters, Uprising's Weyland identity, which allows one remote server, makes the Runner pay 1[credit] more to run HQ, flips for a click to make a remote cost 6[credit] to run instead, and flips back when the Runner makes a successful run on HQ — and the Weyland ice of Uprising Stage 8. On Hostile Bid's frame, its identity swapped: three Akhet, a barrier the Corp can advance that grows 3 strength and lets the Runner break only one of its subroutines once it holds 3 counters, and whose first subroutine places a counter on any installed card; and three Winchester, a sentry of traces that trashes a program or a piece of hardware and, protecting HQ, gains a third that ends the run — for its two Hostile Architecture, two Superdeep Borehole and two Svyatogor Excavator, assets that want remotes this identity does not allow. Hostile Bid keeps every card given up here.",
+  "description": "Not a published list: built so the sweeps reach Earth Station: SEA Headquarters, Uprising's Weyland identity, which allows one remote server, makes the Runner pay 1[credit] more to run HQ, flips for a click to make a remote cost 6[credit] to run instead, and flips back when the Runner makes a successful run on HQ — and the Weyland ice of Uprising Stage 8. On Hostile Bid's frame, its identity swapped: three Akhet, a barrier the Corp can advance that grows 3 strength and lets the Runner break only one of its subroutines once it holds 3 counters, and whose first subroutine places a counter on any installed card; and three Winchester, a sentry of traces that trashes a program or a piece of hardware and, protecting HQ, gains a third that ends the run — for its two Hostile Architecture, two Superdeep Borehole and two Svyatogor Excavator, assets that want remotes this identity does not allow. Hostile Bid keeps every card given up here. Downfall Stage 2: two CSR Campaign for two Wall to Wall, a card at the start of each turn if the Corp wants it. Downfall Stage 3: two Trebuchet for two Valentão, a sentry that trashes a Runner card and traces to keep the Runner from stealing or trashing for the run, at a bad publicity as it is rezzed. Downfall Stage 5: two Afshar for two Tocsin, a code gate that lets only one of its printed subroutines be broken while it protects HQ, which Earth Station taxes too; and two Secure and Protect for two Pivot, a double operation that finds a piece of ice in R&D and puts it on a central three credits cheaper. Hostile Bid keeps Tocsin and Pivot.",
   "style": [
     "glacier"
   ],
@@ -46,10 +46,6 @@
       "count": 2
     },
     {
-      "card": "tocsin",
-      "count": 2
-    },
-    {
       "card": "cayambe_grid",
       "count": 2
     },
@@ -62,15 +58,11 @@
       "count": 1
     },
     {
-      "card": "wall_to_wall",
+      "card": "csr_campaign",
       "count": 2
     },
     {
-      "card": "pivot",
-      "count": 2
-    },
-    {
-      "card": "valentao",
+      "card": "trebuchet",
       "count": 2
     },
     {
@@ -108,6 +100,14 @@
     {
       "card": "winchester",
       "count": 3
+    },
+    {
+      "card": "afshar",
+      "count": 2
+    },
+    {
+      "card": "secure_and_protect",
+      "count": 2
     }
   ]
 }

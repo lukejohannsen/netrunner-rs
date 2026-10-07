@@ -1,0 +1,35 @@
+{
+  "id": "professional_contacts",
+  "title": "Professional Contacts",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Runner",
+              1
+            ]
+          },
+          {
+            "DrawCards": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      },
+      "text": "[click]: Gain 1[credit] and draw 1 card."
+    }
+  ],
+  "built_from": 31036,
+  "is_playable": true
+}

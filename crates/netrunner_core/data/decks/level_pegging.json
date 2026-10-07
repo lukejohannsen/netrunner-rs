@@ -1,0 +1,113 @@
+{
+  "id": "level_pegging",
+  "name": "Level Pegging",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Lat: Ethical Freelancer, Downfall's Shaper identity, who draws a card at the end of a discard phase that leaves the grip the size of HQ. On Safety Net's frame, its identity swapped, with two Blueberry!™ Diesel for two of its three Net Shield: a look at the top of the stack and two cards for nothing. Safety Net keeps every card given up here. Downfall Stage 6: two In the Groove for two Joy Ride, an event played as the first click that pays a card or a credit for every install of a card costing 1[credit] or more that turn; and two Rejig for two Spark of Inspiration, an event whose additional cost returns an installed program or piece of hardware to the grip and whose install is that card's printed cost cheaper. Safety Net keeps Joy Ride and Spark of Inspiration.",
+  "style": [
+    "rig"
+  ],
+  "identity": "lat_ethical_freelancer",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 1
+    },
+    {
+      "card": "blueberry_diesel",
+      "count": 2
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "gauss",
+      "count": 2
+    },
+    {
+      "card": "the_artist",
+      "count": 2
+    },
+    {
+      "card": "living_mural",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 2
+    },
+    {
+      "card": "world_tree",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "environmental_testing",
+      "count": 2
+    },
+    {
+      "card": "deep_dive",
+      "count": 2
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "euler",
+      "count": 2
+    },
+    {
+      "card": "mantle",
+      "count": 2
+    },
+    {
+      "card": "simulchip",
+      "count": 2
+    },
+    {
+      "card": "cordyceps",
+      "count": 2
+    },
+    {
+      "card": "aniccam",
+      "count": 1
+    },
+    {
+      "card": "harmony_ar_therapy",
+      "count": 1
+    },
+    {
+      "card": "in_the_groove",
+      "count": 2
+    },
+    {
+      "card": "rejig",
+      "count": 2
+    }
+  ]
+}

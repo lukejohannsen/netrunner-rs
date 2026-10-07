@@ -1,0 +1,94 @@
+{
+  "id": "tournament_leo_construction_labor_solutions",
+  "name": "She (3rd @ Americas Online Continental)",
+  "side": "Corp",
+  "category": "Sample",
+  "description": "She (3rd @ Americas Online Continental), published on NetrunnerDB by metrixgo (https://netrunnerdb.com/en/decklist/c6be5144-34a4-471c-9ddd-b38e436d3ab6). metrixgo played it to 3rd in the top cut of the 2026 Americas Online Continental (15 August 2026).",
+  "identity": "leo_construction_labor_solutions",
+  "cards": [
+    {
+      "card": "boto",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 3
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 3
+    },
+    {
+      "card": "caveat_emptor",
+      "count": 3
+    },
+    {
+      "card": "charlotte_cacador",
+      "count": 1
+    },
+    {
+      "card": "drafter",
+      "count": 2
+    },
+    {
+      "card": "event_horizon",
+      "count": 1
+    },
+    {
+      "card": "hagen",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 3
+    },
+    {
+      "card": "let_them_dream",
+      "count": 3
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 1
+    },
+    {
+      "card": "melies_city_luxury_line",
+      "count": 3
+    },
+    {
+      "card": "mercia_b4ll4rd",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "project_ingatan",
+      "count": 1
+    },
+    {
+      "card": "seamless_launch",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 1
+    },
+    {
+      "card": "sleipnir",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "tranquility_home_grid",
+      "count": 3
+    }
+  ]
+}

@@ -72,9 +72,12 @@ pub fn dispatch_event(
     // A delayed ability the plan holds is taken: it resolves once (CR
     // 9.6.13c). One left from an earlier turn never will, and goes too.
     if !state.delayed.is_empty() {
-        let heard: Vec<Trigger> = listeners::moments(state, event).iter().map(|moment| moment.trigger).collect();
-        let turn = state.turn;
-        state.delayed.retain(|delayed| delayed.turn >= turn && !heard.iter().any(|trigger| listeners::delayed_hears_on(delayed, *trigger, turn)));
+        let spent: Vec<bool> = state.delayed.iter().map(|delayed| listeners::delayed_spent_by(state, registry, delayed, event)).collect();
+        let mut index = 0;
+        state.delayed.retain(|_| {
+            index += 1;
+            !spent[index - 1]
+        });
     }
     // One side at a time, the active player's first (the plan's order). A
     // side orders its own simultaneous triggers; the order *between* the
@@ -1333,7 +1336,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
-            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0,
+            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, last_encountered: None,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

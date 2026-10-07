@@ -1,0 +1,24 @@
+{
+  "id": "rezeki",
+  "title": "Rezeki",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit]."
+    }
+  ],
+  "built_from": 26026,
+  "is_playable": true
+}

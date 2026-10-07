@@ -516,6 +516,13 @@ pub enum PlayerAction {
     /// variant, and the last `ActionSpace` segment — appended, so no
     /// existing index moved.
     ChooseNumber { amount: u32 },
+    /// Answers a parked `PendingDecision::ChooseCardName` with one of its
+    /// names (Complete Image, Whistleblower). Its own action, with the card
+    /// rather than an index, because the list is the pool's: the log and a
+    /// client read the name, and `ActionSpace` gives each name in the
+    /// decision's list a slot (`MAX_NAME_OPTIONS`). **Appended**, so no
+    /// index moved.
+    ChooseCardName { card: CardId },
 }
 
 impl PlayerAction {
@@ -572,6 +579,7 @@ impl PlayerAction {
         "ConfirmCardSelection",
         "ChooseServerForPendingDecision",
         "ChooseNumber",
+        "ChooseCardName",
     ];
 
     /// This action's variant name — `"InstallProgram"`, never the payload.
@@ -640,6 +648,7 @@ mod tests {
             PlayerAction::ConfirmCardSelection,
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq },
             PlayerAction::ChooseNumber { amount: 0 },
+            PlayerAction::ChooseCardName { card: CardId("hedge_fund".to_string()) },
         ];
         // The exhaustiveness pressure: a new variant fails to compile here.
         for action in &all {
@@ -686,7 +695,8 @@ mod tests {
                 | PlayerAction::ToggleCardSelection { .. }
                 | PlayerAction::ConfirmCardSelection
                 | PlayerAction::ChooseServerForPendingDecision { .. }
-                | PlayerAction::ChooseNumber { .. } => {}
+                | PlayerAction::ChooseNumber { .. }
+                | PlayerAction::ChooseCardName { .. } => {}
             }
         }
         all

@@ -244,6 +244,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
         (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
+        (Scope::Accessing(filter), Target::Card(card)) => card.side != source.side && card_matches_filter(card, filter),
         (Scope::StealingFromThisServer, Target::Card(card)) => {
             card.card_type == CardType::Agenda
                 && source.server.is_some()
@@ -535,6 +536,12 @@ pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry
     any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::RevealedWhileAccessed))
 }
 
+/// Whether the ice `install` may be rezzed whenever a non-ice card could
+/// be (`ContinuousKind::RezzedAsNonIce`, Rime's), as the table stands.
+pub(crate) fn rezzed_as_non_ice(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    Target::corp_install(state, registry, install).is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::RezzedAsNonIce))
+}
+
 /// Whether the ice `install` has `subtype` beyond the one type a run's ice
 /// carries (`RunIce::ice_type`), which the caller already knows: a second
 /// type it prints (Hafrún's "Barrier - Code Gate", `CardDefinition::
@@ -666,11 +673,24 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
 /// The additional costs to run `server` (CR 6.3.2b: Earth Station: SEA
 /// Headquarters), in the order their cards are asked, paid together as the
 /// server is announced (`run::start_run`).
+///
+/// A count in one is read here, as the card that prints it — Cold Site
+/// Server's "[click] and 1[credit] for each hosted power counter" is that
+/// upgrade's counters — and paid as the number it came to, since the
+/// payment has no card to read it as.
 pub(crate) fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
+    fn fixed(cost: &Cost, ctx: &ability::ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> Cost {
+        match cost {
+            Cost::CreditsAmount(amount) => Cost::Credits(ability::resolve_amount(amount, ctx, state, registry)),
+            Cost::ClicksAmount(amount) => Cost::Clicks(ability::resolve_amount(amount, ctx, state, registry)),
+            Cost::AllOf(parts) => Cost::AllOf(parts.iter().map(|part| fixed(part, ctx, state, registry)).collect()),
+            other => other.clone(),
+        }
+    }
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, _| {
+    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::RunCost(_)), |effect, _, ctx| {
         if let ContinuousKind::RunCost(cost) = &effect.kind {
-            costs.push(cost.clone());
+            costs.push(fixed(cost, ctx, state, registry));
         }
     });
     costs
@@ -816,17 +836,34 @@ pub fn cannot_about(state: &GameState, registry: &CardRegistry, what: Prohibitio
 
 /// [`cannot`] about one install: also what binds only it (Warm
 /// Reception). A score asks this, of the agenda scored.
-pub fn cannot_install(state: &GameState, _registry: &CardRegistry, what: Prohibition, install: InstallId) -> bool {
+pub fn cannot_install(state: &GameState, registry: &CardRegistry, what: Prohibition, install: InstallId) -> bool {
     lingering::prohibits_install(state, what, install)
+        // What the card says about itself (Vulnerability Audit's "You
+        // cannot score this agenda if it was installed this turn"), read off
+        // the copy, whose `while` asks whether it was.
+        || Target::corp_install(state, registry, install)
+            .is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::Cannot(what)))
 }
 
-/// What the table adds to the cost of trashing the Corp install `install`.
-pub(crate) fn trash_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
-    let Some(target) = Target::corp_install(state, registry, install) else { return 0 };
-    sum(state, registry, target, |kind| match kind {
-        ContinuousKind::TrashCost(number) => Some(number),
-        _ => None,
-    })
+/// What the table adds to the cost of trashing the accessed Corp card
+/// `card`: what is said about the install, when it is one (`install` —
+/// Mahkota Langit Grid's root), and what is said about any card accessed
+/// (`Scope::Accessing` — Demolisher's "each Corp card"), wherever it is.
+pub(crate) fn trash_cost_delta(state: &GameState, registry: &CardRegistry, card: &CardDefinition, install: Option<InstallId>) -> i32 {
+    fn trash_cost(kind: &ContinuousKind) -> Option<&Number> {
+        match kind {
+            ContinuousKind::TrashCost(number) => Some(number),
+            _ => None,
+        }
+    }
+    let installed = install.and_then(|install| Target::corp_install(state, registry, install)).map_or(0, |target| sum(state, registry, target, trash_cost));
+    let mut accessed = 0;
+    for_each_applying(state, registry, Target::Card(card), |kind| trash_cost(kind).is_some(), |effect, _, ctx| {
+        if let (Scope::Accessing(_), Some(number)) = (&effect.applies_to, trash_cost(&effect.kind)) {
+            accessed += number.per * ability::resolve_amount(&number.of, ctx, state, registry) as i32;
+        }
+    });
+    installed + accessed
 }
 
 #[cfg(test)]
@@ -927,18 +964,19 @@ mod tests {
             on_the_table("asset", 3, ServerId::Remote(1), InstallSlot::Root, false),
         ];
         let (beside_it, elsewhere) = (InstallId(2), InstallId(3));
+        let asset = registry.get(&CardId("asset".to_string())).expect("registered");
 
-        assert_eq!(trash_cost_delta(&state, &registry, beside_it), 0, "facedown");
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(beside_it)), 0, "facedown");
         state.corp.installed[0].rezzed = true;
-        assert_eq!(trash_cost_delta(&state, &registry, beside_it), 2);
-        assert_eq!(trash_cost_delta(&state, &registry, elsewhere), 0, "another server's root");
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(beside_it)), 2);
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(elsewhere)), 0, "another server's root");
 
         state.corp.installed.remove(0);
-        assert_eq!(trash_cost_delta(&state, &registry, beside_it), 0, "gone, and no run to persist through");
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(beside_it)), 0, "gone, and no run to persist through");
         state.active_run =
             Some(RunState { server: ServerId::Remote(0), persistent_trashed_upgrades: vec![CardId("grid".to_string())], ..Default::default() });
-        assert_eq!(trash_cost_delta(&state, &registry, beside_it), 2, "persistent, for the remainder of the run");
-        assert_eq!(trash_cost_delta(&state, &registry, elsewhere), 0);
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(beside_it)), 2, "persistent, for the remainder of the run");
+        assert_eq!(trash_cost_delta(&state, &registry, asset, Some(elsewhere)), 0);
     }
 
     /// `Scope::Host` is a relation between two installs, not two cards: the

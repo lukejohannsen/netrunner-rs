@@ -1,0 +1,59 @@
+{
+  "id": "rejig",
+  "title": "Rejig",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "AddInstalledToHand": {
+      "filter": {
+        "CardTypeOneOf": [
+          "Program",
+          "Hardware"
+        ]
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "All": [
+                {
+                  "CardTypeOneOf": [
+                    "Program",
+                    "Hardware"
+                  ]
+                },
+                {
+                  "InstallableRunnerCardWithDiscount": {
+                    "Amount": "PaidCardPrintedCost"
+                  }
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "InstallRunnerCardFromGripWithDiscount": {
+                "Amount": "PaidCardPrintedCost"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Install 1 program or piece of hardware from your grip, paying X[credit] less."
+    }
+  ],
+  "built_from": 26029,
+  "is_playable": true
+}

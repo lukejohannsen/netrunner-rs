@@ -1,0 +1,85 @@
+{
+  "id": "nanoetching_matrix",
+  "title": "Nanoetching Matrix",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 2[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may gain 2[credit]."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 2[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset, you may gain 2[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "Once per turn → [click]: Gain 2[credit]."
+    }
+  ],
+  "built_from": 26034,
+  "is_playable": true
+}

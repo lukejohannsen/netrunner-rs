@@ -26,11 +26,18 @@ surveys are one reading of each card's text against the DSL as it stood at
   NSG set in this plan has any. Each set is therefore reached by
   `DeckCategory::Sweep` decks built here. When Standard is complete,
   current Standard tournament lists from NetrunnerDB join the `Sample` pool
-  and `decks::tests::PUBLISHED` pins them.
+  and `decks::tests::PUBLISHED` pins them. **Done 6 October 2026** — see
+  [Standard's tournament lists](#standards-tournament-lists--done-6-october-2026).
 - **The reprint packs are the last NSG tranche.** System Update 2021,
   Salvaged Memories and the Magnum Opus Reprint are NSG products of FFG
   designs, and none of them is in Standard. They are the bridge into the
-  FFG plan.
+  FFG plan ([ffg-card-pool.md](ffg-card-pool.md)).
+- **The Core Set's remainder rides with the reprint packs** (6 October
+  2026, the person's). The 2012 Core Set is the one FFG set embedded in
+  the catalog from the start, and 68 of its cards are neither built nor
+  reprinted in a reprint pack, so no tranche reached them. Tranche 8 takes
+  them, which leaves the embedded catalog complete before the FFG sets are
+  brought in.
 - **The observation vocabulary grows once, up front** (Stage 0), with a
   rank reserved per pack. The alternative was one reshape and one retrain
   per set.
@@ -50,12 +57,27 @@ cards each stage takes.
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
-| 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
+| 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 25, 5, 1, 28 | 57, 13, 5, — | in progress: Stages 1a–1b (6 October 2026; `core` has no gate yet) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 101
-`Effect` variants single-use, none unused, over 573 card files** (5 October
-2026, with Uprising Stage 8, which added no variant and closed the set;
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
+`Effect` variants single-use, none unused, over 656 card files** (6 October
+2026, with tranche 8 Stage 1b, which added no variant; Stage 1a, at 13 of 105
+over 648, added none; Downfall Stage 8, at
+13 of 105 over 638, closed the set and added two:
+`ChooseCardName`, which Complete Image and Whistleblower share, and
+`StealAccessedCard`, Whistleblower's alone; Stage 7, at 12 of 103 over
+633, added no variant and gave
+`MoveRunToOutermost` its second card, Letheia Nisei; Stage 6, at 13 of 103
+over 627, added `ForEach` and generalised
+`WhenThisTurnEnds` into `LaterThisTurn`, now three cards'; Stage 5, at 14
+of 102 over 618, added no variant and gave `GainIceSubtype` its second
+card, Pelangi; Stage 4, at 15 of 102 over 609 —
+written here as 101 at its close, which `Repeat` had made 102 — added
+`Repeat` and gave `RevealHand` its second card; Stage 3, at 15 of 101 over 600, added no variant and five
+words beside it; Stage 2, at 15 of 101 over 590, added none and changed no engine
+code; Stage 1, at 15 of 101 over 580, added none; Uprising Stage 8, at
+15 of 101 over 573, added none and closed the set;
 Stage 7b, at 16 of 101 over 568, added none and gave Sisyphus
 Protocol's `ForceEncounter` two more cards, Konjin and Ganked!; Stage 7a,
 at 17 of 101 over 566, added none and gave `ChooseServer` its second card,
@@ -76,6 +98,64 @@ of 70 single-use, 3 unused, over 184 files: 334 cards later the single-use count
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
 
+## Standard's tournament lists — DONE (6 October 2026)
+
+Owed by the 26 September decision once Standard was complete, and blocked
+until the cloud environment could reach NetrunnerDB and Always Be Running.
+Twelve published lists joined the `Sample` pool, and `matchups()` went from
+16 × 12 = 192 pairings to 23 × 17 = 391.
+
+- **Which lists, by one rule, so nobody chose them by taste.** The meta is
+  the 2026 World Championship's top cut (284 players, 2 October 2026): every
+  identity a top-sixteen player brought. Each identity's list is the
+  best-placed one *published* — linked from Always Be Running to
+  NetrunnerDB — from the championships played under the current card pool
+  and balance update: Worlds, then the EMEA, Americas and APAC Online
+  Continentals, largest event first and by top-cut rank within one. Only
+  three of Worlds' top sixteen published, which is why one event was not
+  enough. Mercury: Chrome Libertador is the one identity with no published
+  list in those events, and is left out rather than filled from elsewhere.
+- **A script writes them, never a hand** (`scripts/tournament_decks.py`;
+  `--check` names a file that differs from the sources). Each deck is
+  `tournament_<identity card id>`, under its published title, with the
+  author, placing and NetrunnerDB link as its description. The bot's style
+  is left empty (balanced): how a list wants to be played is a reading this
+  project writes, and a published list arrives without one.
+- **The lists:** Corp — AU Co. (*Cavalry Charge*), Precision Design (*High
+  Speed Rail 3.0*), LEO Construction (*She*), Reality Plus (*Worlds R+*),
+  Nebula (*A Kingly Gift*), Nuvem SA (*Myoshued Regards*), Ob Superheavy
+  (*worlds ob*); Runner — Magdalene (*Didn't Get Gamelossed*), MuslihaT
+  (*Thieving hands*), René (*Werewolf*), Sebastião (*Seb Seb Seb*), Vic
+  (*worlds vic*). Every card in them was already built; none needed a change.
+- **Two read as not Standard, and that is NetrunnerDB's list, not the
+  decks.** The events were played under the Standard Balance Update 26.08,
+  which unbans NBN: Reality Plus and Svyatogor Excavator; NetrunnerDB's v3
+  `formats/standard` still names Ban List 26.03 as active, and
+  `formats.json` is what `catalog_sync.py` reads from it. The Reality Plus
+  and Ob lists are pinned Eternal and Casual until NetrunnerDB moves and the
+  catalog is synced; the other ten are Standard. None is Startup, so the
+  Startup pass stays 90 pairings.
+- **The new lists found one bug, in the bots' sampling.** At seed 27 of
+  the view sweep (Quick and Dirty against the Magdalene list, a random
+  Corp and the planner Runner) Muse installed a program out of the stack
+  short of memory, and the payment asking which program to trash was
+  parked over the stack selection. `ClientView::selection` is the
+  payment's candidates then, and `determinize::seat_selection` seated them
+  into the stack: rig cards over stack positions, and the selected card a
+  guess. The planner's sample held Daily Casts there, which installs with
+  no question, and its replay of the answer left it unused — the debug
+  assertion in `engine::settle_payment`. A payment parked over a selection
+  now seats only the card its install question names, at the one position
+  selected (`a_payment_parked_over_a_stack_selection_keeps_the_selected_card`).
+- **The sweeps.** Both 256-seed sweeps are green, the index one as it
+  stood and the view one with one reasoned entry: the Runner rotation went
+  from 27 decks to 32, so *Dead Reckoning* is played exactly the card
+  gate's floor (8 seeds, 24 games) and its two Orcas, a 10[c] program,
+  went unseen; at 512 seeds (1,536 games) the view sweep saw it with every
+  gate green, so `CARDS_RARE_WITH_SWEEP_DECKS` demands it from that batch.
+  The Corp rotation (43 decks) was already past the floor at 256 seeds, so
+  the deep run demands no Corp deck's cards; 512 seeds does.
+
 ## Inventory and order
 
 "Unbuilt" counts unique titles with no card file, less reprints of cards
@@ -91,7 +171,7 @@ earlier tranche.
 | 5 | Midnight Sun + Booster Pack | `msbp` 32001–32007, `ms` 33001–33065 | 72 | 65 | 35 / 30 | 5 | Drago Ivanov, Endurance, Nyusha "Sable" Sintashta, Svyatogor Excavator |
 | 6 | Uprising + Booster Pack | `urbp` 27001–27007, `ur` 26066–26130 | 72 | 65 | 35 / 30 | 3 | Bellona, Cayambe Grid, Cyberdex Sandbox, Engram Flush, Gold Farmer, Hoshiko Shiro, Moshing, Project Vacheron |
 | 7 | Downfall | `df` 26001–26065 | 65 | 65 | 35 / 30 | 4 | Bukhgalter, Rezeki, Sting! |
-| 8 | NSG reprint packs | `su21` 31001–31082, `sm` 29001–29018, `mor` 28001–28006 | 106 | 91 | 47 / 44 | 8 | — (not in Standard) |
+| 8 | NSG reprint packs and the Core Set's remainder | `su21` 31001–31082, `sm` 29001–29018, `mor` 28001–28006, `core` 01001–01113 | 219 | 91 + 68 | 47 / 44 + 39 / 29 | 8 + 0 | — (not in Standard) |
 
 **454 unbuilt cards for Standard and 91 for the reprints.** Standard 2026
 (`standard_2026_vantage_point`, 613 cards) is System Gateway, Ashes
@@ -101,7 +181,9 @@ Rehearsal), Elevation and Vantage Point. Midnight Sun and Uprising each
 reprint their own booster pack's 7 cards, so each tranche counts 7 fewer
 than it prints. In the reprint packs, 11 System Update 2021 titles (The
 Maker’s Eye and two identities among them) and Salvaged Memories'
-Scorched Earth are already built.
+Scorched Earth are already built. The Core Set's 68 are the cards it
+alone prints and nobody built: the 18 it shares with a reprint pack are
+counted there, and its 27 built ones include all seven identities.
 
 A card on a ban list is still built, because Eternal allows it. Within its
 set it goes last.
@@ -371,6 +453,24 @@ PR that made this list (29 September 2026).
 
 - **Prāna Condenser** (UR 1): "whenever **you** would do net damage" hears every net damage about to be suffered, because `EventFilter::Damage` reads the kind and not who does it; a Runner card that does net damage to its own Runner would be offered to the Corp to prevent.
 - **Earth Station: SEA Headquarters** (UR 8): its additional cost to run is paid as the server is announced, before the run's own pools exist, so neither bad publicity's credits (rightly, CR 6.3.3) nor a run event's (Overclock's, placed as its run begins here) nor a card's "during runs" credits pay it. GameNET's "causes the Runner to spend" does not hear it, as it hears no standing effect's price.
+- **Stargate** (DF 1): "reveal the top 3 cards of R&D" shows them to the Runner as the selection's candidates, and the Corp is shown only the card trashed (`CardsSelected { revealed }`, faceup in Archives); the two left on R&D are not announced to the Corp. No card in the pool reads a reveal of R&D.
+- **Loot Box** (DF 5): "Reveal the top 3 cards of the stack" shows them to the Corp as the selection's candidates, and the Runner is shown only the card added to the grip (`CardsSelected { revealed }`), as Stargate's reveal shows the Corp only the card trashed.
+- **Pelangi** (DF 5): "Choose an ice subtype" offers barrier, code gate and sentry, the three a breaker reads (`IceType`); a subtype no breaker reads (trap, AP, bioroid) is not offered.
+- **“Baklan” Bochkin** (DF 5): "X hosted power counters" is every counter on it — the card is trashed with them, so a smaller X could only derez less.
+- **Reduced Service** (DF 6): "you may pay up to 4[credit]" loses the credits from the credit pool rather than paying them, as Focus Group's X does.
+- **In the Groove** (DF 6): "Play only as your first [click]" is the turn's first action (`NoActionTakenThisTurn`, Petty Cash's), which every first action in the pool spends a click on.
+- **Complete Image** (DF 8): the names offered are every playable Runner card, not the format's pool; and "repeat this process" reads only damage dealt in the same resolution, so damage an interrupt held for a later action ends the process.
+- **Whistleblower** (DF 8): the names offered are the playable agendas; and the steal is made as the agenda's access begins, before any other "when accessed" ability the agenda has would be asked about.
+- **Direct Access** (DF 8): the identities lose their abilities from the moment the run begins until it ends, not from the play of the event; and "this event" is a copy of it in the heap, which is where the event is by then.
+- **Always Have a Backup Plan** (DF 8): the second run is offered as a choice of one server; and the ice the first run encountered last is the engine's alone (`RunState::last_encountered`), so a bot's sample of the second run does not bypass it.
+- **MirrorMorph: Endless Iteration** (DF 8): "take another different action, paying [click] less" is a click gained and the next action refused if it is one already taken this turn, which lets a fourth click's action come before the extra one where the rules have the extra one first; nothing in the pool can tell the two apart. With no different action left to take, the Corp may end its turn with the click unspent, the extra action forgone.
+- **Hyoubu Institute** (DF 7): the top card of the stack is revealed by a one-card selection the Corp confirms, which shows it to the Corp a moment before the Runner.
+- **Khusyuk** (DF 7): the install cost is chosen from 1 to 10, Orca's printed 10 being the highest of a Runner card in the pool.
+- **The Class Act** (DF 7): drawn cards go straight to the grip once the interrupt has resolved, never into a set-aside zone first (CR 8.4.2, 8.4.5); "when a discard phase ends" hears the Runner's own, so a copy installed during the Corp's turn draws nothing at the Corp's; and a draw made while something else is parked for prevention is not announced (the Prevention Rule's one-slot rule), so it is not "the first time".
+- **Project Yagi-Uda** (DF 7): "for each hosted advancement counter past 3" is Dividends, counted past the requirement as the score began, which is 3 unless a card has changed it; and the card swapped in is not heard as installed (CR 8.8.4b's install trigger conditions), as Mitra Aman's and Tatu-Bola's are not.
+- **Letheia Nisei** (DF 7): "the first time … during each run" is a use limit (`OncePerRun`), spent when it resolves; the Runner approaches the server again only once Letheia has trashed itself, so no card in the pool can tell the two apart.
+- **Saisentan** (DF 7): the extra net damage reads what the subroutine's own damage trashed in the same resolution (`LastDamageTrashed`), so damage parked for an interrupt and dealt on a later action is not read for its type, as Diviner's is not.
+- **Flip Switch** (DF 6): "[trash]: Jack out" pays the jack-out as part of the cost (`Cost::JackOut`, which Lionsmane offers), so it is made with the trash rather than after it; nothing can come between the two.
 - **Hoshiko Shiro: Untold Protagonist** (UR 2): the catalog folds the flip side's text into the front's and keeps none of its other numbers, so a flipped Hoshiko has the front's subtypes (Natural) and link (0). DreamNet's "if your identity is digital" reads her front either way (`EffectRequirement::IdentityMatches`).
 
 ### Recorded deviations from the Comprehensive Rules
@@ -423,6 +523,9 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Wall to Wall** (UR 4): "resolve up to 3 in any order" is 3 of the 4, the counter's piece of ice optional, so a Corp that wants neither the draw nor the asset back in HQ must take one of them.
 - **GameNET: Where Dreams are Real** (UR 5): "a Corp card ability causes the Runner to spend or lose" is read as four things, without a ruling to hand (NetrunnerDB's rulings were out of reach): a loss the card's text resolves (Gold Farmer's), the cost of an ability the card prints for the Runner (F2P's 2[credit]), a paid choice it offers ("end the run unless the Runner pays") and a bid in a trace it began (CR 10.8.6d). Credits a Corp card's standing effect makes the Runner pay — a raised cost, an additional cost — are no ability's and are not heard.
 - **Transport Monopoly** (UR 5): "use this ability only during a run" is Proprionegation's `DuringRun`, the run from its initiation to the server's approach; after that the run's success is already decided.
+- **Focus Group** (DF 4): "you may pay X[credit]" loses X from the credit pool rather than paying it (no Corp pool pays for an operation's effect), and "1 installed card" offers the Corp's own installs, where the printed card admits the Runner's, on which a counter does nothing.
+- **Storgotic Resonator** (DF 3): "the first time each turn you trash a card that matches the faction of the Runner's identity" is a use limit spent as the trigger resolves (`And(TriggeringCardOfRunnersFaction, OncePerTurn)`), because the turn log has no faction to narrow a first time by — the third card deferred on it, after Ryō "Phoenix" Ōno and The Back — so a Resonator installed after the turn's first such trash hears the next.
+- **Remastered Edition** (DF 2): "Place 1 advancement counter on an installed card" offers the Corp's own installs, where the printed card admits the Runner's, on which a counter does nothing (as Moon Pool's).
 - **Project Vacheron** (UR 8): "it is worth 0 agenda points" is 3 taken off its printed 3 (`AgendaPoints` of −3 under the `while`); nothing else in the pool changes what an agenda in the Runner's score area is worth but Let Them Dream's own text.
 
 ### Bot debts — cards the heuristic never plays (Phase 5 §25's list)
@@ -671,7 +774,8 @@ Division.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
-**Decks:** Sweep decks on its four identities.
+**Decks:** Sweep decks on its four identities (Az McCaffrey's,
+Moonlighting, at Stage 1; Lat's, Level Pegging, at Stage 4).
 
 **Stages:**
 1. **Corp, composes:** Salvo Testing, Fujii Asset Retrieval, Jaguarundi, Attini,
@@ -937,32 +1041,53 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 
 **Decks:** Sweep decks on its four identities.
 
+**Re-read at Stage 1** (5 October 2026, against the DSL at Uprising's
+close). Of the seven "composes", three needed a word each and no `Effect`:
+a use limit per printed ability (The Artist, CR 9.3.6g), job and
+connection columns in the turn log (Az McCaffrey), and a revealed card
+trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
+
 **Stages:**
-1. **Runner, composes:** Isolation, Spec Work, Rezeki, Gauss, The Artist,
-   Az McCaffrey, Stargate.
-2. **Corp, composes:** Calvin B4L3Y, Nanoetching Matrix, CSR Campaign,
-   Tiered Subscription, Red Level Clearance, Roughneck Repair Squad,
-   Remastered Edition, Architect Deployment Test, Sandstone, SDS Drone
-   Deployment (a `steal_cost` of `Cost::Trash`).
-3. **Trigger words and bad-publicity removal:** Supercorridor, Fencer
-   Fueno, Trickster Taka, Congratulations!, Demolisher, Bukhgalter,
-   Storgotic Resonator, Masterwork (v37), Trebuchet, Increased Drop Rates.
-4. **Amount, requirement and subtype words:** Lat, Sting!, Daily Quest,
-   Fully Operational, Focus Group, Game Over, Hagen, Vulnerability Audit,
-   The Nihilist, Blueberry!™ Diesel.
-5. **Encounter and ice-state words:** Chisel, “Baklan” Bochkin, Pelangi,
-   Afshar, Rime, Loot Box, Public Health Portal, Secure and Protect, Rejig,
-   Divested Trust.
-6. **Triggers created by a played card, costs to run, interrupts:** In the
-   Groove, Climactic Showdown, Cold Site Server, Reduced Service, Utae (X),
-   Lucky Charm (an interrupt on "end the run"), Flip Switch (a jack-out as
-   an effect, and a lower trace base).
-7. **Hidden information and new zones:** Hyoubu Institute, Khusyuk, The
-   Class Act (a replacement on draw), Project Yagi-Uda, Letheia Nisei,
-   Saisentan.
+1. **Runner, composes** (built, 5 October 2026): Isolation, Spec Work,
+   Rezeki, Gauss, The Artist, Az McCaffrey, Stargate. Stage 1 is
+   complete.
+2. **Corp, composes** (built, 5 October 2026): Calvin B4L3Y, Nanoetching
+   Matrix, CSR Campaign, Tiered Subscription, Red Level Clearance,
+   Roughneck Repair Squad, Remastered Edition, Architect Deployment Test,
+   Sandstone, SDS Drone Deployment (a `steal_cost` of `Cost::Trash`).
+   Stage 2 is complete.
+3. **Trigger words and bad-publicity removal** (built, 5 October 2026):
+   Supercorridor, Fencer Fueno, Trickster Taka, Congratulations!,
+   Demolisher, Bukhgalter, Storgotic Resonator, Masterwork (v37),
+   Trebuchet, Increased Drop Rates. Stage 3 is complete.
+4. **Amount, requirement and subtype words** (built, 5 October 2026): Lat,
+   Sting!, Daily Quest, Fully Operational, Focus Group, Hagen,
+   Vulnerability Audit, The Nihilist, Blueberry!™ Diesel. Game Over moved
+   to Stage 6: its "for each card … the Runner may pay 3[credit] to
+   prevent" is a loop of decisions over cards. Stage 4 is complete.
+5. **Encounter and ice-state words** (built, 5 October 2026): Chisel,
+   “Baklan” Bochkin, Pelangi, Afshar, Rime, Loot Box, Public Health Portal,
+   Secure and Protect, Divested Trust. Rejig moved to Stage 6: its discount
+   is the printed cost of the card its additional cost returned to the
+   grip, which no cost hands to the effect it pays for. Stage 5 is
+   complete.
+6. **Triggers created by a played card, costs to run, interrupts** (built,
+   6 October 2026): In the Groove, Climactic Showdown, Cold Site Server,
+   Reduced Service, Game Over (a cost to prevent each trash, moved from
+   Stage 4), Rejig (a card an additional cost moved, read by the effect it
+   pays for, moved from Stage 5), Utae (X), Lucky Charm (an interrupt on
+   "end the run"), Flip Switch (a jack-out, paid as a cost, and a lower
+   trace base). Stage 6 is complete.
+7. **Hidden information and new zones** (built, 6 October 2026): Hyoubu
+   Institute (a reveal as a moment), Khusyuk (a set-aside count by printed
+   install cost), The Class Act (an interrupt on a draw, not a prevention),
+   Project Yagi-Uda (a swap out of HQ into a root as well as ice), Letheia
+   Nisei, Saisentan. Stage 7 is complete.
 8. **Naming a card, blanking an identity, memory across runs, action
-   kinds:** Whistleblower, Complete Image, Direct Access, Always Have a
-   Backup Plan, MirrorMorph.
+   kinds** (built, 6 October 2026): Whistleblower, Complete Image, Direct
+   Access, Always Have a Backup Plan, MirrorMorph. Stage 8 is complete, and
+   Downfall with it — and so is Standard, whose last unbuilt cards were
+   Downfall's.
 
 **Riskiest:**
 - Always Have a Backup Plan: the last ice of one run acted on in a second
@@ -973,16 +1098,42 @@ Farmer, Hoshiko Shiro, Moshing, Project Vacheron.
 
 **Banned:** Bukhgalter, Rezeki, Sting!.
 
-### 8. The reprint packs — 91 cards (C 35 / V 40 / M 17)
+**Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
+
+- **Stage 1** — seven Runner cards and Az McCaffrey's Sweep deck, Moonlighting, with no new `Effect`: a once-per-turn use is the printed ability's, the turn log counts job and connection resources, and a card a selection revealed is trashed faceup (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 2** — ten Corp cards, composed, with no new `Effect` and no change to the engine; SDS Drone Deployment is the first steal cost that takes a card (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 4** — nine cards and Lat's Sweep deck, Level Pegging, with one new `Effect` (`Repeat`): three amounts, an action-phase rez, the Runner's successful servers last turn, an agenda that forbids its own score, and a card returned to the bottom of the stack (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 8** — five cards and MirrorMorph's Sweep deck, Endless Loop, with two new `Effect`s (`ChooseCardName`, `StealAccessedCard`): a card name is chosen among the pool's playable cards and written into what follows, "repeat this process" resolves the choice again, both identities lose their abilities for a run, a run remembers the last ice it encountered for the next to bypass, a delayed ability can last a run, and the next action can be required to be a different one (`claude/serene-einstein-6bhlig`, 6 October 2026). **Downfall is complete: 65 of 65**, and Standard with it.
+- **Stage 7** — six cards and Hyoubu Institute's Sweep deck, Open Book, with no new `Effect`: a reveal is a moment heard by whoever revealed, the Runner's draw is announced and parked so an interrupt resolves before it, a card from HQ may be swapped into a root as well as for ice, a chosen number reaches the amounts and filters it is read in, and the run moves to the outermost position of the server it is on (`claude/serene-einstein-6bhlig`, 6 October 2026).
+- **Stage 6** — nine cards with one new `Effect` (`ForEach`): a delayed ability waits for any moment of the turn, once or every time; an upgrade's run cost counts its counters; a cost returns an installed card to the grip and the event reads its printed cost; and two interrupts, on a Corp card's "end the run" and on a trace's base strength (`claude/serene-einstein-6bhlig`, 6 October 2026).
+- **Stage 5** — nine cards with no new `Effect`: the encountered ice gains a subtype for the encounter, a piece of ice rezzed whenever a non-ice card could be on a run against its server, an install from a card's text limited to a central, and the card a trigger heard named in a choice parked behind a paid one (`claude/serene-einstein-6bhlig`, 5 October 2026).
+- **Stage 3** — ten cards with no new `Effect`: a trash cost asked of any card being accessed, a surcharge on an install, hosted credits for the rest of a successful run and for programs during runs, and a requirement on the trashed card's faction (`claude/serene-einstein-6bhlig`, 5 October 2026).
+
+### 8. The reprint packs and the Core Set's remainder — 159 cards (C 95 / V 45 / M 20)
+
+**Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
+
+- **Stage 1a** — ten System Update 2021 Runner cards, composed, with no new `Effect` and no change to the engine (Mimic, Abagnale, Legwork, Dirty Laundry, Career Fair, Professional Contacts, Liberated Account, Earthrise Hotel, Scrubber, Xanadu) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
+- **Stage 1b** — eight more Runner cards across the three reprint packs, composed, with no new `Effect` and no change to the engine (Cache, Lucky Find, Prepaid VoicePAD, Indexing, Retrieval Run, Labor Rights, Aesop’s Pawnshop, Emergency Shutdown) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
-Opus Reprint (6). All are FFG designs, and none is in Standard.
+Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
+(C 60 / V 5 / M 3, surveyed 6 October 2026 at `3cec1a7`, below). All are
+FFG designs, and none is in Standard. The tranche closes with a `core`
+gate (`every_core_set_card_is_implemented_or_explicitly_excluded`, a
+`CORE_UNIMPLEMENTED` list that only shrinks, and `core` in
+`pool_status.py`'s gated packs), so every set the catalog embeds is
+gated and Eternal's in-catalog count reads complete.
 
 **Decks:** Sweep decks on the eight System Update 2021 identities not yet
-built.
+built. The Core Set's cards go into the Sweep decks the seven Core
+identities already head (Pay As You Go, Hit List, Safety Net, A Thousand
+Cuts, Retirement Package, Paid Content, Hostile Bid), each card a swap
+for one other decks still carry.
 
-The survey's ten stages, in order:
-1. Runner, composes (two stages).
+The survey's eleven stages, in order (the Core Set's cards join the first
+nine by kind):
+1. Runner, composes (two stages): **1a and 1b closed**, eighteen cards.
 2. Corp ice and upgrades, composes.
 3. Corp agendas and operations, composes.
 4. Trigger words: Ken “Express” Tenma, Near-Earth Hub, Turtlebacks,
@@ -1003,9 +1154,60 @@ The survey's ten stages, in order:
    - Subliminal Messaging and Crowdfunding: abilities from Archives and
      the heap.
    - Slot Machine.
+10. **Expose** (CR 1.21.4): Infiltration, Lemuria Codecracker and Zaibatsu
+    Loyalty, from the Core Set.
 
 Most of what this tranche needs has been built by the time it arrives; the
-exceptions are Magnet, and abilities that work from Archives or the heap.
+exceptions are Magnet, abilities that work from Archives or the heap, and
+expose.
+
+**The Core Set's remainder** — read against the DSL at `3cec1a7`, where
+most of what these 2012 cards print has since been built for a later
+card:
+- **C (60), each joining the reprint stage of its kind:**
+  - Runner economy and rig: Access to Globalsec, Akamatsu Mem Chip,
+    Armitage Codebusting, Bank Job (an access replacement, as Stargate's),
+    Data Dealer, Desperado, Easy Mark, Grimoire (Cookbook's "it"), Magnum
+    Opus, Rabbit Hole, The Personal Touch (`Scope::Host`), Wyldside.
+  - Runner events: Déjà Vu, Demolition Run (an access ability on the
+    run's event), Modded, Special Order, Tinkering (a subtype gained for a
+    duration).
+  - Breakers and a virus: Aurora, Battering Ram, Ninja, Pipeline, Yog.0;
+    Datasucker (a lingering −1 strength for the encounter).
+  - Corp ice: Cell Portal (`MoveRunToOutermost`, a jack-out, a derez of
+    itself), Data Mine, Data Raven (an encounter's choice and a hosted
+    power counter's ability), Hadrian's Wall and Shadow (advanceable,
+    Ice Wall's strength), Heimdall 1.0, Ichi 1.0 and Viktor 1.0 (the
+    bioroid click break), Hunter, Matrix Analyzer, Neural Katana, Wall of
+    Thorns.
+  - Corp assets, upgrades and agendas: Adonis Campaign (Daily Casts'
+    counter pool), Aggressive Secretary, Ghost Branch and Project Junebug
+    (ambushes paid on access, as Snare!), Akitaro Watanabe and
+    Experiential Data (`Scope::IceProtectingThisServer`), Melange Mining
+    Corp., Red Herrings (persistent, an additional cost to steal),
+    Research Station, Security Subcontract (`Cost::Trash`); Accelerated
+    Beta Test, AstroScript Pilot Program, Breaking News, Posted Bounty,
+    Priority Requisition, Private Security Force.
+  - Corp operations: Aggressive Negotiation, Anonymous Tip, Beanstalk
+    Royalties, Closed Accounts, Neural EMP, Precognition (VP's arranging
+    of R&D), SEA Source (a trace), Shipment from Kaguya, Shipment from
+    MirrorMorph.
+- **V (5), to stage 5 or stage 6:**
+  - Chum: a delayed ability on the next encounter, with a strength boost
+    for that ice and "if the Runner did not fully break that ice".
+  - Crypsis: "if you used this program to break a subroutine during that
+    encounter", heard as the encounter ends.
+  - Djinn: hosted programs whose memory does not count against the limit
+    (a `ContinuousKind` beside `MayHost`).
+  - Stimhack: damage that "cannot be prevented" (CR 9.3.3g), the first
+    in the pool.
+  - Wyrm: a break limited to ice of strength 0 or less.
+- **M (3), a stage of their own after stage 9: expose** (CR 1.21.4).
+  Infiltration, Lemuria Codecracker and Zaibatsu Loyalty. To expose a
+  card is to reveal an installed, unrezzed card, and the reveal is a
+  moment, which Stage 7 of Downfall built. Zaibatsu Loyalty is the
+  interrupt that has waited on it since the Prevention Rule (a
+  `Preventable::Expose` and a `WouldHappen` arm).
 
 **Riskiest:**
 - Magnet: cuts across Trojan hosting and the continuous layer.

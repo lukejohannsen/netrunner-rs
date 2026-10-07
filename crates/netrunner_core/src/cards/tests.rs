@@ -1633,19 +1633,23 @@ mod system_gateway {
             .expect("corp passes encounter window, firing the first subroutine");
 
         assert_eq!(after_first.runner.grip.len(), 3, "only the first subroutine's 2 net damage has resolved");
+        // A jack-out, paid as the cost of the offer (Lionsmane's shape),
+        // never "end the run": a Corp card's "end the run" is what Lucky
+        // Charm prevents, and this is the Runner's own choice.
         assert!(
-            matches!(after_first.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            after_first.pending_paid_choice.as_ref().is_some_and(|offer| offer.side == Side::Runner && offer.cost == crate::dsl::Cost::JackOut),
             "the Runner is asked whether to jack out before the second subroutine fires"
         );
 
         // Jack out: the run ends, the second subroutine never fires.
-        let (jacked_out, _) = apply_action(&after_first, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+        let (jacked_out, events) = apply_action(&after_first, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
             .expect("runner jacks out");
         assert!(jacked_out.active_run.is_none(), "the run is over");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::RunJackedOut { .. })), "jacked out, not ended");
         assert_eq!(jacked_out.runner.grip.len(), 3, "no further damage");
 
         // Stay: the second subroutine fires and the run goes on.
-        let (stayed, _) = apply_action(&after_first, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 })
+        let (stayed, _) = apply_action(&after_first, &registry, PlayerAction::DeclinePendingPaidChoice)
             .expect("runner stays in the run");
         assert_eq!(stayed.runner.grip.len(), 1, "the second subroutine's 2 net damage resolved");
         assert!(stayed.active_run.is_some(), "and the run continues past Karunā");
@@ -6575,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "conduit", "cordyceps", "fermenter", "hantu", "leech", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "fermenter", "hantu", "leech", "pelangi", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -12952,7 +12956,7 @@ mod vantage_point {
         assert_eq!(crate::rules::ActionSpace::action_at(&state, index), Some(use_it.clone()), "and read back from it");
         assert!(crate::rules::get_action_mask(&state, &registry)[index], "and in the mask");
         let (state, events) = apply_action(&state, &registry, use_it.clone()).expect("use Tocsin");
-        assert!(events.iter().any(|e| matches!(e, GameEvent::CardRevealed { side: Side::Corp, card } if card.0 == "tocsin")));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardRevealed { side: Side::Corp, card, .. } if card.0 == "tocsin")));
         assert_eq!((state.corp.resources.clicks, state.corp.resources.credits), (Clicks(2), Credits(4)));
         assert!(state.corp.archives.iter().any(|a| a.card.0 == "tocsin" && !a.facedown), "trashed faceup: it was revealed");
         assert_eq!(state.corp.hq, vec![id("hedge_fund")]);
@@ -24823,5 +24827,2198 @@ mod uprising {
             matches!(action, PlayerAction::InstallCard { zone: ServerId::Remote(n), .. } if n != 0)
         });
         assert!(!into_new_remote, "limit 1 remote server: {:?}", crate::rules::legal_actions_for(&state, &registry, Side::Corp));
+    }
+}
+
+/// Downfall (`df`), tranche 7 of the NSG pool plan
+/// (docs/roadmap/nsg-card-pool.md).
+mod downfall {
+    use super::*;
+    use crate::rules::{GameEvent, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, card), ability_index })
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> (GameState, Vec<GameEvent>) {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection")
+    }
+
+    fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        let installed = state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("in the rig");
+        crate::rules::continuous::breaker_strength(state, registry, installed)
+    }
+
+    fn root_at(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Remote(remote),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }
+    }
+
+    fn rezzed_root_at(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { rezzed: true, ..root_at(card, remote) }
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, option_index: usize) -> GameState {
+        apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("choose").0
+    }
+
+    fn choosing(state: &GameState) -> bool {
+        matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { .. }))
+    }
+
+    /// A Runner's run on `remote`, with no ice, through to the access of its
+    /// root card, every window passed.
+    fn accessing_remote(state: &GameState, registry: &CardRegistry, remote: u32) -> GameState {
+        let (running, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(remote) }).expect("run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        close_all_windows(apply_action(&running, registry, PlayerAction::CompleteRun).expect("breach").0, registry).0
+    }
+
+    // ---- Stage 1: Runner, composes ----
+
+    #[test]
+    fn isolation_trashes_an_installed_resource_as_its_cost_and_gains_seven() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("isolation")];
+        state.runner.rig = vec![rig("daily_casts", 2001)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("isolation") }).expect("play");
+        assert!(played.runner.rig.is_empty() && played.runner.heap.contains(&id("daily_casts")), "the cost");
+        assert_eq!(played.runner.resources.credits, Credits(10 - 2 + 7));
+
+        state.runner.rig = vec![rig("corroder", 2001)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("isolation") }).is_err(), "a program is not a resource");
+    }
+
+    #[test]
+    fn spec_work_trashes_an_installed_program_as_its_cost_then_gains_four_and_draws_two() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("spec_work")];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.runner.rig = vec![rig("corroder", 2001)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("spec_work") }).expect("play");
+        assert!(played.runner.heap.contains(&id("corroder")), "the cost");
+        assert_eq!(played.runner.resources.credits, Credits(10 - 1 + 4));
+        assert_eq!(played.runner.grip, vec![id("sure_gamble"); 2], "draw 2");
+
+        state.runner.rig = vec![rig("daily_casts", 2001)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("spec_work") }).is_err(), "a resource is not a program");
+    }
+
+    #[test]
+    fn rezeki_gains_one_as_the_runners_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("rezeki", 2001)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(10), "the Corp's turn: nothing");
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(11));
+    }
+
+    #[test]
+    fn gauss_gets_three_strength_for_the_turn_it_is_installed_and_breaks_barriers() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("gauss")];
+        let (installed, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("gauss"), trash_first: false }).expect("install");
+        let (mut installed, _) = close_all_windows(installed, &registry);
+        installed.corp.r_and_d = vec![id("hedge_fund")];
+        assert_eq!(installed.runner.resources.credits, Credits(8));
+        assert_eq!(breaker_strength(&installed, &registry, "gauss"), 4, "1 printed, +3 for the remainder of the turn");
+        crate::rules::test_support::enter_start_of_turn(&mut installed, &registry, Side::Corp);
+        assert_eq!(breaker_strength(&installed, &registry, "gauss"), 1, "the turn is over");
+
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 1, ..rig("gauss", 2001) }];
+        let gauss = install_of(&state, "gauss");
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (mut at_ice, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        while at_ice.active_run.as_ref().is_some_and(|run| run.phase != crate::rules::RunPhase::EncounterIce) {
+            let legal = crate::rules::legal_actions(&at_ice, &registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .expect("a way on");
+            at_ice = apply_action(&at_ice, &registry, next).expect("on").0;
+        }
+        let (broken, events) =
+            apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: gauss, ability_index: 0 }).expect("1[credit]: break a barrier subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits, Credits(at_ice.runner.resources.credits.0 - 1));
+        let (pumped, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: gauss, ability_index: 1 }).expect("2[credit]: +2 strength");
+        assert_eq!(breaker_strength(&pumped, &registry, "gauss"), 3);
+    }
+
+    #[test]
+    fn the_artists_two_abilities_are_each_once_per_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_artist", 2001)];
+        state.runner.grip = vec![id("corroder"), id("sure_gamble"), id("dzmz_optimizer")];
+        let (gained, _) = use_ability(&state, &registry, "the_artist", 0).expect("[click]: gain 2[credit]");
+        assert_eq!((gained.runner.resources.clicks, gained.runner.resources.credits), (Clicks(3), Credits(12)));
+        assert!(use_ability(&gained, &registry, "the_artist", 0).is_err(), "once per turn");
+
+        let (asked, _) = use_ability(&gained, &registry, "the_artist", 1).expect("the other ability has a use of its own (CR 9.3.6g)");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseCards { .. })));
+        let offered = toggles(&asked, &registry, Side::Runner);
+        assert_eq!(offered.len(), 2, "a program or a piece of hardware, not an event");
+        let corroder = asked.runner.grip.iter().position(|card| *card == id("corroder")).expect("in the grip");
+        let (installed, _) = pick(&asked, &registry, corroder);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(12 - (2 - 1)), "paying 1[credit] less");
+        assert!(use_ability(&installed, &registry, "the_artist", 1).is_err(), "once per turn");
+        assert!(use_ability(&installed, &registry, "the_artist", 0).is_err(), "and the first is still spent");
+    }
+
+    #[test]
+    fn az_mccaffrey_lowers_the_first_job_or_connection_resource_or_hardware_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("az_mccaffrey_mechanical_prodigy"));
+        state.runner.grip = vec![id("daily_casts"), id("telework_contract"), id("dzmz_optimizer"), id("friend_of_a_friend")];
+        let install_resource = |state: &GameState, card: &str| {
+            let (state, _) = apply_action(state, &registry, PlayerAction::InstallResource { card_id: id(card), host: None }).expect("install");
+            close_all_windows(state, &registry).0
+        };
+        let state_after = install_resource(&state, "daily_casts");
+        assert_eq!(state_after.runner.resources.credits, Credits(7), "Daily Casts is neither a job nor a connection: 3, and Az's first is unspent");
+        let state_after = install_resource(&state_after, "telework_contract");
+        assert_eq!(state_after.runner.resources.credits, Credits(7), "a job: 1 - 1");
+        let (state_after, _) = apply_action(&state_after, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer") }).expect("install");
+        assert_eq!(state_after.runner.resources.credits, Credits(5), "the second: full price");
+
+        let (hardware_first, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer") }).expect("install");
+        assert_eq!(hardware_first.runner.resources.credits, Credits(9), "hardware: 2 - 1");
+        let connection = install_resource(&state, "friend_of_a_friend");
+        assert_eq!(connection.runner.resources.credits, Credits(8), "a connection: 3 - 1");
+    }
+
+    #[test]
+    fn stargate_runs_rnd_and_trashes_one_of_the_top_three_faceup_instead_of_breaching() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("stargate", 2001)];
+        // The top of R&D is the end of the list.
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("enigma"), id("pad_campaign"), id("hostile_takeover")];
+        let (running, _) = use_ability(&state, &registry, "stargate", 0).expect("[click]: run R&D");
+        assert_eq!(running.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD));
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (asked, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("successful");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        assert!(asked.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_none(), "nothing accessed");
+        let offered = toggles(&asked, &registry, Side::Runner);
+        assert_eq!(offered, vec![2, 3, 4], "the top 3 cards");
+        let (trashed, events) = pick(&asked, &registry, 3);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { revealed: true, .. })), "revealed");
+        assert_eq!(trashed.corp.archives, vec![ArchivedCard::faceup(id("pad_campaign"))], "seen, so faceup (CR 4.4.6b)");
+        assert_eq!(trashed.corp.r_and_d, vec![id("ice_wall"), id("hedge_fund"), id("enigma"), id("hostile_takeover")]);
+        assert_eq!(trashed.runner.resources.agenda_points, AgendaPoints(0), "no breach, so no steal");
+
+        let (done, _) = pass_until_settled(trashed, &registry);
+        assert!(use_ability(&done, &registry, "stargate", 0).is_err(), "once per turn");
+    }
+
+    // ---- Stage 2: Corp, composes ----
+
+    #[test]
+    fn calvin_and_nanoetching_click_once_a_turn_and_pay_again_when_the_runner_trashes_them() {
+        let registry = registry();
+        for (card, drew) in [("calvin_b4l3y", true), ("nanoetching_matrix", false)] {
+            let mut state = base_state();
+            state.corp.installed = vec![rezzed_root_at(card, 0)];
+            state.corp.r_and_d = vec![id("hedge_fund"); 6];
+            let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, card), ability_index: 0 }).expect("[click]");
+            let (used, _) = close_all_windows(used, &registry);
+            if drew {
+                assert_eq!(used.corp.hq.len(), 2, "{card}: draw 2 cards");
+            } else {
+                assert_eq!(used.corp.resources.credits, Credits(12), "{card}: gain 2[credit]");
+            }
+            assert!(apply_action(&used, &registry, PlayerAction::ActivateAbility { target: install_of(&used, card), ability_index: 0 }).is_err(), "{card}: once per turn");
+
+            let mut access = state.clone();
+            access.phase = GamePhase::Action(Side::Runner);
+            let accessed = accessing_remote(&access, &registry, 0);
+            let (trashed, _) = apply_action(&accessed, &registry, PlayerAction::TrashAccessedCard { card_id: id(card) }).expect("pay 3 to trash");
+            let (trashed, _) = close_all_windows(trashed, &registry);
+            assert!(choosing(&trashed), "{card}: when the Runner trashes this asset, you may");
+            let paid = close_all_windows(choose(&trashed, &registry, 0), &registry).0;
+            if drew {
+                assert_eq!(paid.corp.hq.len(), 2, "{card}: draw 2 cards");
+            } else {
+                assert_eq!(paid.corp.resources.credits, Credits(12), "{card}: gain 2[credit]");
+            }
+        }
+    }
+
+    #[test]
+    fn csr_campaign_may_draw_a_card_as_the_corps_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![rezzed_root_at("csr_campaign", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 4];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (asked, _) = close_all_windows(state, &registry);
+        assert!(choosing(&asked), "you may draw 1 card");
+        let drawn = close_all_windows(choose(&asked, &registry, 0), &registry).0;
+        assert_eq!(drawn.corp.hq.len(), 2, "1 from CSR Campaign and the mandatory draw");
+        let declined = close_all_windows(choose(&asked, &registry, 1), &registry).0;
+        assert_eq!(declined.corp.hq.len(), 1, "the mandatory draw alone");
+    }
+
+    #[test]
+    fn tiered_subscription_gains_one_the_first_time_each_turn_a_run_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("tiered_subscription", 0)];
+        let (first, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let (first, _) = close_all_windows(first, &registry);
+        assert_eq!(first.corp.resources.credits, Credits(11));
+        let (second, _) = run_to_completion(first, &registry, ServerId::Archives);
+        assert_eq!(second.corp.resources.credits, Credits(11), "the first time each turn");
+    }
+
+    #[test]
+    fn red_level_clearance_resolves_two_of_four_and_its_install_pays_the_ices_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("red_level_clearance"), id("ice_wall")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(90),
+            card: id("enigma"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("red_level_clearance") }).expect("play");
+        let clicked = choose(&asked, &registry, 3);
+        assert_eq!(clicked.corp.resources.clicks, Clicks(3), "3 - 1 to play + 1: gain [click]");
+        let picking = choose(&clicked, &registry, 2);
+        let wall = picking.corp.hq.iter().position(|card| *card == id("ice_wall")).expect("in HQ");
+        let (chosen, _) = pick(&picking, &registry, wall);
+        let (installed, _) = apply_action(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        assert!(installed.corp.installed.iter().any(|card| card.card == id("ice_wall") && card.server == ServerId::Hq));
+        assert_eq!(installed.corp.resources.credits, Credits(10 - 1 - 1), "1 to play and 1 for the second piece of ice on HQ");
+        assert!(installed.pending_decision.is_none(), "two resolved");
+    }
+
+    #[test]
+    fn roughneck_repair_squad_gains_six_for_three_clicks_and_may_remove_a_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![rezzed_root_at("roughneck_repair_squad", 0)];
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("roughneck_repair_squad"), ability_index: 0 };
+        let (clean, _) = apply_action(&state, &registry, use_it.clone()).expect("[click][click][click]");
+        assert_eq!((clean.corp.resources.clicks, clean.corp.resources.credits), (Clicks(0), Credits(16)));
+        assert!(!choosing(&clean), "no bad publicity: nothing to remove");
+
+        state.corp.bad_publicity = 2;
+        let (asked, _) = apply_action(&state, &registry, use_it).expect("[click][click][click]");
+        assert!(choosing(&asked), "you may remove 1 bad publicity");
+        assert_eq!(choose(&asked, &registry, 0).corp.bad_publicity, 1);
+        assert_eq!(choose(&asked, &registry, 1).corp.bad_publicity, 2);
+    }
+
+    #[test]
+    fn remastered_edition_spends_its_counter_to_advance_an_installed_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("remastered_edition", 0) }, root_at("hostile_takeover", 1)];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "remastered_edition") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1, "place 1 agenda counter");
+        let (asked, _) = apply_action(&scored, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("remastered_edition"), ability_index: 0 }).expect("hosted agenda counter");
+        let takeover = toggles(&asked, &registry, Side::Corp);
+        assert_eq!(takeover.len(), 1, "the one installed card");
+        let (advanced, _) = pick(&asked, &registry, takeover[0]);
+        let installed = advanced.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!(installed.advancement_tokens, 1);
+        assert_eq!(advanced.corp.scored_agendas[0].agenda_counters, 0);
+        assert!(apply_action(&advanced, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("remastered_edition"), ability_index: 0 }).is_err(), "no counter left");
+    }
+
+    #[test]
+    fn architect_deployment_test_installs_and_rezzes_one_of_the_top_five_ignoring_all_costs() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("architect_deployment_test", 0) }];
+        // The top of R&D is the end of the list: the bottom card is not one of the five.
+        state.corp.r_and_d = vec![id("enigma"), id("hedge_fund"), id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("hedge_fund")];
+        let (scored, events) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "architect_deployment_test") }).expect("score");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsLookedAt { .. })), "look at the top 5 cards");
+        let offered = toggles(&scored, &registry, Side::Corp);
+        assert_eq!(offered, vec![2, 4], "Ice Wall and PAD Campaign: no operation, and not Enigma, sixth from the top");
+        let (choosing_server, _) = pick(&scored, &registry, 2);
+        let (installed, _) = apply_action(&choosing_server, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        let wall = installed.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("installed");
+        assert!(wall.rezzed, "and rezzed");
+        assert_eq!(installed.corp.resources.credits, Credits(10), "ignoring all costs");
+        assert_eq!(installed.corp.r_and_d.len(), 5);
+
+        let (declined, _) = apply_action(&scored, &registry, PlayerAction::ConfirmCardSelection).expect("you may");
+        assert_eq!(declined.corp.r_and_d.len(), 6);
+    }
+
+    #[test]
+    fn sandstone_loses_a_strength_each_encounter_until_a_purge() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("sandstone"),
+            card: id("sandstone"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let strength_at = |state: &GameState| {
+            let (mut at, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+            while at.active_run.as_ref().is_some_and(|run| run.phase != crate::rules::RunPhase::EncounterIce) {
+                let legal = crate::rules::legal_actions(&at, &registry);
+                let next = legal
+                    .iter()
+                    .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                    .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                    .cloned()
+                    .expect("a way on");
+                at = apply_action(&at, &registry, next).expect("on").0;
+            }
+            let run = at.active_run.as_ref().expect("encountering");
+            (crate::rules::continuous::ice_strength(&at, &registry, &run.ice[0]), at)
+        };
+        let (first, at) = strength_at(&state);
+        assert_eq!(first, 5, "6, and the counter placed as it is encountered");
+        let mut again = at.clone();
+        again.active_run = None;
+        again.paid_ability_window = None;
+        let (second, _) = strength_at(&again);
+        assert_eq!(second, 4, "a second counter");
+
+        let mut corp = again;
+        corp.phase = GamePhase::Action(Side::Corp);
+        let (purged, _) = apply_action(&corp, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        assert_eq!(purged.corp.installed[0].counters, 0, "a virus counter on a Corp card is purged");
+    }
+
+    #[test]
+    fn sds_drone_deployment_costs_a_program_to_steal_and_trashes_one_when_scored() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root_at("sds_drone_deployment", 0)];
+        let accessed = accessing_remote(&state, &registry, 0);
+        assert!(apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("sds_drone_deployment") }).is_err(), "no program to trash");
+
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 2001) }];
+        let accessed = accessing_remote(&state, &registry, 0);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("sds_drone_deployment") }).expect("trash Corroder to steal");
+        assert!(stolen.runner.heap.contains(&id("corroder")));
+        assert_eq!(stolen.runner.resources.agenda_points, AgendaPoints(3));
+
+        let mut corp = base_state();
+        corp.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 5, ..root_at("sds_drone_deployment", 0) }];
+        corp.runner.rig = vec![rig("corroder", 2001), rig("rezeki", 2002), rig("daily_casts", 2003)];
+        let (scored, _) = apply_action(&corp, &registry, PlayerAction::ScoreAgenda { target: install_of(&corp, "sds_drone_deployment") }).expect("score");
+        let programs = toggles(&scored, &registry, Side::Corp);
+        assert_eq!(programs.len(), 2, "the two programs, not the resource");
+        let (trashed, _) = pick(&scored, &registry, programs[0]);
+        assert_eq!(trashed.runner.rig.len(), 2);
+        assert_eq!(trashed.runner.heap.len(), 1);
+    }
+
+    // ---- Stage 3: trigger words and bad-publicity removal ----
+
+    fn holding(card: &str, install: u32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { counters, ..rig(card, install) }
+    }
+
+    fn counters_on(state: &GameState, card: &str) -> Option<u32> {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).map(|installed| installed.counters)
+    }
+
+    fn end_the_runners_turn(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
+        pass_until_settled(ended, registry).0
+    }
+
+    fn ice_at(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// The run on `server` in progress, every window passed, up to its first
+    /// encounter.
+    fn encountering(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut at, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        while at.active_run.as_ref().is_some_and(|run| run.phase != crate::rules::RunPhase::EncounterIce) && at.pending_decision.is_none() {
+            let legal = crate::rules::legal_actions(&at, registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .expect("a way on");
+            at = apply_action(&at, registry, next).expect("on").0;
+        }
+        at
+    }
+
+    fn available(state: &GameState, registry: &CardRegistry, purpose: crate::rules::payment::Purpose<'_>) -> u32 {
+        crate::rules::payment::available(state, registry, Side::Runner, purpose)
+    }
+
+    #[test]
+    fn bukhgalter_gains_two_the_first_time_each_turn_it_fully_breaks_a_piece_of_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("tithe", ServerId::Hq)];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 1, ..rig("bukhgalter", 2001) }];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let brk = PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 };
+        let (once, _) = apply_action(&at, &registry, brk.clone()).expect("1[credit]: break a sentry subroutine");
+        let (once, _) = apply_action(&once, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back");
+        let (twice, _) = apply_action(&once, &registry, brk).expect("and the other");
+        let twice = close_all_windows(twice, &registry).0;
+        assert_eq!(twice.runner.resources.credits, Credits(10 - 2 + 2), "fully broken: gain 2[credit]");
+
+        let mut again = twice;
+        again.active_run = None;
+        again.paid_ability_window = None;
+        let at = encountering(&again, &registry, ServerId::Hq);
+        let brk = PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 };
+        let once = apply_action(&at, &registry, brk.clone()).expect("break").0;
+        let once = apply_action(&once, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back").0;
+        let twice = close_all_windows(apply_action(&once, &registry, brk).expect("break").0, &registry).0;
+        assert_eq!(twice.runner.resources.credits, Credits(10 - 4 + 2), "the first time each turn");
+    }
+
+    #[test]
+    fn congratulations_pays_the_corp_two_and_the_runner_one_and_one_more_when_passed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("congratulations", ServerId::Hq)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let (passed, _) = pass_until_settled(at, &registry);
+        assert_eq!(passed.runner.resources.credits, Credits(11), "the Runner gains 1[credit]");
+        assert_eq!(passed.corp.resources.credits, Credits(10 + 2 + 1), "gain 2[credit], and 1[credit] as the Runner passes it");
+    }
+
+    #[test]
+    fn demolisher_lowers_every_corp_cards_trash_cost_and_gains_one_on_the_first_trash_each_turn() {
+        let registry = registry();
+        let trash_cost = |state: &GameState| match state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| &access.phase) {
+            Some(crate::rules::AccessPhase::PendingChoice { trash_cost, .. }) => *trash_cost,
+            other => panic!("not accessing: {other:?}"),
+        };
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("demolisher", 2001)];
+        state.corp.installed = vec![root_at("pad_campaign", 0), root_at("pad_campaign", 1)];
+        state.corp.installed[1].install_id = InstallId(77);
+        let accessed = accessing_remote(&state, &registry, 0);
+        assert_eq!(trash_cost(&accessed), Some(3), "PAD Campaign's 4, lowered by 1");
+        let (trashed, _) = apply_action(&accessed, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash for 3");
+        let trashed = pass_until_settled(trashed, &registry).0;
+        assert_eq!(trashed.runner.resources.credits, Credits(10 - 3 + 1), "the first time each turn: gain 1[credit]");
+        let accessed = accessing_remote(&trashed, &registry, 1);
+        let (second, _) = apply_action(&accessed, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash for 3");
+        let second = pass_until_settled(second, &registry).0;
+        assert_eq!(second.runner.resources.credits, Credits(8 - 3), "only the first");
+
+        let mut hq = runner_turn();
+        hq.runner.rig = vec![rig("demolisher", 2001)];
+        hq.corp.hq = vec![id("pad_campaign")];
+        let (running, _) = apply_action(&hq, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let accessed = close_all_windows(apply_action(&running, &registry, PlayerAction::CompleteRun).expect("breach").0, &registry).0;
+        assert_eq!(trash_cost(&accessed), Some(3), "a card in HQ is a Corp card too");
+    }
+
+    #[test]
+    fn fencer_fueno_banks_a_credit_a_turn_spends_them_once_a_run_is_successful_and_costs_one_at_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![holding("fencer_fueno", 2001, 2)];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let state = close_all_windows(state, &registry).0;
+        assert_eq!(counters_on(&state, "fencer_fueno"), Some(3), "place 1[credit] as the turn begins");
+
+        let mut running = state.clone();
+        running.phase = GamePhase::Action(Side::Runner);
+        running.corp.installed = vec![root_at("pad_campaign", 0)];
+        let (run, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::TrashCost), 10, "not before the run is successful");
+        let accessed = accessing_remote(&running, &registry, 0);
+        assert_eq!(available(&accessed, &registry, crate::rules::payment::Purpose::TrashCost), 13, "for the remainder of a successful run");
+
+        let mut full = runner_turn();
+        full.runner.rig = vec![holding("fencer_fueno", 2001, 3)];
+        let asked = end_the_runners_turn(&full, &registry);
+        assert!(asked.pending_paid_choice.is_some(), "you must pay 1[credit] or trash this resource");
+        let paid = pass_until_settled(apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay").0, &registry).0;
+        assert!(counters_on(&paid, "fencer_fueno").is_some(), "kept");
+        let declined = pass_until_settled(apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0, &registry).0;
+        assert!(declined.runner.heap.contains(&id("fencer_fueno")), "trashed");
+    }
+
+    #[test]
+    fn trickster_taka_pays_for_programs_during_runs_and_costs_a_tag_or_itself_at_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![holding("trickster_taka", 2001, 2), rig("corroder", 2002)];
+        let corroder = registry.get(&id("corroder")).expect("a card");
+        let tool = registry.get(&id("the_toolbox")).expect("a card");
+        assert_eq!(available(&state, &registry, crate::rules::payment::Purpose::Ability(corroder)), 10, "not outside a run");
+        let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(corroder)), 12, "a program, during a run");
+        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(tool)), 10, "not a piece of hardware");
+
+        let mut full = runner_turn();
+        full.runner.rig = vec![holding("trickster_taka", 2001, 3)];
+        let asked = end_the_runners_turn(&full, &registry);
+        assert!(choosing(&asked), "take 1 tag or trash this resource");
+        let tagged = pass_until_settled(choose(&asked, &registry, 0), &registry).0;
+        assert_eq!((tagged.runner.tags, counters_on(&tagged, "trickster_taka").is_some()), (1, true));
+        let trashed = pass_until_settled(choose(&asked, &registry, 1), &registry).0;
+        assert_eq!((trashed.runner.tags, trashed.runner.heap.contains(&id("trickster_taka"))), (0, true));
+    }
+
+    #[test]
+    fn supercorridor_gives_memory_and_hand_size_and_two_credits_when_the_credits_are_level() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.rig = vec![rig("supercorridor", 2001)];
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), 6, "+2[mu]");
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 1, "+1 maximum hand size");
+        let asked = end_the_runners_turn(&state, &registry);
+        assert!(choosing(&asked), "10 and 10: you may gain 2[credit]");
+        assert_eq!(pass_until_settled(choose(&asked, &registry, 0), &registry).0.runner.resources.credits, Credits(12));
+        let mut uneven = state;
+        uneven.corp.resources.credits = Credits(9);
+        assert!(!choosing(&end_the_runners_turn(&uneven, &registry)), "not the same number");
+    }
+
+    #[test]
+    fn masterwork_draws_on_the_first_hardware_each_turn_and_installs_one_as_a_run_begins_for_one_more() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("masterwork_v37"), id("t400_memory_diamond"), id("dzmz_optimizer")];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("masterwork_v37") }).expect("install");
+        let installed = pass_until_settled(installed, &registry).0;
+        assert_eq!(installed.runner.grip.len(), 3, "its own install is the turn's first piece of hardware: draw 1");
+        let (second, _) = apply_action(&installed, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond") }).expect("install");
+        let second = pass_until_settled(second, &registry).0;
+        assert_eq!(second.runner.grip.len(), 2, "the second draws nothing");
+
+        let (run, _) = apply_action(&second, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let run = close_all_windows(run, &registry).0;
+        let offered = toggles(&run, &registry, Side::Runner);
+        let dzmz = run.runner.grip.iter().position(|card| *card == id("dzmz_optimizer")).expect("in the grip");
+        assert_eq!(offered, vec![dzmz], "a piece of hardware, not an event");
+        let before = run.runner.resources.credits.0;
+        let (paid, _) = pick(&run, &registry, dzmz);
+        assert!(paid.runner.rig.iter().any(|card| card.card == id("dzmz_optimizer")));
+        assert_eq!(paid.runner.resources.credits.0, before - 3, "DZMZ Optimizer's 2, paying 1[credit] more");
+    }
+
+    #[test]
+    fn storgotic_resonator_counts_the_first_trash_of_the_runners_faction_each_turn_and_spends_it_on_net_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.identity = Some(id("noise_hacker_extraordinaire"));
+        state.runner.tags = 1;
+        state.corp.installed = vec![rezzed_root_at("storgotic_resonator", 0)];
+        state.runner.rig = vec![rig("daily_casts", 2001), rig("friend_of_a_friend", 2002), rig("the_twinning", 2003)];
+        let resonator = |state: &GameState| state.corp.installed.iter().find(|card| card.card == id("storgotic_resonator")).expect("installed").counters;
+        let neutral = pass_until_settled(apply_action(&state, &registry, PlayerAction::TrashResource { target: InstallId(2001) }).expect("trash").0, &registry).0;
+        assert_eq!(resonator(&neutral), 0, "Daily Casts is neutral, and Noise is Anarch");
+        let anarch = pass_until_settled(apply_action(&neutral, &registry, PlayerAction::TrashResource { target: InstallId(2002) }).expect("trash").0, &registry).0;
+        assert_eq!(resonator(&anarch), 1, "Friend of a Friend is Anarch");
+        let mut again = anarch;
+        again.corp.resources.clicks = Clicks(1);
+        let second = pass_until_settled(apply_action(&again, &registry, PlayerAction::TrashResource { target: InstallId(2003) }).expect("trash").0, &registry).0;
+        assert_eq!(resonator(&second), 1, "the first time each turn");
+
+        let mut damage = base_state();
+        damage.runner.grip = vec![id("sure_gamble"); 2];
+        damage.corp.installed = vec![crate::rules::InstalledCard { counters: 1, ..rezzed_root_at("storgotic_resonator", 0) }];
+        let (done, _) = apply_action(&damage, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("storgotic_resonator"), ability_index: 0 }).expect("[click], hosted power counter");
+        assert_eq!(done.runner.grip.len(), 1, "1 net damage");
+    }
+
+    #[test]
+    fn trebuchet_takes_a_bad_publicity_as_it_is_rezzed_and_its_trace_stops_steals() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at("trebuchet", ServerId::Hq) }];
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("trebuchet") };
+        let (mut approaching, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        while !crate::rules::legal_actions_for(&approaching, &registry, Side::Corp).contains(&rez) {
+            let legal = crate::rules::legal_actions(&approaching, &registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .expect("a way on");
+            approaching = apply_action(&approaching, &registry, next).expect("on").0;
+        }
+        let (rezzed, _) = apply_action(&approaching, &registry, rez).expect("rez for 7");
+        assert_eq!((rezzed.corp.bad_publicity, rezzed.corp.resources.credits), (1, Credits(3)), "take 1 bad publicity");
+
+        // The encounter's subroutines, one at a time: the trash, then the
+        // trace, which the Runner does not beat.
+        let mut running = runner_turn();
+        running.corp.installed = vec![ice_at("trebuchet", ServerId::Hq)];
+        running.corp.hq = vec![id("hostile_takeover")];
+        running.runner.rig = vec![rig("corroder", 2001)];
+        let at = encountering(&running, &registry, ServerId::Hq);
+        let (asked, _) = pass_until_settled(at, &registry);
+        let offered = toggles(&asked, &registry, Side::Corp);
+        assert_eq!(offered, vec![0], "trash 1 installed Runner card");
+        let (trashed, _) = pick(&asked, &registry, 0);
+        assert!(trashed.runner.heap.contains(&id("corroder")));
+        let (tracing, _) = pass_until_settled(trashed, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(6), "trace[6]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        let (at_hq, _) = pass_until_settled(traced, &registry);
+        let at_hq = if at_hq.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success) {
+            close_all_windows(apply_action(&at_hq, &registry, PlayerAction::CompleteRun).expect("breach").0, &registry).0
+        } else {
+            at_hq
+        };
+        assert!(
+            apply_action(&at_hq, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).is_err(),
+            "the Runner cannot steal or trash Corp cards for the remainder of this run"
+        );
+    }
+
+    #[test]
+    fn increased_drop_rates_removes_a_bad_publicity_unless_the_runner_takes_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.bad_publicity = 2;
+        state.corp.installed = vec![root_at("increased_drop_rates", 0)];
+        let asked = accessing_remote(&state, &registry, 0);
+        assert!(asked.pending_paid_choice.is_some(), "remove 1 bad publicity unless they take 1 tag");
+        let tagged = pass_until_settled(apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take a tag").0, &registry).0;
+        assert_eq!((tagged.runner.tags, tagged.corp.bad_publicity), (1, 2));
+        let declined = pass_until_settled(apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0, &registry).0;
+        assert_eq!((declined.runner.tags, declined.corp.bad_publicity), (0, 1));
+    }
+
+    // ---- Stage 4: amount, requirement and subtype words ----
+
+    #[test]
+    fn lat_may_draw_as_the_discard_phase_ends_when_grip_and_hq_are_level() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("lat_ethical_freelancer"));
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.hq = vec![id("hedge_fund"); 2];
+        let asked = end_the_runners_turn(&state, &registry);
+        assert!(choosing(&asked), "2 and 2: you may draw 1 card");
+        assert_eq!(pass_until_settled(choose(&asked, &registry, 0), &registry).0.runner.grip.len(), 3);
+        state.corp.hq.pop();
+        assert!(!choosing(&end_the_runners_turn(&state, &registry)), "2 and 1");
+    }
+
+    #[test]
+    fn sting_does_one_net_damage_plus_one_per_copy_in_the_other_players_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("sting", 0) }];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sting"))];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sting") }).expect("score");
+        let scored = pass_until_settled(scored, &registry).0;
+        assert_eq!(scored.runner.grip.len(), 2, "1 plus the copy in the Runner's score area");
+
+        let mut steal = runner_turn();
+        steal.runner.grip = vec![id("sure_gamble"); 4];
+        steal.corp.installed = vec![root_at("sting", 0)];
+        steal.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sting")), crate::rules::ScoredAgenda::plain(id("sting"))];
+        let accessed = accessing_remote(&steal, &registry, 0);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("sting") }).expect("steal");
+        let stolen = pass_until_settled(stolen, &registry).0;
+        assert_eq!(stolen.runner.grip.len(), 1, "1 plus the two in the Corp's score area");
+    }
+
+    #[test]
+    fn daily_quest_rezzes_only_in_the_action_phase_pays_the_runner_and_pays_the_corp_unless_run() {
+        let registry = registry();
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("daily_quest") };
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("daily_quest", 0)];
+        let (rezzed, _) = apply_action(&state, &registry, rez.clone()).expect("rez in the Corp's action phase");
+        assert!(rezzed.corp.installed[0].rezzed);
+        let mut runners = state.clone();
+        runners.phase = GamePhase::Action(Side::Runner);
+        let (run, _) = apply_action(&runners, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let run = crate::rules::test_support::through_movement(&run, &registry).map(|(s, _)| s).unwrap_or(run);
+        assert!(!crate::rules::legal_actions_for(&run, &registry, Side::Corp).contains(&rez), "not during the Runner's turn");
+
+        state.corp.installed[0].rezzed = true;
+        let mut quiet = state.clone();
+        quiet.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut quiet, &registry, Side::Corp);
+        let quiet = close_all_windows(quiet, &registry).0;
+        assert_eq!(quiet.corp.resources.credits, Credits(13), "no successful run on this server last turn: gain 3[credit]");
+
+        let mut runner_turn_state = state.clone();
+        runner_turn_state.phase = GamePhase::Action(Side::Runner);
+        let accessed = accessing_remote(&runner_turn_state, &registry, 0);
+        assert_eq!(accessed.runner.resources.credits, Credits(12), "they gain 2[credit]");
+        let mut after = pass_until_settled(accessed, &registry).0;
+        after.active_run = None;
+        after.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut after, &registry, Side::Corp);
+        let after = close_all_windows(after, &registry).0;
+        assert_eq!(after.corp.resources.credits, Credits(10), "the Runner ran it last turn");
+    }
+
+    #[test]
+    fn fully_operational_gains_or_draws_once_and_again_for_each_protected_remote_with_a_root() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("fully_operational")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 4];
+        state.corp.installed = vec![
+            root_at("pad_campaign", 0),
+            crate::rules::InstalledCard { install_id: InstallId(90), card: id("ice_wall"), server: ServerId::Remote(0), slot: InstallSlot::Ice, ..Default::default() },
+            root_at("hostile_takeover", 1),
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("fully_operational") }).expect("play");
+        assert!(choosing(&asked), "gain 2[credit] or draw 2 cards");
+        let again = choose(&asked, &registry, 0);
+        assert!(choosing(&again), "repeat for the one protected remote with a root card; the unprotected one does not count");
+        let done = choose(&again, &registry, 1);
+        assert!(done.pending_decision.is_none(), "twice, and no more");
+        assert_eq!((done.corp.resources.credits, done.corp.hq.len()), (Credits(10 - 1 + 2), 2));
+    }
+
+    #[test]
+    fn focus_group_reveals_the_grip_and_places_up_to_the_count_of_a_type_for_as_many_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("focus_group")];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        state.runner.grip = vec![id("corroder"), id("gordian_blade"), id("sure_gamble")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("focus_group") }).is_err(), "no successful run last turn");
+        state.last_turn = {
+            let mut runner = runner_turn();
+            runner.corp.installed.clear();
+            let mut ended = run_to_completion(runner, &registry, ServerId::Hq).0;
+            crate::rules::turn_log::rotate(&mut ended);
+            ended.last_turn
+        };
+        let (types, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("focus_group") }).expect("play");
+        let numbers = choose(&types, &registry, 2);
+        let offered: Vec<u32> = crate::rules::legal_actions_for(&numbers, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0, 1, 2], "two programs revealed");
+        let (picking, _) = apply_action(&numbers, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        let (placed, _) = pick(&picking, &registry, 0);
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 2);
+        assert_eq!(placed.corp.resources.credits, Credits(10 - 3 - 2), "3 to play and X");
+    }
+
+    #[test]
+    fn hagen_loses_strength_per_icebreaker_and_trashes_only_a_program_that_breaks_nothing() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("hagen", ServerId::Hq)];
+        state.runner.rig = vec![rig("corroder", 2001), rig("gordian_blade", 2002), rig("rezeki", 2003)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let run = at.active_run.as_ref().expect("encountering");
+        assert_eq!(crate::rules::continuous::ice_strength(&at, &registry, &run.ice[0]), 4, "6, less two icebreakers");
+        let (asked, _) = pass_until_settled(at, &registry);
+        assert_eq!(toggles(&asked, &registry, Side::Corp), vec![2], "Rezeki alone: Corroder is a fracter and Gordian Blade a decoder");
+    }
+
+    #[test]
+    fn vulnerability_audit_cannot_be_scored_the_turn_it_was_installed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, installed_this_turn: true, ..root_at("vulnerability_audit", 0) }];
+        let score = PlayerAction::ScoreAgenda { target: fixture_install_id("vulnerability_audit") };
+        assert!(apply_action(&state, &registry, score.clone()).is_err(), "installed this turn");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&score));
+        state.corp.installed[0].installed_this_turn = false;
+        let (scored, _) = apply_action(&state, &registry, score).expect("a later turn");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(3));
+    }
+
+    #[test]
+    fn the_nihilist_loads_on_the_first_virus_each_turn_and_trades_two_counters_for_two_cards() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_nihilist", 2001)];
+        state.runner.grip = vec![id("leech"), id("leech")];
+        let (one, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let one = pass_until_settled(one, &registry).0;
+        assert_eq!(counters_on(&one, "the_nihilist"), Some(2), "the first virus program this turn");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let two = pass_until_settled(two, &registry).0;
+        assert_eq!(counters_on(&two, "the_nihilist"), Some(2), "only the first");
+
+        let mut turn = runner_turn();
+        turn.runner.rig = vec![holding("the_nihilist", 2001, 2)];
+        turn.runner.stack = vec![id("sure_gamble"); 3];
+        turn.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        crate::rules::test_support::enter_start_of_turn(&mut turn, &registry, Side::Runner);
+        let asked = close_all_windows(turn, &registry).0;
+        assert!(choosing(&asked), "you may remove any 2 virus counters");
+        let first = choose(&asked, &registry, 0);
+        let (first, _) = pick(&first, &registry, 0);
+        let (second, _) = pick(&first, &registry, 0);
+        assert_eq!(counters_on(&second, "the_nihilist"), Some(0));
+        assert!(second.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "unless the Corp trashes the top card of R&D");
+        let drew = pass_until_settled(apply_action(&second, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0, &registry).0;
+        assert_eq!(drew.runner.grip.len(), 2, "draw 2 cards");
+        let trashed = pass_until_settled(apply_action(&second, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash").0, &registry).0;
+        assert_eq!((trashed.runner.grip.len(), trashed.corp.r_and_d.clone()), (0, vec![id("hedge_fund")]));
+    }
+
+    #[test]
+    fn blueberry_diesel_may_send_one_of_the_top_two_to_the_bottom_then_draws_two() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("blueberry_diesel"), id("corroder")];
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("diesel"), id("sure_gamble"), id("corroder"), id("rezeki")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("blueberry_diesel") }).expect("play");
+        assert_eq!(toggles(&asked, &registry, Side::Runner), vec![2, 3], "the top 2");
+        let (done, _) = pick(&asked, &registry, 2);
+        assert_eq!(done.runner.stack, vec![id("corroder"), id("diesel")], "Corroder to the bottom, the stack's Corroder and not the grip's");
+        assert_eq!(done.runner.grip, vec![id("corroder"), id("rezeki"), id("sure_gamble")], "draw 2 cards");
+    }
+
+    // ---- Stage 5: encounter and ice-state words ----
+
+    /// A Trojan on the ice at `server`, with `counters` hosted.
+    fn trojan_on(card: &str, ice: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { hosted_on_ice: Some(fixture_install_id(ice)), counters, ..rig(card, 2001) }
+    }
+
+    #[test]
+    fn chisel_loads_a_counter_per_encounter_and_trashes_host_ice_at_zero_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        state.runner.rig = vec![trojan_on("chisel", "ice_wall", 0)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        assert_eq!(counters_on(&at, "chisel"), Some(1), "strength 1: place 1 virus counter");
+        let run = at.active_run.as_ref().expect("encountering");
+        assert_eq!(crate::rules::continuous::ice_strength(&at, &registry, &run.ice[0]), 0, "-1 strength for each hosted virus counter");
+
+        state.runner.rig = vec![trojan_on("chisel", "ice_wall", 1)];
+        let (mut at, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        for _ in 0..8 {
+            if !at.corp.installed.iter().any(|ice| ice.card == id("ice_wall")) {
+                break;
+            }
+            let legal = crate::rules::legal_actions(&at, &registry);
+            let next = legal.iter().find(|action| matches!(action, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun)).cloned().expect("a way on");
+            at = apply_action(&at, &registry, next).expect("on").0;
+        }
+        assert!(at.corp.archives.iter().any(|trashed| trashed.card == id("ice_wall")), "strength 0: trash it");
+        assert!(at.runner.heap.contains(&id("chisel")), "and Chisel with its host");
+    }
+
+    #[test]
+    fn baklan_bochkin_loads_on_a_runs_first_encounter_and_derezzes_ice_no_stronger_than_its_counters() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        state.runner.rig = vec![holding("baklan_bochkin", 2001, 0)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        assert_eq!(counters_on(&at, "baklan_bochkin"), Some(1), "the first encounter of the run");
+        let (derezzed, _) = use_ability(&at, &registry, "baklan_bochkin", 0).expect("[trash], X hosted power counters");
+        assert!(!derezzed.corp.installed[0].rezzed, "strength 1, X = 1: derezzed");
+        assert_eq!(derezzed.runner.tags, 1, "take 1 tag");
+        assert!(derezzed.runner.heap.contains(&id("baklan_bochkin")));
+
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let (kept, _) = use_ability(&at, &registry, "baklan_bochkin", 0).expect("usable all the same");
+        assert!(kept.corp.installed[0].rezzed, "strength 2 is more than X = 1");
+        assert_eq!(kept.runner.tags, 1, "the tag is taken anyway");
+    }
+
+    #[test]
+    fn pelangi_comes_with_two_counters_and_spends_one_a_turn_to_give_the_encountered_ice_a_subtype() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("pelangi")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("pelangi"), trash_first: false }).expect("install");
+        let installed = pass_until_settled(installed, &registry).0;
+        assert_eq!(counters_on(&installed, "pelangi"), Some(2));
+
+        state.runner.grip.clear();
+        state.runner.rig = vec![holding("pelangi", 2001, 2)];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let ice = fixture_install_id("ice_wall");
+        let (asked, _) = use_ability(&at, &registry, "pelangi", 0).expect("hosted virus counter");
+        let sentry = choose(&asked, &registry, 2);
+        assert!(crate::rules::continuous::ice_gains_subtype(&sentry, &registry, ice, crate::dsl::IceType::Sentry), "gains that subtype");
+        assert_eq!(counters_on(&sentry, "pelangi"), Some(1));
+        assert!(use_ability(&sentry, &registry, "pelangi", 0).is_err(), "once per turn");
+        let mut after = sentry.clone();
+        after.active_run.as_mut().expect("the run").phase = crate::rules::RunPhase::ApproachIce;
+        assert!(!crate::rules::continuous::ice_gains_subtype(&after, &registry, ice, crate::dsl::IceType::Sentry), "for the remainder of this encounter");
+        assert!(use_ability(&runner_turn_with(&state, "pelangi"), &registry, "pelangi", 0).is_err(), "only while encountering");
+    }
+
+    fn runner_turn_with(state: &GameState, _card: &str) -> GameState {
+        let mut idle = state.clone();
+        idle.corp.installed.clear();
+        idle
+    }
+
+    #[test]
+    fn afshar_limits_breaks_to_one_printed_subroutine_only_while_protecting_hq() {
+        let registry = registry();
+        for (server, limit) in [(ServerId::Hq, Some(1)), (ServerId::RnD, None)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice_at("afshar", server)];
+            let at = encountering(&state, &registry, server);
+            let run = at.active_run.as_ref().expect("encountering");
+            assert_eq!(crate::rules::continuous::breaks_left(&at, &registry, &run.ice[0], None), limit, "{server:?}");
+        }
+    }
+
+    #[test]
+    fn rime_rezzes_when_a_non_ice_card_could_during_runs_on_its_server_and_strengthens_its_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { rezzed: false, ..ice_at("rime", ServerId::Archives) },
+            crate::rules::InstalledCard { rezzed: true, ..ice_at("ice_wall", ServerId::Archives) },
+        ];
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("rime") };
+        assert!(apply_action(&base_state_with(&state), &registry, rez.clone()).is_err(), "no run: not on the Corp's own turn either");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let window = running.paid_ability_window.as_ref().expect("the initiation's window (CR 6.9.1e)");
+        assert_eq!(window.checkpoint, crate::rules::WindowCheckpoint::Run);
+        assert!(crate::rules::legal_actions_for(&running, &registry, Side::Corp).contains(&rez), "offered before the ice is approached");
+        let (rezzed, _) = apply_action(&running, &registry, rez.clone()).expect("rez as a non-ice card could be");
+        let run = rezzed.active_run.as_ref().expect("the run");
+        let strengths: Vec<i32> = run.ice.iter().map(|ice| crate::rules::continuous::ice_strength(&rezzed, &registry, ice)).collect();
+        assert!(strengths.contains(&2) && strengths.contains(&1), "each piece of ice protecting this server gets +1: {strengths:?}");
+
+        let (elsewhere, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert!(apply_action(&elsewhere, &registry, rez).is_err(), "a run against another server");
+    }
+
+    fn base_state_with(state: &GameState) -> GameState {
+        let mut corps = state.clone();
+        corps.phase = GamePhase::Action(Side::Corp);
+        corps
+    }
+
+    #[test]
+    fn loot_box_taxes_the_run_then_hands_over_one_of_the_top_three_for_its_cost_and_trashes_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("loot_box", ServerId::Hq)];
+        // The top of the stack is the end of the list.
+        state.runner.stack = vec![id("diesel"), id("sure_gamble"), id("corroder"), id("rezeki")];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let (taxed, _) = pass_until_settled(at, &registry);
+        assert!(taxed.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "end the run unless the Runner pays 2[credit]");
+        let (paid, _) = apply_action(&taxed, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+        let (asked, _) = pass_until_settled(paid, &registry);
+        assert_eq!(toggles(&asked, &registry, Side::Corp), vec![1, 2, 3], "the top 3 cards of the stack");
+        let corroder = asked.runner.stack.iter().position(|card| *card == id("corroder")).expect("in the stack");
+        let (given, events) = pick(&asked, &registry, corroder);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { revealed: true, .. })), "revealed");
+        assert_eq!(given.runner.grip, vec![id("corroder")], "add 1 of those cards to the grip");
+        assert_eq!(given.corp.resources.credits, Credits(asked.corp.resources.credits.0 + 2), "gain its install cost");
+        assert_eq!(given.runner.stack.len(), 3);
+        assert!(!given.corp.installed.iter().any(|ice| ice.card == id("loot_box")), "trash this ice");
+    }
+
+    #[test]
+    fn public_health_portal_reveals_the_top_of_rnd_and_gains_two_as_the_corps_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![rezzed_root_at("public_health_portal", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, mut events) = close_all_windows(state, &registry);
+        assert_eq!(toggles(&state, &registry, Side::Corp), vec![1], "the top card");
+        let (state, picked) = pick(&state, &registry, 1);
+        events.extend(picked);
+        let (state, more) = close_all_windows(state, &registry);
+        events.extend(more);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { revealed: true, cards, .. } if *cards == vec![id("ice_wall")])), "{events:?}");
+        assert_eq!(state.corp.resources.credits, Credits(12), "gain 2[credit]");
+    }
+
+    #[test]
+    fn secure_and_protect_searches_rnd_for_ice_and_installs_it_on_a_central_three_cheaper() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("secure_and_protect")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("enigma"), id("hostile_takeover")];
+        state.corp.installed = vec![root_at("pad_campaign", 0), ice_at("ice_wall", ServerId::Hq)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("secure_and_protect") }).expect("play");
+        assert_eq!(asked.corp.resources.clicks, Clicks(1), "the click to play and [click] more");
+        assert_eq!(toggles(&asked, &registry, Side::Corp), vec![1], "1 piece of ice");
+        let (placing, _) = pick(&asked, &registry, 1);
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(allowed), .. }) = &placing.pending_decision else { panic!("{:?}", placing.pending_decision) };
+        assert!(allowed.iter().all(|server| !matches!(server, ServerId::Remote(_))) && allowed.contains(&ServerId::Hq), "a central server: {allowed:?}");
+        let (installed, _) = apply_action(&placing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        assert!(installed.corp.installed.iter().any(|ice| ice.card == id("enigma") && ice.server == ServerId::Hq));
+        assert_eq!(installed.corp.resources.credits, Credits(10 - 1), "one piece of ice already protects HQ: 1, less 3");
+    }
+
+    #[test]
+    fn divested_trust_may_be_forfeited_for_five_and_the_agenda_just_stolen() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("divested_trust"))];
+        state.corp.resources.agenda_points = AgendaPoints(1);
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("above_the_law"))];
+        state.runner.resources.agenda_points = AgendaPoints(2);
+        let accessed = accessing_remote(&state, &registry, 0);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        let (asked, _) = pass_until_settled(stolen, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "you may forfeit this agenda");
+        let (taken, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("forfeit");
+        assert_eq!(toggles(&taken, &registry, Side::Corp), vec![1], "the stolen agenda, and nothing else in the Runner's score area");
+        let (taken, _) = pass_until_settled(pick(&taken, &registry, 1).0, &registry);
+        assert!(taken.corp.scored_agendas.is_empty() && taken.corp.resources.agenda_points == AgendaPoints(0), "forfeited");
+        assert_eq!(taken.corp.resources.credits, Credits(asked.corp.resources.credits.0 + 5), "gain 5[credit]");
+        assert!(taken.corp.hq.contains(&id("hostile_takeover")), "add the stolen agenda to HQ");
+        assert_eq!(taken.runner.scored_agendas.len(), 1);
+        assert_eq!(taken.runner.resources.agenda_points, AgendaPoints(2), "its points go with it");
+
+        let mut itself = runner_turn();
+        itself.corp.installed = vec![root_at("divested_trust", 0)];
+        let accessed = accessing_remote(&itself, &registry, 0);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("divested_trust") }).expect("steal");
+        assert!(pass_until_settled(stolen, &registry).0.pending_paid_choice.is_none(), "another agenda: not itself");
+    }
+
+    // ---- Stage 6: triggers created by a played card, costs to run, interrupts ----
+
+    /// The Runner's run on `server` is past every window and has finished
+    /// its breach, with HQ empty.
+    fn ran(state: GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = run_to_completion(state, registry, server);
+        pass_until_settled(state, registry).0
+    }
+
+    /// The encounter's window back with the Runner, after the Corp passes
+    /// on what the Runner just did.
+    fn runners_again(state: GameState, registry: &CardRegistry) -> GameState {
+        match state.paid_ability_window.as_ref().map(|window| window.active_priority) {
+            Some(Side::Corp) => apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes").0,
+            _ => state,
+        }
+    }
+
+    /// Passes every window until the players are asked whether to prevent
+    /// something (`pass_until_settled` would pass that window too).
+    fn until_asked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for _ in 0..40 {
+            if state.pending_prevention.is_some() || state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_trace.is_some() {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Movement) => PlayerAction::ContinueRun,
+                None => break,
+            };
+            state = apply_action(&state, registry, action).expect("pass").0;
+        }
+        state
+    }
+
+    #[test]
+    fn utae_breaks_x_code_gate_subroutines_once_a_run_and_one_more_with_three_virtual_resources() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq)];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 1, ..rig("utae", 2001) }];
+        let at = encountering(&state, &registry, ServerId::Hq);
+        assert!(use_ability(&at, &registry, "utae", 1).is_err(), "no virtual resources");
+        let (pumped, _) = use_ability(&at, &registry, "utae", 2).expect("1[credit]: +1 strength");
+        let pumped = runners_again(pumped, &registry);
+        let (asked, _) = use_ability(&pumped, &registry, "utae", 0).expect("X[credit]");
+        assert!(asked.pending_payment.is_some(), "X is chosen before paying");
+        let (broke, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("X = 1");
+        let broke = runners_again(broke, &registry);
+        let run = broke.active_run.as_ref().expect("encountering");
+        assert_eq!(run.ice[run.position].subroutines.iter().filter(|s| s.status == crate::rules::SubroutineStatus::Broken).count(), 1);
+        assert!(use_ability(&broke, &registry, "utae", 0).is_err(), "once per run");
+
+        state.runner.rig.extend([rig("cookbook", 2002), rig("stick_and_poke", 2003), rig("fencer_fueno", 2004)]);
+        let at = encountering(&state, &registry, ServerId::Hq);
+        let (pumped, _) = use_ability(&at, &registry, "utae", 2).expect("+1 strength");
+        assert!(use_ability(&runners_again(pumped, &registry), &registry, "utae", 1).is_ok(), "three virtual resources: 1[credit], break 1");
+    }
+
+    #[test]
+    fn cold_site_server_charges_a_click_and_a_credit_per_counter_to_run_its_server_until_the_corps_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![rezzed_root_at("cold_site_server", 0)];
+        let (one, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("cold_site_server"), ability_index: 0 }).expect("[click]");
+        let (two, _) = apply_action(&close_all_windows(one, &registry).0, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("cold_site_server"), ability_index: 0 }).expect("[click]");
+        let mut two = close_all_windows(two, &registry).0;
+        assert_eq!(two.corp.installed[0].counters, 2);
+        two.phase = GamePhase::Action(Side::Runner);
+        two.paid_ability_window = None;
+        let (running, _) = apply_action(&two, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run it");
+        assert_eq!(running.runner.resources.clicks, Clicks(4 - 1 - 2), "the run's click and one per counter");
+        assert_eq!(running.runner.resources.credits, Credits(10 - 2), "and a credit per counter");
+        let mut short = two.clone();
+        short.runner.resources.clicks = Clicks(2);
+        assert!(apply_action(&short, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).is_err(), "one click left after the run's own");
+
+        let mut corps = two.clone();
+        corps.corp.r_and_d = vec![id("hedge_fund"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut corps, &registry, Side::Corp);
+        let corps = close_all_windows(corps, &registry).0;
+        assert_eq!(corps.corp.installed[0].counters, 0, "when your turn begins, remove all hosted power counters");
+    }
+
+    #[test]
+    fn reduced_service_buys_up_to_four_counters_as_it_is_rezzed_each_two_credits_to_run_and_one_gone_per_central_success() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("reduced_service", 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("reduced_service") }).expect("rez");
+        let offered: Vec<u32> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0, 1, 2, 3, 4], "up to 4[credit]");
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("3");
+        let mut paid = close_all_windows(paid, &registry).0;
+        assert_eq!((paid.corp.installed[0].counters, paid.corp.resources.credits), (3, Credits(7)));
+
+        paid.phase = GamePhase::Action(Side::Runner);
+        let (running, _) = apply_action(&paid, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run it");
+        assert_eq!(running.runner.resources.credits, Credits(10 - 6), "2[credit] for each hosted power counter");
+        let hq = ran(paid, &registry, ServerId::Hq);
+        assert_eq!(hq.corp.installed[0].counters, 2, "a successful run on a central server removes 1");
+    }
+
+    #[test]
+    fn in_the_groove_pays_out_for_every_install_of_a_card_costing_one_or_more_for_the_rest_of_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("in_the_groove"), id("corroder"), id("gordian_blade"), id("amelia_earhart")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("in_the_groove") }).expect("as your first [click]");
+        let played = pass_until_settled(played, &registry).0;
+        assert_eq!(played.delayed.len(), 1);
+        let install = |state: &GameState, card: &str| {
+            let (state, _) = apply_action(state, &registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false }).expect("install");
+            pass_until_settled(state, &registry).0
+        };
+        let corroder = install(&played, "corroder");
+        assert!(choosing(&corroder), "Corroder costs 2: draw 1 card or gain 1[credit]");
+        let gained = pass_until_settled(choose(&corroder, &registry, 1), &registry).0;
+        assert_eq!(gained.runner.resources.credits, Credits(10 - 2 + 1));
+        let blade = install(&gained, "gordian_blade");
+        assert!(choosing(&blade), "every time this turn");
+        let (free, _) = apply_action(&blade, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("gain");
+        let free = pass_until_settled(free, &registry).0;
+        let (resource, _) = apply_action(&free, &registry, PlayerAction::InstallResource { card_id: id("amelia_earhart"), host: None }).expect("install");
+        assert!(!choosing(&pass_until_settled(resource, &registry).0), "printed install cost 0");
+
+        let (after, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click first");
+        assert!(apply_action(&after, &registry, PlayerAction::PlayEvent { card_id: id("in_the_groove") }).is_err(), "only as your first [click]");
+    }
+
+    #[test]
+    fn climactic_showdown_leaves_and_buys_two_more_accesses_unless_the_corp_trashes_a_piece_of_ice_on_the_chosen_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("climactic_showdown", 2001)];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::RnD)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (asked, _) = close_all_windows(state, &registry);
+        assert!(asked.runner.removed_from_game.contains(&id("climactic_showdown")), "remove this resource from the game");
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &asked.pending_decision else { panic!("{:?}", asked.pending_decision) };
+        assert_eq!(servers, &vec![ServerId::RnD], "a server protected by ice");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        assert!(choosing(&chosen), "the Corp may trash 1 piece of ice protecting that server");
+
+        let (trashed, _) = pick(&choose(&chosen, &registry, 0), &registry, 0);
+        assert!(trashed.corp.installed.is_empty() && trashed.delayed.is_empty(), "they did: no bonus");
+
+        let kept = pass_until_settled(choose(&chosen, &registry, 1), &registry).0;
+        assert_eq!(kept.delayed.len(), 1, "they did not");
+        let mut kept = kept;
+        kept.corp.installed.clear();
+        let (breached, _) = run_to_completion(kept, &registry, ServerId::RnD);
+        let run = breached.active_run.as_ref().expect("accessing");
+        assert_eq!(run.additional_rd_access, 2, "access 2 additional cards");
+        assert!(breached.delayed.is_empty(), "the first time only");
+    }
+
+    #[test]
+    fn game_over_trashes_installed_non_icebreakers_of_a_type_unless_the_runner_pays_three_for_each() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("game_over")];
+        state.runner.rig = vec![rig("corroder", 2001), rig("daily_casts", 2002), rig("amelia_earhart", 2003), rig("dzmz_optimizer", 2004)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("game_over") }).is_err(), "no agenda stolen last turn");
+        state.last_turn = {
+            let mut runner = runner_turn();
+            runner.corp.installed = vec![root_at("hostile_takeover", 0)];
+            let accessed = accessing_remote(&runner, &registry, 0);
+            let (mut stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+            crate::rules::turn_log::rotate(&mut stolen);
+            stolen.last_turn
+        };
+        let (types, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("game_over") }).expect("play");
+        let resources = choose(&types, &registry, 2);
+        assert!(resources.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "pay 3[credit] to prevent it");
+        let (saved, _) = apply_action(&resources, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay for the first");
+        let saved = pass_until_settled(saved, &registry).0;
+        assert!(saved.pending_paid_choice.is_some(), "and the second is asked about");
+        let (done, _) = apply_action(&saved, &registry, PlayerAction::DeclinePendingPaidChoice).expect("let it go");
+        let done = pass_until_settled(done, &registry).0;
+        let rig: Vec<&str> = done.runner.rig.iter().map(|card| card.card.0.as_str()).collect();
+        assert_eq!(rig, vec!["corroder", "daily_casts", "dzmz_optimizer"], "one resource paid for, one trashed");
+        assert_eq!(done.runner.resources.credits, Credits(10 - 3));
+        assert_eq!(done.corp.bad_publicity, 1, "take 1 bad publicity");
+
+        let programs = pass_until_settled(choose(&types, &registry, 0), &registry).0;
+        assert!(programs.pending_paid_choice.is_none() && programs.runner.rig.len() == 4, "an icebreaker is not trashed");
+    }
+
+    #[test]
+    fn rejig_returns_an_installed_program_to_the_grip_and_installs_another_for_its_printed_cost_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("rejig"), id("gordian_blade")];
+        state.runner.rig = vec![rig("corroder", 2001)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("rejig") }).expect("play");
+        assert!(asked.runner.rig.is_empty() && asked.runner.grip.contains(&id("corroder")), "the additional cost");
+        let blade = asked.runner.grip.iter().position(|card| *card == id("gordian_blade")).expect("in the grip");
+        assert!(toggles(&asked, &registry, Side::Runner).contains(&blade));
+        let (installed, _) = pick(&asked, &registry, blade);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("gordian_blade")));
+        assert_eq!(installed.runner.resources.credits, Credits(10 - (4 - 2)), "paying 2[credit] less, Corroder's printed cost");
+
+        state.runner.rig.clear();
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("rejig") }).is_err(), "nothing to add to the grip");
+    }
+
+    #[test]
+    fn lucky_charm_prevents_a_corp_card_ending_the_run_after_a_successful_run_on_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("lucky_charm", 2001)];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::RnD)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let ended = pass_until_settled(encountering(&state, &registry, ServerId::RnD), &registry).0;
+        assert!(ended.active_run.is_none() && ended.pending_prevention.is_none(), "no successful run on HQ this turn: nothing to ask");
+
+        let after_hq = ran(state, &registry, ServerId::Hq);
+        let asked = until_asked(encountering(&after_hq, &registry, ServerId::RnD), &registry);
+        assert!(matches!(asked.pending_prevention.as_ref().map(|p| &p.what), Some(crate::rules::WouldHappen::RunEnds { .. })), "{:?}", asked.pending_prevention);
+        let (kept, _) = use_ability(&asked, &registry, "lucky_charm", 0).expect("remove this hardware from the game");
+        assert!(kept.runner.removed_from_game.contains(&id("lucky_charm")));
+        assert!(kept.active_run.is_some(), "the run goes on");
+    }
+
+    #[test]
+    fn flip_switch_jacks_out_removes_a_tag_or_zeroes_a_trace_on_the_runners_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("flip_switch", 2001)];
+        state.runner.tags = 1;
+        let (untagged, _) = use_ability(&state, &registry, "flip_switch", 1).expect("[trash]: remove 1 tag");
+        assert_eq!(untagged.runner.tags, 0);
+        assert!(untagged.runner.heap.contains(&id("flip_switch")));
+        let mut corps = state.clone();
+        corps.phase = GamePhase::Action(Side::Corp);
+        assert!(use_ability(&corps, &registry, "flip_switch", 1).is_err(), "only during your turn");
+
+        state.runner.tags = 0;
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::RnD)];
+        let at = encountering(&state, &registry, ServerId::RnD);
+        let (out, _) = use_ability(&at, &registry, "flip_switch", 0).expect("[trash]: jack out");
+        assert!(out.active_run.is_none());
+
+        state.corp.installed = vec![ice_at("winchester", ServerId::RnD)];
+        state.runner.rig.push(rig("corroder", 2002));
+        let asked = until_asked(encountering(&state, &registry, ServerId::RnD), &registry);
+        assert!(matches!(asked.pending_prevention.as_ref().map(|p| &p.what), Some(crate::rules::WouldHappen::Trace { base: 4 })), "{:?}", asked.pending_prevention);
+        let passed = pass_until_settled(asked.clone(), &registry).0;
+        assert_eq!(passed.active_trace.as_ref().map(|trace| trace.base_strength), Some(4), "not used: the trace starts as printed, and is not asked about again");
+        let (zeroed, _) = use_ability(&asked, &registry, "flip_switch", 2).expect("[interrupt] → [trash]");
+        assert_eq!(zeroed.active_trace.as_ref().map(|trace| trace.base_strength), Some(0), "reduce the base trace strength to 0");
+    }
+
+    // ---- Stage 7: hidden information and new zones ----
+
+    /// Passes every window until something is parked for a player to
+    /// answer.
+    fn until_parked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for _ in 0..60 {
+            if state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.is_over() {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Movement) => PlayerAction::ContinueRun,
+                None => break,
+            };
+            state = apply_action(&state, registry, action).expect("pass").0;
+        }
+        state
+    }
+
+    #[test]
+    fn hyoubu_institute_reveals_a_grip_card_or_the_top_of_the_stack_and_gains_one_the_first_time_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("hyoubu_institute_absolute_clarity"));
+        state.runner.grip = vec![id("sure_gamble")];
+        state.runner.stack = vec![id("gordian_blade"), id("corroder")];
+        let before = state.corp.resources.credits;
+        let use_it = |state: &GameState| {
+            apply_action(state, &registry, PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 }).expect("[click]").0
+        };
+        let asked = use_it(&state);
+        assert!(choosing(&asked), "the grip at random or the top card of the stack");
+        let (grip, events) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("the grip");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardRevealed { card, by: Side::Corp, .. } if *card == id("sure_gamble"))), "{events:?}");
+        let grip = pass_until_settled(grip, &registry).0;
+        assert_eq!(grip.corp.resources.credits, Credits(before.0 + 1), "the first time each turn you reveal a card");
+
+        let top = choose(&use_it(&grip), &registry, 1);
+        assert_eq!(toggles(&top, &registry, Side::Corp), vec![1], "the top card of the stack, and only it");
+        let (shown, events) = pick(&top, &registry, 1);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { side: Side::Corp, revealed: true, .. })));
+        let shown = pass_until_settled(shown, &registry).0;
+        assert_eq!(shown.corp.resources.credits, grip.corp.resources.credits, "the second reveal this turn pays nothing");
+        assert_eq!(shown.runner.stack, vec![id("gordian_blade"), id("corroder")], "revealed where it is");
+    }
+
+    #[test]
+    fn khusyuk_sets_aside_a_card_of_rnd_for_each_installed_card_of_the_chosen_cost_and_accesses_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("khusyuk")];
+        state.runner.rig = vec![rig("corroder", 2001), rig("dzmz_optimizer", 2002), rig("daily_casts", 2003)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hostile_takeover"), id("pad_campaign")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("khusyuk") }).expect("run R&D");
+        let (at, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let asked = until_parked(apply_action(&at, &registry, PlayerAction::CompleteRun).expect("successful").0, &registry);
+        let offered: Vec<u32> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered.first(), Some(&1), "an install cost greater than 0[credit]");
+
+        let (nothing, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 4 }).expect("4");
+        let nothing = pass_until_settled(nothing, &registry).0;
+        assert!(nothing.corp.set_aside.is_empty() && nothing.corp.r_and_d.len() == 4, "no installed card costs 4: nothing set aside or accessed");
+
+        let (two, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("2");
+        assert_eq!(two.corp.set_aside, vec![id("pad_campaign"), id("hostile_takeover")], "Corroder and DZMZ Optimizer: the top 2");
+        let candidates: Vec<PlayerAction> = crate::rules::legal_actions_for(&two, &registry, Side::Runner)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::SelectCardToAccess { .. }))
+            .collect();
+        assert_eq!(candidates.len(), 2, "access 1 of the set-aside cards");
+        let candidate = crate::rules::AccessCandidate::SetAside(id("hostile_takeover"));
+        let (accessing, _) = apply_action(&two, &registry, PlayerAction::SelectCardToAccess { candidate }).expect("access it");
+        let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        let stolen = pass_until_settled(stolen, &registry).0;
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
+        assert!(stolen.corp.set_aside.is_empty(), "the rest shuffled into R&D");
+        assert_eq!(stolen.corp.r_and_d.len(), 3);
+    }
+
+    #[test]
+    fn the_class_act_bottoms_one_of_the_top_x_plus_one_before_the_first_draw_each_turn_and_draws_four_the_turn_it_is_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_class_act", 2001)];
+        state.runner.stack = vec![id("sure_gamble"), id("corroder"), id("gordian_blade")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        assert!(asked.runner.grip.is_empty(), "not drawn yet");
+        assert_eq!(toggles(&asked, &registry, Side::Runner), vec![1, 2], "the top 1 + 1 cards");
+        let (drawn, _) = pick(&asked, &registry, 2);
+        let drawn = pass_until_settled(drawn, &registry).0;
+        assert_eq!(drawn.runner.stack, vec![id("gordian_blade"), id("sure_gamble")], "Gordian Blade to the bottom");
+        assert_eq!(drawn.runner.grip, vec![id("corroder")], "then the draw");
+        let (again, _) = apply_action(&drawn, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        assert!(again.pending_decision.is_none() && again.runner.grip.len() == 2, "the first time each turn only");
+
+        let mut fresh = runner_turn();
+        fresh.runner.grip = vec![id("the_class_act")];
+        fresh.runner.stack = (0..8).map(|_| id("sure_gamble")).collect();
+        let (installed, _) = apply_action(&fresh, &registry, PlayerAction::InstallResource { card_id: id("the_class_act"), host: None }).expect("install");
+        let installed = pass_until_settled(installed, &registry).0;
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&installed), &registry, PlayerAction::EndTurn).expect("end turn");
+        let asked = until_parked(ended, &registry);
+        assert_eq!(toggles(&asked, &registry, Side::Runner).len(), 5, "4 to draw: the top 5");
+        let (drew, _) = pick(&asked, &registry, 7);
+        let drew = pass_until_settled(drew, &registry).0;
+        assert_eq!(drew.runner.grip.len(), 4, "if you installed this resource this turn, draw 4 cards");
+
+        let mut old = runner_turn();
+        old.runner.rig = vec![rig("the_class_act", 2001)];
+        old.runner.stack = (0..8).map(|_| id("sure_gamble")).collect();
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&old), &registry, PlayerAction::EndTurn).expect("end turn");
+        let ended = pass_until_settled(ended, &registry).0;
+        assert!(ended.runner.grip.is_empty(), "installed on an earlier turn: nothing");
+    }
+
+    #[test]
+    fn project_yagi_uda_banks_the_excess_and_swaps_a_card_from_hq_into_the_attacked_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("project_yagi_uda", 0)];
+        state.corp.installed[0].advancement_tokens = 5;
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_yagi_uda") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2, "one for each advancement counter past 3");
+
+        let mut run = runner_turn();
+        run.corp.scored_agendas = scored.corp.scored_agendas.clone();
+        run.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        run.corp.hq = vec![id("pad_campaign"), id("enigma")];
+        let agenda = run.corp.scored_agendas[0].install_id;
+        let ability = PlayerAction::ActivateAbility { target: agenda, ability_index: 0 };
+        assert!(apply_action(&run, &registry, ability.clone()).is_err(), "only during a run");
+
+        let mut at = encountering(&run, &registry, ServerId::Hq);
+        if at.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner) {
+            at = apply_action(&at, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes").0;
+        }
+        let (choosing_ice, _) = apply_action(&at, &registry, ability).expect("hosted agenda counter");
+        assert_eq!(choosing_ice.corp.scored_agendas[0].agenda_counters, 1);
+        let (choosing_card, _) = pick(&choosing_ice, &registry, 0);
+        assert_eq!(toggles(&choosing_card, &registry, Side::Corp), vec![1], "only a piece of ice fits where the ice is");
+        let (swapped, _) = pick(&choosing_card, &registry, 1);
+        assert_eq!(swapped.corp.hq, vec![id("pad_campaign"), id("ice_wall")], "the ice went to HQ");
+        let enigma = swapped.corp.installed.iter().find(|card| card.server == ServerId::Hq).expect("protecting HQ");
+        assert_eq!((enigma.card.clone(), enigma.rezzed, enigma.slot), (id("enigma"), false, InstallSlot::Ice), "the card from HQ, unrezzed, in its place");
+        assert!(
+            swapped.pending_paid_choice.as_ref().is_some_and(|offer| offer.side == Side::Runner && offer.cost == crate::dsl::Cost::JackOut),
+            "the Runner may jack out"
+        );
+        let (out, _) = apply_action(&swapped, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out");
+        assert!(out.active_run.is_none());
+    }
+
+    #[test]
+    fn letheia_nisei_on_differing_bids_may_trash_itself_to_send_the_runner_back_to_the_outermost_position() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("letheia_nisei", 0)];
+        state.corp.resources.credits = Credits(5);
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (bidding, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        assert!(matches!(bidding.pending_decision, Some(PendingDecision::PsiGame { .. })), "{:?}", bidding.pending_decision);
+        let bid = |state: &GameState, amount: u32| apply_action(state, &registry, PlayerAction::ChooseNumber { amount }).expect("bid").0;
+
+        let matched = pass_until_settled(bid(&bid(&bidding, 1), 1), &registry).0;
+        assert!(matched.corp.installed.len() == 1, "the bids match: nothing");
+
+        let differed = bid(&bid(&bidding, 1), 0);
+        assert!(choosing(&differed), "you may trash this upgrade");
+        let kept = pass_until_settled(choose(&differed, &registry, 1), &registry).0;
+        assert_eq!(kept.corp.installed.len(), 1);
+
+        let moved = choose(&differed, &registry, 0);
+        assert!(moved.corp.installed.is_empty() && moved.corp.archives.iter().any(|card| card.card == id("letheia_nisei")), "trashed");
+        let run = moved.active_run.as_ref().expect("still running");
+        assert_eq!((run.server, run.phase), (ServerId::Remote(0), crate::rules::RunPhase::Movement), "the outermost position of this server");
+        assert!(moved.pending_paid_choice.as_ref().is_some_and(|offer| offer.cost == crate::dsl::Cost::JackOut), "they may jack out");
+        let (stayed, _) = apply_action(&moved, &registry, PlayerAction::DeclinePendingPaidChoice).expect("stay");
+        let (again, _) = crate::rules::test_support::through_movement(&stayed, &registry).expect("approach again");
+        assert!(again.pending_decision.is_none(), "Letheia is gone, and asks nothing");
+    }
+
+    #[test]
+    fn saisentan_does_one_more_net_damage_whenever_its_subroutine_trashes_a_card_of_the_type_chosen_on_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("saisentan", ServerId::Hq)];
+        state.runner.grip = vec![id("corroder"); 8];
+        let asked = encountering(&state, &registry, ServerId::Hq);
+        assert!(choosing(&asked), "choose a card type");
+        let programs = pass_until_settled(choose(&asked, &registry, 2), &registry).0;
+        assert_eq!(programs.runner.heap.len(), 6, "each subroutine trashes a program, and each of those is 1 more net damage");
+
+        let events_only = {
+            let mut events_only = state.clone();
+            events_only.runner.grip = vec![id("sure_gamble"); 5];
+            let asked = encountering(&events_only, &registry, ServerId::Hq);
+            pass_until_settled(choose(&asked, &registry, 2), &registry).0
+        };
+        assert_eq!(events_only.runner.heap.len(), 3, "no program to trash: no more damage");
+    }
+
+    // ---- Stage 8: naming a card, blanking an identity, memory across runs, action kinds ----
+
+    fn named(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        pass_until_settled(apply_action(state, registry, PlayerAction::ChooseCardName { card: id(card) }).expect("name it").0, registry).0
+    }
+
+    fn names_offered(state: &GameState) -> Vec<CardId> {
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseCardName { names, .. }) => names.clone(),
+            other => panic!("not naming a card: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn complete_image_names_a_card_and_does_net_damage_again_while_it_trashes_one_of_that_name() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("complete_image")];
+        state.corp.resources.credits = Credits(10);
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("corroder")];
+        let play = PlayerAction::PlayOperation { card_id: id("complete_image") };
+        state.last_turn = {
+            let run = ran(runner_turn(), &registry, ServerId::Hq);
+            let mut run = run;
+            crate::rules::turn_log::rotate(&mut run);
+            run.last_turn
+        };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "the Runner has fewer than 3 agenda points");
+        state.runner.resources.agenda_points = AgendaPoints(3);
+        let (asked, _) = apply_action(&state, &registry, play).expect("play");
+        let names = names_offered(&asked);
+        assert!(names.contains(&id("sure_gamble")) && names.contains(&id("corroder")) && !names.contains(&id("hedge_fund")), "any of the Runner's cards");
+        let again = named(&asked, &registry, "sure_gamble");
+        assert_eq!(again.runner.grip.len() + again.runner.heap.len(), 3);
+        assert_eq!(again.runner.heap.len(), 1);
+        if again.runner.heap[0] == id("sure_gamble") {
+            assert!(matches!(again.pending_decision, Some(PendingDecision::ChooseCardName { .. })), "a card with the chosen name: repeat this process");
+        } else {
+            assert!(again.pending_decision.is_none(), "not that name: done");
+        }
+        let mut last = again;
+        while matches!(last.pending_decision, Some(PendingDecision::ChooseCardName { .. })) {
+            last = named(&last, &registry, "corroder");
+        }
+        assert!(!matches!(last.phase, GamePhase::Action(Side::Corp)), "after you resolve this operation, your action phase ends");
+    }
+
+    #[test]
+    fn whistleblower_trashes_itself_on_a_successful_run_to_steal_the_named_agenda_free_the_next_time_this_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("whistleblower", 2001)];
+        state.corp.installed = vec![root_at("sds_drone_deployment", 0)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (at, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let asked = until_parked(apply_action(&at, &registry, PlayerAction::CompleteRun).expect("successful").0, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|offer| offer.cost == crate::dsl::Cost::TrashSelf), "{:?}", asked.pending_paid_choice);
+        let (naming, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash it");
+        assert!(naming.runner.heap.contains(&id("whistleblower")));
+        let names = names_offered(&naming);
+        assert!(names.contains(&id("sds_drone_deployment")) && names.iter().all(|card| registry.get(card).is_some_and(|c| c.card_type == crate::dsl::CardType::Agenda)), "an agenda's name");
+        let stolen = until_parked(named(&naming, &registry, "sds_drone_deployment"), &registry);
+        assert_eq!(stolen.runner.scored_agendas.len(), 1, "stolen, ignoring the program SDS Drone Deployment asks for");
+        assert!(stolen.delayed.is_empty(), "the next time only");
+
+        let missed = until_parked(named(&naming, &registry, "hostile_takeover"), &registry);
+        assert!(missed.runner.scored_agendas.is_empty(), "another name: the steal is the agenda's own, which costs a program the Runner has not");
+        assert_eq!(missed.delayed.len(), 1);
+        let (passed, _) = apply_action(&missed, &registry, PlayerAction::PassAccessedCard { card_id: id("sds_drone_deployment") }).expect("pass on it");
+        let over = pass_until_settled(passed, &registry).0;
+        assert!(over.active_run.is_none() && over.delayed.is_empty(), "this run only");
+    }
+
+    #[test]
+    fn direct_access_blanks_both_identities_for_its_run_and_may_shuffle_itself_back() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("jinteki_personal_evolution"));
+        state.runner.grip = vec![id("direct_access"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("direct_access") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run it");
+        assert!(crate::rules::active::active_cards(&running, &registry).all(|active| active.place != crate::rules::active::Place::Identity), "each player's identity loses all abilities");
+        let accessed = accessing_remote_running(&running, &registry);
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        let ended = until_parked(stolen, &registry);
+        assert_eq!(ended.runner.grip.len(), 2, "Personal Evolution's net damage is lost with its abilities");
+        let heap = toggles(&ended, &registry, Side::Runner);
+        assert_eq!(heap.len(), 1, "you may shuffle this event into your stack");
+        let (back, _) = pick(&ended, &registry, heap[0]);
+        assert!(back.runner.stack.contains(&id("direct_access")) && !back.runner.heap.contains(&id("direct_access")));
+        assert!(crate::rules::active::active_cards(&back, &registry).any(|active| active.place == crate::rules::active::Place::Identity), "only while resolving it");
+    }
+
+    #[test]
+    fn every_name_a_card_can_choose_has_a_slot() {
+        // `ActionSpace` gives each name a decision offers a slot of its
+        // own; the widest list is every playable card of one side.
+        let registry = registry();
+        for side in [Side::Corp, Side::Runner] {
+            let names = registry.iter().filter(|card| card.is_playable && card.side == side && card.card_type != crate::dsl::CardType::Identity).count();
+            assert!(names <= crate::rules::MAX_NAME_OPTIONS, "{side:?} has {names} names");
+        }
+    }
+
+    /// `accessing_remote` for a run already initiated.
+    fn accessing_remote_running(running: &GameState, registry: &CardRegistry) -> GameState {
+        let (running, _) = crate::rules::test_support::through_movement(running, registry).expect("to the server");
+        close_all_windows(apply_action(&running, registry, PlayerAction::CompleteRun).expect("breach").0, registry).0
+    }
+
+    #[test]
+    fn always_have_a_backup_plan_runs_again_after_an_unsuccessful_run_bypassing_the_ice_that_stopped_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("always_have_a_backup_plan")];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("always_have_a_backup_plan") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let offered = until_parked(running, &registry);
+        assert!(offered.active_run.is_none() && choosing(&offered), "ended by Ice Wall: you may run the attacked server again");
+        let (again, _) = apply_action(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("again");
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &again.pending_decision else { panic!("{:?}", again.pending_decision) };
+        assert_eq!(servers, &vec![ServerId::Hq], "the attacked server");
+        let (second, _) = apply_action(&again, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ again");
+        let (at, _) = crate::rules::test_support::through_movement(&second, &registry).expect("past the ice");
+        let run = at.active_run.as_ref().expect("still running");
+        assert!(run.encounters == 1 && run.ice_passed == 1, "Ice Wall encountered and bypassed: {run:?}");
+        assert!(!at.delayed.is_empty());
+        let accessing = pass_until_settled(apply_action(&at, &registry, PlayerAction::CompleteRun).expect("successful").0, &registry).0;
+        let (passed, _) = apply_action(&accessing, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("pass on it");
+        let over = pass_until_settled(passed, &registry).0;
+        assert!(over.active_run.is_none() && over.delayed.is_empty(), "during the second run only");
+    }
+
+    #[test]
+    fn mirrormorph_after_three_different_actions_gains_a_credit_or_a_fourth_different_action() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("mirrormorph_endless_iteration"));
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        let act = |state: &GameState, action: PlayerAction| pass_until_settled(apply_action(state, &registry, action).expect("act").0, &registry).0;
+        let one = act(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let two = act(&one, PlayerAction::DrawCardClick { side: Side::Corp });
+        let three = act(&two, PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false });
+        assert!(choosing(&three), "three different actions: gain 1[credit] or take another");
+        let credit = choose(&three, &registry, 0);
+        assert_eq!(credit.corp.resources.credits, Credits(three.corp.resources.credits.0 + 1));
+
+        let extra = pass_until_settled(choose(&three, &registry, 1), &registry).0;
+        assert_eq!(extra.corp.resources.clicks, Clicks(1), "another action, paying [click] less");
+        assert!(apply_action(&extra, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).is_err(), "a different action");
+        assert!(apply_action(&extra, &registry, PlayerAction::EndTurn).is_err(), "a different action is there to take");
+        let advanced = act(&extra, PlayerAction::AdvanceCard { target: install_of(&extra, "hostile_takeover") });
+        assert!(!advanced.lingering.iter().any(|effect| effect.holds(&advanced) && matches!(effect.what, crate::rules::lingering::Lingering::Cannot(_))), "the next action only");
+
+        let same = act(&one, PlayerAction::GainCreditClick { side: Side::Corp });
+        let third = act(&same, PlayerAction::DrawCardClick { side: Side::Corp });
+        assert!(!choosing(&third), "the first two were the same action");
+    }
+
+    /// The 256-seed view sweep's seed 80: the click is for a different
+    /// action, and with none left to take the Corp had no legal action at
+    /// all. It may end its turn, the extra action forgone.
+    #[test]
+    fn mirrormorph_with_no_different_action_left_may_end_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("mirrormorph_endless_iteration"));
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = Vec::new();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = Vec::new();
+        let act = |state: &GameState, action: PlayerAction| pass_until_settled(apply_action(state, &registry, action).expect("act").0, &registry).0;
+        let one = act(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let two = act(&one, PlayerAction::DrawCardClick { side: Side::Corp });
+        let three = act(&two, PlayerAction::PlayOperation { card_id: id("hedge_fund") });
+        assert!(choosing(&three), "three different actions");
+        let extra = pass_until_settled(choose(&three, &registry, 1), &registry).0;
+        assert_eq!(extra.corp.resources.clicks, Clicks(1));
+        let legal = crate::rules::legal_actions_for(&extra, &registry, Side::Corp);
+        assert_eq!(legal, vec![PlayerAction::EndTurn], "nothing different to take: the turn may end");
+        let ended = act(&extra, PlayerAction::EndTurn);
+        assert!(!matches!(ended.phase, GamePhase::Action(Side::Corp)), "the click lost with the turn: {:?}", ended.phase);
+    }
+}
+
+/// Tranche 8 of the NSG card-pool plan: System Update 2021, Salvaged
+/// Memories, the Magnum Opus Reprint and the Core Set's remainder
+/// (docs/roadmap/nsg-card-pool.md).
+mod reprints {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength: strength, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }
+    }
+
+    /// A run on HQ, its only ice already installed, up to the encounter.
+    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, card), ability_index })
+    }
+
+    fn counters_on(state: &GameState, card: &str) -> u32 {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("in the rig").counters
+    }
+
+    fn install_resource(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InstallResource { card_id: id(card), host: None }).expect("install");
+        close_all_windows(state, registry).0
+    }
+
+    /// The Corp's turn, then the Runner's turn beginning, every window
+    /// passed.
+    fn next_runner_turn(mut state: GameState, registry: &CardRegistry) -> GameState {
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, Side::Corp);
+        let (mut state, _) = close_all_windows(state, registry);
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, Side::Runner);
+        close_all_windows(state, registry).0
+    }
+
+    // ---- Stage 1: System Update 2021's Runner cards, composed ----
+
+    #[test]
+    fn mimic_breaks_sentry_subroutines_and_nothing_else() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("mimic", 3)];
+        state.corp.installed = vec![ice_at_hq("tithe")];
+        let at_ice = encounter(&state, &registry);
+        let (broken, events) = use_ability(&at_ice, &registry, "mimic", 0).expect("1[credit]: break 1 sentry subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits, Credits(at_ice.runner.resources.credits.0 - 1));
+
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "mimic", 0).is_err(), "a code gate is not a sentry");
+    }
+
+    #[test]
+    fn abagnale_breaks_code_gates_and_is_trashed_to_bypass_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("abagnale", 2)];
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        let at_ice = encounter(&state, &registry);
+        let (broken, events) = use_ability(&at_ice, &registry, "abagnale", 0).expect("1[credit]: break 1 code gate subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits, Credits(at_ice.runner.resources.credits.0 - 1));
+        let (pumped, _) = use_ability(&at_ice, &registry, "abagnale", 1).expect("2[credit]: +2 strength");
+        assert_eq!(pumped.runner.resources.credits, Credits(at_ice.runner.resources.credits.0 - 2));
+
+        let (bypassed, events) = use_ability(&at_ice, &registry, "abagnale", 2).expect("[trash]: bypass the code gate");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceBypassed { .. })), "{events:?}");
+        assert!(bypassed.runner.rig.is_empty() && bypassed.runner.heap.contains(&id("abagnale")));
+
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "abagnale", 2).is_err(), "a barrier is not a code gate");
+    }
+
+    #[test]
+    fn legwork_runs_hq_and_accesses_two_more_cards() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("legwork")];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("legwork") }).expect("play");
+        assert_eq!(running.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq));
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (accessing, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("breach");
+        let access = accessing.active_run.as_ref().and_then(|run| run.access_state.as_ref()).expect("accessing");
+        assert_eq!(access.from_zone.len(), 2, "1 access + 2 additional: two wait behind the first");
+    }
+
+    #[test]
+    fn dirty_laundry_pays_five_when_its_run_ends_successfully() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("dirty_laundry")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("run Archives");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (ended, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("breach");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none());
+        assert_eq!(ended.runner.resources.credits, Credits(10 - 2 + 5));
+
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (ended, _) = pass_until_settled(running, &registry);
+        assert!(ended.active_run.is_none(), "Ice Wall ended the run");
+        assert_eq!(ended.runner.resources.credits, Credits(10 - 2), "an unsuccessful run pays nothing");
+    }
+
+    #[test]
+    fn career_fair_installs_a_resource_from_the_grip_for_three_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("career_fair"), id("daily_casts"), id("corroder")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("career_fair") }).expect("play");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        let casts = asked.runner.grip.iter().position(|card| *card == id("daily_casts")).expect("in the grip");
+        assert_eq!(offered, vec![casts], "a resource, not a program");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: casts }).expect("select");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("install");
+        let (installed, _) = close_all_windows(installed, &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("daily_casts")));
+        assert_eq!(installed.runner.resources.credits, Credits(10), "Daily Casts' 3[credit], paying 3[credit] less");
+    }
+
+    #[test]
+    fn professional_contacts_gains_a_credit_and_draws_a_card_for_a_click() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("professional_contacts", 0)];
+        state.runner.stack = vec![id("sure_gamble")];
+        let (used, _) = use_ability(&state, &registry, "professional_contacts", 0).expect("[click]");
+        assert_eq!((used.runner.resources.clicks, used.runner.resources.credits), (Clicks(3), Credits(11)));
+        assert_eq!(used.runner.grip, vec![id("sure_gamble")]);
+        assert!(use_ability(&used, &registry, "professional_contacts", 0).is_ok(), "no limit but clicks");
+    }
+
+    #[test]
+    fn liberated_account_loads_sixteen_and_gives_four_a_click_until_it_is_empty() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("liberated_account")];
+        state.runner.resources.clicks = Clicks(10);
+        let mut state = install_resource(&state, &registry, "liberated_account");
+        assert_eq!(counters_on(&state, "liberated_account"), 16);
+        assert_eq!(state.runner.resources.credits, Credits(4));
+        for taken in 1..=4u32 {
+            state = use_ability(&state, &registry, "liberated_account", 0).expect("[click]: take 4[credit]").0;
+            assert_eq!(state.runner.resources.credits, Credits(4 + 4 * taken));
+        }
+        assert!(state.runner.rig.is_empty() && state.runner.heap.contains(&id("liberated_account")), "empty, so trashed");
+    }
+
+    #[test]
+    fn earthrise_hotel_draws_two_as_each_turn_begins_for_three_turns() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("earthrise_hotel")];
+        state.runner.stack = vec![id("sure_gamble"); 8];
+        let mut state = install_resource(&state, &registry, "earthrise_hotel");
+        assert_eq!(counters_on(&state, "earthrise_hotel"), 3);
+        for turn in 1..=3usize {
+            state = next_runner_turn(state, &registry);
+            assert_eq!(state.runner.grip.len(), 2 * turn);
+        }
+        assert!(state.runner.rig.is_empty() && state.runner.heap.contains(&id("earthrise_hotel")), "empty, so trashed");
+    }
+
+    #[test]
+    fn scrubber_refills_two_credits_that_pay_trash_costs() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("scrubber")];
+        let mut state = install_resource(&state, &registry, "scrubber");
+        assert_eq!(counters_on(&state, "scrubber"), 2, "when you install this card, refill to 2");
+        state.runner.resources.credits = Credits(2);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let trash = PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") };
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&trash), "2[credit] in the pool and 2 hosted pay the 4[credit] trash cost");
+        let (state, _) = apply_action(&state, &registry, trash).expect("trash");
+        assert_eq!((counters_on(&state, "scrubber"), state.runner.resources.credits), (0, Credits(0)));
+    }
+
+    #[test]
+    fn xanadu_taxes_every_ice_rez_by_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("xanadu", 0)];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") }).expect("rez");
+        assert_eq!(rezzed.corp.resources.credits, Credits(10 - 2), "1 printed + 1 for Xanadu");
+    }
+
+    // ---- Stage 1b: the rest of the reprints' Runner cards that compose ----
+
+    #[test]
+    fn cache_installs_with_three_virus_counters_each_worth_a_credit() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("cache")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("cache"), trash_first: false }).expect("install");
+        let (mut state, _) = close_all_windows(installed, &registry);
+        assert_eq!(counters_on(&state, "cache"), 3);
+        assert_eq!(state.runner.resources.credits, Credits(9));
+        for spent in 1..=3u32 {
+            state = use_ability(&state, &registry, "cache", 0).expect("hosted virus counter: gain 1[credit]").0;
+            assert_eq!(state.runner.resources.credits, Credits(9 + spent));
+        }
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "no click but the install's");
+        assert!(use_ability(&state, &registry, "cache", 0).is_err(), "no counter left");
+    }
+
+    #[test]
+    fn lucky_find_spends_a_second_click_and_gains_nine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("lucky_find")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("lucky_find") }).expect("play");
+        assert_eq!((played.runner.resources.clicks, played.runner.resources.credits), (Clicks(2), Credits(10 - 3 + 9)));
+
+        state.runner.resources.clicks = Clicks(1);
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("lucky_find") }).is_err(), "one click is not two");
+    }
+
+    #[test]
+    fn prepaid_voicepads_credit_pays_for_an_event_and_not_an_install() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("prepaid_voicepad")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("prepaid_voicepad") }).expect("install");
+        let (mut state, _) = close_all_windows(installed, &registry);
+        assert_eq!(counters_on(&state, "prepaid_voicepad"), 1, "refill to 1 as it is installed");
+        state.runner.resources.credits = Credits(4);
+        state.runner.grip = vec![id("sure_gamble"), id("daily_casts")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("4 + 1 hosted pay 5");
+        assert_eq!((counters_on(&played, "prepaid_voicepad"), played.runner.resources.credits), (0, Credits(9)));
+
+        state.runner.resources.credits = Credits(2);
+        assert!(
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).is_err(),
+            "the hosted credit is for events: 2 do not pay Daily Casts' 3"
+        );
+    }
+
+    #[test]
+    fn indexing_may_arrange_the_top_five_of_rnd_instead_of_breaching() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("indexing")];
+        // The top of R&D is the end of the list.
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("enigma"), id("pad_campaign"), id("hostile_takeover"), id("tithe")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("indexing") }).expect("play");
+        assert_eq!(running.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD));
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (asked, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("successful");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("instead of breaching");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![1, 2, 3, 4, 5], "the top 5 cards");
+        let (ended, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("leave them as they are");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert_eq!(ended.runner.resources.agenda_points, AgendaPoints(0), "no breach, so Hostile Takeover is not stolen");
+        assert_eq!(ended.corp.r_and_d.len(), 6);
+    }
+
+    #[test]
+    fn retrieval_run_may_install_a_program_from_the_heap_free_instead_of_breaching_archives() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("retrieval_run")];
+        state.runner.heap = vec![id("sure_gamble"), id("corroder")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("retrieval_run") }).expect("play");
+        assert_eq!(running.active_run.as_ref().map(|run| run.server), Some(ServerId::Archives));
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (asked, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("successful");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("instead of breaching");
+        let corroder = asked.runner.heap.iter().position(|card| *card == id("corroder")).expect("in the heap");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: corroder }).expect("select");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("install");
+        let (installed, _) = pass_until_settled(installed, &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(10 - 3), "ignoring all costs");
+    }
+
+    #[test]
+    fn labor_rights_mills_three_shuffles_three_back_draws_one_and_leaves_the_game() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("labor_rights")];
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        state.runner.heap = vec![id("corroder")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("labor_rights") }).expect("play");
+        assert_eq!(asked.runner.heap.len(), 4, "the top 3 of the stack trashed");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("select");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("select");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle them in");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!((done.runner.heap.len(), done.runner.stack.len(), done.runner.grip.len()), (1, 4, 1), "three back, one drawn");
+        assert!(!done.runner.heap.contains(&id("labor_rights")), "removed from the game instead of trashed");
+
+        // With fewer than three in the heap, all of them go back.
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.heap = vec![];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("labor_rights") }).expect("play");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle it in");
+        assert_eq!((done.runner.heap.len(), done.runner.grip, done.runner.stack.len()), (0, vec![id("sure_gamble")], 0));
+    }
+
+    #[test]
+    fn aesops_pawnshop_may_trash_another_install_for_three_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("aesops_pawnshop", 0), rig("corroder", 2)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (asked, _) = close_all_windows(state, &registry);
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered.len(), 1, "one of your other installed cards, not the pawnshop itself");
+        let (selected, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (sold, _) = apply_action(&selected, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(sold.runner.heap.contains(&id("corroder")));
+        assert_eq!(sold.runner.resources.credits, Credits(13));
+
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("choose nothing");
+        assert_eq!((kept.runner.rig.len(), kept.runner.resources.credits), (2, Credits(10)), "nothing trashed, nothing gained");
+    }
+
+    #[test]
+    fn emergency_shutdown_derezzes_a_piece_of_ice_after_a_successful_run_on_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("emergency_shutdown")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("emergency_shutdown") }).is_err(), "no successful run on HQ yet");
+
+        state.corp.installed = vec![];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (ran, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (mut ran, _) = pass_until_settled(ran, &registry);
+        while ran.active_run.is_some() {
+            let next = crate::rules::legal_actions_for(&ran, &registry, Side::Runner).into_iter().next().expect("a way out of the access");
+            ran = pass_until_settled(apply_action(&ran, &registry, next).expect("on").0, &registry).0;
+        }
+        ran.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (asked, _) = apply_action(&ran, &registry, PlayerAction::PlayEvent { card_id: id("emergency_shutdown") }).expect("play");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (derezzed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("derez");
+        assert!(!derezzed.corp.installed[0].rezzed);
     }
 }
