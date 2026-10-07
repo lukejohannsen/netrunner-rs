@@ -24,12 +24,19 @@
 //! a stage and this report can never disagree about which one it is.
 //!
 //! **Reach is the card-testing product.** The report ends with every card
-//! a seat *used* — played, installed, rezzed, activated, advanced or
-//! scored by its owner — over the pass, and the cards in the decks played
-//! that no seat ever used. A card no bot reaches is exercised by random
-//! seats and its own tests alone, which is the list `nsg-card-pool.md`
-//! kept by hand as "Bot debts"; it is regenerated from here now, and a
-//! new set's stage can say which of its cards the bots play.
+//! a seat *used* — played, installed, rezzed, activated, advanced,
+//! scored or sprung by its owner — over the pass, and the cards in the
+//! decks played that no seat ever used. A card no bot reaches is
+//! exercised by random seats and its own tests alone, which is the list
+//! `nsg-card-pool.md` kept by hand as "Bot debts"; it is regenerated from
+//! here now, and a new set's stage can say which of its cards the bots
+//! play. **A hand trap's use is the spring, not the install** (Phase 5
+//! §50): Byte! and Snare! are kept in HQ on purpose (§20,
+//! `HELD_TRAP_WEIGHT`) and do their work when the Runner accesses them
+//! there, and the paid interaction's events name the damage and the tag
+//! but not the card — so `PayAccessTrigger` is counted off the action.
+//! Counted off events alone, Byte! read as a card the planner never used
+//! while it sprang it 21 times in 96 games.
 //!
 //! **Counts, not ratios, are stored; ratios are derived once at report
 //! time** (`DERIVED`), each with its numerator and denominator named, so
@@ -435,6 +442,9 @@ impl<'a> Watcher<'a> {
             }
             PlayerAction::RemoveTag => self.counts.bump("runner.tags_cleared"),
             PlayerAction::TrashResource { .. } => self.counts.bump("corp.tagged_resource_trashes"),
+            // A sprung trap is its owner's use of it (module docs: the
+            // interaction's events do not name the card).
+            PlayerAction::PayAccessTrigger { card_id } => self.used(card_id),
             PlayerAction::EndTurn => match side {
                 Side::Runner => {
                     self.counts.bump("runner.turn_ends");
@@ -1270,6 +1280,26 @@ fn print_report(report: &PreceptsReport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sprung hand trap is its owner's use of the card, read off the
+    /// action: the paid interaction's events name the damage and the tag
+    /// and never the card (module docs).
+    #[test]
+    fn a_sprung_trap_counts_as_a_use_of_the_card() {
+        let registry = decks::sample_deck_registry();
+        let (corp, runner) = core_decks::matchups().into_iter().next().expect("a sample matchup");
+        let (state, _) = GameState::setup(&corp.to_deck(), &runner.to_deck(), &registry, 1).expect("setup");
+        let mut watcher = Watcher::new(&registry, None);
+        let entry = HistoryEntry {
+            turn_number: 2,
+            side: Side::Corp,
+            action: PlayerAction::PayAccessTrigger { card_id: CardId("byte".into()) },
+            events: vec![GameEvent::CreditsSpent { side: Side::Corp, amount: 4 }],
+        };
+        watcher.record(&state, &entry, &state);
+        let (_, used) = watcher.finish();
+        assert_eq!(used.get("byte"), Some(&1), "{used:?}");
+    }
 
     /// Every ratio's numerator and denominator is a key some counter
     /// writes, or `GAMES` — a typo here would be a line that silently
