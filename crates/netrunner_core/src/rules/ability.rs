@@ -310,6 +310,18 @@ pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, 
     crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Runner, amount }, ctx)
 }
 
+/// The Corp is about to draw `amount` cards: announced and parked as the
+/// Runner's draws are, so that Daily Business Show's "the first time each
+/// turn you would draw" resolves before they are drawn. From an empty R&D
+/// the attempt is the deck-out it always was (`draw`, CR 1.7.2c), with
+/// nothing about to happen to announce.
+pub(crate) fn corp_would_draw(state: &mut GameState, registry: &CardRegistry, amount: u32, ctx: &mut ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    if state.corp.r_and_d.is_empty() {
+        return Ok(draw(state, Side::Corp, amount));
+    }
+    crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Corp, amount }, ctx)
+}
+
 /// Draws `amount` cards for `side`, one at a time. Mirrors
 /// `engine::draw_card_click`'s per-card pattern. An empty stack is a
 /// silent stop for the Runner, who never decks out. The Corp loses: "The
@@ -317,8 +329,8 @@ pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, 
 /// because R&D is empty" (CR 1.7.2c). That is a failed attempt, not a
 /// standing condition, so it is here rather than in `checkpoint`; it was a
 /// silent stop for both, and Sprint or Spin Doctor on an empty R&D drew
-/// nothing and played on. Called by `Effect::DrawCards` for the Corp and by
-/// `prevention::happen` for the Runner, once the draw has been announced.
+/// nothing and played on. Called by `corp_would_draw` for an empty R&D,
+/// and by `prevention::happen` once a draw has been announced.
 pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> Vec<GameEvent> {
     let mut events = Vec::new();
     for _ in 0..amount {
@@ -495,12 +507,12 @@ pub fn evaluate_effect(
         }
 
         Effect::DrawCards(side, amount) => {
-            // The Runner's draw is about to happen first, so that what
-            // hears it (The Class Act) resolves before the cards move
-            // (`WouldHappen::Draw`); the Corp's is a moment of nothing.
+            // Either side's draw is about to happen first, so that what
+            // hears it (The Class Act, Daily Business Show) resolves before
+            // the cards move (`WouldHappen::Draw`).
             match side {
                 Side::Runner => runner_would_draw(state, registry, *amount, ctx),
-                Side::Corp => Ok(draw(state, Side::Corp, *amount)),
+                Side::Corp => corp_would_draw(state, registry, *amount, ctx),
             }
         }
 
@@ -665,6 +677,10 @@ pub fn evaluate_effect(
         }
 
         Effect::Prevent(word) => prevention::prevent(state, registry, word),
+        Effect::IncreaseAboutToResolve { by, then } => {
+            let by = resolve_amount(by, ctx, state, registry);
+            prevention::increase_draw(state, by, then.as_deref(), ctx)
+        }
 
         Effect::AddCounters(amount) => modify_counters(state, ctx, i64::from(*amount)),
 
@@ -5481,7 +5497,9 @@ mod tests {
 
         assert_eq!(state.corp.hq.last(), Some(&CardId("only_card".to_string())));
         assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
-        assert_eq!(events, vec![GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }]);
+        // Announced first, as every draw is (Daily Business Show).
+        let about_to = GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 2 } };
+        assert_eq!(events, vec![about_to, GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }]);
     }
 
     #[test]

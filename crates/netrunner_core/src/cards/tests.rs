@@ -28446,4 +28446,52 @@ mod reprints {
         assert!(trashed.pending_decision.is_none(), "an unrezzed asset's interrupt is not active");
         assert!(in_archives(&trashed, "marilyn_campaign"));
     }
+
+    // ---- Stage 9b: a draw that grows ----
+
+    #[test]
+    fn daily_business_show_draws_one_more_the_first_time_each_turn_and_bottoms_one_of_those() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(0);
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign")];
+        state.corp.installed = vec![remote_root("daily_business_show", 0)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        let (asked, _) = pass_until_settled(state, &registry);
+        assert_eq!(asked.corp.hq, vec![id("hedge_fund"), id("pad_campaign"), id("enigma")], "the mandatory draw of 1 drew 2");
+        assert_eq!(corp_toggles(&asked, &registry), vec![1, 2], "1 of those cards, never one already in HQ");
+
+        let bottomed = pick(&asked, &registry, &[1]);
+        assert_eq!(bottomed.corp.hq, vec![id("hedge_fund"), id("enigma")]);
+        assert_eq!(bottomed.corp.r_and_d, vec![id("pad_campaign"), id("hedge_fund"), id("ice_wall")], "to the bottom of R&D");
+
+        let (bottomed, _) = close_all_windows(bottomed, &registry);
+        assert_eq!(bottomed.phase, GamePhase::Action(Side::Corp), "the turn went on once the card was bottomed");
+        let (again, _) = apply_action(&bottomed, &registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("click to draw");
+        assert_eq!(again.corp.hq, vec![id("hedge_fund"), id("enigma"), id("ice_wall")], "only the first draw each turn grows");
+        assert!(again.pending_decision.is_none());
+    }
+
+    #[test]
+    fn daily_business_show_grows_a_cards_draw_and_hears_no_runner_draw() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("sprint")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign"), id("hedge_fund")];
+        state.corp.installed = vec![remote_root("daily_business_show", 0)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("sprint") }).expect("play Sprint");
+        assert_eq!(played.corp.hq.len(), 4, "draw 3, plus 1");
+        assert_eq!(corp_toggles(&played, &registry).len(), 4, "add 1 of them to the bottom of R&D");
+        let bottomed = pick(&played, &registry, &[0]);
+        assert_eq!(bottomed.corp.r_and_d.first(), Some(&id("hedge_fund")));
+        assert_eq!(bottomed.corp.hq.len(), 3);
+        assert!(bottomed.pending_decision.is_some(), "Sprint's own shuffle comes after");
+
+        let mut state = runner_turn();
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        let (drawn, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("click to draw");
+        assert_eq!(drawn.runner.grip.len(), 1, "a Runner's draw is the Runner's");
+        assert!(drawn.pending_decision.is_none());
+    }
 }

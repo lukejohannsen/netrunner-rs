@@ -107,7 +107,11 @@ mod tests {
                 .chain(card.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
             for root in roots {
                 root.for_each_effect(&mut |effect| {
-                    let crate::dsl::Effect::ChooseNumber { then, .. } = effect else { return };
+                    // Daily Business Show's number is the draw it grew.
+                    let then = match effect {
+                        crate::dsl::Effect::ChooseNumber { then, .. } | crate::dsl::Effect::IncreaseAboutToResolve { then: Some(then), .. } => then,
+                        _ => return,
+                    };
                     asked += 1;
                     let written = serde_json::to_string(&then.as_ref().clone().with_chosen_number(7)).expect("an effect serializes");
                     assert!(!written.contains("ChosenNumber"), "{:?} — the number never reaches part of its `then`: {written}", card.id);
@@ -115,7 +119,7 @@ mod tests {
                 });
             }
         }
-        assert!(asked >= 3, "{asked} cards ask for a number — Bigger Picture, Lie Low and Account Siphon do");
+        assert!(asked >= 4, "{asked} cards ask for a number — Bigger Picture, Lie Low, Account Siphon and Daily Business Show do");
     }
 
     /// Embedded cards are the playable pool; anything else is a bug in a

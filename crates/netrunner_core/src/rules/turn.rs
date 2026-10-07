@@ -446,7 +446,7 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
     if state.resolution_halted() {
         return Ok(events);
     }
-    events.extend(draw_and_open_the_turn(state, side));
+    events.extend(draw_and_open_the_turn(state, side, registry)?);
     Ok(events)
 }
 
@@ -458,33 +458,35 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
 /// parked — and paid by `engine::apply_action` once nothing is parked or
 /// queued. Read off the state rather than kept in a flag: nothing has to
 /// remember to clear it.
-pub(crate) fn finish_turn_beginning(state: &mut GameState) -> Vec<GameEvent> {
-    let GamePhase::StartOfTurn(side) = state.phase else { return Vec::new() };
+pub(crate) fn finish_turn_beginning(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let GamePhase::StartOfTurn(side) = state.phase else { return Ok(Vec::new()) };
     if state.paid_ability_window.is_some() || state.resolution_halted() || !state.deferred_triggers.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    draw_and_open_the_turn(state, side)
+    draw_and_open_the_turn(state, side, registry)
 }
 
-fn draw_and_open_the_turn(state: &mut GameState, side: Side) -> Vec<GameEvent> {
+/// The Corp's mandatory draw is announced as every draw is (Daily
+/// Business Show's "the first time each turn you would draw"), and the
+/// window opens whether or not something the draw set off is still
+/// waiting on a decision: the window is what says this step is done
+/// (`finish_turn_beginning` reads it), so opening it after the decision
+/// would draw again. A decision parked inside an open window is answered
+/// first, as one a paid ability parks is.
+fn draw_and_open_the_turn(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
     if side == Side::Corp {
-        // "The Corp performs their mandatory draw" (CR 5.6.1e). Top of R&D
-        // is the end of the Vec, as `RunnerState::stack`'s is.
-        match state.corp.r_and_d.pop() {
-            Some(card) => {
-                state.corp.hq.push(card);
-                events.push(GameEvent::CardDrawn { side: Side::Corp });
-            }
-            None => {
-                events.extend(win::end_game(state, Side::Runner));
-                return events;
-            }
+        // "The Corp performs their mandatory draw" (CR 5.6.1e); from an
+        // empty R&D, the loss (CR 1.7.2c).
+        let mut ctx = crate::rules::ability::ResolutionContext::for_card(None);
+        events.extend(crate::rules::ability::corp_would_draw(state, registry, 1, &mut ctx)?);
+        if state.is_over() {
+            return Ok(events);
         }
     }
 
     events.push(paid_ability::open_window_for(state, side, WindowCheckpoint::StartOfTurn { side }));
-    events
+    Ok(events)
 }
 
 #[cfg(test)]

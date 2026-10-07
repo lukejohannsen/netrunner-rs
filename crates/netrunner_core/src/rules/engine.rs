@@ -440,7 +440,7 @@ fn apply_action_once(
     // beginning — the Corp's mandatory draw, then the window
     // (`turn::finish_turn_beginning`, a no-op unless that is where the
     // game stands).
-    events.extend(crate::rules::turn::finish_turn_beginning(&mut next));
+    events.extend(crate::rules::turn::finish_turn_beginning(&mut next, registry)?);
     // The standing checks once more, for whatever changed them without an
     // event a card can hear — agenda points moved by a card's text, a
     // unique card turned faceup by one. After the drain: a deferred trigger
@@ -782,18 +782,17 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     match side {
-        // Announced first, as every draw of the Runner's is (The Class
-        // Act's "you would draw"), and drawn once what heard it is done —
-        // here, or after a selection it parked (`prevention::settle`).
+        // Announced first, as every draw is (The Class Act's and Daily
+        // Business Show's "you would draw"), and drawn once what heard it
+        // is done — here, or after a selection it parked
+        // (`prevention::settle`).
         Side::Runner => {
             let mut ctx = ability::ResolutionContext::for_card(None);
             events.extend(ability::runner_would_draw(&mut next, registry, 1, &mut ctx)?);
         }
         Side::Corp => {
-            if let Some(card) = next.corp.r_and_d.pop() {
-                next.corp.hq.push(card);
-                events.push(GameEvent::CardDrawn { side });
-            }
+            let mut ctx = ability::ResolutionContext::for_card(None);
+            events.extend(ability::corp_would_draw(&mut next, registry, 1, &mut ctx)?);
         }
     }
 
@@ -3517,6 +3516,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Corp },
                 GameEvent::BasicDrawActionTaken { side: Side::Corp },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Draw },

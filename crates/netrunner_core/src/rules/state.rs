@@ -1002,15 +1002,17 @@ pub enum WouldHappen {
     /// is prevented is its base strength (Flip Switch). Public, as the
     /// trace is.
     Trace { base: u32 },
-    /// `side` would draw `amount` cards — the Runner, the only side whose
-    /// draws are announced (`Trigger::OnDrawAboutToResolve`). **The first
+    /// `side` would draw `amount` cards, announced for either side
+    /// (`Trigger::OnDrawAboutToResolve`). **The first
     /// thing parked here that no card prevents**: The Class Act's "look at
     /// the top X cards of your stack. Add 1 of those cards to the bottom"
     /// is an interrupt that changes what is drawn, not how many, so no
     /// `Preventable` matches it and nobody is ever asked; the parking is
     /// what lets the trigger resolve, and park a selection of its own,
-    /// before the cards are drawn. Public: how many cards a player draws
-    /// is.
+    /// before the cards are drawn. Daily Business Show's changes how many
+    /// (`Effect::IncreaseAboutToResolve`), and what it does once they are
+    /// drawn waits in `PendingPrevention::waiting`. Public: how many cards
+    /// a player draws is.
     Draw { side: Side, amount: u32 },
 }
 

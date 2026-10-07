@@ -9199,3 +9199,44 @@ System Update 2021 is at 70 of 82, and the Core Set at 42 of 113.
     unrezzed one goes to Archives with nothing asked.
 - **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
   single-use, none unused, over 715 card files.
+
+#### Stage 9b — a draw that grows (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card and one new `Effect`. System
+Update 2021 is at 72 of 82.
+- **Card from System Update 2021:** Daily Business Show.
+
+- **"[interrupt] → The first time each turn you would draw any number of
+  cards"** is The Class Act's moment, `OnDrawAboutToResolve` with
+  `first_each_turn`, heard by the side that draws. The Corp's draws were
+  never announced, because nothing heard them. Now every one is, through
+  `ability::corp_would_draw`: a card's draw, the click draw and the
+  mandatory draw (CR 5.6.1e). From an empty R&D the draw is still the
+  deck-out it was (CR 1.7.2c), with nothing to announce.
+- **"Increase the number of cards you will draw by 1"** changes how many,
+  which `Prevent` cannot say: it only lowers what is parked.
+  `IncreaseAboutToResolve { by, then }` adds to the parked draw and
+  refuses when none is parked.
+- **"When you draw those cards, add 1 of them to the bottom of R&D"**
+  happens after the draw. The `then` waits in `PendingPrevention::waiting`
+  with the new count written over `Amount::ChosenNumber`, and
+  `prevention::finish` draws first and resolves it after. It is a
+  selection from HQ through `TopOf(ChosenNumber)`. The drawn cards are the
+  end of HQ, so only they are offered.
+- **The mandatory draw opens the start-of-turn window even when a
+  decision is still waiting.** The window is how
+  `turn::finish_turn_beginning` knows the draw was made. Opening it after
+  the decision would have drawn a second time. The decision is answered
+  first, as one a paid ability parks inside a window is.
+- **Decks.** Paid Content takes two Daily Business Show for The Holo Man
+  and Janaína “JK” Dumont Kindelán. Both are still in other decks.
+- **Client.** Nothing new reaches the view. The prose for the new
+  `Effect` is in `netrunner_client::prose`.
+- **Tests.** Two new tests, and two event lists that now begin with the
+  draw's announcement.
+  - The mandatory draw of 1 draws 2, and only those 2 can go to the bottom
+    of R&D. The turn goes on, and a click draw later that turn draws 1.
+  - Sprint's draw of 3 draws 4, and Sprint's own shuffle follows the
+    bottomed card. The Runner's click draw is never heard.
+- **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
+  single-use, none unused, over 716 card files.

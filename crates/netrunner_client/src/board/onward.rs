@@ -53,6 +53,12 @@ pub enum Onward {
     FireSubroutines(usize),
     /// The movement phase: past an ice, or into a server with none.
     Movement,
+    /// An encounter forced from inside something else ends, and the run
+    /// goes back to what it interrupted — Ganked!'s encounter from an
+    /// access, Konjin's from another encounter (`ClientView`'s
+    /// `suspended`). It has no movement phase: labelled "Movement", it
+    /// sent a Runner back to the access, where the run then ended.
+    EndEncounter,
     /// The Runner's decision to jack out or go on, which a Corp window
     /// can stand in front of.
     JackOutDecision,
@@ -109,7 +115,11 @@ fn run_step(view: &ClientView, window: bool) -> Option<Onward> {
                 .get(run.position)
                 .and_then(|ice| ice.identity.as_ref())
                 .map_or(0, |identity| identity.subroutines.iter().filter(|sub| sub.status == SubroutineStatus::Pending).count());
-            Some(if pending > 0 { Onward::FireSubroutines(pending) } else { Onward::Movement })
+            Some(match pending {
+                0 if !run.suspended.is_empty() => Onward::EndEncounter,
+                0 => Onward::Movement,
+                pending => Onward::FireSubroutines(pending),
+            })
         }
         RunPhase::Movement if run.jack_out_permitted && window => Some(Onward::JackOutDecision),
         RunPhase::Movement => Some(next(run.position)),
@@ -147,6 +157,7 @@ impl Onward {
             Onward::FireSubroutines(1) => "Let 1 subroutine fire".to_string(),
             Onward::FireSubroutines(n) => format!("Let {n} subroutines fire"),
             Onward::Movement => "Continue to Movement".to_string(),
+            Onward::EndEncounter => "End the encounter".to_string(),
             Onward::JackOutDecision => format!("Continue to {} jack-out decision", whose(Side::Runner)),
             Onward::Breach(server) => format!("Breach {}", server_name(*server)),
             Onward::TurnBegins(side) => format!("Begin {} turn", whose(*side)),
@@ -182,6 +193,7 @@ mod tests {
             Onward::EncounterIce(_) => events.iter().any(|e| matches!(e, GameEvent::IceEncountered { .. })),
             Onward::FireSubroutines(_) => events.iter().any(|e| matches!(e, GameEvent::SubroutineFired { .. })),
             Onward::Movement => run.is_some_and(|r| r.phase == RunPhase::Movement),
+            Onward::EndEncounter => events.iter().any(|e| matches!(e, GameEvent::EncounterEnded { .. })),
             Onward::JackOutDecision => run.is_some_and(|r| r.phase == RunPhase::Movement && r.jack_out_permitted) && window.is_none(),
             Onward::Breach(_) => events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. } | GameEvent::RunNotDeclaredSuccessful { .. })),
             Onward::TurnBegins(side) => window == Some(WindowCheckpoint::StartOfTurn { side: *side }) || state.phase == GamePhase::Action(*side),

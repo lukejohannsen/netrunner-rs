@@ -443,12 +443,12 @@ pub enum Trigger {
     /// event said whose card it was, never who showed it.
     OnCardRevealed,
     /// "The first time each turn **you would draw** any number of cards"
-    /// (The Class Act) — `GameEvent::AboutToResolve` of a
+    /// (The Class Act, Daily Business Show) — `GameEvent::AboutToResolve` of a
     /// `WouldHappen::Draw`, the draw parked by `rules::prevention` so that
     /// what hears it resolves before the cards are drawn, as
     /// `OnDamageAboutToResolve` resolves before the damage. Announced for
-    /// every draw of the Runner's and none of the Corp's, which no card in
-    /// the pool hears. Composition didn't work: a draw was not a moment
+    /// every draw from a stack or an R&D with a card in it, the Corp's
+    /// mandatory draw included. Composition didn't work: a draw was not a moment
     /// until it had happened (`CardDrawn`, heard by nothing).
     OnDrawAboutToResolve,
     /// "Whenever you create a server" (Turtlebacks), and "the first time
