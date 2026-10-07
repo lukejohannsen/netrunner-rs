@@ -370,6 +370,40 @@ fn settle_within(
     Ok(Some(events))
 }
 
+/// `Effect::IncreaseAboutToResolve`: the parked draw grows by `by`, and
+/// `then` — with the new number written over `Amount::ChosenNumber` — waits
+/// in `PendingPrevention::waiting` to resolve as the acting card once the
+/// cards are drawn (Daily Business Show's "when you draw those cards, add
+/// 1 of them to the bottom of R&D"). Refuses unless a draw is parked, as
+/// `prevent` refuses with nothing to prevent.
+pub(crate) fn increase_draw(
+    state: &mut GameState,
+    by: u32,
+    then: Option<&Effect>,
+    ctx: &ResolutionContext<'_>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingPrevention { what: WouldHappen::Draw { amount, .. }, waiting, .. }) = state.pending_prevention.as_mut() else {
+        return Err(RulesError::NothingToPrevent);
+    };
+    *amount += by;
+    if let (Some(then), Some(card)) = (then, ctx.acting_card) {
+        *waiting = Some(Box::new(DeferredTrigger {
+            announce: None,
+            card: card.clone(),
+            install: ctx.acting_install,
+            trigger: Trigger::OnDrawAboutToResolve,
+            target: None,
+            target_install: None,
+            event: ctx.triggering_event.cloned(),
+            continuation: Some(then.clone().with_chosen_number(*amount)),
+            heard: Default::default(),
+            not_the_first_this_turn: false,
+            fired: 0,
+        }));
+    }
+    Ok(Vec::new())
+}
+
 /// Whether the prevention window is the one open.
 pub(crate) fn asking(state: &GameState) -> bool {
     state.paid_ability_window.as_ref().is_some_and(|window| window.checkpoint == WindowCheckpoint::Prevention)
@@ -441,6 +475,16 @@ fn finish_within(
         if let Some(Effect::Trace { on_success, .. }) = &due.continuation {
             let base = if prevented > 0 { 0 } else { *base };
             events.extend(ability::start_trace(state, base, on_success, Some(due.card.clone()), due.install));
+        }
+    } else if let (WouldHappen::Draw { .. }, true) = (&pending.what, left > 0) {
+        // The cards are drawn first, and then what was waiting on them
+        // (`increase_draw`) resolves.
+        let responsible = responsible_for(registry, pending.source_card.as_ref());
+        events.extend(happen(state, registry, &pending.what, left, responsible, pending.source_install, ctx)?);
+        if let Some(due) = &pending.waiting
+            && !state.is_over()
+        {
+            events.extend(dispatcher::fire_deferred(state, registry, due)?);
         }
     } else if left > 0
         && let Some(due) = &pending.waiting

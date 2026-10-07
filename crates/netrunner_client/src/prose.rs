@@ -348,6 +348,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Prevent(Preventable::RunEnding) => "prevent a Corp card ability from ending the run".to_string(),
         Effect::Prevent(Preventable::TraceBaseStrength) => "reduce the base trace strength of a trace to 0".to_string(),
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
+        Effect::IncreaseAboutToResolve { by, then } => {
+            let grow = format!("draw {} more", describe_amount(by));
+            match then {
+                Some(then) => format!("{grow}; once drawn: {}", describe_effect(then, registry)),
+                None => grow,
+            }
+        }
         Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::HostedCounters) => "remove all its counters".to_string(),

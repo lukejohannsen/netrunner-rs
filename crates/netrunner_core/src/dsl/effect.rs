@@ -400,6 +400,22 @@ pub enum Effect {
     /// (`RulesError::NothingToPrevent`) unless something it matches is
     /// parked — which is also what keeps it out of `legal_actions`.
     Prevent(Preventable),
+    /// Increases a parked draw by `by` — Daily Business Show's "increase
+    /// the number of cards you will draw by 1" — and, when `then` is given,
+    /// resolves it as the cards are drawn: "When you draw those cards, add
+    /// 1 of them to the bottom of R&D". `then` reads the number drawn as
+    /// `Amount::ChosenNumber` (written in here, as `ChooseNumber`'s `then`
+    /// has its number), so `CardFilter::TopOf(ChosenNumber)` over HQ is
+    /// "those cards": drawn cards are the end of the hand. Waits in
+    /// `PendingPrevention::waiting` and resolves after `prevention::happen`
+    /// draws. Refused unless a draw is parked. Composition didn't work:
+    /// `Prevent` only lowers what is parked, and nothing else runs after a
+    /// parked thing has happened.
+    IncreaseAboutToResolve {
+        by: Amount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
     /// Saturating-adds `amount` generic counters (see `dsl::card::
     /// CounterKind`) to whichever card activated this effect — always
     /// `acting_card`, the same target `BoostStrength` uses, since a
@@ -2838,9 +2854,22 @@ impl Effect {
             Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
             // Focus Group's "place X advancement counters on 1 installed
             // card": the number rides into the card chosen.
-            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
-                Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
-            }
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter: filter.with_chosen_number(number),
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(boxed),
+                count,
+                up_to,
+            },
+            // Its `then`'s number is the draw's, as a nested
+            // `ChooseNumber`'s `then` is that choice's.
+            Effect::IncreaseAboutToResolve { by, then } => Effect::IncreaseAboutToResolve { by: amount(by), then },
             Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to } => {
                 Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(number), restrict_to }
             }
@@ -2971,14 +3000,16 @@ impl Effect {
                 on_match.for_each_effect(f);
                 on_differ.for_each_effect(f);
             }
-            Effect::PromptChooseCards { then: Some(effect), .. } | Effect::Access { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::PromptChooseCards { then: Some(effect), .. }
+            | Effect::Access { then: Some(effect), .. }
+            | Effect::IncreaseAboutToResolve { then: Some(effect), .. } => effect.for_each_effect(f),
             Effect::Access { then: None, .. } => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
                     effect.for_each_effect(f);
                 }
             }
-            Effect::PromptChooseCards { then: None, .. } => {}
+            Effect::PromptChooseCards { then: None, .. } | Effect::IncreaseAboutToResolve { then: None, .. } => {}
             Effect::RevealAtRandom { each: Some(effect), .. } => effect.for_each_effect(f),
             Effect::RevealAtRandom { each: None, .. } => {}
             Effect::PromptInstallCorpCard { then, if_rezzed, if_installed, .. } => {

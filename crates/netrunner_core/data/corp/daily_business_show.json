@@ -1,0 +1,42 @@
+{
+  "id": "daily_business_show",
+  "title": "Daily Business Show",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnDrawAboutToResolve",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "IncreaseAboutToResolve": {
+            "by": {
+              "Fixed": 1
+            },
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": {
+                  "TopOf": "ChosenNumber"
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "AddToDeck": "Bottom"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you would draw any number of cards, increase the number of cards you will draw by 1. When you draw those cards, add 1 of them to the bottom of R&D."
+    }
+  ],
+  "built_from": 31063,
+  "is_playable": true
+}

@@ -421,8 +421,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // pool is printed about; a tag or a trash about to happen is an
         // occurrence of nothing until a card listens for one.
         GameEvent::AboutToResolve { what: WouldHappen::Damage { kind, .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Damage(*kind), None)],
-        // "You would draw" — only the Runner's draws are announced
-        // (`ability::draw`), so only theirs is a moment.
+        // "You would draw" — either side's, heard by that side
+        // (`ability::{runner_would_draw, corp_would_draw}`).
         GameEvent::AboutToResolve { what: WouldHappen::Draw { side, .. } } => vec![moment(Trigger::OnDrawAboutToResolve, &About::Nothing, Some(*side))],
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
