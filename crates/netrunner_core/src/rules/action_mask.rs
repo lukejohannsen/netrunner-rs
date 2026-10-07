@@ -1296,6 +1296,7 @@ mod tests {
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
             secret: false,
+            install: None,
         });
 
         assert_roundtrips(&state, &registry);

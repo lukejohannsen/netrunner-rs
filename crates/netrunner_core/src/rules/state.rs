@@ -1182,6 +1182,22 @@ pub struct PendingInstallFromZone {
     /// that landed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub if_installed: Option<Box<Effect>>,
+    /// `Effect::PromptInstallCorpCard::any_position`: a server with ice
+    /// asks where among it the card goes before it lands
+    /// (`PendingDecision::ChooseNumber::install`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub any_position: bool,
+}
+
+/// An install of ice "in any position" whose server is chosen and whose
+/// position is being asked (`PendingDecision::ChooseNumber::install`): the
+/// card lands in `server` with the chosen number of that server's pieces of
+/// ice outward of it. Named by position as the server choice named it, so
+/// it passes through a view unmasked for the same reason.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InstallAtPosition {
+    pub server: ServerId,
+    pub install: PendingInstallFromZone,
 }
 
 /// A payment that could come from more than one place, waiting on the payer
@@ -1342,6 +1358,15 @@ pub enum PendingDecision {
         /// alone. The decision itself — who is choosing, from what range —
         /// is public, as a secret choice being made is (CR 1.5.2b).
         secret: bool,
+        /// The number is a position, not a card's: an install "in any
+        /// position" (`Effect::PromptInstallCorpCard::any_position`) whose
+        /// server was just chosen, landing with this many of the server's
+        /// pieces of ice outward of it; `then` is empty. A field rather than
+        /// an effect in `then`, because the card is still in HQ or Archives
+        /// and only the parked install knows which one it is — the reason
+        /// the server choice carries `install` too.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        install: Option<Box<InstallAtPosition>>,
     },
     /// `Effect::ChooseCardName` parked this: `chooser` names one of
     /// `names` with `PlayerAction::ChooseCardName` — every playable card

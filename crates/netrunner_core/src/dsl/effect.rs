@@ -858,6 +858,20 @@ pub enum Effect {
         /// the acting install, gone by the time a trash is heard.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         not_in_root_of: Option<ThisServer>,
+        /// "Install 1 piece of ice … **in any position** protecting a
+        /// server" — Timely Public Release (CR 6.2.2d: outward from every
+        /// position, inward from every one, or between two). Once the server
+        /// is chosen and has ice, the Corp is asked a number — how many of
+        /// that server's pieces of ice are outward of the new one, 0 being
+        /// the outermost position and the count the innermost — and the
+        /// card lands there (`PendingDecision::ChooseNumber::install`). The
+        /// position is part of the destination (CR 6.2.2: "created when the
+        /// Corp declares an install destination", step 8.5.16b), so it is
+        /// asked before the card lands, never as a move after it. A field
+        /// for the reason `remote_only` is one: what narrows an install's
+        /// destinations is the install's.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        any_position: bool,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -2862,7 +2876,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -2877,6 +2891,7 @@ impl Effect {
                     if_rezzed,
                     if_installed,
                     ignore_credit_costs,
+                    any_position,
                 }
             }
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {

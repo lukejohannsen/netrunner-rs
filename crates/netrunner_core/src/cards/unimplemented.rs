@@ -74,7 +74,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("magnet", "Magnet"),
     ("ravana_1_0", "Ravana 1.0"),
     ("corporate_troubleshooter", "Corporate Troubleshooter"),
-    ("trick_of_light", "Trick of Light"),
     ("project_beale", "Project Beale"),
     ("daily_business_show", "Daily Business Show"),
     ("psychographics", "Psychographics"),
@@ -93,5 +92,4 @@ pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const MOR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("crowdfunding", "Crowdfunding"),
     ("slot_machine", "Slot Machine"),
-    ("timely_public_release", "Timely Public Release"),
 ];

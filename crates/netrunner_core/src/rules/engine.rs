@@ -829,7 +829,7 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true, 0)?);
     Ok((next, events))
 }
 
@@ -854,6 +854,7 @@ pub(crate) fn place_corp_card(
     discount: u32,
     trash_first: bool,
     from_hq: bool,
+    inward: u32,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
@@ -938,12 +939,20 @@ pub(crate) fn place_corp_card(
     // server. Root installs have no order and simply append; Brân 1.0's
     // "directly inward from this ice" pins its own position via
     // `Effect::InstallFromZoneIgnoringCost::insert_after` instead.
-    let outermost = (slot == InstallSlot::Ice)
-        .then(|| next.corp.installed.iter().position(|c| c.server == zone && c.slot == InstallSlot::Ice))
-        .flatten();
-    match outermost {
-        Some(index) => next.corp.installed.insert(index, new_card),
-        None => next.corp.installed.push(new_card),
+    //
+    // "In any position" (CR 6.2.2d, Timely Public Release) is `inward`:
+    // that many of the server's pieces of ice stay outward of the new one,
+    // so 0 is the outermost position above and the count the innermost,
+    // directly after the last of them. Every other install passes 0.
+    let ice_here: Vec<usize> = if slot == InstallSlot::Ice {
+        next.corp.installed.iter().enumerate().filter(|(_, c)| c.server == zone && c.slot == InstallSlot::Ice).map(|(index, _)| index).collect()
+    } else {
+        Vec::new()
+    };
+    match (ice_here.get(inward as usize), ice_here.last()) {
+        (Some(&index), _) => next.corp.installed.insert(index, new_card),
+        (None, Some(&innermost)) => next.corp.installed.insert(innermost + 1, new_card),
+        (None, None) => next.corp.installed.push(new_card),
     }
     if creates {
         dispatcher::emit(next, registry, &mut events, GameEvent::ServerCreated { server: zone })?;

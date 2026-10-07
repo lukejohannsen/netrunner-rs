@@ -27985,4 +27985,90 @@ mod reprints {
         let (hit, _) = close_all_windows(hit, &registry);
         assert_eq!(hit.runner.grip.len(), 2, "2 + 1 printed points, 3 meat damage");
     }
+
+    // ---- Stage 7c: ice installed in any position, counters moved ----
+
+    fn pick(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn timely_public_release_installs_ice_from_hq_in_the_position_the_corp_chooses_for_free() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, rezzed: false, ..remote_root("timely_public_release", 0) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "timely_public_release") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1, "1 agenda counter on scoring");
+        let (mut idle, _) = close_all_windows(scored, &registry);
+        idle.corp.hq = vec![id("enigma")];
+        idle.corp.installed = vec![ice_at_hq("ice_wall"), ice_at_hq("ice_wall")];
+        idle.corp.resources.credits = Credits(0);
+        let release = PlayerAction::ActivateAbility { target: idle.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (choosing, _) = apply_action(&idle, &registry, release).expect("hosted agenda counter");
+        let (from_hq, _) = apply_action(&choosing, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("from HQ");
+        let picked = pick(&from_hq, &registry, &[0]);
+        let (positioning, _) = apply_action(&picked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protecting HQ, though 2 ice are there and the Corp has no credits");
+        match &positioning.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseNumber { min: 0, max: 2, install: Some(_), .. }) => {}
+            other => panic!("asked where among HQ's 2 pieces of ice, got {other:?}"),
+        }
+        let (between, _) = apply_action(&positioning, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("between the two");
+        let order: Vec<&str> = between.corp.installed.iter().filter(|c| c.server == ServerId::Hq).map(|c| c.card.0.as_str()).collect();
+        assert_eq!(order, vec!["ice_wall", "enigma", "ice_wall"], "one piece of ice outward of it");
+        assert_eq!(between.corp.resources.credits, Credits(0), "ignoring all costs");
+        assert_eq!(between.corp.scored_agendas[0].agenda_counters, 0);
+
+        // The innermost position, and a server with no ice asks nothing.
+        let (innermost, _) = apply_action(&positioning, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("innermost");
+        let order: Vec<&str> = innermost.corp.installed.iter().filter(|c| c.server == ServerId::Hq).map(|c| c.card.0.as_str()).collect();
+        assert_eq!(order, vec!["ice_wall", "ice_wall", "enigma"]);
+        let (alone, _) = apply_action(&picked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("protecting R&D");
+        assert!(alone.pending_decision.is_none(), "one position, nobody asked");
+        assert!(alone.corp.installed.iter().any(|c| c.server == ServerId::RnD && c.card == id("enigma")));
+    }
+
+    #[test]
+    fn trick_of_light_moves_up_to_two_counters_from_another_card_to_one_you_can_advance() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("trick_of_light")];
+        let mut ice = ice_at_hq("enigma");
+        ice.advancement_tokens = 3;
+        state.corp.installed = vec![ice, remote_root("offworld_office", 0)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("trick_of_light") }).expect("play");
+        let offered = crate::rules::legal_actions_for(&played, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "the agenda hosts no counter to move");
+        let from = pick(&played, &registry, &[0]);
+        match &from.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseNumber { min: 0, max: 2, .. }) => {}
+            other => panic!("up to 2 of its 3, got {other:?}"),
+        }
+        let (counted, _) = apply_action(&from, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("2");
+        assert!(!crate::rules::legal_actions_for(&counted, &registry, Side::Corp).contains(&PlayerAction::ToggleCardSelection { position: 0 }), "another card, one you can advance");
+        let moved = pick(&counted, &registry, &[1]);
+        assert_eq!((moved.corp.installed[0].advancement_tokens, moved.corp.installed[1].advancement_tokens), (1, 2));
+
+        // A source with 1 counter offers at most 1, so none is made up.
+        let mut thin = state.clone();
+        thin.corp.installed[0].advancement_tokens = 1;
+        let (played, _) = apply_action(&thin, &registry, PlayerAction::PlayOperation { card_id: id("trick_of_light") }).expect("play");
+        let from = pick(&played, &registry, &[0]);
+        match &from.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseNumber { min: 0, max: 1, .. }) => {}
+            other => panic!("up to 2, but it hosts 1: got {other:?}"),
+        }
+
+        // With no other card you can advance, nothing is taken off it.
+        let mut alone = state.clone();
+        alone.corp.installed.truncate(1);
+        alone.corp.installed[0] = crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, ..remote_root("offworld_office", 0) };
+        let (played, _) = apply_action(&alone, &registry, PlayerAction::PlayOperation { card_id: id("trick_of_light") }).expect("play");
+        let done = pick(&played, &registry, &[0]);
+        assert!(done.pending_decision.is_none());
+        assert_eq!(done.corp.installed[0].advancement_tokens, 2, "a card is not moved onto itself");
+    }
 }

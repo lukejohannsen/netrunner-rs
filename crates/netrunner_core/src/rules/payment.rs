@@ -636,6 +636,10 @@ fn a_text_rez_could_ask(state: &GameState, registry: &CardRegistry, action: &cra
             _ => false,
         };
     }
+    // The same install, asked its position first ("in any position").
+    if let (PlayerAction::ChooseNumber { .. }, Some(PendingDecision::ChooseNumber { install: Some(at), .. })) = (action, &state.pending_decision) {
+        return at.install.rez && at.install.pay_cost;
+    }
     let a_way_to_pay_on_the_table = state
         .corp
         .installed
