@@ -3520,3 +3520,26 @@ By pairing, the yes against the decline: Agency 25 / 25, Brick Stack 43 / 49, Gi
 **Not done, and why.** The §39 cost is closed as not reproduced rather than traced to a cause, because 288 paired games on three seeds found nothing to trace. The eight-seed playout tool and the per-game pairing are scratch and not committed; the archive entry records the apparatus. No code changed; the tree is `main`'s plus this record and the doc comment on `its_identitys_choice`.
 
 **Verified.** No code changed.
+
+## 50. Byte! is not blind, the instrument was: a hand trap's use is the spring, and `diag precepts` counts it off the action — DONE (`fix/a-sprung-trap-is-a-use`, 7 October 2026)
+
+**The debt.** The blind list (§29) named Byte! first among the Corp's cards — random seats used it 51 times on the 192-game casual pass of seed 2, the planner never — and the card-pool ledger carried it as a card the planner never plays.
+
+**Measured first, on the card's own decks.** Fine Print, Glyph of Warding and Pork Chops, the three sample decks that hold Byte!, against Bowel Movements, Enthusiasm, Stolen Goods and Sabbatical, eight seeds each — 96 games a seating, one process a game, the records kept — on `main` at `bcb36834`:
+
+| seating | Byte! installed | accessed | offered (affordable, outside Archives) | sprung | declined |
+|---|---|---|---|---|---|
+| planner both chairs | 10 | 77 | 56 | **21** | 35 |
+| random both chairs | 73 | 74 | 33 | 4 | 29 |
+
+The planner plays Byte! the way §20 decided a hand trap is played — kept in HQ (`HELD_TRAP_WEIGHT`), where the Runner meets it looking for agendas — and springs it there, 21 times in 96 games, where random seats install it 73 times and spring it 4. **What the instrument counted was the install.** `diag precepts` read a use off the events a seat's action produced (installed, played, rezzed, activated, advanced, scored), and a paid access interaction's events are the cost and the damage and the tag — `CreditsSpent`, `DamageDealt`, `TagGiven` — none of which names the card. So a card whose whole use is being sprung from HQ read as never used by the seat that uses it right, and as used 73 times by the seat that installs it wrong.
+
+**What it is now.** The watcher counts `PlayerAction::PayAccessTrigger { card_id }` as a use of `card_id`, off the action, beside the event-read uses. One arm, one test (`a_sprung_trap_counts_as_a_use_of_the_card`). Nothing in the bots changed.
+
+**Measured.** `diag precepts --deck-styles --games 391 --seed 2`, random and planner seats, the binary before and after — the same games, every per-game record identical apart from `used`:
+- Byte!: random 72 → 74, planner **2 → 11** (9 springs beside 2 installs in the 51 games its decks play; ratio 0.03 → 0.15). Behold!, the other paid access trap in the pool, gains its one spring on the random pass.
+- `blind_cards.py` at the strict ratio is **unchanged, 11 cards**: Public Trail (19 / 0), Shipment from Vladisibirsk (7 / 0), Retribution (6 / 0); Carnivore (24 / 0), Bravado (18 / 0), Tranquilizer (16 / 0), Wildcat Strike (12 / 0), Cacophony (10 / 0), Boomerang (6 / 0), Raindrops Cut Stone (6 / 0), Pichação (5 / 0). Byte! was already off the strict list at this pass size on `main` (planner 2, two installs); the 51 / 0 was the 192-game pass at #341, where the planner's two installs had not happened yet. At `--ratio 0.2` it is on both lists, at 0.03 before and 0.15 after.
+
+**Not done, and why.** Whether the planner springs Byte! *enough* — 21 of 56 affordable offers — is a question about `OPPONENT_GRIP_SHORTFALL_WEIGHT` and the tag's worth, not about blindness, and is not measured here: the decline is the term's reading of a grip above the floor, which §20 set on purpose. The three decks' 96 games are scratch and not committed; this entry records the apparatus.
+
+**Verified.** `cargo test --workspace` green, `cargo clippy --workspace --all-targets` silent. The engine and the bots are untouched: both passes play the same games.
