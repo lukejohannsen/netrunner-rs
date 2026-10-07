@@ -26,12 +26,15 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 
 ## Open
 
-- **Are the ladders' steps still even after §44?** One ply now takes the free rezzes and installs a
-  "may" offers the Corp, which moved the planner's self-pairing +0.052 / +0.078 toward the Corp; every
-  rung is that planner at an `epsilon`, so every rung gained, and the steps were spaced (§25 Stage 8)
-  on the bot before it.
-- **The planner's payment search tries every order of an install's trash-first picks** (§43): ten
-  pieces of ice on a server is 11¹⁰ orders, and a scratch build's game never finished.
+- **The Runner's ladder is owed a re-spacing** (§47): re-taken after §44, the Corp's steps are still
+  even but the Runner's are not — `operator → veteran` +0.146 / +0.190, `veteran → elite` +0.096 /
+  +0.057 (1.6 sd on seed 2). Each seed's curve puts even steps at Runner ε ≈ 0.37 / 0.21 / 0.12 in
+  place of 0.45 / 0.25 / 0.10; set them and re-take the Runner's square on both seeds.
+- **The trash-first payment search is exponential in the ice on the server** (§43, measured §47):
+  `answer_payment` and the evaluator's `through_parked_payment` walk every order of every subset,
+  a(n) = n·a(n−1) + 2n applications — 7 pieces 3.4 s, 8 pieces 30 s, 9 pieces 293 s, 10 about 49
+  minutes, outside `PLAN_BUDGET`. Real play reached 7 (six times in 391 planner games), and the
+  small questions alone were about a quarter of a planner pass's thread time.
 - **Why Barry "Baz" Wong's planned install costs his deck over a game** (§39): the "may" is planned
   and each install reads as a sound play — replayed from the record and played out both ways, the
   first yes of a game is not worse than the no (Corp 175 vs 166 of 352 playouts) — yet Professional
@@ -84,6 +87,7 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 - **§44** — One ply answers a decision of the seat's own before it scores the action that parked it: the evaluator charged a parked choice 2.0 and credited a lower bound of its upside, so passing into Brân 1.0's "you may install" tied LEO Construction's trash of Mercia B4LL4RD (5 of its 17 uses were jitter) and the Corp declined the free rezzes and installs a "may" offers it — Send a Message, Brân, Scatter Field, Plutus, Ballista, Ansel; the self-pairing moved past the band toward the Corp on both seeds (+0.052, +0.078), the Corp seat's, and the ladders are not re-taken (`fix/one-ply-looks-through-its-own-choice`, 5 October 2026).
 - **§45** — The fort is read so the Corp cannot rebuild it by trashing its own cards: an upgrade sits in a fort's root beside its agenda (8 of LEO Construction's 15 uses were a Mercia B4LL4RD out of one, read as +3.0 of fort), and the "glacier, then fast advance" wall is beaten by the Runner's rig — every subtype, and the credits to break in — not by a piece count the Corp moves, with an agenda's exposure kept once it is (a Bumi 1.0 trashed at a run's initiation had read +13.0 of fort); LEO's ICE trashes at an initiation 2 → 1, the self-pairing inside the band; the view sweep's fog rule carries a card watched back to HQ across the turn (`fix/fort-root-holds-an-upgrade`, 5 October 2026).
 - **§46** — A game does not get younger: the stage was read off a board the Corp moves itself, so LEO Construction's trash of HQ's only ICE at a run's initiation read the game as early again and its income as worth more (+4.0, deciding the trade); past game turn 19 — where nine games in ten have left the early stage, and none in a planner pass ever went back — the stage is at least middle; LEO's ICE trashes 1 → 0, the self-pairing inside the band (`fix/stage-not-moved-by-own-ice`, 6 October 2026).
+- **§47** — The ladders after §44, measured: elite against elite the Corp wins 0.570 / 0.547 where it won 0.401 / 0.469; the Corp's steps are still even (every one a rise at 3.0 sd or more), the Runner's are not (`operator → veteran` +0.146 / +0.190, `veteran → elite` +0.057 on seed 2 at 1.6 sd), so the Runner's re-spacing is owed; and the trash-first payment search costs a(n) = n·a(n−1) + 2n applications for *n* pieces of ice on the server — 293 s at nine, about 49 minutes at ten — with real play reaching seven (`diag/ladders-after-44`, 6 October 2026).
 - **§31** — A run a card's text began is priced with what the text put on it: the run's own credits break ICE and are worth the breaks they cover (Overclock), the rider pays on success (Clean Getaway, Red Team's run, Jailbreak's draw and access), the breach is of the server the run approaches (Maintenance Access), an armed prevention passes the first unbreakable piece (Shred) and a rez tax is what the forced rez costs (Tread Lightly) — Overclock 0 → 58, Clean Getaway 0 → 46, Shred 0 → 25, Maintenance Access 0 → 7 plays over a planner pass of the pool, the four off the blind list; the self-pairing moved within the band in opposite directions on two seeds (`feat/run-riders-at-the-leaf`, 2 October 2026).
 - **§30** — A program hosted on Madani is one turn from the table (its install delta less a click) and the grip promises its installer half a click: the planner installs Madani beside programs that wait, hosts on it and installs from it — 1 → 37 installs and 0 → 24 hosts-or-free-installs over 192 games, Madani off the blind list; three readings measured and rejected first, one of them with a beam change that moved every game (`feat/madani-hosts-the-rig`, 2 October 2026).
 - **§29** — The cards the planner never plays are the difference between seatings, measured: `scripts/blind_cards.py` over a random pass and a planner pass of `diag precepts` lists every card random seats use at least five times that the planner never does — 26 on `main` at #341, Madani first at 115–163 uses a pass — where "no seat used it" could not see a card the planner installs and never uses (`diag/blind-cards`, 2 October 2026).
@@ -425,6 +429,21 @@ one move ahead" with no change of its own.
 Corp profile the fort", then let one ply be the top. What remains of §4 is
 (a), which this table already answers for the Corp: it is spaced by
 measurement, like the Runner's.
+
+### The ladders after §44 (§47)
+
+The latest tables, taken as Stage 8's were (below) on `main` at `0a1cb81`, 6 October 2026; reports
+under `target/coverage/ladder44/`. The Corp's steps are even; the Runner's are owed a re-spacing (Open).
+
+| rung | Corp, seed 1 / 2 | Runner, seed 1 / 2 | `epsilon` (Corp / Runner) |
+|---|---|---|---|
+| novice | 0.013 / 0.016 | 0.036 / 0.034 | 1.00 / 1.00 |
+| apprentice | 0.156 / 0.128 | 0.107 / 0.094 | 0.22 / 0.45 |
+| operator | 0.273 / 0.284 | 0.188 / 0.206 | 0.11 / 0.25 |
+| veteran | 0.440 / 0.440 | 0.333 / 0.396 | 0.05 / 0.10 |
+| elite | 0.570 / 0.547 | 0.430 / 0.453 | 0.00 / 0.00 |
+
+A seed of the square cost 3,754 s alone on 20 threads.
 
 ### The ladders on the planner (§25 Stage 8)
 
