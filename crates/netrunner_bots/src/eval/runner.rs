@@ -612,7 +612,8 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     }
     if let Some(run) = &state.active_run {
         let pool = run_pool(state, run);
-        if let Some(due) = remaining_break_cost(state, run, registry).filter(|due| *due <= pool) {
+        let gets_in = remaining_break_cost(state, run, registry).filter(|due| *due <= pool);
+        if let Some(due) = gets_in {
             *score += access_prospect(state, run, registry, w, pool - due, horizon);
             // What the card that began the run put on it (Phase 5 §31).
             // The run's own credits pay the breaks the Runner's would
@@ -634,6 +635,17 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
             *score += f64::from(pays.runner_credits) * w.own_credit_weight + f64::from(pays.runner_cards) * w.click_weight
                 - f64::from(pays.corp_credits + pays.corp_cards) * w.opponent_credit_weight;
         }
+        // What the run pays when it ends, succeed or not (Phase 5 §53):
+        // Bravado's "When that run ends, gain 6[credit] plus 1[credit]
+        // for each piece of ice you passed during that run". The ice the
+        // run will pass is every piece on the server when the rig gets
+        // in, and what it has passed so far when it does not — the run
+        // jacks out, and the rider pays anyway — at the rate a play is
+        // read at. Outside the gate above on purpose: a success rider
+        // pays only on a run that gets in; this one pays on every run.
+        let passed = if gets_in.is_some() { run.ice.len() as u32 } else { run.ice_passed };
+        let (credits, cards) = read::run_end_income(run, Side::Runner, passed);
+        *score += f64::from(credits) * w.own_credit_weight + f64::from(cards) * w.click_weight;
         *score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
         *score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
         if w.unrezzed_threat_weight != 0.0 {
@@ -1830,6 +1842,21 @@ mod tests {
         let getaway = with_run(&paid, RunState { on_success_effect: Some(Box::new(Effect::GainCredits(Side::Runner, 6))), ..hq(vec![wall.clone()]) });
         let rider = score(&getaway) - score(&plain);
         assert!((rider - 6.0 * w.own_credit_weight).abs() < 1e-9, "{rider}");
+        // Bravado (Phase 5 §53): a rider that pays when the run ends,
+        // succeed or not, 6[c] plus one a piece of ice passed — seven over
+        // the wall the rig breaks, six on the run that cannot get in and
+        // jacks out at the door.
+        let bravado = netrunner_core::rules::RunEndRider {
+            effect: Box::new(Effect::GainCreditsAmount(Side::Runner, Amount::Increased { amount: Box::new(Amount::Fixed(6)), by: Box::new(Amount::IcePassedLastRun) })),
+            card: None,
+            install: None,
+        };
+        let bravado_in = with_run(&paid, RunState { on_end: vec![bravado.clone()], ..hq(vec![wall.clone()]) });
+        let at_the_end = score(&bravado_in) - score(&plain);
+        assert!((at_the_end - 7.0 * w.own_credit_weight).abs() < 1e-9, "{at_the_end}");
+        let bravado_out = with_run(&base, RunState { on_end: vec![bravado], ..hq(vec![wall.clone()]) });
+        let paid_anyway = score(&bravado_out) - score(&broke);
+        assert!((paid_anyway - 6.0 * w.own_credit_weight).abs() < 1e-9, "{paid_anyway}");
         let red_team = Effect::EffectIf {
             condition: EffectRequirement::ThisCardIsInstalled,
             effect: Box::new(Effect::Sequence(vec![Effect::RemoveCounters(Amount::Fixed(3)), Effect::GainCredits(Side::Runner, 3)])),

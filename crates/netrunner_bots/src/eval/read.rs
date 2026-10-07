@@ -686,6 +686,10 @@ struct Tally {
     clicks: i32,
     counters: i32,
     cashout_per_counter: u32,
+    /// Credits per piece of ice the run passed, for a rider read at a
+    /// run's end (Bravado's "plus 1[credit] for each piece of ice you
+    /// passed during that run", `Amount::IcePassedLastRun`; Phase 5 §53).
+    per_ice_passed: i32,
 }
 
 impl Tally {
@@ -696,6 +700,7 @@ impl Tally {
             clicks: self.clicks + other.clicks,
             counters: self.counters + other.counters,
             cashout_per_counter: self.cashout_per_counter.max(other.cashout_per_counter),
+            per_ice_passed: self.per_ice_passed + other.per_ice_passed,
         }
     }
 
@@ -711,6 +716,10 @@ fn tally(effect: &Effect, side: Side) -> Tally {
     match effect {
         Effect::GainCredits(s, n) if own(s) => Tally { credits: *n as i32, ..Default::default() },
         Effect::LoseCredits(s, n) if own(s) => Tally { credits: -(*n as i32), ..Default::default() },
+        Effect::GainCreditsAmount(s, amount) if own(s) => {
+            let (credits, per_ice_passed) = credits_amount(amount);
+            Tally { credits, per_ice_passed, ..Default::default() }
+        }
         Effect::DrawCards(s, n) if own(s) => Tally { cards: *n as i32, ..Default::default() },
         Effect::GainClicks(s, n) if own(s) => Tally { clicks: *n as i32, ..Default::default() },
         Effect::LoseClicks(n) => Tally { clicks: -(*n as i32), ..Default::default() },
@@ -729,6 +738,35 @@ fn tally(effect: &Effect, side: Side) -> Tally {
         }
         _ => Tally::default(),
     }
+}
+
+/// A credit amount as a flat number and a number per piece of ice the
+/// run passed: `Fixed`, `Increased` summed, `IcePassedLastRun` (and
+/// `IcePassedThisRun`) one per piece; any other count is nothing here.
+fn credits_amount(amount: &Amount) -> (i32, i32) {
+    match amount {
+        Amount::Fixed(n) => (*n as i32, 0),
+        Amount::Increased { amount, by } => {
+            let (a, p) = credits_amount(amount);
+            let (b, q) = credits_amount(by);
+            (a + b, p + q)
+        }
+        Amount::IcePassedLastRun | Amount::IcePassedThisRun => (0, 1),
+        _ => (0, 0),
+    }
+}
+
+/// What the riders set to resolve when `run` ends pay `side`, succeed or
+/// not (`RunState::on_end`, `Effect::SetRunEndedEffect`; Phase 5 §53),
+/// with `passed` the pieces of ice the run will have passed by then —
+/// Bravado's "When that run ends, gain 6[credit] plus 1[credit] for each
+/// piece of ice you passed during that run", Raindrops Cut Stone's draw.
+/// Tallied as `rider_income` tallies a success rider, and like it read
+/// only off a run the search itself began: `determinize` leaves a run in
+/// progress no riders.
+pub(super) fn run_end_income(run: &RunState, side: Side, passed: u32) -> (i32, u32) {
+    let sum = run.on_end.iter().map(|rider| tally(&rider.effect, side)).fold(Tally::default(), Tally::add);
+    (sum.credits + sum.per_ice_passed * passed as i32, sum.cards.max(0) as u32)
 }
 
 /// What the rider on `run` pays `side` when the run succeeds (Phase 5

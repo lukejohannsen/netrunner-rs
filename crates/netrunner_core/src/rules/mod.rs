@@ -65,7 +65,7 @@ pub use masking::{
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,
-    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounteredSubroutine, GainedForTheRun, OutsideBreach, RunAction, RunIce, RunPhase, RunState, SuspendedEncounter,
+    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounteredSubroutine, GainedForTheRun, OutsideBreach, RunAction, RunEndRider, RunIce, RunPhase, RunState, SuspendedEncounter,
     ServerId, SubroutineStatus,
 };
 pub use setup::DeckOrder;
