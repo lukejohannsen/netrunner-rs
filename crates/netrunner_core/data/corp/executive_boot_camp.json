@@ -1,0 +1,73 @@
+{
+  "id": "executive_boot_camp",
+  "title": "Executive Boot Camp",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Unrezzed",
+                {
+                  "Not": {
+                    "CardType": "Agenda"
+                  }
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "RezInstalled": {
+                "install": 0,
+                "pay_cost": true,
+                "discount": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may rez a card, lowering the rez cost by 1[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "CardType": "Asset"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "1[credit],[trash]: Search R&D for an asset, reveal it, and add it to HQ. Shuffle R&D."
+    }
+  ],
+  "built_from": 29015,
+  "is_playable": true
+}

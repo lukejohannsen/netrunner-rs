@@ -27752,4 +27752,151 @@ mod reprints {
         let (state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash");
         assert_eq!((counters_on(&state, "paricia"), state.runner.resources.credits), (0, Credits(0)));
     }
+
+    // ---- Stage 6b: the Corp's amounts and effects ----
+
+    #[test]
+    fn project_atlas_counts_the_advancements_it_was_scored_with_past_three_and_searches_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 5, rezzed: false, ..remote_root("project_atlas", 0) }];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_atlas") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2, "5 counters are 2 past 3, read as it was scored (CR 1.17.8)");
+        let (idle, _) = close_all_windows(scored, &registry);
+        let atlas = PlayerAction::ActivateAbility { target: idle.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (searching, _) = apply_action(&idle, &registry, atlas).expect("hosted agenda counter");
+        let offered = corp_toggles(&searching, &registry);
+        assert_eq!(offered.len(), 3, "all of R&D");
+        let (searching, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (found, _) = apply_action(&searching, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert_eq!((found.corp.hq.len(), found.corp.r_and_d.len(), found.corp.scored_agendas[0].agenda_counters), (1, 2, 1));
+    }
+
+    #[test]
+    fn project_atlas_scored_at_exactly_three_gets_no_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, rezzed: false, ..remote_root("project_atlas", 0) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_atlas") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 0);
+    }
+
+    #[test]
+    fn project_vitruvius_returns_a_card_from_archives_per_counter_past_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, rezzed: false, ..remote_root("project_vitruvius", 0) }];
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("hedge_fund"))];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_vitruvius") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1);
+        let (idle, _) = close_all_windows(scored, &registry);
+        let vitruvius = PlayerAction::ActivateAbility { target: idle.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (choosing, _) = apply_action(&idle, &registry, vitruvius).expect("hosted agenda counter");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert_eq!(done.corp.hq, vec![id("hedge_fund")]);
+        assert!(done.corp.archives.is_empty());
+    }
+
+    #[test]
+    fn nisei_mk_ii_ends_a_run_with_its_one_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, rezzed: false, ..remote_root("nisei_mk_ii", 0) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "nisei_mk_ii") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1);
+        let nisei = PlayerAction::ActivateAbility { target: scored.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (idle, _) = close_all_windows(scored, &registry);
+        assert!(apply_action(&idle, &registry, nisei.clone()).is_err(), "no run to end");
+
+        let mut running = idle;
+        running.phase = GamePhase::Action(Side::Runner);
+        running.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&running, &registry);
+        let (corp_window, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = apply_action(&corp_window, &registry, nisei.clone()).expect("hosted agenda counter: end the run");
+        assert!(ended.active_run.is_none(), "the run ends");
+        assert_eq!(ended.corp.scored_agendas[0].agenda_counters, 0);
+    }
+
+    #[test]
+    fn oaktown_renovation_installs_faceup_and_pays_two_then_three_from_its_fifth_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("oaktown_renovation")];
+        let (installed, _) = install_corp(&state, &registry, "oaktown_renovation", ServerId::Remote(0), InstallSlot::Root);
+        let oaktown = installed.corp.installed.iter().find(|card| card.card == id("oaktown_renovation")).expect("installed");
+        assert!(oaktown.rezzed, "install only faceup");
+
+        let mut advancing = installed.clone();
+        advancing.corp.resources.clicks = Clicks(3);
+        let position = advancing.corp.installed.iter().position(|card| card.card == id("oaktown_renovation")).unwrap();
+        let credits = advancing.corp.resources.credits;
+        let target = advancing.corp.installed[position].install_id;
+        let (once, _) = apply_action(&advancing, &registry, PlayerAction::AdvanceCard { target }).expect("advance");
+        let (once, _) = close_all_windows(once, &registry);
+        assert_eq!(once.corp.resources.credits, Credits(credits.0 - 1 + 2));
+
+        let mut fifth = once;
+        fifth.corp.installed[position].advancement_tokens = 4;
+        let credits = fifth.corp.resources.credits;
+        let (paid, _) = apply_action(&fifth, &registry, PlayerAction::AdvanceCard { target }).expect("advance");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert_eq!(paid.corp.resources.credits, Credits(credits.0 - 1 + 3), "5 counters including the one just placed");
+    }
+
+    #[test]
+    fn archived_memories_and_biotic_labor() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("archived_memories"), id("biotic_labor")];
+        state.corp.resources.credits = Credits(10);
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("ice_wall"))];
+        let (choosing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("archived_memories") }).expect("play");
+        assert_eq!(corp_toggles(&choosing, &registry), vec![0], "the card in Archives, not the operation resolving");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert!(done.corp.hq.contains(&id("ice_wall")));
+
+        let clicks = done.corp.resources.clicks;
+        let (labored, _) = apply_action(&done, &registry, PlayerAction::PlayOperation { card_id: id("biotic_labor") }).expect("play");
+        assert_eq!(labored.corp.resources.clicks, Clicks(clicks.0 - 1 + 2));
+        assert_eq!(labored.corp.resources.credits, Credits(10 - 4));
+    }
+
+    #[test]
+    fn executive_boot_camp_rezzes_a_card_one_cheaper_as_the_turn_begins_and_searches_for_an_asset() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            remote_root("executive_boot_camp", 0),
+            crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") },
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("hostile_takeover", 1) },
+        ];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("pad_campaign"), id("hedge_fund")];
+        let credits = state.corp.resources.credits;
+        let mut next = state;
+        crate::rules::test_support::enter_start_of_turn(&mut next, &registry, Side::Corp);
+        let (asked, _) = close_all_windows(next, &registry);
+        let offered = corp_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "the ice, never the agenda");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (rezzed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        let ice = rezzed.corp.installed.iter().find(|card| card.card == id("ice_wall")).unwrap();
+        assert!(ice.rezzed);
+        let drawn = rezzed.corp.hq.len();
+        assert_eq!(rezzed.corp.resources.credits, Credits(credits.0), "Ice Wall's 1 lowered by 1");
+
+        let (rezzed, _) = close_all_windows(rezzed, &registry);
+        let (searching, _) = use_ability(&rezzed, &registry, "executive_boot_camp", 0).expect("1[credit], [trash]");
+        assert!(!searching.corp.installed.iter().any(|card| card.card == id("executive_boot_camp")), "trashed to pay");
+        let offered = corp_toggles(&searching, &registry);
+        assert_eq!(offered.len(), 1, "the one asset in R&D");
+        let (searching, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (found, _) = apply_action(&searching, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert!(found.corp.hq.contains(&id("pad_campaign")));
+        assert_eq!(found.corp.hq.len(), drawn + 1);
+    }
 }

@@ -1101,7 +1101,7 @@ mod tests {
         state.corp.installed = vec![on_the_table("orbital_superiority", 1, ServerId::Remote(0), true)];
         state.corp.scored_agendas = vec![ScoredAgenda { install_id: InstallId(2), ..ScoredAgenda::plain(CardId("offworld_office".to_string())) }];
 
-        let scored = GameEvent::AgendaScored { card: CardId("offworld_office".to_string()), agenda_points: 2, server: ServerId::Remote(1) };
+        let scored = GameEvent::AgendaScored { card: CardId("offworld_office".to_string()), agenda_points: 2, server: ServerId::Remote(1), advancement_tokens: 0 };
         assert_eq!(who(&plan_for(&state, &registry, &scored)), vec![("offworld_office", Heard::AsBoth)]);
     }
 

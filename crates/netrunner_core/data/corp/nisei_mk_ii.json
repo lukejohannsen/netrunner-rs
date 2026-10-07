@@ -1,0 +1,34 @@
+{
+  "id": "nisei_mk_ii",
+  "title": "Nisei MK II",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you score this agenda, place 1 agenda counter on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": "EndTheRun",
+      "text": "Hosted agenda counter: End the run."
+    }
+  ],
+  "built_from": 31052,
+  "is_playable": true
+}

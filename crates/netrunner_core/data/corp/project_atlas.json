@@ -1,0 +1,56 @@
+{
+  "id": "project_atlas",
+  "title": "Project Atlas",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "Reduced": {
+                "amount": "HostedAdvancementTokens",
+                "by": {
+                  "Fixed": 3
+                }
+              }
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, place 1 agenda counter on it for each hosted advancement counter past 3."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "Hosted agenda counter: Search R&D for 1 card and reveal it. Add it to HQ."
+    }
+  ],
+  "built_from": 31073,
+  "is_playable": true
+}

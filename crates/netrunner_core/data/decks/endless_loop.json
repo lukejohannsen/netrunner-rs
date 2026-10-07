@@ -3,7 +3,7 @@
   "name": "Endless Loop",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard. Tranche 8 Stage 5a: two NEXT Bronze for its two Drafter, a code gate one stronger for each rezzed piece of NEXT ice; Retirement Package keeps Drafter.",
+  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard. Tranche 8 Stage 5a: two NEXT Bronze for its two Drafter, a code gate one stronger for each rezzed piece of NEXT ice; Retirement Package keeps Drafter. Tranche 8 Stage 6b: two Project Vitruvius for its two Midnight-3 Arcology, point for point, an agenda whose counters past three bring a card back from Archives, and two Biotic Labor for its two Corporate Hospitality, two clicks for four credits; Retirement Package keeps both.",
   "style": [
     "glacier"
   ],
@@ -22,7 +22,7 @@
       "count": 2
     },
     {
-      "card": "corporate_hospitality",
+      "card": "biotic_labor",
       "count": 2
     },
     {
@@ -58,7 +58,7 @@
       "count": 2
     },
     {
-      "card": "midnight_3_arcology",
+      "card": "project_vitruvius",
       "count": 2
     },
     {

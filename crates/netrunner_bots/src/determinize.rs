@@ -2299,7 +2299,7 @@ mod tests {
             netrunner_core::rules::dispatch_event(&mut state, &registry, &succeeded).expect("a run succeeded");
         }
         state.last_turn = std::mem::take(&mut state.this_turn);
-        let scored = GameEvent::AgendaScored { card: CardId("corp_agenda_0".to_string()), agenda_points: 2, server: ServerId::Remote(0) };
+        let scored = GameEvent::AgendaScored { card: CardId("corp_agenda_0".to_string()), agenda_points: 2, server: ServerId::Remote(0), advancement_tokens: 0 };
         netrunner_core::rules::dispatch_event(&mut state, &registry, &scored).expect("scored");
         let install = |id: u32, rezzed| InstalledCard {
             card: CardId("corp_ice_0".to_string()),

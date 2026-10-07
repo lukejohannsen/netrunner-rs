@@ -4805,7 +4805,22 @@ fn acting_is_run_event(run: &crate::rules::RunState, ctx: &ResolutionContext<'_>
 /// installed card — `None` otherwise (a Runner rig card, or already
 /// trashed). Read-only counterpart to `advance_card`'s mutation.
 fn advancement_tokens_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
-    acting_corp_install(state, ctx).map(|c| c.advancement_tokens).or_else(|| remembered(state, ctx).map(|known| known.advancement_tokens))
+    acting_corp_install(state, ctx)
+        .map(|c| c.advancement_tokens)
+        .or_else(|| remembered(state, ctx).map(|known| known.advancement_tokens))
+        .or_else(|| scored_with(ctx))
+}
+
+/// The advancement counters an agenda was scored with, for a trigger of
+/// that score (CR 1.17.8: its last known number, the counters having gone
+/// back to the bank as it moved) — Project Atlas's "for each hosted
+/// advancement counter past 3". Read off the event, which is the only
+/// place they outlive the score.
+fn scored_with(ctx: &ResolutionContext<'_>) -> Option<u32> {
+    match ctx.triggering_event? {
+        GameEvent::AgendaScored { card, advancement_tokens, .. } if Some(card) == ctx.acting_card => Some(*advancement_tokens),
+        _ => None,
+    }
 }
 
 /// `ctx.last_known`, when its install has left play and only then.

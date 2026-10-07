@@ -8723,3 +8723,57 @@ One new `CardFilter` word, and one existing word widened. System Update
   names Imp and Medium.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 690 card files.
+
+#### Stage 6b — the Corp's amounts and effects (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: seven Corp cards. **No new `Effect`**, and
+no new word: one event carries a number it was dropping. System Update
+2021 is at 55 of 82 and Salvaged Memories at 14 of 18; the Core Set has
+37 of 113 built.
+- **Cards from System Update 2021:** Project Atlas, Project Vitruvius,
+  Nisei MK II, Oaktown Renovation, Archived Memories and Biotic Labor
+  (the last three Core Set reprints).
+- **Cards from Salvaged Memories:** Executive Boot Camp.
+
+- **Project Atlas and Project Vitruvius: a score's trigger reads the
+  counters the agenda was scored with.**
+  - The card reads "When you score this agenda, place 1 agenda counter on
+    it for each hosted advancement counter past 3". That is a `Repeat` of
+    `AddCounters` 1, `Reduced` by a fixed 3.
+  - The counters go back to the bank as the agenda moves (CR 1.17.5), and
+    a trigger of the score uses the last known number (CR 1.17.8).
+    `GameEvent::AgendaScored` now carries it (`advancement_tokens`, as
+    `CardAdvanced` carries its count), and `Amount::HostedAdvancementTokens`
+    reads it there when the scored agenda's own trigger asks.
+  - **Why not dividends:** `dividends` counts past the requirement as the
+    table stands (CR 10.13.1), and "past 3" is a printed 3. The two part
+    as soon as a card changes the requirement.
+  - Why the stage moved them out of stage 3: nothing had remembered the
+    counters once the agenda left the table.
+- **Nisei MK II** is House of Knives with one counter, used only during a
+  run to end it.
+- **Oaktown Renovation** is Sacrifice Zone Expansion's `installs_faceup`
+  with two `EffectIf`s on its `OnAdvance`: 2[credit] below 5 counters, 3 at
+  5 or more, read after the counter is placed.
+- **Executive Boot Camp** offers a rez at turn start through Mycoweb's
+  `RezInstalled` with a discount of 1, over any unrezzed card that is not
+  an agenda; its `[trash]` ability searches R&D for an asset.
+- **Archived Memories** and **Biotic Labor** compose from Drafter's and
+  BASS's words.
+- **Moved to stage 7:** Tollbooth (a payment the Runner must make if
+  able), Lotus Field (a strength that cannot be lowered), Excalibur (no
+  more runs this turn), Trick of Light (advancement counters moved), and
+  the rest of the Corp's cards in the three packs.
+- **Decks: seven swaps,** each in its deck's faction and point for point
+  where an agenda goes. Every card given up is still in another deck.
+  - Ground Control: two Project Atlas for two Azef Protocol, two Oaktown
+    Renovation for two Sacrifice Zone Expansion.
+  - Tag, You're It: two Executive Boot Camp for two Clearinghouse.
+  - Endless Loop: two Project Vitruvius for two Midnight-3 Arcology, two
+    Biotic Labor for two Corporate Hospitality.
+  - Retirement Package: two Archived Memories for two Caveat Emptor.
+  - Second Site: two Nisei MK II for two See How They Run.
+- **Tests.** Seven new tests; Project Atlas is scored at 5 counters (2
+  agenda counters) and at exactly 3 (none).
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 697 card files.
