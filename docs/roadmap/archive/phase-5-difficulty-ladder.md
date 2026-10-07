@@ -3497,3 +3497,26 @@ Every run is faster. The games are not the same games — 15 of 391 casual recor
 **Found on the way, fixed separately** (`fix/trigger-order-masked`, #376): the new trajectories reached a fog leak on `main` — `GameEvent::TriggerOrderChosen` passed the log mask unmasked, so the 256-seed view sweep's seed 92 named Lycian Multi-Munition to a spectator in the entry where its own trigger derezzed it. It is now withheld from whoever its card is concealed from, as `TriggerFired` is.
 
 **Verified.** On the masking fix: `cargo test --workspace` green (2,839, the desktop crate included), clippy silent, both 256-seed sweeps green in release. Rebased onto tranche 8 Stages 2 and 3 (#373, #375): both 256-seed sweeps, `netrunner_bots`' tests and clippy again green. The timings above were taken before that rebase, on `0a1cb81`.
+
+## 49. Barry "Baz" Wong's install costs his deck nothing: §39's loss was one seed's drift, and since §44 one ply takes the same yes — DONE, measurement only (`diag/barry-install-costs-nothing`, 7 October 2026)
+
+**The question §39 left.** Planning the "may" ahead of Barry's install (`planner::its_identitys_choice`) took the install 0 → 144 times in 96 games and, on the record, cost Professional Opportunities games — Corp 35 → 46 of 96 against Agency, Brick Stack, Gimbatul and Hidden Funds on seed 2, z +1.98, with the Startup pass +5 / −1 — while the decision itself, replayed and played out both ways over eight seeds, was not worse (Corp 175 vs 166 of 352 playouts). Why the deck lost over a game was not traced, and the entry was Open.
+
+**Re-measured, three times the sample.** One binary of `main` at `9afa52af` with a scratch gate behind an environment variable (never committed); the same four pairings, **24 games each on seeds 1, 2 and 3 — 288 games an arm**, every game its own process (`--headless --games 1 --seed <seed·1000 + index> --verbose --record`), paired by seed and index, the planner in both chairs in the decks' own styles:
+
+| arm | Corp wins of 288 | discordant | z | per seed (96 each) |
+|---|---|---|---|---|
+| the yes planned (`main`) | 163 | — | — | 54 / 54 / 55 |
+| the yes left to one ply (`its_identitys_choice` gated off) | 160 | +47 / −44 | +0.31 | 53 / 52 / 55 |
+| **the yes declined every time** | **166** | **+44 / −47** | **−0.31** | 61 / 52 / 53 (z −1.35 / +0.33 / +0.38) |
+
+By pairing, the yes against the decline: Agency 25 / 25, Brick Stack 43 / 49, Gimbatul 45 / 39, Hidden Funds 50 / 53 — the largest cell 1.41 sd, in the Runner's favour on one and the Corp's on another. **The yes costs the deck nothing a test of this size can see, and §39's number was drift at one seed**: a z of 2 at 96 games is one measurement in twenty, and this phase takes many.
+
+**What the measurement also showed.**
+- **§44 subsumed §39 for Barry.** With `its_identitys_choice` gated off, one ply took the yes 465 times in 1,138 offers — the planned arm 473 in 1,128 — because §44's look-through of a seat's own parked decisions answers the selection the yes leads into. Before §44, one ply priced that selection at its worst and declined every time (0 of 596), which is what §39 was built for. The rule still exists for the other identities' choices; whether it still decides any of them is not measured.
+- **The yes buys installs, not credits.** The Runner installs 1.48 hardware and 2.84 resources a game with the yes against 0.72 and 2.28 without, programs 2.52 either way; gains 36.1 and spends 37.6 credits a game against 34.1 and 36.1; runs 21.4 against 22.3, with 12.0 and 12.4 successful; steals 2.32 against 2.35. The yes installs Maglectric Rapid 153 times (clicked 2), Side Hustle 104 (clicked 18), Open Market 66, Madani 51, Red Team 46, DZMZ Optimizer 30, Docklands Pass 17, Fransofia Ward 6. Maglectric and Side Hustle are the two the planner never spends a click on — at the reference's weights a 1[c] or 2[c] card with no declared income is worth `board_presence_weight` (1.0) less its price at 0.4 a credit, which beats a click (0.4) only when the click is free — and the measurement says they cost nothing when it is.
+- **Maglectric Rapid is used.** §39 recorded it "installed 41 times in 96 games and never used to derez". In the 288 planned-arm games its HQ-run offer came 104 times and was accepted 62, a derez each — §44's look-through again, the accepted paid choice leading into a selection one ply now answers. It is not a debt; the blind list (`scripts/blind_cards.py`) remains the instrument that says so on a full pass.
+
+**Not done, and why.** The §39 cost is closed as not reproduced rather than traced to a cause, because 288 paired games on three seeds found nothing to trace. The eight-seed playout tool and the per-game pairing are scratch and not committed; the archive entry records the apparatus. No code changed; the tree is `main`'s plus this record and the doc comment on `its_identitys_choice`.
+
+**Verified.** No code changed.
