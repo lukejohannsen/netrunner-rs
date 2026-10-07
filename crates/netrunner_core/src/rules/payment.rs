@@ -622,6 +622,19 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
 /// continuation.
 fn a_text_rez_could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
     use crate::rules::{PendingDecision, PlayerAction};
+    // An install-and-rez that pays (`PromptInstallCorpCard::rez`,
+    // Reanimation Protocol, Ob Superheavy Logistics) rezzes the card that
+    // just landed, which could be one with ways of its own — and that card
+    // is still in HQ, R&D or Archives while the server is chosen, so the
+    // table below cannot see it. Ob finding Archer or Corporate Town and
+    // asking which agenda to forfeit was the debug assertion that caught
+    // this, in the default-seed matchup sweep.
+    if let PlayerAction::ChooseServerForPendingDecision { .. } = action {
+        return match &state.pending_decision {
+            Some(PendingDecision::ChooseServer { install: Some(install), .. }) => install.rez && install.pay_cost,
+            _ => false,
+        };
+    }
     let a_way_to_pay_on_the_table = state
         .corp
         .installed
@@ -640,13 +653,6 @@ fn a_text_rez_could_ask(state: &GameState, registry: &CardRegistry, action: &cra
             _ => false,
         },
         PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.if_paid.rezzes_paying()),
-        // An install-and-rez that pays (`PromptInstallCorpCard::rez`,
-        // Reanimation Protocol) rezzes the card that just landed, which
-        // could be one with ways of its own.
-        PlayerAction::ChooseServerForPendingDecision { .. } => match &state.pending_decision {
-            Some(PendingDecision::ChooseServer { install: Some(install), .. }) => install.rez && install.pay_cost,
-            _ => false,
-        },
         _ => false,
     }
 }

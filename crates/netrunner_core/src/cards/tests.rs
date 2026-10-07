@@ -27196,4 +27196,147 @@ mod reprints {
         assert_eq!(ended.corp.installed[0].counters, 1);
         assert!(use_ability(&runner, &registry, "embolus", 0).is_err(), "only during a run on this server");
     }
+
+    // ---- Stage 3: the reprints' Corp agendas, operations and assets that compose ----
+
+    fn remote_root(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { server: ServerId::Remote(remote), slot: InstallSlot::Root, ..ice_at_hq(card) }
+    }
+
+    fn corp_toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn house_of_knives_spends_a_counter_for_a_net_damage_once_per_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, rezzed: false, ..remote_root("house_of_knives", 0) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "house_of_knives") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 3, "place 3 agenda counters on it");
+        let knives = PlayerAction::ActivateAbility { target: scored.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (idle, _) = close_all_windows(scored, &registry);
+        assert!(apply_action(&idle, &registry, knives.clone()).is_err(), "only during a run");
+
+        let mut running = idle;
+        running.phase = GamePhase::Action(Side::Runner);
+        running.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        running.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&running, &registry);
+        let (corp_window, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (used, _) = apply_action(&corp_window, &registry, knives.clone()).expect("hosted agenda counter: do 1 net damage");
+        assert_eq!((used.runner.grip.len(), used.corp.scored_agendas[0].agenda_counters), (1, 2));
+        assert!(apply_action(&used, &registry, knives).is_err(), "once per run");
+    }
+
+    #[test]
+    fn license_acquisition_may_install_and_rez_an_asset_from_archives_for_free() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, rezzed: false, ..remote_root("license_acquisition", 0) }];
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("pad_campaign"))];
+        let credits = state.corp.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "license_acquisition") }).expect("score");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("from Archives");
+        let (choosing_server, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("PAD Campaign");
+        let (choosing_server, _) = apply_action(&choosing_server, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let remote = crate::rules::legal_actions_for(&choosing_server, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server: server @ ServerId::Remote(_) } => Some(server),
+                _ => None,
+            })
+            .expect("a remote is offered");
+        let (installed, _) = apply_action(&choosing_server, &registry, PlayerAction::ChooseServerForPendingDecision { server: remote }).expect("a new remote");
+        let pad = installed.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed");
+        assert!(pad.rezzed, "and rezzed");
+        assert_eq!(installed.corp.resources.credits, credits, "ignoring all costs");
+    }
+
+    #[test]
+    fn sweeps_week_gains_a_credit_per_card_in_the_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("sweeps_week")];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        let credits = state.corp.resources.credits;
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("sweeps_week") }).expect("play");
+        assert_eq!(played.corp.resources.credits, Credits(credits.0 - 1 + 4));
+    }
+
+    #[test]
+    fn celebrity_gift_costs_a_second_click_and_pays_two_per_card_revealed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("celebrity_gift"), id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let (credits, clicks) = (state.corp.resources.credits, state.corp.resources.clicks);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("celebrity_gift") }).expect("play");
+        assert_eq!(asked.corp.resources.clicks, Clicks(clicks.0 - 2));
+        let offered = corp_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 3, "the rest of HQ");
+        let mut revealing = asked;
+        for position in &offered[..2] {
+            revealing = apply_action(&revealing, &registry, PlayerAction::ToggleCardSelection { position: *position }).expect("reveal").0;
+        }
+        let (done, _) = apply_action(&revealing, &registry, PlayerAction::ConfirmCardSelection).expect("reveal two");
+        assert_eq!(done.corp.resources.credits, Credits(credits.0 - 3 + 4));
+        assert_eq!(done.corp.hq.len(), 3, "revealed, not discarded");
+    }
+
+    #[test]
+    fn reversed_accounts_takes_four_credits_per_advancement_as_it_is_trashed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..remote_root("reversed_accounts", 0) }];
+        let mut advanced = state.clone();
+        advanced.corp.installed[0].advancement_tokens = 0;
+        let (advanced, _) = apply_action(&advanced, &registry, PlayerAction::AdvanceCard { target: install_of(&state, "reversed_accounts") }).expect("you can advance this asset");
+        assert_eq!(advanced.corp.installed[0].advancement_tokens, 1);
+
+        let (used, _) = use_ability(&state, &registry, "reversed_accounts", 0).expect("[click], [trash]");
+        assert_eq!(used.runner.resources.credits, Credits(2), "4 for each of 2 counters");
+        assert!(used.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn ronin_does_three_net_damage_once_it_holds_four_advancements() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..remote_root("ronin", 0) }];
+        assert!(use_ability(&state, &registry, "ronin", 0).is_err(), "3 counters are not 4");
+        state.corp.installed[0].advancement_tokens = 4;
+        let (used, _) = use_ability(&state, &registry, "ronin", 0).expect("[click], [trash]: do 3 net damage");
+        assert_eq!(used.runner.grip.len(), 1);
+        assert!(used.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn corporate_town_forfeits_an_agenda_to_rez_and_may_trash_a_resource_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..remote_root("corporate_town", 0) }];
+        assert!(apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "corporate_town") }).is_err(), "nothing to forfeit");
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "corporate_town") }).expect("forfeit and pay 1");
+        assert!(rezzed.corp.installed[0].rezzed && rezzed.corp.scored_agendas.is_empty());
+
+        let mut next = rezzed;
+        next.runner.rig = vec![rig("daily_casts", 0)];
+        next.corp.r_and_d = vec![id("hedge_fund"); 3];
+        crate::rules::test_support::enter_start_of_turn(&mut next, &registry, Side::Corp);
+        let (asked, _) = close_all_windows(next, &registry);
+        let offered = corp_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "the one installed resource");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (trashed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(trashed.runner.rig.is_empty() && trashed.runner.heap.contains(&id("daily_casts")));
+    }
 }

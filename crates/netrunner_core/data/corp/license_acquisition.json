@@ -1,0 +1,81 @@
+{
+  "id": "license_acquisition",
+  "title": "License Acquisition",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "ignore_costs": true,
+                      "rez": true
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnArchives",
+                      "ignore_costs": true,
+                      "rez": true
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install and rez 1 asset or upgrade from HQ or Archives, ignoring all costs — from HQ",
+              "you may install and rez 1 asset or upgrade from HQ or Archives, ignoring all costs — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may install and rez 1 asset or upgrade from HQ or Archives, ignoring all costs."
+    }
+  ],
+  "built_from": 31061,
+  "is_playable": true
+}

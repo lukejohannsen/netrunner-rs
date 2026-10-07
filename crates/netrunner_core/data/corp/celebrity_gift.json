@@ -1,0 +1,43 @@
+{
+  "id": "celebrity_gift",
+  "title": "Celebrity Gift",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 5,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": {
+              "GainCreditsAmount": [
+                "Corp",
+                {
+                  "Times": {
+                    "amount": "CardsSelected",
+                    "times": 2
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Reveal up to 5 cards in HQ. Gain 2[credit] for each card you revealed this way."
+    }
+  ],
+  "built_from": 31057,
+  "is_playable": true
+}

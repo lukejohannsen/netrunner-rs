@@ -1,0 +1,39 @@
+{
+  "id": "house_of_knives",
+  "title": "House of Knives",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you score this agenda, place 3 agenda counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "OncePerRun",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      },
+      "text": "Hosted agenda counter: Do 1 net damage. Use this ability only during a run and only once per run."
+    }
+  ],
+  "built_from": 31051,
+  "is_playable": true
+}

@@ -8423,3 +8423,59 @@ no change to the engine.** System Update 2021 31 of 82, Salvaged Memories
   was already pinned outside Standard and Startup.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 664 card files.
+
+#### Stage 3 — the reprints' Corp agendas, operations and assets that compose (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: House of Knives, License Acquisition,
+Celebrity Gift, Reversed Accounts, Ronin and Corporate Town from System
+Update 2021, and Sweeps Week from Salvaged Memories. **No new `Effect`,
+and no change to the engine.** System Update 2021 37 of 82, Salvaged
+Memories 6 of 18, the Magnum Opus Reprint 3 of 6; `SU21_UNIMPLEMENTED`
+51 → 45, `SM_UNIMPLEMENTED` 13 → 12.
+
+- **What each is made of.** House of Knives is Remastered Edition's
+  agenda counters spent as a cost, behind Pressure Spike's `OncePerRun`
+  (false outside a run, so "only during a run" needs no word of its own).
+  License Acquisition is Ansel 1.0's "from HQ or Archives" as a
+  `PresentChoice` of two selections and a decline, each installing with
+  `ignore_costs` and `rez`. Sweeps Week gains `CardsInHand(Runner)`.
+  Celebrity Gift is Corporate Hospitality's additional [click] and
+  Meeting of Minds's reveal, its `CardsSelected` doubled with `Times`.
+  Reversed Accounts and Ronin are advanceable assets (an advancement
+  requirement of 0, as Clearinghouse's) whose `[click], [trash]` cost is
+  paid before the effect reads the hosted counters, through `last_known`;
+  Ronin's "4 or more" is the ability's requirement, asked before the
+  cost. Corporate Town is Archer's forfeit as a single `rez_alternatives`
+  entry and a turn-start selection that moves a resource straight to the
+  heap, which no prevention window sees — the card's "cannot be
+  prevented".
+- **Deferred.** Project Atlas and Project Vitruvius place a counter "for
+  each hosted advancement counter past 3" when scored, and a scored agenda
+  keeps no count of its advancement counters (`ScoredAgenda` carries none,
+  and `AgendaScored` neither), so they move to stage 6 with the amounts.
+  Timely Public Release installs ice "in any position", where every
+  install of ice is outermost; it moves to stage 7.
+- **One engine fix, found by CI's debug build.** `payment::could_ask`
+  (the necessary condition that lets `engine::apply_action` skip copying
+  an action that cannot ask about a payment) admitted a server choice for
+  an install-and-rez only while some facedown card on the table printed a
+  way to pay its rez. The card being installed is not on the table yet:
+  Ob Superheavy Logistics finding Archer or Corporate Town in Supply
+  Chain asked which agenda to forfeit, and the debug assertion fired in
+  `every_sample_deck_matchup_finishes`. The server-choice arm now answers
+  from the parked install alone. The local runs had been `--release`,
+  where the assertion is compiled out; this stage's checks were re-run in
+  a debug build.
+- **Fidelity limits:** none found.
+- **Client.** Nothing added to the view, the log or a decision.
+- **Decks.** Honor Roll takes two House of Knives for its two Hybrid
+  Release; Second Site two Ronin for two Public Health Portal and two
+  Celebrity Gift for two Cultivate; Paid Content two License Acquisition
+  for two Oracle Thinktank, two Sweeps Week for two Your Digital Life and
+  two Reversed Accounts for two Chekist Scion; Supply Chain two Corporate
+  Town for two Svyatogor Excavator. Each agenda swap is a 1-pointer for a
+  1-pointer, so every deck keeps its points; every card given up is still
+  in another deck, every new card is in its deck's faction, and every
+  edited deck was already pinned outside Standard and Startup.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 671 card files.

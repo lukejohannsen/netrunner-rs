@@ -1,0 +1,37 @@
+{
+  "id": "reversed_accounts",
+  "title": "Reversed Accounts",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "LoseCreditsAmount": [
+          "Runner",
+          {
+            "Times": {
+              "amount": "HostedAdvancementTokens",
+              "times": 4
+            }
+          }
+        ]
+      },
+      "text": "[click], [trash]: The Runner loses 4[credit] for each hosted advancement counter."
+    }
+  ],
+  "built_from": 31064,
+  "is_playable": true
+}
