@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 45, 10, 3, 31 | 37, 8, 3, — | in progress: Stages 1a–5b (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 49, 13, 3, 34 | 33, 5, 3, — | in progress: Stages 1a–6a (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 683 card files** (7 October
-2026, with tranche 8 Stage 5b, which added no variant; Stage 5a, at 13 of
+`Effect` variants single-use, none unused, over 690 card files** (7 October
+2026, with tranche 8 Stage 6a, which added no variant; Stage 5b, at 13 of
+105 over 683, added none; Stage 5a, at 13 of
 105 over 681, added none; Stage 4, at 13 of 105
 over 676, added none; Stage 3, at 13 of 105
 over 671, added none; Stage 2, at 13 of 105
@@ -1125,6 +1126,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 4** — five cards and two Sweep decks, Express Delivery (Ken "Express" Tenma) and Broadcast Hour (Near-Earth Hub), with no new `Effect`: a remote server's creation is a moment (`Trigger::OnServerCreated`, CR 8.5.16e), and another card can forbid the score of an agenda installed this turn (Ken “Express” Tenma, Near-Earth Hub, Turtlebacks, Hostile Infrastructure, Clot) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 5a** — five cards and two Sweep decks, Free Spirit (Quetzal) and Transhuman (Rielle “Kit” Peddler), with no new `Effect`: a piece of ice can bar breaking with programs of a subtype (`ContinuousKind::CannotBeBrokenUsing`), and the encountered ice can gain a subtype for the run (Quetzal, Rielle “Kit” Peddler, Swordsman, Hortum, NEXT Bronze) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 5b** — two cards with no new `Effect`: a conditional ability with a static condition is marked pending at the end of every action while its condition is true (`Trigger::WhileTrue`, CR 9.6.7), and a Trojan can be restricted to rezzed hosts (Atman, Parasite) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 6a** — seven Runner cards with no new `Effect`: the ice being encountered is a filter word (`CardFilter::BeingEncountered`, Ice Carver), and the credits that pay trash costs say which cards' (`PaysFor::TrashCosts(filter)`, Paricia's assets) (Cerberus “Lady” H1, Imp, Egret, Medium, e3 Feedback Implants, Ice Carver, Paricia) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1155,11 +1157,16 @@ nine by kind):
 5. Breaker and ice words: **5a closed**, five cards (Quetzal, Swordsman,
    Hortum, Rielle “Kit” Peddler, NEXT Bronze); Abagnale was built in 1a.
    **5b closed**, two cards (Atman, Parasite).
-6. Amounts and effects.
+6. Amounts and effects. **6a closed**, seven Runner cards (Cerberus “Lady”
+   H1, Imp, Egret, Medium, e3 Feedback Implants, Ice Carver, Paricia).
+   Networking moved to stage 8: "add this event to your grip" after a
+   paid choice is a played card's destination, which only a declaration
+   says today. **6b:** the Corp's (Project Atlas, Project Vitruvius and
+   the rest).
 7. The Corp's remaining vocabulary.
 8. Remembered choices, triggers a card creates, and X costs: Inside Job,
    Femme Fatale, Security Testing, Chameleon, Test Run, Corporate
-   Troubleshooter, Psychographics.
+   Troubleshooter, Psychographics, Networking (moved from 6a).
 9. **The machinery the pool has not needed until now:**
    - Ayla “Bios” Rahim: set aside.
    - Marilyn Campaign and Daily Business Show: replacements.

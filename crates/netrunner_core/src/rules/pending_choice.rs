@@ -546,6 +546,14 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     if let CardFilter::LastEncounteredLastRun = filter {
         return state.last_completed_run.as_ref().and_then(|run| run.last_encountered) == Some(install);
     }
+    if let CardFilter::BeingEncountered = filter {
+        return state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce)
+            .and_then(|run| run.ice.get(run.position))
+            .is_some_and(|ice| ice.install_id == install);
+    }
     let installed = state.find_corp_install(install);
     let scored = state.corp.find_scored(install);
     if installed.is_none() && scored.is_none() {

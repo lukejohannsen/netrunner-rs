@@ -55,7 +55,9 @@
                       "amount": {
                         "Fixed": 4
                       },
-                      "pays_for": "TrashCosts"
+                      "pays_for": {
+                        "TrashCosts": "Any"
+                      }
                     }
                   }
                 ],

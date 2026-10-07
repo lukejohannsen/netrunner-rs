@@ -1,0 +1,37 @@
+{
+  "id": "e3_feedback_implants",
+  "title": "e3 Feedback Implants",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "Any",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "BreakSubroutinesUnconditionally": {
+                "count": {
+                  "Fixed": 1
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] to break 1 subroutine on that ice"
+          }
+        }
+      ],
+      "text": "Whenever you break a subroutine on a piece of ice, you may pay 1[credit] to break 1 subroutine on that ice."
+    }
+  ],
+  "built_from": 29003,
+  "is_playable": true
+}

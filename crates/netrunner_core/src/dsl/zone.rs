@@ -489,6 +489,15 @@ pub enum CardFilter {
     /// last run. Instance-level: a handle, not a card, so a second copy of
     /// the same ice is not it.
     LastEncounteredLastRun,
+    /// The piece of ice the Runner is encountering right now — Ice
+    /// Carver's "While you are encountering a piece of ice, **it** gets −1
+    /// strength", as the filter of a `Scope::Ice`. Instance-level: a
+    /// handle, read off the run (`pending_choice::copy_matches`), so a
+    /// second copy of the same ice elsewhere is not it. Composition didn't
+    /// work: a `while` of `DuringEncounter` is asked of the card that
+    /// prints it, so every piece of ice would have had −1 during an
+    /// encounter.
+    BeingEncountered,
     /// A card that may be swapped into the place of the install the
     /// selection acts as (`run::swappable_into`, CR 8.8.2) — Project
     /// Yagi-Uda's "swap 1 card from HQ with 1 card in the root of or
@@ -754,6 +763,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName => false,
         CardFilter::LastEncounteredLastRun => true,
+        CardFilter::BeingEncountered => true,
         CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,

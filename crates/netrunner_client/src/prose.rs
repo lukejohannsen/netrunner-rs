@@ -783,7 +783,8 @@ pub fn pool_name(pool: Pool, view: &ClientView, registry: &CardRegistry) -> Stri
 /// compile until it has one here.
 pub fn describe_pays_for(word: &PaysFor) -> String {
     match word {
-        PaysFor::TrashCosts => "to pay trash costs".to_string(),
+        PaysFor::TrashCosts(CardFilter::Any) => "to pay trash costs".to_string(),
+        PaysFor::TrashCosts(filter) => format!("to pay the trash cost of a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
         PaysFor::TraceAttempts => "during trace attempts".to_string(),

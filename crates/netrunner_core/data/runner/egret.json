@@ -1,0 +1,36 @@
+{
+  "id": "egret",
+  "title": "Egret",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "host_must_be_rezzed": true,
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    },
+    {
+      "kind": {
+        "GainSubtype": "CodeGate"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    },
+    {
+      "kind": {
+        "GainSubtype": "Sentry"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    }
+  ],
+  "triggers": [],
+  "built_from": 31032,
+  "is_playable": true
+}

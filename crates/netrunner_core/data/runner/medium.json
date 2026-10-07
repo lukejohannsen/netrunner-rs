@@ -1,0 +1,61 @@
+{
+  "id": "medium",
+  "title": "Medium",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, place 1 virus counter on this program."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "min": 0,
+            "max": {
+              "Reduced": {
+                "amount": "HostedCounters",
+                "by": {
+                  "Fixed": 1
+                }
+              }
+            },
+            "then": {
+              "AddAdditionalAccessAmount": {
+                "server": "RnD",
+                "amount": "ChosenNumber"
+              }
+            },
+            "text": "choose a number less than the number of hosted virus counters"
+          }
+        }
+      ],
+      "text": "Whenever you breach R&D, choose a number less than the number of hosted virus counters. Access that many additional cards."
+    }
+  ],
+  "built_from": 29001,
+  "is_playable": true
+}

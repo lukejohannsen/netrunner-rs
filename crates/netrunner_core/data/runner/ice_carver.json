@@ -1,0 +1,24 @@
+{
+  "id": "ice_carver",
+  "title": "Ice Carver",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Ice": "BeingEncountered"
+      },
+      "text": "While you are encountering a piece of ice, it gets −1 strength."
+    }
+  ],
+  "triggers": [],
+  "built_from": 31009,
+  "is_playable": true
+}

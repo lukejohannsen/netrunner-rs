@@ -858,7 +858,7 @@ mod tests {
             server: netrunner_core::rules::ServerId::Hq,
             initiated_by: Some(CardId("bahia_bands".into())),
             bonus_run_credits: 4,
-            run_credits_pay_for: Some(netrunner_core::dsl::PaysFor::TrashCosts),
+            run_credits_pay_for: Some(netrunner_core::dsl::PaysFor::TrashCosts(netrunner_core::dsl::CardFilter::Any)),
             ..Default::default()
         });
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);

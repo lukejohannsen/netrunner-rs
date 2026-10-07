@@ -59,8 +59,6 @@ pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reina_roja_freedom_fighter", "Reina Roja: Freedom Fighter"),
     ("en_passant", "En Passant"),
-    ("imp", "Imp"),
-    ("ice_carver", "Ice Carver"),
     ("steve_cambridge_master_grifter", "Steve Cambridge: Master Grifter"),
     ("forged_activation_orders", "Forged Activation Orders"),
     ("inside_job", "Inside Job"),
@@ -71,8 +69,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
     ("test_run", "Test Run"),
     ("chameleon", "Chameleon"),
-    ("egret", "Egret"),
-    ("paricia", "Paricia"),
     ("haas_bioroid_architects_of_tomorrow", "Haas-Bioroid: Architects of Tomorrow"),
     ("project_vitruvius", "Project Vitruvius"),
     ("marilyn_campaign", "Marilyn Campaign"),
@@ -98,9 +94,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.
 pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("medium", "Medium"),
-    ("e3_feedback_implants", "e3 Feedback Implants"),
-    ("cerberus_lady_h1", "Cerberus \"Lady\" H1"),
     ("next_silver", "NEXT Silver"),
     ("sansan_city_grid", "SanSan City Grid"),
     ("executive_boot_camp", "Executive Boot Camp"),
