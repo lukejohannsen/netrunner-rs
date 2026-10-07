@@ -1,0 +1,26 @@
+{
+  "id": "sansan_city_grid",
+  "title": "SanSan City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 6,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "RootOfThisServer": {
+          "CardType": "Agenda"
+        }
+      },
+      "text": "Each agenda in the root of this server gets −1 advancement requirement."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 5,
+  "built_from": 31069,
+  "is_playable": true
+}

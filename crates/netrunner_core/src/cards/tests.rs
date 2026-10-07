@@ -28494,4 +28494,38 @@ mod reprints {
         assert_eq!(drawn.runner.grip.len(), 1, "a Runner's draw is the Runner's");
         assert!(drawn.pending_decision.is_none());
     }
+
+    // ---- Stage 9c: changing agenda values ----
+
+    #[test]
+    fn project_beale_is_worth_one_more_for_every_two_advancements_past_three_it_was_scored_with() {
+        let registry = registry();
+        for (advanced, counters, points) in [(4, 0, 2), (5, 1, 3), (6, 1, 3), (7, 2, 4)] {
+            let mut state = base_state();
+            state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: advanced, rezzed: false, ..remote_root("project_beale", 0) }];
+            let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_beale") }).expect("score");
+            assert_eq!(scored.corp.scored_agendas[0].agenda_counters, counters, "{advanced} advancement counters");
+            assert_eq!(crate::rules::score(&scored, &registry, Side::Corp), points, "{advanced} advancement counters");
+            assert_eq!(scored.corp.resources.agenda_points.0, points, "and the tally agrees");
+        }
+    }
+
+    #[test]
+    fn sansan_city_grid_lowers_the_requirement_of_the_agendas_in_its_own_root_while_rezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        let grid = crate::rules::InstalledCard { install_id: InstallId(90), ..remote_root("sansan_city_grid", 0) };
+        state.corp.installed = vec![grid.clone(), crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, ..remote_root("project_atlas", 0) }];
+        let score = PlayerAction::ScoreAgenda { target: install_of(&state, "project_atlas") };
+        let (scored, _) = apply_action(&state, &registry, score.clone()).expect("3 less 1 is 2");
+        assert_eq!(scored.corp.scored_agendas.len(), 1);
+
+        let mut unrezzed = state.clone();
+        unrezzed.corp.installed[0].rezzed = false;
+        assert!(apply_action(&unrezzed, &registry, score.clone()).is_err(), "an unrezzed grid lowers nothing");
+
+        let mut elsewhere = state.clone();
+        elsewhere.corp.installed[0] = crate::rules::InstalledCard { server: ServerId::Remote(1), ..grid };
+        assert!(apply_action(&elsewhere, &registry, score).is_err(), "only the agendas in the root of its own server");
+    }
 }

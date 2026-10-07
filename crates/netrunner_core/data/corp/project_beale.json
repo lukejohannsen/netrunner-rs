@@ -1,0 +1,52 @@
+{
+  "id": "project_beale",
+  "title": "Project Beale",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This agenda is worth 1 more agenda point for each hosted agenda counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "Every": {
+                "amount": {
+                  "Reduced": {
+                    "amount": "HostedAdvancementTokens",
+                    "by": {
+                      "Fixed": 3
+                    }
+                  }
+                },
+                "every": 2
+              }
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, place 1 agenda counter on it for every 2 hosted advancement counters past 3."
+    }
+  ],
+  "built_from": 31062,
+  "is_playable": true
+}
