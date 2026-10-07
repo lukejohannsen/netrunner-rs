@@ -99,8 +99,10 @@ pub enum Plan {
     /// Threat as leverage: tag the Runner, then punish the tags; build
     /// net damage until a trap finishes them. No profile of its own — the
     /// balanced weights, plus the planner's lethal check
-    /// (`LETHAL_THREAT_WEIGHT`) and the tag's leverage
-    /// (`TAG_LEVERAGE_WEIGHT`), which read the punishment the Corp holds.
+    /// (`LETHAL_THREAT_WEIGHT`), which reads the damage the Corp holds.
+    /// The tag's leverage (`TAG_LEVERAGE_WEIGHT`) was this plan's too,
+    /// and is every Corp's since Phase 5 §51: it reads the punisher in
+    /// HQ, which any deck may hold.
     Kill,
     /// Bluff with what is installed: the ambush terms (a face-down lure
     /// trap is worth icing and advancing; a hand trap is worth holding)
