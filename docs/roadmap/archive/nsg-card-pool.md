@@ -8977,3 +8977,53 @@ is at 62 of 82.
   at most one of the two facts that share a bit.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 706 card files.
+
+#### Stage 8a — four Runner cards that compose (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: four Runner cards. **No new `Effect` and
+no change to the engine.** Stage 8 of the survey is split three ways, so
+each PR stays small: 8a composes, 8b needs words for two remembered
+choices, and 8c builds the two X costs. System Update 2021 is at 66 of 82
+and the Core Set at 40 of 113.
+- **Cards from System Update 2021** (each also in the Core Set): Inside
+  Job, Femme Fatale, Test Run and Networking.
+
+- **Inside Job** runs any server and leaves a delayed ability for the run
+  (`LaterThisTurn`, `when: OnEncounter`, `this_run`), heard once, as
+  Always Have a Backup Plan's is heard every time.
+- **Femme Fatale** is Boomerang's choice (`Remember { what:
+  SelectedCard, until: WhileInstalled }`) read back by
+  `EncounteringChosenIce`, and Physarum Entangler's offer (`Cost::
+  CreditsAmount(EncounteredIceSubroutines)`, then `BypassEncounteredIce`).
+- **Test Run** is Beta Build's search and free install from either pile
+  (a `PresentChoice` between the stack, shuffled after, and the heap),
+  with the install remembered by a delayed ability for the turn's end
+  (`LaterThisTurn`, `when: OnDiscardPhaseEnd`, `AddToDeck(Top)`). The
+  install is the "if": a program uninstalled since has no handle, and
+  nothing moves. A trojan is not offered, since the free install never
+  takes one.
+- **Networking: a known approximation.** "Then, you may pay 1[credit] to
+  add this event to your grip" is a paid choice whose answer moves a
+  Networking from the heap to the grip. A played event is filed in the
+  heap as its `OnPlay` is dispatched (`engine::play_event`), before a
+  choice it parks is answered, so Networking is trashed and then
+  returned. By the rules it never reaches the heap, so Aniccam's "an
+  event is trashed" hears a Networking played this way; no Sweep deck
+  holds both. A played event waiting in the play area until its parked
+  choices are answered is the fix, and it is the engine's, not this
+  card's.
+- **Decks.** Hit List takes two Femme Fatale for its two Revolver (a
+  killer for a killer), two Inside Job for its two Reprise and two
+  Networking for its two Bravado; Revolver and Reprise are in three
+  other decks and Bravado in two. Safety Net takes two Test Run for its
+  two Deep Dive, which three other decks keep.
+- **Client.** Nothing new reaches the view.
+- **Tests.** Four new tests. Inside Job bypasses the first ice and the
+  second's "End the run" ends the run. Femme Fatale chooses Enigma,
+  bypasses it for 2[credit], is not offered on another Enigma, and breaks
+  no code gate. Test Run installs Corroder from the heap for nothing and
+  puts it on top of the stack at the turn's end, and finds nothing in a
+  stack without a program. Networking removes a tag and returns to the
+  grip for 1[credit], or stays in the heap.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 710 card files.

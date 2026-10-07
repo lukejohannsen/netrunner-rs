@@ -1,0 +1,105 @@
+{
+  "id": "test_run",
+  "title": "Test Run",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnStack",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "Not": {
+                          "HasSubtype": "Trojan"
+                        }
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": true,
+                  "destination": "OwnGrip",
+                  "then": {
+                    "Sequence": [
+                      {
+                        "InstallRunnerCardFromGripWithDiscount": "AllCosts"
+                      },
+                      {
+                        "LaterThisTurn": {
+                          "when": "OnDiscardPhaseEnd",
+                          "effect": {
+                            "AddToDeck": "Top"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnHeap",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "Not": {
+                          "HasSubtype": "Trojan"
+                        }
+                      }
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": false,
+                  "destination": "OwnGrip",
+                  "then": {
+                    "Sequence": [
+                      {
+                        "InstallRunnerCardFromGripWithDiscount": "AllCosts"
+                      },
+                      {
+                        "LaterThisTurn": {
+                          "when": "OnDiscardPhaseEnd",
+                          "effect": {
+                            "AddToDeck": "Top"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "texts": [
+              "Search either your stack — the stack",
+              "Search either your stack or your heap — the heap"
+            ]
+          }
+        }
+      ],
+      "text": "Search either your stack or your heap for 1 program. (Shuffle your stack after searching it.) Install that program, ignoring all costs. When your turn ends, if that program has not been uninstalled, add it to the top of your stack."
+    }
+  ],
+  "built_from": 31028,
+  "is_playable": true
+}
