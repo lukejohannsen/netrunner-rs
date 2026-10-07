@@ -1,0 +1,28 @@
+{
+  "id": "punitive_counterstrike",
+  "title": "Punitive Counterstrike",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 5,
+            "on_success": {
+              "DealDamageAmount": [
+                "Meat",
+                "AgendaPointsStolenLastTurn"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 31078,
+  "is_playable": true
+}

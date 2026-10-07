@@ -64,6 +64,7 @@ pub fn describe_amount(amount: &Amount) -> String {
     match amount {
         Amount::Fixed(n) => n.to_string(),
         Amount::AgendaPointsScoredThisTurn => "the agenda points scored this turn".to_string(),
+        Amount::AgendaPointsStolenLastTurn => "the printed agenda points the Runner stole last turn".to_string(),
         Amount::TimesThisTurn(trigger) => format!("the times \"{}\" has happened this turn", humanize(format!("{trigger:?}"))),
         Amount::TimesThisTurnWhen { trigger, when } => {
             format!("the times \"{}\" has happened this turn ({})", humanize(format!("{trigger:?}")), humanize(format!("{when:?}")).to_lowercase())
@@ -1049,6 +1050,7 @@ mod tests {
                 if_paid: Box::new(Effect::Sequence(vec![])),
                 if_declined: Box::new(Effect::GiveTags(Amount::Fixed(1))),
                 text: None,
+                if_able: false,
             }),
             "the Runner may pay 8 credits to do nothing; otherwise give the Runner 1 tag"
         );

@@ -449,6 +449,17 @@ pub enum Effect {
         /// catalog update. Never read by the engine.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         text: Option<String>,
+        /// The payment is not an offer but an obligation the player meets
+        /// if able — Tollbooth's "they must pay 3[credit], if able. If they
+        /// do not, end the run." Nobody is asked: the cost is paid when it
+        /// can be (by the same accept a choice would take, so the payment's
+        /// own questions still come), and `if_declined` resolves when it
+        /// cannot. Composition didn't work: an `EffectIf` on the credit pool
+        /// is an affordability sum the Payment Rule forbids, and a parked
+        /// choice whose decline was refused would ask a question with one
+        /// answer.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        if_able: bool,
     },
     /// Presents `chooser` with a choice of which one `Effect` among
     /// `options` resolves — e.g. Wildcat Strike ("resolve 1 of the
@@ -1853,6 +1864,11 @@ pub enum Amount {
     /// turn (`TurnLog::agenda_points_scored`) — e.g. Neurospike. A sum, so
     /// not a `TimesThisTurn`, which counts.
     AgendaPointsScoredThisTurn,
+    /// Sum of printed agenda points on agendas the Runner stole during the
+    /// turn that ended most recently (`TurnLog::agenda_points_stolen` on
+    /// `last_turn`) — Punitive Counterstrike, played on the Corp's turn, so
+    /// that turn is the Runner's. `AgendaPointsScoredThisTurn`'s twin.
+    AgendaPointsStolenLastTurn,
     /// How many times this trigger's moment has happened this turn, to
     /// anyone and about anything (`rules::turn_log`) — "if you made a
     /// successful run this turn" is `AmountAtLeast(TimesThisTurn(
@@ -2654,8 +2670,8 @@ impl Effect {
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
-            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
-                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             other => other,
         }
@@ -2711,8 +2727,8 @@ impl Effect {
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_name(card), effect: boxed(effect) },
-            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
-                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => Effect::LaterThisTurn {
                 when,
@@ -2745,8 +2761,8 @@ impl Effect {
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
-            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
-                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             other => other,
         }
@@ -2796,8 +2812,8 @@ impl Effect {
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times: amount(times), effect: boxed(effect) },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect) },
-            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
-                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
             other => other,
@@ -2830,8 +2846,8 @@ impl Effect {
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
-            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
-                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
             other => other,
@@ -3201,6 +3217,7 @@ mod tests {
                 if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
                 if_declined: Box::new(Effect::EndTheRun),
                 text: None,
+                if_able: false,
             }
             .can_end_the_run()
         );
@@ -3223,6 +3240,7 @@ mod tests {
                     if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
                     if_declined: Box::new(Effect::EndTheRun),
                     text: None,
+                    if_able: false,
                 }),
             },
             Effect::PresentChoice {

@@ -77,10 +77,8 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("trick_of_light", "Trick of Light"),
     ("project_beale", "Project Beale"),
     ("daily_business_show", "Daily Business Show"),
-    ("tollbooth", "Tollbooth"),
     ("psychographics", "Psychographics"),
     ("sansan_city_grid", "SanSan City Grid"),
-    ("punitive_counterstrike", "Punitive Counterstrike"),
     ("subliminal_messaging", "Subliminal Messaging"),
 ];
 

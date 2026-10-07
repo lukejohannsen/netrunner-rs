@@ -8822,3 +8822,51 @@ no new word: one event carries a number it was dropping. System Update
   on, the next run is refused and not offered, and the next turn is free.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 700 card files.
+
+#### Stage 7b — a payment made if able, and the points stolen last turn (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Corp cards. **No new `Effect`.** One
+field on `OfferPaidChoice`, one turn-log sum and one `Amount`. System
+Update 2021 is at 59 of 82; the Core Set has 38 of 113 built.
+- **Cards from System Update 2021:** Tollbooth (a Core Set reprint) and
+  Punitive Counterstrike.
+
+- **Tollbooth: a payment that is an obligation.**
+  - The card reads "When the Runner encounters this ice, they must pay
+    3[credit], if able. If they do not, end the run."
+  - `OfferPaidChoice::if_able` makes the offer an obligation. Nobody is
+    asked. The engine takes the accept a choice would take, on a copy of
+    the state; it keeps the copy if the cost was paid and declines if it
+    could not be.
+  - Paying goes through `pending_choice::resolve_accept`, so the Payment
+    Rule holds: every pool that covers the payment is read, and a split
+    that must be asked still asks, by replay.
+  - **Why not an `EffectIf` on the credit pool:** that is the
+    affordability sum the Payment Rule forbids. It would have missed bad
+    publicity's credits on the run.
+  - **Why not a parked choice with its decline refused:** that asks a
+    question with one answer.
+- **Punitive Counterstrike: the printed points stolen last turn.**
+  - The card reads "Trace[5]. If successful, do X meat damage. X is equal
+    to the sum of the printed agenda points on all agendas the Runner
+    stole during their last turn."
+  - The turn log now keeps `agenda_points_stolen` beside
+    `agenda_points_scored`. It is recorded at `AgendaStolen` through the
+    log's one door, and read off `last_turn` by
+    `Amount::AgendaPointsStolenLastTurn`.
+  - The points are printed, as the card says, so they are read off the
+    definition. A stolen Project Vacheron is worth nothing for a while and
+    prints 3.
+- **Moved to stage 7c:** Trick of Light, Ravana 1.0, Haas-Bioroid:
+  Architects of Tomorrow and Timely Public Release.
+- **Decks: two swaps,** each in its deck's faction. Every card given up
+  is still in another deck.
+  - Broadcast Hour: two Tollbooth for two Virtual Service Agent.
+  - Hostile Bid: two Punitive Counterstrike for two Myōshu (Land Grab,
+    which is Standard-legal, could not take it).
+- **Tests.** Two new tests. Tollbooth takes 3[credit] from a Runner with
+  5[credit] and asks nothing; with 2[credit], the run ends and nothing is
+  taken. Punitive Counterstrike does 3 meat damage for a 2-point and a
+  1-point steal.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 702 card files.

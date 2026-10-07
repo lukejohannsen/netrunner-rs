@@ -27946,4 +27946,43 @@ mod reprints {
         assert!(events.iter().any(|event| matches!(event, GameEvent::RunNotDeclaredSuccessful { server: ServerId::Hq })), "{events:?}");
         assert!(!events.iter().any(|event| matches!(event, GameEvent::CreditsGained { side: Side::Runner, .. })), "Gabriel's 2[credit] is for a successful run, at {credits:?}");
     }
+
+    // ---- Stage 7b: a payment made if able, and the points stolen last turn ----
+
+    #[test]
+    fn tollbooth_takes_three_credits_if_the_runner_has_them_and_ends_the_run_if_not() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("tollbooth")];
+        state.runner.resources.credits = Credits(5);
+        let paid = encounter(&state, &registry);
+        assert!(paid.pending_paid_choice.is_none(), "nobody is asked");
+        assert_eq!(paid.runner.resources.credits, Credits(2), "they must pay 3[credit]");
+        assert!(paid.active_run.is_some());
+
+        state.runner.resources.credits = Credits(2);
+        let (approached, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (approached, _) = crate::rules::test_support::continue_run(&approached, &registry).expect("approach the ice");
+        let (approached, _) = apply_action(&approached, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (ended, _) = apply_action(&approached, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert!(ended.active_run.is_none(), "unable to pay, so the run ends");
+        assert_eq!(ended.runner.resources.credits, Credits(2), "and nothing is taken");
+    }
+
+    #[test]
+    fn punitive_counterstrike_does_meat_damage_for_the_printed_points_stolen_last_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("punitive_counterstrike")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        crate::rules::turn_log::record(&mut state, &registry, &GameEvent::AgendaStolen { card: id("project_atlas"), agenda_points: 2 });
+        crate::rules::turn_log::record(&mut state, &registry, &GameEvent::AgendaStolen { card: id("house_of_knives"), agenda_points: 1 });
+        crate::rules::turn_log::rotate(&mut state);
+        let (tracing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("punitive_counterstrike") }).expect("play");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(5), "trace[5]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (hit, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        let (hit, _) = close_all_windows(hit, &registry);
+        assert_eq!(hit.runner.grip.len(), 2, "2 + 1 printed points, 3 meat damage");
+    }
 }
