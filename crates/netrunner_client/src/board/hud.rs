@@ -287,6 +287,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::SpendCredits => "the Runner cannot spend credits",
         Prohibition::EndTheRun => "subroutines cannot end the run",
         Prohibition::RunOnRemote => "the Runner cannot run on a remote server",
+        Prohibition::Run => "the Runner cannot make another run",
         Prohibition::AccessOthers => "the Runner cannot access any other card",
         Prohibition::Access => "the Runner cannot access that card",
         Prohibition::BreakSubroutines => "the Runner's abilities cannot break subroutines",

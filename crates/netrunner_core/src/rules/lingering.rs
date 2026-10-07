@@ -323,16 +323,21 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
 /// Apart from `strength`, which a rig card asks too, because `EachIce` is
 /// never about an icebreaker.
 pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
-    strength(state, on)
-        + state
-            .lingering
-            .iter()
-            .filter(|effect| effect.on == On::EachIce && effect.holds(state))
-            .map(|effect| match effect.what {
-                Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
-            })
-            .sum::<i32>()
+    ice_strength_terms(state, on).sum()
+}
+
+/// Each lingering effect's part of a piece of ice's strength, one term
+/// apiece, so a piece of ice whose strength cannot be lowered (Lotus Field)
+/// can drop the terms that lower it and keep the rest.
+pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Item = i32> + '_ {
+    state
+        .lingering
+        .iter()
+        .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce) && effect.holds(state))
+        .map(|effect| match effect.what {
+            Lingering::Strength(delta) => delta,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
+        })
 }
 
 /// What the lingering effects that still hold add to the rez cost of a

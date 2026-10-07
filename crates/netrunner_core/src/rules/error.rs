@@ -156,6 +156,11 @@ pub enum RulesError {
     #[error("a run cannot be made on {server:?} now")]
     RunProhibited { server: crate::rules::run::ServerId },
 
+    /// No run may be made at all — Excalibur's "The Runner cannot make
+    /// another run this turn" (`Prohibition::Run`).
+    #[error("the Runner cannot make another run this turn")]
+    RunsProhibited,
+
     /// The additional cost to run the server (CR 6.3.2b: Earth Station: SEA
     /// Headquarters) cannot be paid, so the run cannot be made.
     #[error("the additional cost to run {server:?} cannot be paid")]

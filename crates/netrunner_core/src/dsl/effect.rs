@@ -2451,6 +2451,13 @@ pub enum Prohibition {
     /// to run (`Effect::PromptChooseServer`), which then leave the remotes
     /// out.
     RunOnRemote,
+    /// The Runner cannot run at all — Excalibur's "The Runner cannot make
+    /// another run this turn", made for the turn (`until: Turn`). Asked as
+    /// a run is announced (`run::check_run_may_begin`), so the basic action
+    /// and a card's text are refused alike, and the action list offers
+    /// neither. "Another" needs no word of its own: the run under way when
+    /// it is made has begun already, and is not refused.
+    Run,
     /// The Runner cannot access cards other than one install — Adrian
     /// Seis's "If the bids differ, the Runner cannot access cards other
     /// than this upgrade for the remainder of that run", always bound to
@@ -2541,7 +2548,7 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 16] = [
+    pub const ALL: [Prohibition; 17] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2549,6 +2556,7 @@ impl Prohibition {
         Prohibition::SpendCredits,
         Prohibition::EndTheRun,
         Prohibition::RunOnRemote,
+        Prohibition::Run,
         Prohibition::AccessOthers,
         Prohibition::Access,
         Prohibition::BreakSubroutines,
@@ -2564,7 +2572,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
         }
     }
 
@@ -2575,7 +2583,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction => None,
         }
     }
 }

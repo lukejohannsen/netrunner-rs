@@ -1,0 +1,18 @@
+{
+  "id": "crisium_grid",
+  "title": "Crisium Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": "CannotBeDeclaredSuccessful",
+      "applies_to": "RunsOnThisServer",
+      "text": "Runs against this server cannot be declared successful."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 5,
+  "built_from": 31079,
+  "is_playable": true
+}

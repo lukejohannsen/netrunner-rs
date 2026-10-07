@@ -74,7 +74,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("magnet", "Magnet"),
     ("ravana_1_0", "Ravana 1.0"),
     ("corporate_troubleshooter", "Corporate Troubleshooter"),
-    ("lotus_field", "Lotus Field"),
     ("trick_of_light", "Trick of Light"),
     ("project_beale", "Project Beale"),
     ("daily_business_show", "Daily Business Show"),
@@ -82,7 +81,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("psychographics", "Psychographics"),
     ("sansan_city_grid", "SanSan City Grid"),
     ("punitive_counterstrike", "Punitive Counterstrike"),
-    ("crisium_grid", "Crisium Grid"),
     ("subliminal_messaging", "Subliminal Messaging"),
 ];
 
@@ -90,7 +88,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("next_silver", "NEXT Silver"),
     ("sansan_city_grid", "SanSan City Grid"),
-    ("excalibur", "Excalibur"),
     ("subliminal_messaging", "Subliminal Messaging"),
 ];
 

@@ -2076,7 +2076,7 @@ pub fn evaluate_effect(
             // this parks a decision `start_run` will refuse. See that
             // function's doc comment; a narrower copy here is exactly what
             // caused the original deadlock.
-            run::check_run_may_begin(state)?;
+            run::check_run_may_begin(state, registry)?;
             // Narrow the offer here, for the same reason as the check
             // above: an offer with nothing in it is a decision nothing can
             // resolve, and refusing to park makes the probe drop the

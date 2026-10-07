@@ -438,8 +438,19 @@ pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) ->
 /// every checkpoint (`Amount::HostIceStrength`).
 pub fn installed_ice_strength(state: &GameState, registry: &CardRegistry, card: &crate::dsl::CardId, install: InstallId) -> i32 {
     let printed = registry.get(card).and_then(|definition| definition.strength).unwrap_or(0);
-    let table = Target::corp_install(state, registry, install).map_or(0, |target| sum(state, registry, target, strength));
-    printed + table + lingering::ice_strength(state, install)
+    let Some(target) = Target::corp_install(state, registry, install) else {
+        return printed + lingering::ice_strength_terms(state, install).sum::<i32>();
+    };
+    // Lotus Field: a term that would lower it counts for nothing, term by
+    // term, so a raise beside it still raises.
+    let floor = if any(state, registry, target, |kind| matches!(kind, ContinuousKind::StrengthCannotBeLowered)) { 0 } else { i32::MIN };
+    let mut table = 0;
+    for_each_applying(state, registry, target, |kind| strength(kind).is_some(), |effect, _, ctx| {
+        if let Some(number) = strength(&effect.kind) {
+            table += (number.per * ability::resolve_amount(&number.of, ctx, state, registry) as i32).max(floor);
+        }
+    });
+    printed + table + lingering::ice_strength_terms(state, install).map(|delta| delta.max(floor)).sum::<i32>()
 }
 
 /// How many more of the encountered `ice`'s printed subroutines `breaker`

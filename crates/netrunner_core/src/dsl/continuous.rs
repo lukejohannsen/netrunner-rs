@@ -295,6 +295,16 @@ pub enum ContinuousKind {
     /// naming one, and `Prohibition::BreakSubroutinesOnIce` is about every
     /// Runner card and is made by a choice with a duration.
     CannotBeBrokenUsing(crate::dsl::CardSubtype),
+    /// This ice's strength cannot be lowered — Lotus Field's "The strength
+    /// of this ice cannot be lowered". About `This`, on ice. Asked by
+    /// `continuous::installed_ice_strength`, the one question a strength
+    /// is put to, which then counts only the terms that raise it: an
+    /// effect that would lower it is not refused, it does nothing to this
+    /// ice (CR 1.2.2, the "cannot" takes precedence), and every other
+    /// piece of ice it reaches is lowered as before. Composition didn't
+    /// work: a `Strength` of the opposite sign would be a raise, not a
+    /// floor, and the strength still moves up.
+    StrengthCannotBeLowered,
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card

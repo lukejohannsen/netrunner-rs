@@ -1878,8 +1878,8 @@ impl CardDefinition {
                     return misfit("Player", "only a prohibition or the other player's hand size is about a player named by side");
                 }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
-                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
-                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_), _) => {
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered, _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
                 }
                 (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}

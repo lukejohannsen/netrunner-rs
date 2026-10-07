@@ -27899,4 +27899,51 @@ mod reprints {
         assert!(found.corp.hq.contains(&id("pad_campaign")));
         assert_eq!(found.corp.hq.len(), drawn + 1);
     }
+
+    // ---- Stage 7a: the Corp's remaining vocabulary — no more runs, a floor on strength ----
+
+    #[test]
+    fn excalibur_forbids_another_run_this_turn_and_not_the_one_under_way() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("excalibur")];
+        let fired = fire(&state, &registry);
+        assert!(fired.active_run.is_some(), "the run under way goes on");
+        let (mut done, _) = pass_until_settled(fired, &registry);
+        done.active_run = None;
+        done.paid_ability_window = None;
+        done.phase = GamePhase::Action(Side::Runner);
+        done.runner.resources.clicks = Clicks(3);
+        assert_eq!(apply_action(&done, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).err(), Some(RulesError::RunsProhibited));
+        assert!(!crate::rules::legal_actions_for(&done, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::InitiateRun { .. })));
+
+        let next_turn = next_runner_turn(done, &registry);
+        assert!(!crate::rules::continuous::cannot(&next_turn, &registry, crate::dsl::Prohibition::Run), "for this turn only");
+    }
+
+    #[test]
+    fn lotus_field_is_not_lowered_where_other_ice_is() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("ice_carver", 0)];
+        state.corp.installed = vec![ice_at_hq("lotus_field")];
+        let at_ice = encounter(&state, &registry);
+        let run = at_ice.active_run.as_ref().expect("a run");
+        assert_eq!(crate::rules::continuous::ice_strength(&at_ice, &registry, &run.ice[run.position]), 4, "Ice Carver's −1 does nothing to it");
+    }
+
+    #[test]
+    fn crisium_grid_keeps_a_run_on_its_server_from_being_declared_successful() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("gabriel_santiago_consummate_professional"));
+        state.corp.installed = vec![root_of_hq("crisium_grid")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let credits = state.runner.resources.credits;
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (_, events) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("past the approach");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunNotDeclaredSuccessful { server: ServerId::Hq })), "{events:?}");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CreditsGained { side: Side::Runner, .. })), "Gabriel's 2[credit] is for a successful run, at {credits:?}");
+    }
 }

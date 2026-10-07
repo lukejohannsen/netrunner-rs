@@ -1,0 +1,26 @@
+{
+  "id": "lotus_field",
+  "title": "Lotus Field",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": "StrengthCannotBeLowered",
+      "applies_to": "This",
+      "text": "The strength of this ice cannot be lowered."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 31055,
+  "is_playable": true
+}

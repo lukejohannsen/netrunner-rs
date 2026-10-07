@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 55, 14, 3, 37 | 27, 4, 3, — | in progress: Stages 1a–6b (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 57, 15, 3, 37 | 25, 3, 3, — | in progress: Stages 1a–7a (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 697 card files** (7 October
-2026, with tranche 8 Stage 6b, which added no variant; Stage 6a, at 13 of
+`Effect` variants single-use, none unused, over 700 card files** (7 October
+2026, with tranche 8 Stage 7a, which added no variant; Stage 6b, at 13 of
+105 over 697, added none; Stage 6a, at 13 of
 105 over 690, added none; Stage 5b, at 13 of
 105 over 683, added none; Stage 5a, at 13 of
 105 over 681, added none; Stage 4, at 13 of 105
@@ -1129,6 +1130,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 5b** — two cards with no new `Effect`: a conditional ability with a static condition is marked pending at the end of every action while its condition is true (`Trigger::WhileTrue`, CR 9.6.7), and a Trojan can be restricted to rezzed hosts (Atman, Parasite) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 6a** — seven Runner cards with no new `Effect`: the ice being encountered is a filter word (`CardFilter::BeingEncountered`, Ice Carver), and the credits that pay trash costs say which cards' (`PaysFor::TrashCosts(filter)`, Paricia's assets) (Cerberus “Lady” H1, Imp, Egret, Medium, e3 Feedback Implants, Ice Carver, Paricia) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 6b** — seven Corp cards with no new `Effect`: a trigger of a score reads the advancement counters the agenda was scored with (CR 1.17.8, carried on `GameEvent::AgendaScored`) (Project Atlas, Project Vitruvius, Nisei MK II, Oaktown Renovation, Archived Memories, Biotic Labor, Executive Boot Camp) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 7a** — three Corp cards with no new `Effect`: the Runner can be kept from making another run this turn (`Prohibition::Run`), and a piece of ice's strength cannot be lowered (`ContinuousKind::StrengthCannotBeLowered`) (Excalibur, Lotus Field, Crisium Grid) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1166,11 +1168,10 @@ nine by kind):
    says today. **6b closed**, seven Corp cards (Project Atlas, Project
    Vitruvius, Nisei MK II, Oaktown Renovation, Archived Memories, Biotic
    Labor, Executive Boot Camp).
-7. The Corp's remaining vocabulary: Tollbooth (a payment the Runner must
-   make if able), Lotus Field (a strength that cannot be lowered),
-   Excalibur (no more runs this turn), Crisium Grid, Punitive
-   Counterstrike, Trick of Light, Ravana 1.0, Haas-Bioroid: Architects of
-   Tomorrow and Timely Public Release.
+7. The Corp's remaining vocabulary. **7a closed**, three cards (Excalibur,
+   Lotus Field, Crisium Grid). **7b:** Tollbooth (a payment the Runner
+   must make if able), Punitive Counterstrike, Trick of Light, Ravana
+   1.0, Haas-Bioroid: Architects of Tomorrow and Timely Public Release.
 8. Remembered choices, triggers a card creates, and X costs: Inside Job,
    Femme Fatale, Security Testing, Chameleon, Test Run, Corporate
    Troubleshooter, Psychographics, Networking (moved from 6a).
