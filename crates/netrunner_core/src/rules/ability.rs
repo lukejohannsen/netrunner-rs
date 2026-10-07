@@ -5139,6 +5139,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
         Amount::Credits(Side::Corp) => state.corp.resources.credits.0,
         Amount::Credits(Side::Runner) => state.runner.resources.credits.0,
+        Amount::HostIceStrength => acting_rig_card(state, ctx)
+            .and_then(|card| card.hosted_on_ice)
+            .and_then(|host| state.find_corp_install(host))
+            .map_or(0, |host| crate::rules::continuous::installed_ice_strength(state, registry, &host.card, host.install_id).max(0) as u32),
         Amount::ThisCardStrength => ctx
             .acting_install
             .and_then(|install| state.find_rig_install(install))

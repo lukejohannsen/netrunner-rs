@@ -464,6 +464,17 @@ pub enum Trigger {
     /// a remote of one card that was not created. A moment of its own, so
     /// "the first time each turn" counts creations, not installs.
     OnServerCreated,
+    /// Not a moment: a conditional ability with a *static* condition (CR
+    /// 9.6.7) — Parasite's "When the strength of host ice is 0 or less,
+    /// trash it". The condition is the entry's `requirement`, and no event
+    /// is an occurrence of it (`listeners::moments` never names it): the
+    /// checkpoint looks for an active card whose condition is true and
+    /// marks the ability pending (CR 9.6.7a, `checkpoint::static_conditions`),
+    /// one instance per source at a time (9.6.7c). Composition didn't work:
+    /// every other trigger waits for an event, and the strength of a piece
+    /// of ice changes with no event at all — a virus counter on the Trojan,
+    /// a lingering effect running out.
+    WhileTrue,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -913,7 +924,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 56] = [
+    pub const ALL: [Trigger; 57] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -970,6 +981,7 @@ impl Trigger {
         Trigger::OnCardRevealed,
         Trigger::OnDrawAboutToResolve,
         Trigger::OnServerCreated,
+        Trigger::WhileTrue,
     ];
 
     /// This trigger's position in `ALL`.
@@ -1041,6 +1053,7 @@ impl Trigger {
             | Trigger::OnActionFinished
             | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::OnDrawAboutToResolve
+            | Trigger::WhileTrue
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
             // "whenever you do **meat** damage"; none does.
@@ -1139,6 +1152,7 @@ impl Trigger {
             | Trigger::OnDamageAboutToResolve
             | Trigger::OnVirusCountersPurged
             | Trigger::OnCardsTrashedFromGripOrStack
+            | Trigger::WhileTrue
             | Trigger::Paid => Hears::Everyone,
         }
     }
@@ -1156,7 +1170,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnServerCreated => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnServerCreated | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

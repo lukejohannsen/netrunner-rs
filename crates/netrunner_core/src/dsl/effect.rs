@@ -2111,6 +2111,13 @@ pub enum Amount {
     /// `Not(AmountAtLeast(.., 1))`, since an `Amount` is unsigned. 0
     /// outside an encounter. No amount read a strength.
     EncounteredIceStrength,
+    /// The strength of the acting Trojan's host ice, never below 0
+    /// (`continuous::installed_ice_strength`) — Parasite's "When the
+    /// strength of host ice is 0 or less, trash it", `Not(AmountAtLeast(..,
+    /// 1))`. 0 for a card hosted on no ice. Composition didn't work:
+    /// `EncounteredIceStrength` is the run's ice, and a Parasite's host
+    /// reaches 0 on the Runner's turn start, with no run at all.
+    HostIceStrength,
     /// The strength of the acting rig card, never below 0
     /// (`continuous::breaker_strength`) — the rule every interface ability
     /// is held to (CR 3.9.5g: "only … if the icebreaker has strength greater

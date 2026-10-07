@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "fermenter", "hantu", "leech", "pelangi", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "fermenter", "hantu", "leech", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -6587,10 +6587,25 @@ mod system_gateway {
         state.corp.resources.clicks = Clicks(3);
         state.runner.rig = viruses
             .iter()
-            .map(|id| crate::rules::InstalledRunnerCard { card: id.clone(), counters: 3, ..Default::default() })
+            .map(|id| crate::rules::InstalledRunnerCard { card: id.clone(), install_id: crate::rules::test_support::fixture_install_id(&id.0), counters: 3, ..Default::default() })
             .collect();
+        // A Parasite is always on a piece of ice, and its static condition
+        // asks the host's strength at the end of every action.
+        let host = crate::rules::InstalledCard {
+            install_id: InstallId(4343),
+            card: CardId("enigma".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed.push(host);
+        for rigged in state.runner.rig.iter_mut().filter(|rigged| rigged.card.0 == "parasite") {
+            rigged.hosted_on_ice = Some(InstallId(4343));
+        }
 
         let (next, _events) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("corp purges");
+        assert!(next.corp.installed.iter().any(|installed| installed.install_id == InstallId(4343)), "purged, the host keeps its strength");
 
         for rigged in &next.runner.rig {
             assert_eq!(rigged.counters, 0, "{} still holds virus counters after a purge", rigged.card.0);
@@ -27550,5 +27565,67 @@ mod reprints {
         assert_eq!(strength(&state), 2, "itself and the other");
         state.corp.installed[1].rezzed = false;
         assert_eq!(strength(&state), 1, "an unrezzed one does not count");
+    }
+
+    // ---- Stage 5b: a breaker of exactly equal strength, a static condition ----
+
+    #[test]
+    fn atman_takes_the_credits_spent_as_power_counters_and_interfaces_only_at_equal_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("atman")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("atman"), trash_first: false }).expect("install");
+        let (spent, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("spend 2");
+        let (spent, _) = pass_until_settled(spent, &registry);
+        assert_eq!(spent.runner.resources.credits, Credits(5), "3 to install, 2 spent");
+        assert_eq!(counters_on(&spent, "atman"), 2);
+
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("atman", 0) }];
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "atman", 0).is_ok(), "strength 2 against strength 2");
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "atman", 0).is_err(), "strength 2 against strength 1");
+    }
+
+    #[test]
+    fn parasite_installs_only_on_rezzed_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("parasite")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") }];
+        let host = install_of(&state, "ice_wall");
+        let install = PlayerAction::InstallProgramOnIce { card_id: id("parasite"), host, trash_first: false };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&install), "not offered");
+        assert!(apply_action(&state, &registry, install.clone()).is_err(), "unrezzed");
+        state.corp.installed[0].rezzed = true;
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&install));
+        assert!(apply_action(&state, &registry, install).is_ok());
+    }
+
+    #[test]
+    fn parasite_trashes_its_host_once_the_host_has_no_strength_left() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("parasite")];
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        let host = install_of(&state, "enigma");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgramOnIce { card_id: id("parasite"), host, trash_first: false }).expect("install");
+        let installed = close_all_windows(installed, &registry).0;
+        let strength = |state: &GameState| {
+            let enigma = state.corp.installed.iter().find(|c| c.card == id("enigma")).expect("on the table");
+            crate::rules::continuous::installed_ice_strength(state, &registry, &enigma.card, enigma.install_id)
+        };
+        assert_eq!(strength(&installed), 2);
+
+        let one = next_runner_turn(installed, &registry);
+        assert_eq!(counters_on(&one, "parasite"), 1);
+        assert_eq!(strength(&one), 1, "-1 strength for each hosted virus counter");
+
+        let two = next_runner_turn(one, &registry);
+        assert!(two.corp.installed.iter().all(|c| c.card != id("enigma")), "strength 0: trashed");
+        assert!(two.corp.archives.iter().any(|card| card.card == id("enigma")));
+        assert!(two.runner.rig.is_empty() && two.runner.heap.contains(&id("parasite")), "and the Trojan it hosted with it");
     }
 }

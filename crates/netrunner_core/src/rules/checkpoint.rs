@@ -65,6 +65,65 @@ pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event:
     events
 }
 
+/// Marks pending every conditional ability with a static condition that is
+/// true (CR 9.6.7a), queued to resolve as its card — Parasite's "When the
+/// strength of host ice is 0 or less, trash it" (`Trigger::WhileTrue`, the
+/// condition its `requirement`). Returns whether it queued any, so the
+/// caller drains them and checks again.
+///
+/// One instance per source at a time (9.6.7c): an entry already queued for
+/// the same card and install is the one pending. Called once at the end of
+/// an action (`engine::apply_action_once`) rather than from inside every
+/// dispatch: the queue is drained there, and a condition that turned true
+/// mid-action is still true at its end — what the strength of a piece of
+/// ice says is not a moment anything else reacts to. That one call is also
+/// 9.6.7d's limit, approximated: an ability that resolved and changed
+/// nothing is not marked again until the next action.
+pub(crate) fn static_conditions(state: &mut GameState, registry: &CardRegistry) -> bool {
+    use crate::dsl::Trigger;
+    use crate::rules::state::{DeferredTrigger, Heard};
+    if state.is_over() {
+        return false;
+    }
+    let mut due = Vec::new();
+    for card in active::active_cards(state, registry) {
+        let Some(definition) = registry.get(card.card) else { continue };
+        let conditions = || definition.triggers.iter().filter(|triggered| triggered.trigger == Trigger::WhileTrue);
+        if conditions().next().is_none() {
+            continue;
+        }
+        let pending = state
+            .deferred_triggers
+            .iter()
+            .any(|queued| queued.trigger == Trigger::WhileTrue && &queued.card == card.card && queued.install == card.install);
+        if pending {
+            continue;
+        }
+        let ctx = ability::ResolutionContext::for_install_trigger(card.install, Some(card.card), None);
+        let met = conditions().any(|triggered| {
+            triggered.requirement.as_ref().is_some_and(|requirement| ability::check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
+        });
+        if met {
+            due.push(DeferredTrigger {
+                card: card.card.clone(),
+                trigger: Trigger::WhileTrue,
+                target: None,
+                install: card.install,
+                target_install: None,
+                event: None,
+                continuation: None,
+                heard: Heard::Unfiltered,
+                not_the_first_this_turn: false,
+                fired: 0,
+                announce: None,
+            });
+        }
+    }
+    let queued = !due.is_empty();
+    state.deferred_triggers.extend(due);
+    queued
+}
+
 /// "If a player ever controls more than one installed console, all but the
 /// most recently active console are trashed. Trashing cards this way cannot
 /// be prevented" (CR 3.8.5b, 10.3.1d). Only the Runner has consoles, and a

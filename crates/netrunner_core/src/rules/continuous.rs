@@ -430,9 +430,16 @@ pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &Insta
 /// here. It was a number stored on `RunIce` when the run's ice was built,
 /// which a counter placed mid-run (Syailendra on an Ice Wall) never reached.
 pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) -> i32 {
-    let printed = registry.get(&ice.card_id).and_then(|definition| definition.strength).unwrap_or(0);
-    let table = Target::corp_install(state, registry, ice.install_id).map_or(0, |target| sum(state, registry, target, strength));
-    printed + table + lingering::ice_strength(state, ice.install_id)
+    installed_ice_strength(state, registry, &ice.card_id, ice.install_id)
+}
+
+/// [`ice_strength`] for a piece of ice named by its install, in a run or
+/// not — Parasite's host, whose strength is a standing condition asked at
+/// every checkpoint (`Amount::HostIceStrength`).
+pub fn installed_ice_strength(state: &GameState, registry: &CardRegistry, card: &crate::dsl::CardId, install: InstallId) -> i32 {
+    let printed = registry.get(card).and_then(|definition| definition.strength).unwrap_or(0);
+    let table = Target::corp_install(state, registry, install).map_or(0, |target| sum(state, registry, target, strength));
+    printed + table + lingering::ice_strength(state, install)
 }
 
 /// How many more of the encountered `ice`'s printed subroutines `breaker`
