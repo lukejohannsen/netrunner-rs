@@ -3414,3 +3414,22 @@ Tests: `a_root_holding_an_upgrade_is_still_the_fort` (fails without the first re
 - `coverage_identical.py main`: both random shapes identical (`66ec5f5d…`); both planner shapes moved, to one hash (`6b55c35c…` → `dc7c4489…`), Mercia installed 36 → 44 and rezzed 26 → 31 times.
 
 **Verified.** `cargo test --workspace` green (2,749), clippy silent, both 256-seed sweeps green in release.
+
+
+## 46. A game does not get younger: past the turn nine games in ten have left the early stage, a stripped board is read as the middle game — DONE (`fix/stage-not-moved-by-own-ice`, 6 October 2026)
+
+**The debt §45 left.** One of LEO Construction's 21 uses in 96 Agency games was at a run's initiation: game turn 26, a run on HQ, and the cost the trash of HQ's only piece of ICE, Ansel 1.0. The bisection put it +1.23 over the pass, +4.0 of it future income. `eval::stage` read the board — middle once HQ, R&D and a remote have ICE, otherwise early — so the bare HQ read the game as early again, the horizon every declared income is counted over went 5 → 9, and the Corp's economy cards were worth more for the trash. **The person asked why the Corp stripped the ICE and did not put it back.** A temporary trace of the Corp's turns after it: no ICE in HQ and 0–4 credits at the start of each of its next three turns, so there was nothing to put back; one piece arrived on the fourth, and the game ended before HQ was iced again. The stripping was the bad move, and the misreading decided it.
+
+**How often a game goes back, measured first** (a temporary trace of every chosen move that lowers the stage, and of the stage at each Corp turn's start, over a planner pass of the pool, 192 games, seed 1): **no game started a Corp turn back in the early stage once it had left it**, and three chosen moves in the pass lowered the stage, none of them the Corp trashing its own ICE: two Corp selections in a late game, which removed no ICE, and a Runner's steal. Games left the early stage by game turn 11 at the median, 13 at three in four and 19 at nine in ten; 17 ended in it. So the reversal is a one-move misreading, not something the game does.
+
+**What it is now** (`eval::stage::EARLY_STAGE_ENDS`, 19): from that game turn the stage is at least middle, whatever the board. It is the measured nine-in-ten point, so it moves almost nothing a game's own board reaches first: the reading of a board stripped late, and of the one game in ten still building. The precepts report reads the same function, and its early stage is 0.3 of a Corp turn shorter a game (5.21 → 4.91 in the casual pass, seed 1).
+
+Test: `a_stripped_board_late_in_a_game_is_not_early` (HQ bare is early on turn 18 and middle on turn 19, with a shorter horizon).
+
+**Measured** (pinned binaries, `main` at `82f77e8` against `051253b`):
+- The two Agency pairings, 96 games: LEO used 21 → 24 times, **every one Mercia B4LL4RD at a run's last window**; ICE trashed **1 → 0**, uses at an initiation **1 → 0**; Corp wins 35 → 36.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.497 → 0.497** (seed 1, 6 discordant) and **0.568 → 0.581** (seed 2, +0.013, z +2.24, 5 discordant) — inside the band; a reading that changes late, stripped boards changes few games.
+- `diag precepts --deck-styles` (planner both chairs): casual 0.469 / 0.573 → 0.474 / 0.589, startup 0.689 / 0.656 → 0.689 / 0.667; +6 / −1 over the four.
+- `coverage_identical.py main`: both random shapes identical (`66ec5f5d…`); both planner shapes moved, to one hash (`dc7c4489…` → `2c430dfb…`).
+
+**Verified.** `cargo test --workspace` green (2,750), clippy silent, both 256-seed sweeps green in release.
