@@ -8870,3 +8870,61 @@ Update 2021 is at 59 of 82; the Core Set has 38 of 113 built.
   1-point steal.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 702 card files.
+
+#### Stage 7c — ice in any position, and counters moved (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Corp cards. **No new `Effect`.** One
+field on `PromptInstallCorpCard` and one on a parked number decision. System
+Update 2021 is at 60 of 82 and Magnum Opus Reprint at 4 of 6.
+- **Cards:** Timely Public Release (Magnum Opus Reprint) and Trick of
+  Light (System Update 2021, a Core Set reprint).
+
+- **Timely Public Release: ice installed in any position.**
+  - The card reads "Hosted agenda counter: Install 1 piece of ice from HQ
+    or Archives in any position protecting a server, ignoring all costs."
+  - CR 6.2.2d lets the new position be outward of every position, inward
+    of every one, or between two. Every install of ice was outermost.
+  - `PromptInstallCorpCard::any_position` asks the Corp a number once the
+    server is chosen and has ice: how many of its pieces of ice stay
+    outward of the new one, 0 for the outermost and the count for the
+    innermost. A server with no ice has one position, and nobody is asked.
+  - The number is a `ChooseNumber` decision carrying the parked install
+    (`PendingDecision::ChooseNumber::install`), answered by the
+    `PlayerAction::ChooseNumber` every numeric choice uses. `ActionSpace`
+    is unchanged.
+  - **Why asked before the card lands, never as a move after it:** the
+    position is part of the destination (CR 6.2.2: created "when the Corp
+    declares an install destination", step 8.5.16b). A move after the
+    install would have let "when installed" triggers see it outermost.
+  - `engine::place_corp_card` takes the position (`inward`); every other
+    install passes 0, the outermost.
+  - Its scoring trigger places 1 agenda counter, and the ability is Project
+    Atlas's shape.
+- **Trick of Light: counters moved between two cards.**
+  - The card reads "Choose 1 installed card you can advance. Move up to 2
+    advancement counters from 1 other card to the chosen card."
+  - It composes from Hearts and Minds' words. The card with counters is
+    chosen first, then how many, at most 2 and at most what it hosts
+    (`Reduced` twice is the smaller of the two), then the card you can
+    advance (`NotSourceCard`, so never the same card).
+  - **Fidelity limit:** the printed order chooses the card you can advance
+    first. The choices and their outcomes are the same either way. A
+    card's counters are taken only when another card you can advance
+    exists, so none is lost.
+- **Moved to stage 7d:** Ravana 1.0 and Haas-Bioroid: Architects of
+  Tomorrow, the bioroid pair, to keep this unit small.
+- **Decks: two swaps,** both in Open Book, point for point where an agenda
+  goes. Every card given up is still in another deck.
+  - Two Trick of Light for two Mitosis (Permafrost keeps Mitosis).
+  - Two Timely Public Release for two Sericulture Expansion (eight other
+    decks keep it).
+- **Client.** The position is asked by the number prompt both clients
+  already draw. Its text says what the number means (`pending_choice::
+  ANY_POSITION_PROMPT`), and the view ledger says so of the new field.
+- **Tests.** Two new tests. Timely Public Release installs an Enigma
+  between two Ice Walls on HQ, then innermost, for no credits, and asks
+  nothing on R&D, which has no ice. Trick of Light moves 2 of 3 counters
+  from ice to an agenda, offers at most 1 from a card hosting 1, and takes
+  nothing when no other card can be advanced.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 704 card files.

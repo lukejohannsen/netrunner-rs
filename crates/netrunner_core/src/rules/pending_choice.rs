@@ -1043,13 +1043,20 @@ pub(crate) fn resolve_choose_number(
     if amount < *min || amount > *max {
         return Err(RulesError::ChosenNumberOutOfRange { amount, min: *min, max: *max });
     }
-    let Some(PendingDecision::ChooseNumber { chooser, then, source_card, prompting_card, source_install, resume, secret, .. }) =
+    let Some(PendingDecision::ChooseNumber { chooser, then, source_card, prompting_card, source_install, resume, secret, install, .. }) =
         state.pending_decision.take()
     else {
         return Err(RulesError::NoPendingDecision);
     };
 
     let mut events = vec![GameEvent::NumberChosen { chooser, amount, secret }];
+    // The number was a position (an install "in any position"): the card
+    // the server choice parked lands there, and its riders follow.
+    if let Some(at) = install {
+        let crate::rules::state::InstallAtPosition { server, install } = *at;
+        events.extend(install_parked(state, registry, server, install, amount, Parked { source_card, prompting_card, source_install, resume })?);
+        return Ok(events);
+    }
     let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
     ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &then.with_chosen_number(amount), &mut ctx, registry)?);
@@ -1704,6 +1711,147 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
     }
 }
 
+/// What an install "in any position" asks (`PendingDecision::ChooseNumber::
+/// install`): the printed clause, and what the number means.
+pub(crate) const ANY_POSITION_PROMPT: &str = "in any position protecting a server — how many pieces of ice are outward of it (0 is the outermost)";
+
+/// Whether the card a parked install names is a piece of ice — read in its
+/// zone, where it still is.
+fn parked_install_is_ice(state: &GameState, registry: &CardRegistry, install: &crate::rules::state::PendingInstallFromZone) -> bool {
+    let card = match install.origin {
+        crate::dsl::CardZoneRef::OwnHq => state.corp.hq.get(install.position),
+        crate::dsl::CardZoneRef::OwnArchives => state.corp.archives.get(install.position).map(|archived| &archived.card),
+        crate::dsl::CardZoneRef::OwnRAndD => state.corp.r_and_d.get(install.position),
+        _ => None,
+    };
+    card.and_then(|card| registry.get(card)).is_some_and(|def| matches!(def.card_type, crate::dsl::CardType::Ice(_)))
+}
+
+/// Who a parked install resolves as, and whether an encounter waits behind
+/// it: what `install_parked` needs of the decision besides the install, the
+/// same whether the server choice or the position choice lands it.
+struct Parked {
+    source_card: Option<CardId>,
+    prompting_card: Option<CardId>,
+    source_install: Option<InstallId>,
+    resume: PendingChoiceResume,
+}
+
+/// Lands the card a parked install names (`Effect::PromptInstallCorpCard`)
+/// in `server`, with `inward` of that server's pieces of ice outward of it
+/// (0 for every install but one "in any position"), then its riders.
+fn install_parked(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: crate::rules::run::ServerId,
+    pending_install: crate::rules::state::PendingInstallFromZone,
+    inward: u32,
+    parked: Parked,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Parked { source_card, prompting_card, source_install, resume } = parked;
+    let card_id = match &pending_install.origin {
+        crate::dsl::CardZoneRef::OwnHq => (pending_install.position < state.corp.hq.len())
+            .then(|| state.corp.hq.remove(pending_install.position)),
+        crate::dsl::CardZoneRef::OwnArchives => (pending_install.position < state.corp.archives.len())
+            .then(|| state.corp.archives.remove(pending_install.position).card),
+        crate::dsl::CardZoneRef::OwnRAndD => (pending_install.position < state.corp.r_and_d.len())
+            .then(|| state.corp.r_and_d.remove(pending_install.position)),
+        _ => None,
+    }
+    .ok_or(RulesError::UnresolvedCardTarget)?;
+    let slot = match registry.get(&card_id).map(|c| &c.card_type) {
+        Some(crate::dsl::CardType::Ice(_)) => InstallSlot::Ice,
+        _ => InstallSlot::Root,
+    };
+    // What of a "total" discount the install takes (CR 1.16.2f), read
+    // before the card lands and changes the count.
+    let install_takes = match (pending_install.pay_cost, slot) {
+        (true, InstallSlot::Ice) => crate::rules::engine::ice_protecting(state, server).min(pending_install.discount),
+        _ => 0,
+    };
+    let mut events = Vec::new();
+    let placed = crate::rules::engine::place_corp_card(
+        state,
+        registry,
+        card_id.clone(),
+        server,
+        slot,
+        pending_install.pay_cost,
+        pending_install.discount,
+        false,
+        matches!(pending_install.origin, crate::dsl::CardZoneRef::OwnHq),
+        inward,
+    )?;
+    let landed = placed.iter().find_map(|event| match event {
+        GameEvent::CardInstalled { install, card: Some(card), .. } if *card == card_id => Some(*install),
+        _ => None,
+    });
+    events.extend(placed);
+    // The rider about the card that landed (Warm Reception's "you
+    // cannot score that card this turn"), as that card.
+    if let (Some(rider), Some(install)) = (&pending_install.if_installed, landed) {
+        let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
+        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+        events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
+    }
+    // "Install and rez" (Reanimation Protocol): the rest of the total
+    // off the rez, and the rider as the card rezzed if it was.
+    // A card that cannot be rezzed — an agenda (CR 8.1.2c), or one the
+    // Corp cannot afford (CR 1.16.4b) — stays installed facedown and is
+    // revealed (CR 8.5.13d), since the Runner could otherwise not tell
+    // that the "install and rez" was carried out. Eminent Domain's is
+    // the first that may install an agenda.
+    let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| -> Result<(), RulesError> {
+        if let Some(installed) = state.corp.installed.iter_mut().find(|c| Some(c.install_id) == landed) {
+            installed.seen_by_runner = true;
+            dispatcher::emit(state, registry, events, GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone(), by: Side::Corp })?;
+        }
+        Ok(())
+    };
+    let rezzable = !matches!(registry.get(&card_id).map(|c| &c.card_type), Some(crate::dsl::CardType::Agenda));
+    if pending_install.rez && !rezzable {
+        reveal(state, &mut events)?;
+    }
+    if let (true, true, Some(install)) = (pending_install.rez, rezzable, landed) {
+        let rest = pending_install.discount - install_takes;
+        match crate::rules::engine::rez_install(state, registry, install, pending_install.pay_cost, rest) {
+            Ok(rezzed) => {
+                events.extend(rezzed);
+                if let Some(rider) = &pending_install.if_rezzed {
+                    let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
+                    ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+                    events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
+                }
+            }
+            // Unaffordable, not to be rezzed now, or an additional
+            // cost of its own the Corp cannot pay: installed, not
+            // rezzed (CR 1.16.4b–c).
+            Err(
+                RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. },
+            ) => reveal(state, &mut events)?,
+            Err(other) => return Err(other),
+        }
+    }
+    // The offering card's rider, with the chosen server substituted in
+    // (`PromptInstallCorpCard::then`) — resolved as the parking install,
+    // never as the card that just landed.
+    if let Some(then) = pending_install.then {
+        let effect = substitute_chosen_server(*then, server);
+        let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+        events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
+    }
+    if resume == PendingChoiceResume::ResumeSubroutines {
+        // The install's own dispatch may have parked something (an
+        // identity reaction); propagate the resume intent exactly as
+        // `resolve_confirm_card_selection` does before resuming the
+        // encounter this decision interrupted.
+        mark_parked_resume_subroutines(state);
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
 pub(crate) fn resolve_choose_server(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -1765,105 +1913,32 @@ pub(crate) fn resolve_choose_server(
     // cannot miss; `UnresolvedCardTarget` covers the impossible rather
     // than panicking in engine code.
     if let Some(pending_install) = install {
-        let card_id = match &pending_install.origin {
-            crate::dsl::CardZoneRef::OwnHq => (pending_install.position < state.corp.hq.len())
-                .then(|| state.corp.hq.remove(pending_install.position)),
-            crate::dsl::CardZoneRef::OwnArchives => (pending_install.position < state.corp.archives.len())
-                .then(|| state.corp.archives.remove(pending_install.position).card),
-            crate::dsl::CardZoneRef::OwnRAndD => (pending_install.position < state.corp.r_and_d.len())
-                .then(|| state.corp.r_and_d.remove(pending_install.position)),
-            _ => None,
+        // "In any position" (Timely Public Release, CR 6.2.2d): a server
+        // that has ice asks where among it the card goes, before it lands
+        // (the position is part of the destination, CR 6.2.2). A server
+        // with none has one position, and nobody is asked.
+        let ice_there = crate::rules::engine::ice_protecting(state, server);
+        if pending_install.any_position && ice_there > 0 && parked_install_is_ice(state, registry, &pending_install) {
+            state.pending_decision = Some(PendingDecision::ChooseNumber {
+                chooser: Side::Corp,
+                min: 0,
+                max: ice_there,
+                then: Box::new(Effect::Sequence(Vec::new())),
+                text: ANY_POSITION_PROMPT.to_string(),
+                source_card,
+                prompting_card,
+                source_install,
+                resume,
+                secret: false,
+                install: Some(Box::new(crate::rules::state::InstallAtPosition { server, install: pending_install })),
+            });
+            return Ok(vec![
+                GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 },
+                GameEvent::NumberChoiceOffered { chooser: Side::Corp, min: 0, max: ice_there },
+            ]);
         }
-        .ok_or(RulesError::UnresolvedCardTarget)?;
-        let slot = match registry.get(&card_id).map(|c| &c.card_type) {
-            Some(crate::dsl::CardType::Ice(_)) => InstallSlot::Ice,
-            _ => InstallSlot::Root,
-        };
-        // What of a "total" discount the install takes (CR 1.16.2f), read
-        // before the card lands and changes the count.
-        let install_takes = match (pending_install.pay_cost, slot) {
-            (true, InstallSlot::Ice) => crate::rules::engine::ice_protecting(state, server).min(pending_install.discount),
-            _ => 0,
-        };
         let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
-        let placed = crate::rules::engine::place_corp_card(
-            state,
-            registry,
-            card_id.clone(),
-            server,
-            slot,
-            pending_install.pay_cost,
-            pending_install.discount,
-            false,
-            matches!(pending_install.origin, crate::dsl::CardZoneRef::OwnHq),
-        )?;
-        let landed = placed.iter().find_map(|event| match event {
-            GameEvent::CardInstalled { install, card: Some(card), .. } if *card == card_id => Some(*install),
-            _ => None,
-        });
-        events.extend(placed);
-        // The rider about the card that landed (Warm Reception's "you
-        // cannot score that card this turn"), as that card.
-        if let (Some(rider), Some(install)) = (&pending_install.if_installed, landed) {
-            let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
-            ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
-            events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
-        }
-        // "Install and rez" (Reanimation Protocol): the rest of the total
-        // off the rez, and the rider as the card rezzed if it was.
-        // A card that cannot be rezzed — an agenda (CR 8.1.2c), or one the
-        // Corp cannot afford (CR 1.16.4b) — stays installed facedown and is
-        // revealed (CR 8.5.13d), since the Runner could otherwise not tell
-        // that the "install and rez" was carried out. Eminent Domain's is
-        // the first that may install an agenda.
-        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| -> Result<(), RulesError> {
-            if let Some(installed) = state.corp.installed.iter_mut().find(|c| Some(c.install_id) == landed) {
-                installed.seen_by_runner = true;
-                dispatcher::emit(state, registry, events, GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone(), by: Side::Corp })?;
-            }
-            Ok(())
-        };
-        let rezzable = !matches!(registry.get(&card_id).map(|c| &c.card_type), Some(crate::dsl::CardType::Agenda));
-        if pending_install.rez && !rezzable {
-            reveal(state, &mut events)?;
-        }
-        if let (true, true, Some(install)) = (pending_install.rez, rezzable, landed) {
-            let rest = pending_install.discount - install_takes;
-            match crate::rules::engine::rez_install(state, registry, install, pending_install.pay_cost, rest) {
-                Ok(rezzed) => {
-                    events.extend(rezzed);
-                    if let Some(rider) = &pending_install.if_rezzed {
-                        let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
-                        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
-                        events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
-                    }
-                }
-                // Unaffordable, not to be rezzed now, or an additional
-                // cost of its own the Corp cannot pay: installed, not
-                // rezzed (CR 1.16.4b–c).
-                Err(
-                    RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. },
-                ) => reveal(state, &mut events)?,
-                Err(other) => return Err(other),
-            }
-        }
-        // The offering card's rider, with the chosen server substituted in
-        // (`PromptInstallCorpCard::then`) — resolved as the parking install,
-        // never as the card that just landed.
-        if let Some(then) = pending_install.then {
-            let effect = substitute_chosen_server(*then, server);
-            let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
-            ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
-            events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
-        }
-        if resume == PendingChoiceResume::ResumeSubroutines {
-            // The install's own dispatch may have parked something (an
-            // identity reaction); propagate the resume intent exactly as
-            // `resolve_confirm_card_selection` does before resuming the
-            // encounter this decision interrupted.
-            mark_parked_resume_subroutines(state);
-            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
-        }
+        events.extend(install_parked(state, registry, server, pending_install, 0, Parked { source_card, prompting_card, source_install, resume })?);
         return Ok(events);
     }
 

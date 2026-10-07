@@ -1978,6 +1978,7 @@ pub fn evaluate_effect(
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
                 secret: *secret,
+                install: None,
             });
             Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
         }
@@ -2229,7 +2230,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -2315,6 +2316,7 @@ pub fn evaluate_effect(
                     rez: *rez,
                     if_rezzed: if_rezzed.clone(),
                     if_installed: if_installed.clone(),
+                    any_position: *any_position,
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -2572,6 +2574,7 @@ pub fn evaluate_effect(
                 0,
                 false,
                 false,
+                0,
             )?);
             Ok(events)
         }

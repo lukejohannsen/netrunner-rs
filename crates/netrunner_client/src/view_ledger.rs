@@ -272,6 +272,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 source_install: _, // engine's
                 resume: _,         // engine's
                 secret: _,         // drawn: the other seat's log reads "Choose in secret" (actions)
+                install: _,        // engine's: the card it lands is still in HQ or Archives; the prompt's text says the number is a position
             } => {}
             PendingDecision::ChooseCardName {
                 chooser: _,        // drawn: Prompt::card, only to the chooser
