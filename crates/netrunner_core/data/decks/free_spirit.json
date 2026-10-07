@@ -1,0 +1,114 @@
+{
+  "id": "free_spirit",
+  "name": "Free Spirit",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "quetzal_free_spirit",
+  "cards": [
+    {
+      "card": "cyberfeeder",
+      "count": 2
+    },
+    {
+      "card": "the_toolbox",
+      "count": 1
+    },
+    {
+      "card": "crash_space",
+      "count": 2
+    },
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "chain_reaction",
+      "count": 1
+    },
+    {
+      "card": "take_a_dive",
+      "count": 2
+    },
+    {
+      "card": "stargate",
+      "count": 2
+    },
+    {
+      "card": "the_tungsten_tailor",
+      "count": 2
+    },
+    {
+      "card": "time_bomb",
+      "count": 2
+    },
+    {
+      "card": "friend_of_a_friend",
+      "count": 2
+    },
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 2
+    },
+    {
+      "card": "banner",
+      "count": 2
+    },
+    {
+      "card": "finality",
+      "count": 2
+    },
+    {
+      "card": "katorga_breakout",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "chastushka",
+      "count": 2
+    },
+    {
+      "card": "running_hot",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 2
+    },
+    {
+      "card": "utae",
+      "count": 2
+    },
+    {
+      "card": "climactic_showdown",
+      "count": 2
+    },
+    {
+      "card": "mimic",
+      "count": 2
+    },
+    {
+      "card": "liberated_account",
+      "count": 2
+    },
+    {
+      "card": "scrubber",
+      "count": 2
+    },
+    {
+      "card": "xanadu",
+      "count": 2
+    }
+  ]
+}

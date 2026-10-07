@@ -27439,4 +27439,116 @@ mod reprints {
         let (purged, _) = close_all_windows(purged, &registry);
         assert!(purged.runner.rig.is_empty() && purged.runner.heap.contains(&id("clot")), "trash this program");
     }
+
+    // ---- Stage 5a: breaker and ice words — a break barred by subtype, a subtype for the run ----
+
+    fn advanced_at_hq(card: &str, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { advancement_tokens: tokens, ..ice_at_hq(card) }
+    }
+
+    #[test]
+    fn quetzal_breaks_one_barrier_subroutine_for_nothing_once_per_turn() {
+        let registry = registry();
+        let quetzal = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("quetzal_free_spirit"));
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&state, &registry);
+        let (broken, events) = apply_action(&at_ice, &registry, quetzal.clone()).expect("0[credit]: break 1 barrier subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits, at_ice.runner.resources.credits);
+        assert!(apply_action(&broken, &registry, quetzal.clone()).is_err(), "once per turn");
+
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        assert!(apply_action(&encounter(&state, &registry), &registry, quetzal).is_err(), "a code gate is not a barrier");
+    }
+
+    #[test]
+    fn rielle_kit_peddler_makes_the_first_ice_encountered_each_turn_a_code_gate_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("rielle_kit_peddler_transhuman"));
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let wall = install_of(&state, "ice_wall");
+        let at_ice = encounter(&state, &registry);
+        assert!(crate::rules::continuous::ice_gains_subtype(&at_ice, &registry, wall, crate::dsl::IceType::CodeGate), "it gains code gate");
+        let ended = fire(&state, &registry);
+        assert!(ended.active_run.is_none(), "Ice Wall ended the run");
+        assert!(!crate::rules::continuous::ice_gains_subtype(&ended, &registry, wall, crate::dsl::IceType::CodeGate), "for the remainder of this run");
+        let again = encounter(&ended, &registry);
+        assert!(!crate::rules::continuous::ice_gains_subtype(&again, &registry, wall, crate::dsl::IceType::CodeGate), "the first time each turn");
+    }
+
+    #[test]
+    fn swordsman_cannot_be_broken_by_ai_and_trashes_an_ai_program() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("mayfly", 5)];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![ice_at_hq("swordsman")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "mayfly", 0).is_err(), "not using an AI program");
+        let at_ice = encounter(&state, &registry);
+        let (passed, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (asked, _) = apply_action(&passed, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("subroutines fire");
+        let offered = corp_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "the one AI program");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (trashed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        let (trashed, _) = pass_until_settled(trashed, &registry);
+        assert!(trashed.runner.rig.is_empty() && trashed.runner.heap.contains(&id("mayfly")));
+        assert_eq!(trashed.runner.grip.len(), 2, "and 1 net damage");
+    }
+
+    #[test]
+    fn hortum_with_three_advancements_bars_ai_pays_four_and_searches_rnd_before_ending_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("mayfly", 5)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.corp.installed = vec![advanced_at_hq("hortum", 2)];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "mayfly", 0).is_ok(), "two counters: AI may break it");
+        let low = fire(&state, &registry);
+        assert!(low.active_run.is_none(), "end the run");
+        assert_eq!(low.corp.resources.credits, Credits(11), "gain 1");
+
+        state.corp.installed = vec![advanced_at_hq("hortum", 3)];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "mayfly", 0).is_err(), "three counters: not using AI");
+        let searching = fire(&state, &registry);
+        assert_eq!(searching.corp.resources.credits, Credits(14), "instead gain 4");
+        let offered = corp_toggles(&searching, &registry);
+        assert_eq!(offered.len(), 3, "search R&D");
+        let (one, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: offered[1] }).expect("select");
+        let (found, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("add them to HQ");
+        let (found, _) = pass_until_settled(found, &registry);
+        assert_eq!((found.corp.hq.len(), found.corp.r_and_d.len()), (2, 1));
+        assert!(found.active_run.is_none(), "then end the run");
+    }
+
+    #[test]
+    fn hortum_can_be_advanced() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("hortum") }];
+        let (advanced, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, "hortum") }).expect("you can advance this ice");
+        assert_eq!(advanced.corp.installed[0].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn next_bronze_counts_each_rezzed_piece_of_next_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut other = remote_root("next_bronze", 0);
+        other.slot = InstallSlot::Ice;
+        other.install_id = InstallId(4242);
+        state.corp.installed = vec![ice_at_hq("next_bronze"), other];
+        let strength = |state: &GameState| {
+            let at_ice = encounter(state, &registry);
+            let run = at_ice.active_run.as_ref().expect("a run");
+            crate::rules::continuous::ice_strength(&at_ice, &registry, &run.ice[run.position])
+        };
+        assert_eq!(strength(&state), 2, "itself and the other");
+        state.corp.installed[1].rezzed = false;
+        assert_eq!(strength(&state), 1, "an unrezzed one does not count");
+    }
 }

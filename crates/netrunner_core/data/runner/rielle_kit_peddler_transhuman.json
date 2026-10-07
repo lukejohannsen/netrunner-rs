@@ -1,0 +1,28 @@
+{
+  "id": "rielle_kit_peddler_transhuman",
+  "title": "Rielle “Kit” Peddler: Transhuman",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainIceSubtype": {
+            "subtype": "CodeGate",
+            "ice": "Encountered",
+            "for_the_run": true
+          }
+        }
+      ],
+      "text": "The first time each turn you encounter a piece of ice, it gains code gate for the remainder of this run."
+    }
+  ],
+  "built_from": 31026,
+  "is_playable": true
+}

@@ -284,6 +284,17 @@ pub enum ContinuousKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         except_using: Option<CardSubtype>,
     },
+    /// The Runner cannot break subroutines on this ice using a program of
+    /// this subtype — Swordsman's "The Runner cannot break subroutines on
+    /// this ice using **AI** programs", and Hortum's with a `while` of three
+    /// hosted advancement counters. About `This`, on ice, and asked by both
+    /// break effects of the breaking card (`ability::breakable_now`), which
+    /// then find nothing to break, so the ability is not offered. Every
+    /// subroutine, a gained one too. Composition didn't work: `BreakLimit`
+    /// counts printed subroutines only and excepts a subtype rather than
+    /// naming one, and `Prohibition::BreakSubroutinesOnIce` is about every
+    /// Runner card and is made by a choice with a duration.
+    CannotBeBrokenUsing(crate::dsl::CardSubtype),
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card

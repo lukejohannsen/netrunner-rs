@@ -57,7 +57,6 @@ pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.
 pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("quetzal_free_spirit", "Quetzal: Free Spirit"),
     ("reina_roja_freedom_fighter", "Reina Roja: Freedom Fighter"),
     ("en_passant", "En Passant"),
     ("imp", "Imp"),
@@ -70,7 +69,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sneakdoor_beta", "Sneakdoor Beta"),
     ("security_testing", "Security Testing"),
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
-    ("rielle_kit_peddler_transhuman", "Rielle “Kit” Peddler: Transhuman"),
     ("test_run", "Test Run"),
     ("atman", "Atman"),
     ("chameleon", "Chameleon"),
@@ -86,7 +84,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("corporate_troubleshooter", "Corporate Troubleshooter"),
     ("nisei_mk_ii", "Nisei MK II"),
     ("lotus_field", "Lotus Field"),
-    ("swordsman", "Swordsman"),
     ("trick_of_light", "Trick of Light"),
     ("project_beale", "Project Beale"),
     ("daily_business_show", "Daily Business Show"),
@@ -95,7 +92,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sansan_city_grid", "SanSan City Grid"),
     ("oaktown_renovation", "Oaktown Renovation"),
     ("project_atlas", "Project Atlas"),
-    ("hortum", "Hortum"),
     ("punitive_counterstrike", "Punitive Counterstrike"),
     ("crisium_grid", "Crisium Grid"),
     ("subliminal_messaging", "Subliminal Messaging"),
@@ -107,7 +103,6 @@ pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("parasite", "Parasite"),
     ("e3_feedback_implants", "e3 Feedback Implants"),
     ("cerberus_lady_h1", "Cerberus \"Lady\" H1"),
-    ("next_bronze", "NEXT Bronze"),
     ("next_silver", "NEXT Silver"),
     ("sansan_city_grid", "SanSan City Grid"),
     ("executive_boot_camp", "Executive Boot Camp"),

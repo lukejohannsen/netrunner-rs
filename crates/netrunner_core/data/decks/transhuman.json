@@ -1,0 +1,109 @@
+{
+  "id": "transhuman",
+  "name": "Transhuman",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Rielle “Kit” Peddler: Transhuman, System Update 2021's Shaper identity, whose first piece of ice encountered each turn gains code gate for the rest of the run. On Safety Net's frame, its identity swapped, at nine influence of ten. Tranche 8 Stage 5a.",
+  "style": [
+    "rig"
+  ],
+  "identity": "rielle_kit_peddler_transhuman",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "spark_of_inspiration",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "the_artist",
+      "count": 2
+    },
+    {
+      "card": "joy_ride",
+      "count": 2
+    },
+    {
+      "card": "living_mural",
+      "count": 2
+    },
+    {
+      "card": "khusyuk",
+      "count": 2
+    },
+    {
+      "card": "world_tree",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "environmental_testing",
+      "count": 2
+    },
+    {
+      "card": "deep_dive",
+      "count": 2
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "euler",
+      "count": 2
+    },
+    {
+      "card": "mantle",
+      "count": 2
+    },
+    {
+      "card": "simulchip",
+      "count": 2
+    },
+    {
+      "card": "cordyceps",
+      "count": 2
+    },
+    {
+      "card": "aniccam",
+      "count": 1
+    },
+    {
+      "card": "harmony_ar_therapy",
+      "count": 1
+    },
+    {
+      "card": "professional_contacts",
+      "count": 2
+    }
+  ]
+}
