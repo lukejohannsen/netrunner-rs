@@ -511,6 +511,19 @@ pub struct IceFacts {
     /// (`GameEvent::SubroutineBroken::printed`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub printed_subroutine: bool,
+    /// "Passes a **rezzed** piece of **bioroid** ice" — Haas-Bioroid:
+    /// Architects of Tomorrow. Bioroid is a subtype, not one of the ice
+    /// types `rezzed_code_gate_or_sentry` reads, and rezzed for the same
+    /// reason. Read off the pass (`GameEvent::IcePassed::rezzed_bioroid`).
+    ///
+    /// **It shares a column bit with `at_most_zero_strength`** (`bits`):
+    /// the log counts each trigger in a row of its own, and no trigger's
+    /// moment states both (`stated_by`: this is a pass's, that a break's),
+    /// so within any row the bit means one fact. A sixth bit of its own
+    /// would have made the facts 64 columns, past the table's 40, and
+    /// widened every row of a log that is copied with every `GameState`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rezzed_bioroid: bool,
 }
 
 impl IceFacts {
@@ -521,39 +534,47 @@ impl IceFacts {
             && (!self.at_most_zero_strength || moment.at_most_zero_strength)
             && (!self.rezzed_code_gate_or_sentry || moment.rezzed_code_gate_or_sentry)
             && (!self.printed_subroutine || moment.printed_subroutine)
+            && (!self.rezzed_bioroid || moment.rezzed_bioroid)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
     /// since the rest are always `false` there (`CardDefinition::validate`).
     pub fn stated_by(trigger: Trigger) -> IceFacts {
         match trigger {
-            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, ..IceFacts::default() },
+            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, rezzed_bioroid: true, ..IceFacts::default() },
             Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }
 
-    /// The facts as a number, 0..32 — a column of the turn log.
+    /// How many columns of the turn log the facts take: five bits, the
+    /// sixth fact sharing one (`rezzed_bioroid`).
+    pub const COLUMNS: usize = 32;
+
+    /// The facts as a number, 0..`COLUMNS` — a column of the turn log's row
+    /// for the trigger. `rezzed_bioroid` and `at_most_zero_strength` are
+    /// the same bit, which no one trigger states both of.
     pub fn bits(self) -> usize {
         usize::from(self.outermost)
             | usize::from(self.after_fully_breaking) << 1
-            | usize::from(self.at_most_zero_strength) << 2
+            | usize::from(self.at_most_zero_strength || self.rezzed_bioroid) << 2
             | usize::from(self.rezzed_code_gate_or_sentry) << 3
             | usize::from(self.printed_subroutine) << 4
     }
 
-    /// Every combination of the five, in `bits` order.
-    pub const ALL: [IceFacts; 32] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false };
-        let mut all = [none; 32];
+    /// Every combination of the six, the sixth in the top bit of the index.
+    pub const ALL: [IceFacts; 64] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false };
+        let mut all = [none; 64];
         let mut bits = 0;
-        while bits < 32 {
+        while bits < 64 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
                 at_most_zero_strength: bits & 4 != 0,
                 rezzed_code_gate_or_sentry: bits & 8 != 0,
                 printed_subroutine: bits & 16 != 0,
+                rezzed_bioroid: bits & 32 != 0,
             };
             bits += 1;
         }
@@ -1161,6 +1182,18 @@ impl Trigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `rezzed_bioroid` and `at_most_zero_strength` share a column bit,
+    /// which is sound only while no trigger's moment states both: the log
+    /// keeps a row per trigger, so within a row the bit means one fact.
+    #[test]
+    fn no_trigger_states_both_facts_that_share_a_column() {
+        for trigger in Trigger::ALL {
+            let stated = IceFacts::stated_by(trigger);
+            assert!(!(stated.rezzed_bioroid && stated.at_most_zero_strength), "{trigger:?} states both");
+        }
+        assert!(IceFacts::ALL.iter().all(|facts| facts.bits() < IceFacts::COLUMNS));
+    }
 
     #[test]
     fn every_trigger_is_listed_at_its_own_index() {

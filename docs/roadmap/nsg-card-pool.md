@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 60, 15, 4, 38 | 22, 3, 2, — | in progress: Stages 1a–7c (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 62, 15, 4, 38 | 20, 3, 2, — | in progress: Stages 1a–7d (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 704 card files** (7 October
-2026, with tranche 8 Stage 7c, which added no variant; Stage 7b, at 13 of
+`Effect` variants single-use, none unused, over 706 card files** (7 October
+2026, with tranche 8 Stage 7d, which added no variant; Stage 7c, at 13 of
+105 over 704, added none; Stage 7b, at 13 of
 105 over 702, added none; Stage 7a, at 13 of
 105 over 700, added none; Stage 6b, at 13 of
 105 over 697, added none; Stage 6a, at 13 of
@@ -1135,6 +1136,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 7a** — three Corp cards with no new `Effect`: the Runner can be kept from making another run this turn (`Prohibition::Run`), and a piece of ice's strength cannot be lowered (`ContinuousKind::StrengthCannotBeLowered`) (Excalibur, Lotus Field, Crisium Grid) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 7b** — two Corp cards with no new `Effect`: a payment can be an obligation met if able (`OfferPaidChoice::if_able`), and the turn log sums the printed points stolen (`Amount::AgendaPointsStolenLastTurn`) (Tollbooth, Punitive Counterstrike) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 7c** — two Corp cards with no new `Effect`: ice can be installed in any position, the Corp asked a number for it once the server has ice (`PromptInstallCorpCard::any_position`, CR 6.2.2d), and advancement counters move between two cards (Timely Public Release, Trick of Light) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 7d** — the bioroid pair and Architects of Tomorrow's Sweep deck, Assembly Line, with no new `Effect`: a pass of ice says whether it was a rezzed bioroid, a fact the turn log counts in a column bit it shares with a fact no pass states (`IceFacts::rezzed_bioroid`) (Ravana 1.0, Haas-Bioroid: Architects of Tomorrow) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1175,8 +1177,8 @@ nine by kind):
 7. The Corp's remaining vocabulary. **7a closed**, three cards (Excalibur,
    Lotus Field, Crisium Grid). **7b closed**, two cards (Tollbooth,
    Punitive Counterstrike). **7c closed**, two cards (Timely Public
-   Release, Trick of Light). **7d:** Ravana 1.0 and Haas-Bioroid:
-   Architects of Tomorrow, the bioroid pair.
+   Release, Trick of Light). **7d closed**, two cards (Ravana 1.0,
+   Haas-Bioroid: Architects of Tomorrow).
 8. Remembered choices, triggers a card creates, and X costs: Inside Job,
    Femme Fatale, Security Testing, Chameleon, Test Run, Corporate
    Troubleshooter, Psychographics, Networking (moved from 6a).

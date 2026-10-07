@@ -1,0 +1,109 @@
+{
+  "id": "assembly_line",
+  "name": "Assembly Line",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built in tranche 8 Stage 7d so the sweeps reach Haas-Bioroid: Architects of Tomorrow, System Update 2021's Haas-Bioroid identity, which rezzes a bioroid card for 4[credit] less the first time each turn the Runner passes a rezzed piece of bioroid ice. Retirement Package's frame, whose Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are bioroids, with two Ravana 1.0 for its two Pulse, a bioroid code gate that resolves a subroutine on another rezzed bioroid; Endless Loop keeps Pulse.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "haas_bioroid_architects_of_tomorrow",
+  "cards": [
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "ravana_1_0",
+      "count": 2
+    },
+    {
+      "card": "archived_memories",
+      "count": 2
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 2
+    },
+    {
+      "card": "trieste_model_bioroids",
+      "count": 2
+    },
+    {
+      "card": "rototurret",
+      "count": 2
+    },
+    {
+      "card": "tranquility_home_grid",
+      "count": 2
+    },
+    {
+      "card": "vaporframe_fabricator",
+      "count": 2
+    },
+    {
+      "card": "vulnerability_audit",
+      "count": 2
+    },
+    {
+      "card": "bloop",
+      "count": 2
+    },
+    {
+      "card": "elivagar_bifurcation",
+      "count": 2
+    },
+    {
+      "card": "refuge_campaign",
+      "count": 2
+    },
+    {
+      "card": "midnight_3_arcology",
+      "count": 2
+    },
+    {
+      "card": "eli_1_0",
+      "count": 2
+    },
+    {
+      "card": "hakarl_1_0",
+      "count": 2
+    },
+    {
+      "card": "big_deal",
+      "count": 2
+    },
+    {
+      "card": "bass_ch1r180g4",
+      "count": 2
+    },
+    {
+      "card": "cerebral_overwriter",
+      "count": 2
+    },
+    {
+      "card": "drafter",
+      "count": 2
+    },
+    {
+      "card": "tyr",
+      "count": 1
+    },
+    {
+      "card": "next_activation_command",
+      "count": 2
+    },
+    {
+      "card": "napd_cordon",
+      "count": 2
+    },
+    {
+      "card": "megaprix_qualifier",
+      "count": 3
+    },
+    {
+      "card": "project_vacheron",
+      "count": 2
+    }
+  ]
+}

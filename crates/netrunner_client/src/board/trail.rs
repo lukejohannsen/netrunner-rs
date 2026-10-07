@@ -532,7 +532,7 @@ mod tests {
         let ice = CardId("palisade".to_string());
         for event in [
             GameEvent::SubroutineFired { card_id: ice.clone(), index: 0, effect: netrunner_core::dsl::Effect::EndTheRun },
-            GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() },
+            GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false },
             GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
         ] {
             trail.observe(&event, &registry);
@@ -546,7 +546,7 @@ mod tests {
         trail.observe(&GameEvent::RunJackedOut { server: ServerId::Hq }, &registry);
         assert_eq!(trail.stage, Stage::AtServer);
         assert_eq!(trail.outcome, Some(Outcome::JackedOut));
-        assert!(is_step(&GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }));
+        assert!(is_step(&GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false }));
         assert!(!is_step(&GameEvent::IceRezzed { card: ice, server: ServerId::Hq, install: InstallId(3) }));
     }
 }

@@ -4803,7 +4803,7 @@ mod tests {
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
                 // Fully broken as it was encountered, having none (CR 6.5.7c).
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: true, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() },
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: true, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default(), rezzed_bioroid: false },
             ]
         );
 

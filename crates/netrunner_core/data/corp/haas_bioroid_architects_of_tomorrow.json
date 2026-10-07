@@ -1,0 +1,50 @@
+{
+  "id": "haas_bioroid_architects_of_tomorrow",
+  "title": "Haas-Bioroid: Architects of Tomorrow",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "rezzed_bioroid": true
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Unrezzed",
+                {
+                  "HasSubtype": "Bioroid"
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "RezInstalled": {
+                "install": 0,
+                "pay_cost": true,
+                "discount": 4
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner passes a rezzed piece of bioroid ice, you may rez 1 bioroid card, paying 4[credit] less."
+    }
+  ],
+  "built_from": 31040,
+  "is_playable": true
+}
