@@ -301,6 +301,7 @@ pub(crate) fn run_ending(
                     if_paid: Box::new(Effect::EndTheRun),
                     if_declined: Box::new(Effect::Sequence(Vec::new())),
                     text: None,
+                    if_able: false,
                 },
                 ctx,
                 registry,

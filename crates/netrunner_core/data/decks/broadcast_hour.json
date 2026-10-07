@@ -3,7 +3,7 @@
   "name": "Broadcast Hour",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Near-Earth Hub: Broadcast Center, System Update 2021's NBN identity, which draws a card the first time each turn it creates a remote server. On Pay to Win's frame, its identity swapped. Two Turtlebacks for its two Drago Ivanov, a Jinteki asset that gains a credit whenever a server is created; two Hostile Infrastructure for its two Chekist Scion, a Jinteki asset that does a net damage whenever the Runner trashes a Corp card, itself included. Ten influence of seventeen. Pay to Win keeps every card given up here. Tranche 8 Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Near-Earth Hub: Broadcast Center, System Update 2021's NBN identity, which draws a card the first time each turn it creates a remote server. On Pay to Win's frame, its identity swapped. Two Turtlebacks for its two Drago Ivanov, a Jinteki asset that gains a credit whenever a server is created; two Hostile Infrastructure for its two Chekist Scion, a Jinteki asset that does a net damage whenever the Runner trashes a Corp card, itself included. Ten influence of seventeen. Pay to Win keeps every card given up here. Tranche 8 Stage 4. Tranche 8 Stage 7b: two Tollbooth for its two Virtual Service Agent, a code gate for a code gate, whose 3[credit] the Runner must pay if able or the run ends; Paid Content, Grand Opening and Pay to Win keep Virtual Service Agent.",
   "style": [
     "fast-advance"
   ],
@@ -50,7 +50,7 @@
       "count": 2
     },
     {
-      "card": "virtual_service_agent",
+      "card": "tollbooth",
       "count": 2
     },
     {

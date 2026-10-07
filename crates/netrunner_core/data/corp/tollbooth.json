@@ -1,0 +1,41 @@
+{
+  "id": "tollbooth",
+  "title": "Tollbooth",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 8,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 3
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": "EndTheRun",
+            "text": "When the Runner encounters this ice, they must pay 3[credit], if able. If they do not, end the run.",
+            "if_able": true
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, they must pay 3[credit], if able. If they do not, end the run."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 31066,
+  "is_playable": true
+}

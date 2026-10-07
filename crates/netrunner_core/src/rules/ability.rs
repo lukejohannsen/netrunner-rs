@@ -1886,7 +1886,7 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+        Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
             state.pending_paid_choice = Some(PendingPaidChoice {
                 side: *side,
                 cost: cost.clone(),
@@ -1898,6 +1898,21 @@ pub fn evaluate_effect(
                 source_install: ctx.acting_install,
                 resume: PendingPaidChoiceResume::None,
             });
+            if *if_able {
+                // "Must pay, if able" (Tollbooth): accepted for the player
+                // when it can be paid, declined when it cannot. A payment
+                // that must ask how to split itself asks, by replay, as
+                // any accept's would.
+                let mut paying = state.clone();
+                return match crate::rules::pending_choice::resolve_accept(&mut paying, registry, None) {
+                    Ok(events) => {
+                        *state = paying;
+                        Ok(events)
+                    }
+                    Err(asked @ RulesError::PaymentChoiceNeeded { .. }) => Err(asked),
+                    Err(_) => crate::rules::pending_choice::resolve_decline(state, registry),
+                };
+            }
             Ok(vec![GameEvent::PendingPaidChoiceOffered { side: *side }])
         }
 
@@ -5001,6 +5016,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // `then` resolves; read anywhere else it is nothing.
         Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
+        Amount::AgendaPointsStolenLastTurn => state.last_turn.agenda_points_stolen(),
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
@@ -6804,6 +6820,7 @@ mod tests {
             if_paid: Box::new(Effect::Sequence(Vec::new())),
             if_declined: Box::new(Effect::GiveTags(Amount::Fixed(1))),
             text: None,
+            if_able: false,
         };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();

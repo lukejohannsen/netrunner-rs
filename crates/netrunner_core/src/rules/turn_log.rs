@@ -762,6 +762,13 @@ pub struct TurnLog {
     /// The printed agenda points on agendas scored this turn — a sum, where
     /// every cell above is a count (Neurospike).
     agenda_points_scored: u8,
+    /// The printed agenda points on agendas stolen this turn — Punitive
+    /// Counterstrike's "the sum of the printed agenda points on all
+    /// agendas the Runner stole during their last turn", read off
+    /// `last_turn`. Printed, as the card says, so read off the definition
+    /// rather than the event's worth (a stolen Project Vacheron is worth
+    /// nothing for a while and prints 3).
+    agenda_points_stolen: u8,
     /// The Corp's installs this turn of a card out of HQ — The Holo Man's
     /// "If you have not installed any cards from HQ this turn". A count
     /// beside the cells, not a column of them: where a card came from is
@@ -842,6 +849,7 @@ impl Default for TurnLog {
             counts: [[[0; CLASSES]; WHOSE]; TRIGGERS],
             actions_finished: 0,
             agenda_points_scored: 0,
+            agenda_points_stolen: 0,
             installed_from_hq: 0,
             installed_in_remotes: 0,
             click_gains_in_runs: 0,
@@ -906,6 +914,10 @@ impl TurnLog {
 
     pub fn agenda_points_scored(&self) -> u32 {
         u32::from(self.agenda_points_scored)
+    }
+
+    pub fn agenda_points_stolen(&self) -> u32 {
+        u32::from(self.agenda_points_stolen)
     }
 
     pub fn installed_from_hq(&self) -> u32 {
@@ -975,6 +987,8 @@ struct Sparse {
     #[serde(default, skip_serializing_if = "is_zero")]
     agenda_points_scored: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
+    agenda_points_stolen: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
     installed_from_hq: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     installed_in_remotes: u8,
@@ -1006,6 +1020,7 @@ impl From<TurnLog> for Sparse {
             cells,
             actions_finished: log.actions_finished,
             agenda_points_scored: log.agenda_points_scored,
+            agenda_points_stolen: log.agenda_points_stolen,
             installed_from_hq: log.installed_from_hq,
             installed_in_remotes: log.installed_in_remotes,
             click_gains_in_runs: log.click_gains_in_runs,
@@ -1020,6 +1035,7 @@ impl From<Sparse> for TurnLog {
         let mut log = TurnLog {
             actions_finished: sparse.actions_finished,
             agenda_points_scored: sparse.agenda_points_scored,
+            agenda_points_stolen: sparse.agenda_points_stolen,
             installed_from_hq: sparse.installed_from_hq,
             installed_in_remotes: sparse.installed_in_remotes,
             click_gains_in_runs: sparse.click_gains_in_runs,
@@ -1101,6 +1117,11 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
     if let GameEvent::AgendaScored { agenda_points, .. } = event {
         let points = u8::try_from(*agenda_points).unwrap_or(u8::MAX);
         state.this_turn.agenda_points_scored = state.this_turn.agenda_points_scored.saturating_add(points);
+    }
+    if let GameEvent::AgendaStolen { card, .. } = event {
+        let printed = registry.get(card).and_then(|definition| definition.agenda_points).unwrap_or(0);
+        let points = u8::try_from(printed).unwrap_or(u8::MAX);
+        state.this_turn.agenda_points_stolen = state.this_turn.agenda_points_stolen.saturating_add(points);
     }
     if let GameEvent::CardInstalled { side: Side::Corp, from_hq: true, .. } = event {
         state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
