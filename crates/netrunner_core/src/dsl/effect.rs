@@ -2250,6 +2250,13 @@ pub enum Amount {
     /// same number, and reads to a person as two counts where the card
     /// prints one at a rate.
     Times { amount: Box<Amount>, times: u32 },
+    /// 1 for every `every` of `amount`, rounded down — Project Beale's
+    /// "place 1 agenda counter on it **for every 2** hosted advancement
+    /// counters past 3", `Every { Reduced { HostedAdvancementTokens,
+    /// Fixed(3) }, 2 }`. `Times`'s other half. Composition didn't work: a
+    /// ladder of `EffectIf`s, one per threshold, stops at the last rung
+    /// written, and an agenda has no most counters it may be scored with.
+    Every { amount: Box<Amount>, every: u32 },
     /// The advancement counters on the installed card being accessed — the
     /// agenda NAPD Cordon's additional cost to steal is about ("that
     /// agenda"), read off the access (`AccessState::pending_install`). 0
@@ -2339,6 +2346,7 @@ impl Amount {
             Amount::Reduced { amount, by } => Amount::Reduced { amount: boxed(amount), by: boxed(by) },
             Amount::Increased { amount, by } => Amount::Increased { amount: boxed(amount), by: boxed(by) },
             Amount::Times { amount, times } => Amount::Times { amount: boxed(amount), times },
+            Amount::Every { amount, every } => Amount::Every { amount: boxed(amount), every },
             other => other,
         }
     }

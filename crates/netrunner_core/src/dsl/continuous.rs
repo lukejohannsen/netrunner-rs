@@ -200,8 +200,9 @@ pub enum ContinuousKind {
     /// the view; the number may fall to 0 or below (CR 1.1.3), and an
     /// agenda whose requirement is 0 or less may be scored with no counters
     /// on it (CR 1.17.3a). About `This`, which CR 9.1.8e makes active
-    /// wherever the agenda is; SanSan City Grid's root-of-this-server
-    /// reading waits for the card. Composition didn't work: the
+    /// wherever the agenda is, or an upgrade's agendas in its root
+    /// (`RootOfThisServer`, SanSan City Grid's "each agenda in the root of
+    /// this server", for as long as the grid is rezzed). Composition didn't work: the
     /// requirement was the printed field, read at the score.
     AdvancementRequirement(Number),
     /// The ice gains a subtype it does not print — Chromatophores.

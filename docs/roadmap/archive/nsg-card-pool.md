@@ -9240,3 +9240,41 @@ Update 2021 is at 72 of 82.
     bottomed card. The Runner's click draw is never heard.
 - **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
   single-use, none unused, over 716 card files.
+
+#### Stage 9c — changing agenda values (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Corp cards with no new `Effect`.
+System Update 2021 is at 74 of 82, Salvaged Memories at 16 of 18, and
+the Core Set at 43 of 113.
+- **Cards:** Project Beale (System Update 2021), and SanSan City Grid
+  (Core Set, Salvaged Memories and System Update 2021).
+
+- **"Place 1 agenda counter on it for every 2 hosted advancement counters
+  past 3"** is Project Atlas's score trigger with a rate. `Amount::Every
+  { amount, every }` is 1 for every `every` of `amount`, rounded down,
+  and the other half of `Times`. A ladder of `EffectIf`s, one per
+  threshold, would stop at the last rung written.
+- **"Worth 1 more agenda point for each hosted agenda counter"** is
+  Megaprix Qualifier's `AgendaPoints` about `This`, at a rate of
+  `HostedCounters`. The score asks it, so the tally and the win check
+  agree.
+- **"Each agenda in the root of this server gets −1 advancement
+  requirement"** is Ontological Dependence's `AdvancementRequirement`,
+  about `RootOfThisServer(Agenda)`. `validate` now admits that scope on
+  an upgrade. The scan already read the root of a source's server, and
+  only while the grid is rezzed. "Limit 1 region per server" is the
+  Region subtype from the catalog, already enforced by the install's
+  trash.
+- **Decks.** Paid Content takes two Project Beale for its two Freedom of
+  Information, 2 points for 2, and two SanSan City Grid for its two
+  Magistrate Revontulet. Both are still in other decks.
+- **Client.** Nothing new reaches the view: the requirement and the
+  points shown are already the ones the engine asks. The prose for
+  `Every` is in `netrunner_client::prose`.
+- **Tests.** Two new tests.
+  - Project Beale scored at 4, 5, 6 and 7 counters gets 0, 1, 1 and 2
+    agenda counters and is worth 2, 3, 3 and 4.
+  - A rezzed SanSan City Grid lets an agenda needing 3 be scored with 2.
+    An unrezzed grid, or one in another server, does not.
+- **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
+  single-use, none unused, over 718 card files.

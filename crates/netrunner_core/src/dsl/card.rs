@@ -1874,8 +1874,11 @@ impl CardDefinition {
                 }
                 (_, Scope::Runs(_)) => return misfit("Runs", "only an additional cost to run is about the runs on a kind of server"),
                 (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
+                // SanSan City Grid's "each agenda in the root of this
+                // server": an upgrade's, about the agendas beside it.
+                (ContinuousKind::AdvancementRequirement(_), Scope::RootOfThisServer(crate::dsl::CardFilter::CardType(CardType::Agenda))) if self.card_type == CardType::Upgrade => {}
                 (ContinuousKind::AdvancementRequirement(_), _) => {
-                    return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2), and it says so of itself (`This`)");
+                    return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2): it says so of itself (`This`), or an upgrade of the agendas in its root");
                 }
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),

@@ -5036,6 +5036,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             _ => 0,
         },
         Amount::Times { amount, times } => resolve_amount(amount, ctx, state, registry).saturating_mul(*times),
+        Amount::Every { amount, every } => resolve_amount(amount, ctx, state, registry).checked_div(*every).unwrap_or(0),
         Amount::AccessedCardAdvancementCounters => state
             .active_run
             .as_ref()

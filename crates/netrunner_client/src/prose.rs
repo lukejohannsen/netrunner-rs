@@ -106,6 +106,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::Reduced { amount, by } => format!("{} less {}, at least 0", describe_amount(amount), describe_amount(by)),
         Amount::Increased { amount, by } => format!("{} plus {}", describe_amount(amount), describe_amount(by)),
         Amount::Times { amount, times } => format!("{times} for each of {}", describe_amount(amount)),
+        Amount::Every { amount, every } => format!("1 for every {every} of {}", describe_amount(amount)),
         Amount::AccessedCardAdvancementCounters => "the advancement counters on the card being accessed".to_string(),
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
