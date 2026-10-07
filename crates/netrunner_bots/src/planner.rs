@@ -871,14 +871,16 @@ fn priced_zone(source: &netrunner_core::dsl::CardZoneRef) -> bool {
 /// taken when the rezzed ICE can still be broken after it and declined
 /// when it would spend the breaking credits.
 ///
-/// **What it costs is recorded, not traced** (§39). Barry's deck loses
-/// games to it in self-play — over 96 casual games, paired by seed, the
-/// Corp's wins went 35 → 46 (z +1.98), and the Startup pass +5 / −1 — while
-/// the decision itself, replayed from the record and played out both ways
-/// over eight seeds, is not worse: the Corp won 175 of 352 playouts after
-/// the planned yes and 166 after the no, inside the noise. The single
-/// installs read as sound plays (Open Market and Side Hustle for no click,
-/// at ICE that ends the run anyway), so no rule here excludes them.
+/// **What it costs was recorded, then re-measured and found to be
+/// nothing** (§39, §49). §39 recorded Barry's deck losing games to the
+/// yes — 35 → 46 Corp wins over 96 games on one seed, z +1.98 — while the
+/// decision itself, played out both ways, was not worse. §49 took the
+/// yes against a forced decline over 288 games on three seeds: Corp 163
+/// vs 166, z −0.31, per seed −1.35 / +0.33 / +0.38. The recorded number
+/// was one seed's drift. Since §44 one ply looks through its own parked
+/// decisions and takes the same yes (465 of 1,138 offers, against this
+/// rule's 473 of 1,128), so this rule no longer decides Barry's yes;
+/// whether the same holds for the other identities' is not measured.
 fn its_identitys_choice(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
     use netrunner_core::dsl::Effect;
     let Some(PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, .. }) = decision else { return false };
