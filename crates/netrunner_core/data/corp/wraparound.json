@@ -1,0 +1,48 @@
+{
+  "id": "wraparound",
+  "title": "Wraparound",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 7
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Not": {
+          "ZoneHasAtLeast": {
+            "zone": "OpponentInstalled",
+            "count": 1,
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "Fracter"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "text": "While there are no installed fracter programs, this ice gets +7 strength"
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 31067,
+  "is_playable": true
+}

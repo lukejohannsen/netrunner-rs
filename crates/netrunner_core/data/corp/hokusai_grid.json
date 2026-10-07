@@ -1,0 +1,25 @@
+{
+  "id": "hokusai_grid",
+  "title": "Hokusai Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on this server, do 1 net damage."
+    }
+  ],
+  "built_from": 31059,
+  "is_playable": true
+}

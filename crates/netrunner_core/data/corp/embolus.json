@@ -1,0 +1,64 @@
+{
+  "id": "embolus",
+  "title": "Embolus",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "AddCounters": 1
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] to place 1 power counter on this upgrade"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may pay 1[credit] to place 1 power counter on this upgrade."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run, remove 1 power counter from this upgrade."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "RunAgainstThisServer",
+      "effect": "EndTheRun",
+      "text": "Hosted power counter: End the run. Use this ability only during a run on this server."
+    }
+  ],
+  "built_from": 28003,
+  "is_playable": true
+}

@@ -8382,3 +8382,44 @@ the Magnum Opus Reprint 1 of 6; `SU21_UNIMPLEMENTED` 61 → 57,
   Startup.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 656 card files.
+
+#### Stage 2 — the reprints' Corp ice and upgrades that compose (6 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Rototurret, Eli 1.0, Wraparound, Pop-up
+Window and Archer from System Update 2021 (Rototurret and Archer are Core
+Set cards it reprints), Hokusai Grid from the same pack, and Border
+Control and Embolus from the Magnum Opus Reprint. **No new `Effect`, and
+no change to the engine.** System Update 2021 31 of 82, Salvaged Memories
+5 of 18, the Magnum Opus Reprint 3 of 6; `SU21_UNIMPLEMENTED` 57 → 51,
+`MOR_UNIMPLEMENTED` 5 → 3.
+
+- **What each is made of.** Rototurret is Stavka's "trash 1 installed
+  program" and an end the run. Eli 1.0 is Hákarl 1.0's "Lose [click]:
+  break 1 subroutine", used by the Runner, over two end the runs.
+  Wraparound is Akhet's continuous `Strength` on itself, its `while` a
+  `Not(ZoneHasAtLeast)` over installed fracter programs. Pop-up Window is
+  Paywall's subroutine with a gain on encounter in place of Paywall's
+  loss. Archer is Plutus's additional rez cost — a single
+  `rez_alternatives` entry forfeiting one agenda, so with nothing to
+  forfeit the rez is refused — over Stavka's two program trashes. Border
+  Control is M.I.C.'s self-trash during a run on its server, here ending
+  the run outright, and Federal Fundraising's `IceProtectingThisServer`
+  as the amount of a gain. Hokusai Grid is Adrian Seis's successful run
+  on this server with a net damage. Embolus is Storgotic Resonator's
+  hosted power counter as a cost, a turn-start "you may pay" in
+  `OfferPaidChoice`, and a successful run anywhere (`subject: Any`)
+  removing one while any is left.
+- **Fidelity limits:** none found.
+- **Client.** Nothing added to the view, the log or a decision.
+- **Decks.** Retirement Package takes two Rototurret for its two Echo and
+  two Eli 1.0 for its two Wave; Paid Content two Pop-up Window for its
+  two Grubber and two Wraparound for its two Lethe; Supply Chain two
+  Archer for its two Event Horizon and two Border Control for two Tithe;
+  Permafrost two Hokusai Grid for its two The Red Room and two Embolus for
+  its two Tributary (first tried in Open Book, whose drift left the default
+  32-seed view sweep without a `ChooseCardName` — Complete Image is in that
+  deck — while the 256-seed sweep still reached it). Every card given up is still in another
+  deck, every new card is in its deck's faction, and every edited deck
+  was already pinned outside Standard and Startup.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 664 card files.

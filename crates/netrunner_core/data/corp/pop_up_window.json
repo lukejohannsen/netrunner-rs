@@ -1,0 +1,45 @@
+{
+  "id": "pop_up_window",
+  "title": "Pop-up Window",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 0,
+  "strength": 0,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner encounters this ice, gain 1[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner pays 1[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 1[credit]"
+        }
+      }
+    }
+  ],
+  "built_from": 31065,
+  "is_playable": true
+}
