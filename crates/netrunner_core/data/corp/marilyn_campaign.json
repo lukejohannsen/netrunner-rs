@@ -1,0 +1,82 @@
+{
+  "id": "marilyn_campaign",
+  "title": "Marilyn Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 8
+        }
+      ],
+      "text": "When you rez this asset, load 8[credit] onto it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 2
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, take 2[credit] from this asset."
+    },
+    {
+      "trigger": "OnWouldBeUninstalled",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "AddToDeck": "Top"
+                  },
+                  {
+                    "ShuffleIntoDeck": [
+                      "OwnRAndD"
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may shuffle it into R&D instead of adding it to Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When this asset would be trashed, you may shuffle it into R&D instead of adding it to Archives."
+    }
+  ],
+  "built_from": 31042,
+  "is_playable": true
+}
