@@ -80,6 +80,13 @@ pub enum GameEvent {
         rezzed_as: Vec<crate::dsl::IceType>,
         #[serde(default, skip_serializing_if = "crate::rules::BrokenWith::is_empty")]
         printed_broken_with: crate::rules::BrokenWith,
+        /// The ice was a rezzed bioroid as it was passed — Haas-Bioroid:
+        /// Architects of Tomorrow's "the first time each turn the Runner
+        /// passes a rezzed piece of bioroid ice" (`IceFacts::
+        /// rezzed_bioroid`). Bioroid is a subtype `rezzed_as` does not
+        /// list, since it lists ice types. Public, as the rezzed ice is.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        rezzed_bioroid: bool,
     },
     /// The Runner fully broke the ice being encountered: the first time
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).

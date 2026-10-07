@@ -691,6 +691,7 @@ fn describe_when(filter: &EventFilter) -> String {
                 (facts.at_most_zero_strength, "on ice with 0 or less strength"),
                 (facts.rezzed_code_gate_or_sentry, "a rezzed code gate or sentry"),
                 (facts.printed_subroutine, "a printed subroutine"),
+                (facts.rezzed_bioroid, "a rezzed piece of bioroid ice"),
             ]
             .into_iter()
             .filter_map(|(holds, word)| holds.then_some(word))

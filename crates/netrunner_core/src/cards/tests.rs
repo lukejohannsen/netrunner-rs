@@ -1831,7 +1831,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5129,7 +5129,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -28070,5 +28070,78 @@ mod reprints {
         let done = pick(&played, &registry, &[0]);
         assert!(done.pending_decision.is_none());
         assert_eq!(done.corp.installed[0].advancement_tokens, 2, "a card is not moved onto itself");
+    }
+
+    // ---- Stage 7d: the bioroid pair ----
+
+    fn ice_at(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { server, rezzed, ..ice_at_hq(card) }
+    }
+
+    #[test]
+    fn ravana_resolves_a_subroutine_on_another_rezzed_bioroid() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("ravana_1_0"), ice_at("eli_1_0", ServerId::RnD, true), ice_at("enigma", ServerId::Archives, true)];
+        let fired = fire(&state, &registry);
+        let offered = corp_toggles(&fired, &registry);
+        assert_eq!(offered.len(), 1, "Eli 1.0 alone: not Ravana itself, not a code gate that is no bioroid ({offered:?})");
+        let (picked, _) = apply_action(&fired, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("Eli 1.0");
+        let (mut resolved, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("resolve one of its subroutines");
+        if let Some(crate::rules::PendingDecision::ChooseEffect { .. }) = resolved.pending_decision {
+            resolved = apply_action(&resolved, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("end the run").0;
+        }
+        assert!(resolved.active_run.is_none(), "Eli's \"End the run\" ended Ravana's run");
+
+        // With no other rezzed bioroid, there is nothing to resolve.
+        let mut alone = state.clone();
+        alone.corp.installed[1].rezzed = false;
+        let fired = fire(&alone, &registry);
+        assert!(corp_toggles(&fired, &registry).is_empty());
+    }
+
+    #[test]
+    fn architects_of_tomorrow_rezzes_a_bioroid_four_cheaper_the_first_time_a_rezzed_bioroid_is_passed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("haas_bioroid_architects_of_tomorrow"));
+        state.corp.installed = vec![ice_at_hq("eli_1_0"), ice_at("ravana_1_0", ServerId::RnD, false), ice_at("enigma", ServerId::Archives, false)];
+        state.corp.resources.credits = Credits(0);
+        let pass_eli = |state: &GameState| {
+            let at_ice = encounter(state, &registry);
+            let (broken, _) = use_ability(&at_ice, &registry, "eli_1_0", 0).expect("lose [click]: break");
+            let (broken, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+            let (both, _) = use_ability(&broken, &registry, "eli_1_0", 0).expect("and the second");
+            let (passed, _) = apply_action(&both, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+            apply_action(&passed, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes: Eli is passed")
+        };
+        let (offered, events) = pass_eli(&state);
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_bioroid: true, .. })), "{events:?}");
+        let toggles = corp_toggles(&offered, &registry);
+        assert_eq!(toggles.len(), 1, "Ravana, a bioroid; Enigma is none ({toggles:?})");
+        let (picked, _) = apply_action(&offered, &registry, PlayerAction::ToggleCardSelection { position: toggles[0] }).expect("Ravana");
+        let (rezzed, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        assert!(rezzed.corp.installed.iter().any(|c| c.card == id("ravana_1_0") && c.rezzed), "3[credit] less 4 is free");
+        assert_eq!(rezzed.corp.resources.credits, Credits(0));
+
+        // The first time each turn only.
+        let mut again = rezzed.clone();
+        again.active_run = None;
+        again.paid_ability_window = None;
+        again.pending_decision = None;
+        again.corp.installed[1].rezzed = false;
+        again.runner.resources.clicks = Clicks(4);
+        let (twice, _) = pass_eli(&again);
+        assert!(corp_toggles(&twice, &registry).is_empty(), "already this turn");
+
+        // An unrezzed bioroid passed is not a rezzed one.
+        let mut unrezzed = state.clone();
+        unrezzed.corp.installed[0].rezzed = false;
+        let (state, _) = apply_action(&unrezzed, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp leaves it unrezzed");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_bioroid: false, .. })), "{events:?}");
+        assert!(corp_toggles(&state, &registry).is_empty());
     }
 }

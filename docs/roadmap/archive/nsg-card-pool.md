@@ -8928,3 +8928,52 @@ Update 2021 is at 60 of 82 and Magnum Opus Reprint at 4 of 6.
   nothing when no other card can be advanced.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 704 card files.
+
+#### Stage 7d — the bioroid pair (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Corp cards and one Sweep deck. **No new
+`Effect`.** One ice fact, one field on a pass of ice. System Update 2021
+is at 62 of 82.
+- **Cards from System Update 2021:** Ravana 1.0 and Haas-Bioroid:
+  Architects of Tomorrow.
+
+- **Ravana 1.0 composes.** Its "Lose [click]: Break 1 subroutine" is Eli
+  1.0's ability, and "Resolve 1 subroutine on another rezzed bioroid ice"
+  is Mycoweb's selection (`ResolveSubroutineOfSelectedIce`) over rezzed
+  bioroid ice that is not Ravana itself (`NotSourceCard`).
+- **Architects of Tomorrow: a pass of a rezzed bioroid.**
+  - The card reads "The first time each turn the Runner passes a rezzed
+    piece of bioroid ice, you may rez 1 bioroid card, paying 4[credit]
+    less."
+  - `GameEvent::IcePassed` now says whether the ice was a rezzed bioroid
+    (`rezzed_bioroid`). It is read off the printed subtype, since bioroid
+    is a subtype `rezzed_as` (the ice types) does not list and nothing in
+    the pool grants it.
+  - "The first time each turn" counts the moment in the turn log, which
+    counts ice moments by their facts (`turn_log::Class::Ice`). So
+    `IceFacts::rezzed_bioroid` is a sixth fact, beside Sisyphus
+    Protocol's `rezzed_code_gate_or_sentry`.
+  - **It shares a column bit with `at_most_zero_strength`.** The log
+    keeps one row per trigger, and no trigger states both (that one is a
+    break's, this a pass's), so within a row the bit means one fact. A
+    test holds every trigger to that.
+  - **Why not a sixth bit of its own:** the facts would have taken 64
+    columns, past the table's 40. Every row of a log that is copied with
+    every `GameState` would have grown with it.
+  - The rez is Executive Boot Camp's `RezInstalled` with a discount of 4,
+    over unrezzed bioroid cards.
+- **Decks.** Architects of Tomorrow is a new identity, so it gets a Sweep
+  deck of its own. **Assembly Line** is Retirement Package's frame under
+  Architects of Tomorrow (Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are
+  bioroids), with two Ravana 1.0 for its two Pulse. Endless Loop keeps
+  Pulse. It is Eternal and Casual, as Retirement Package is.
+- **Client.** The new fact has its words in the engine reading ("a rezzed
+  piece of bioroid ice"). Nothing new reaches the view.
+- **Tests.** Two new tests and one guard. Ravana resolves Eli 1.0's "End
+  the run", offers neither itself nor a non-bioroid Enigma, and offers
+  nothing with no other rezzed bioroid. Architects of Tomorrow rezzes
+  Ravana for free once Eli 1.0 is passed, not a second time that turn,
+  and not for an unrezzed Eli. The guard holds every trigger to stating
+  at most one of the two facts that share a bit.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 706 card files.

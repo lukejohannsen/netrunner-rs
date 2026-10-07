@@ -572,6 +572,9 @@ mod tests {
             // Santiago, a Core Set identity.
             ("hit_list", &neither),
             ("retirement_package", &neither),
+            // Tranche 8 Stage 7d: Architects of Tomorrow's deck, on
+            // Retirement Package's frame and its Core Set cards.
+            ("assembly_line", &neither),
             ("paid_content", &neither),
             ("quick_returns", &not_startup),
             ("the_syndicate_boosted", &not_startup),
