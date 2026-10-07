@@ -314,15 +314,25 @@ const NEVER_ADVANCE_WEIGHT: f64 = 1.0;
 /// (three clicks and a few credits at the Corp's rate for them), and
 /// well under a point of agenda.
 const LETHAL_THREAT_WEIGHT: f64 = 3.0;
-/// Corp only, `Plan::Kill`: each tag on the Runner, up to two, while the
-/// Corp holds a card whose text asks for one (`read::punishes_tags`:
-/// Scorched Earth, Retribution, Orbital Superiority's scored half). A tag
-/// is worth only what follows it, which is why the balanced Corp does
-/// not pay Public Trail's 4[c] for one; a kill Corp holding the follow-up
-/// does, at 1.5 a tag against the 1.6 the operation costs, because the
-/// tag is also the Runner's click and 2[c] to clear, or their turn under
-/// the threat. Capped at two because the third tag punishes nothing the
-/// second did not.
+/// Corp only, every plan (Phase 5 §51): each tag on the Runner, up to
+/// two, while the Corp holds a card whose text asks for one
+/// (`read::punishes_tags`: Scorched Earth, Retribution, Bigger Picture,
+/// Orbital Superiority's scored half). A tag is worth only what follows
+/// it, which is why a Corp holding no follow-up does not pay Public
+/// Trail's 4[c] for one; a Corp holding it does, at 1.5 a tag, because
+/// the tag is also the Runner's click and 2[c] to clear, or their turn
+/// under the threat. Capped at two because the third tag punishes
+/// nothing the second did not.
+///
+/// **It was the kill plan's term** (Stage 6), and the gate was always
+/// the card in HQ: the plan said whether to read it, the card said
+/// whether it was there. Fine Print, Hyper Velocity, Gimbatul and Quick
+/// and Dirty are fast-advance decks holding Bigger Picture, IP
+/// Enforcement, Retribution and Orbital Superiority — the guide's "tag
+/// and punish" mixed into another plan — and the planner playing them
+/// had Public Trail legal on 116 turns of 96 games, a punisher in HQ on
+/// 78 of them, and played it 0 times (random seats 34). The deck says
+/// which follow-up it holds by holding it; a style flag said it twice.
 const TAG_LEVERAGE_WEIGHT: f64 = 1.5;
 /// Corp only, `Plan::Traps`: one face-down card that is not an agenda in
 /// the scoring remote ("Put an asset in your scoring server now and
@@ -1430,6 +1440,7 @@ impl Weights {
                 w.rez_held_weight = REZ_HELD_WEIGHT;
                 w.ice_order_weight = ICE_ORDER_WEIGHT;
                 w.never_advance_weight = NEVER_ADVANCE_WEIGHT;
+                w.tag_leverage_weight = TAG_LEVERAGE_WEIGHT;
             }
             Side::Runner => {
                 w.last_click_run_weight = LAST_CLICK_RUN_WEIGHT;
@@ -1453,7 +1464,6 @@ impl Weights {
         }
         if style.has(Plan::Kill) {
             w.lethal_threat_weight = LETHAL_THREAT_WEIGHT;
-            w.tag_leverage_weight = TAG_LEVERAGE_WEIGHT;
         }
         if style.has(Plan::Traps) {
             w.bluff_weight = BLUFF_WEIGHT;
@@ -1718,19 +1728,22 @@ mod tests {
             assert!(!plan.weights().fort_until_beaten, "{plan:?}");
             assert_eq!(Style::of(plan).weights(), plan.weights(), "the reference scores with the profile alone");
         }
-        // Every Corp seat carries the four general terms, balanced
-        // included; a Runner seat carries none of the Corp's.
+        // Every Corp seat carries the five general terms, balanced
+        // included — the tag's leverage among them since §51, gated on
+        // the punisher held and not on a plan; a Runner seat carries
+        // none of the Corp's.
         let glacier = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier));
         assert!(glacier.run_stakes_weight > 0.0 && glacier.ice_order_weight > 0.0 && glacier.never_advance_weight > 0.0);
         assert_eq!(glacier.rez_held_weight, REZ_HELD_WEIGHT, "measured, and shipped at what it measured");
-        assert_eq!((glacier.lethal_threat_weight, glacier.tag_leverage_weight, glacier.bluff_weight, glacier.fort_until_beaten), (0.0, 0.0, 0.0, false));
+        assert_eq!(glacier.tag_leverage_weight, TAG_LEVERAGE_WEIGHT, "a glacier holding Scorched Earth reads the tag");
+        assert_eq!((glacier.lethal_threat_weight, glacier.bluff_weight, glacier.fort_until_beaten), (0.0, 0.0, false));
         assert_eq!(Weights::default().with_plans(Side::Corp, &Style::BALANCED).run_stakes_weight, glacier.run_stakes_weight, "a balanced Corp plays the Corp's chapter");
         let runner_off = |w: &Weights| [w.run_stakes_weight, w.rez_held_weight, w.ice_order_weight, w.never_advance_weight, w.lethal_threat_weight, w.tag_leverage_weight, w.bluff_weight];
         assert_eq!(runner_off(&Weights::default().with_plans(Side::Runner, &Style::of(Plan::Pressure))), [0.0; 7], "a Runner seat switches on no Corp term");
         assert_eq!(runner_off(&Weights::default().with_plans(Side::Runner, &Style::BALANCED)), [0.0; 7]);
         // A plan's own terms.
         let kill = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Kill));
-        assert!(kill.lethal_threat_weight > 0.0 && kill.tag_leverage_weight > 0.0 && kill.bluff_weight == 0.0);
+        assert!(kill.lethal_threat_weight > 0.0 && kill.bluff_weight == 0.0);
         let traps = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Traps));
         assert!(traps.bluff_weight > 0.0 && traps.lethal_threat_weight == 0.0);
         // The stack: glacier then fast advance yields the fort; either

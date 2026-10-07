@@ -1695,6 +1695,15 @@ mod tests {
     /// planner tags: the line kills inside the turn and scores the win.)
     /// Public Trail's shape without its "play only if" (a successful run
     /// last turn), which a fixture cannot write.
+    ///
+    /// **Since Phase 5 §51 the tag's leverage is every Corp's**, read off
+    /// the punisher in HQ and not off the plan, so the balanced Corp
+    /// holding Scorched Earth is no longer the control: it plans the tag
+    /// on 117 of 180 seeds where it planned it on 78. The control is the
+    /// balanced Corp holding Hedge Fund in Scorched Earth's place, which
+    /// has no follow-up to read and tags on 0 of 180 — so the two in five
+    /// before §51 were samples that made Scorched Earth's line pay, not
+    /// the tag.
     #[test]
     fn a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced() {
         use crate::plans::{Plan, Style};
@@ -1750,7 +1759,14 @@ mod tests {
         let balanced = (1..=BALANCED_SEEDS)
             .filter(|&seed| plans_to_tag(&mut PlanningAgent::new(Side::Corp, seed), &view))
             .count() as u64;
-        assert!(balanced * 2 < BALANCED_SEEDS, "a balanced Corp sees nothing in the tag but a lucky sample: {balanced} of {BALANCED_SEEDS}");
+        assert!(balanced * 2 > BALANCED_SEEDS, "a balanced Corp holding the follow-up reads the tag (§51): {balanced} of {BALANCED_SEEDS}");
+        let mut no_follow_up = state.clone();
+        no_follow_up.corp.hq = vec![CardId("public_trail_open".to_string()), CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
+        let no_follow_up = build_client_view(&no_follow_up, &registry, Side::Corp);
+        let unpunished = (1..=BALANCED_SEEDS)
+            .filter(|&seed| plans_to_tag(&mut PlanningAgent::new(Side::Corp, seed), &no_follow_up))
+            .count() as u64;
+        assert!(unpunished * 2 < BALANCED_SEEDS, "a Corp holding no follow-up sees nothing in the tag but a lucky sample: {unpunished} of {BALANCED_SEEDS}");
         let mut safe = state.clone();
         safe.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
         let view = build_client_view(&safe, &registry, Side::Corp);

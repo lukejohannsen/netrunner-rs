@@ -548,8 +548,7 @@ pub(super) fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, c
 /// faceup, at the rates the Corp reads the Runner's grip and tags by:
 /// BANGUN's "do 2 meat damage and give the Runner 1 tag" is the grip it
 /// takes below `opponent_grip_floor`, the hand size core damage would take,
-/// and a tag the Corp holds a card to punish (`tag_leverage_weight`, the
-/// kill plan's). Damage past the grip is counted to the grip's end: the
+/// and a tag the Corp holds a card to punish (`tag_leverage_weight`). Damage past the grip is counted to the grip's end: the
 /// Runner reads that access as its flatline (§34) and stays out until it
 /// has drawn, which is the agenda kept and no more. Zero for a Runner the
 /// access cannot hurt, where the faceup agenda is the facedown one shown.
