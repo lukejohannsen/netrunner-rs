@@ -512,6 +512,23 @@ pub fn punishes_access_with_damage(def: &CardDefinition) -> bool {
     found
 }
 
+/// The grip cards an access ability that trashes the card being accessed
+/// asks for — Carnivore's "Access, once per turn → Trash 2 cards from your
+/// grip: Trash the card you are accessing." — or `None` for a card with
+/// no such ability (Phase 5 §52). Read off the ability: a `Paid` ability
+/// flagged `access`, whose effect holds `Effect::TrashCurrentlyAccessedCard`,
+/// with a `Cost::Trash` from the grip; any other cost is read as free.
+pub(super) fn access_trash_cards(def: &CardDefinition) -> Option<u32> {
+    def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid && ability.access).find_map(|ability| {
+        let mut trashes = false;
+        ability.effect.for_each_effect(&mut |effect| trashes |= matches!(effect, Effect::TrashCurrentlyAccessedCard));
+        trashes.then_some(match &ability.cost {
+            Some(Cost::Trash { from: netrunner_core::dsl::CardZoneRef::OwnGrip, count, .. }) => *count,
+            _ => 0,
+        })
+    })
+}
+
 /// A trap the Corp plays like an agenda: it can be advanced and its
 /// damage is its token count (Urtica Cipher). `fort_value` counts a remote
 /// holding an unseen one as the fort.
@@ -1529,6 +1546,19 @@ pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An access ability that trashes the card being accessed is read off
+    /// the card (Phase 5 §52): Carnivore's, at two grip cards; Madani, a
+    /// console with none, reads none.
+    #[test]
+    fn an_access_trash_is_read_off_the_card() {
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let carnivore = pool.get(&CardId("carnivore".to_string())).expect("Carnivore");
+        let madani = pool.get(&CardId("madani".to_string())).expect("Madani");
+        assert_eq!(access_trash_cards(carnivore), Some(2));
+        assert_eq!(access_trash_cards(madani), None);
+    }
     use crate::eval::test_support::*;
     use netrunner_core::dsl::{CardDefinition, CardId, DamageType, Trigger, TriggeredEffect};
     use netrunner_core::rules::{Credits, GameState, InstalledRunnerCard};

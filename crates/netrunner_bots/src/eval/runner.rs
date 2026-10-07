@@ -325,13 +325,54 @@ pub(super) fn visible_install_value(state: &GameState, installed: &InstalledCard
 pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     let rig = rig_coverage(state, registry);
     let shown = shown_for(state, registry, w);
+    // A second console is the first one trashed (the checkpoint's console
+    // limit, CR 3.8.5b), so a held console is dead while one is installed.
+    let console_installed = state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).any(is_console);
     state
         .runner
         .grip
         .iter()
         .filter_map(|card| registry.get(card))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon).max(0.0))
+        .filter(|def| !(console_installed && is_console(def)))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
+}
+
+/// Whether a card is a console, which the rules limit to one (CR 3.8.5b).
+pub(super) fn is_console(def: &CardDefinition) -> bool {
+    def.subtypes.contains(&netrunner_core::dsl::CardSubtype::Console)
+}
+
+/// What an access ability that trashes the card being accessed is worth
+/// over `horizon` turns (Phase 5 §52): the Dismantle plan's trash
+/// (`dismantle_weight`, what a rezzed asset or upgrade waiting to be
+/// trashed is worth) plus what the identities pay for a trash while
+/// accessing (René "Loup" Arcemont's credit and card, read through
+/// `identities::on_trash_while_accessing`), less the grip cards the
+/// ability costs at a click a card — once a turn, never below nothing,
+/// over the horizon the stage expects at `future_credit_weight`, the
+/// discount every declared income over the horizon takes (a credit later
+/// is worth less than one now; at the full rate the card read as the best
+/// in the deck and the Runner installed it at 4[c] over its economy —
+/// Corp wins 46 → 65 of 96). Zero outside the Dismantle plan:
+/// the guide names Carnivore and Gourmand under the Anarch's "trash what
+/// you access", and a balanced Runner reads a 4[c] console as its memory
+/// alone. Read for the held card and for the installed one alike, so the
+/// card is live in hand exactly when the table credits it. Before it the
+/// planner had Carnivore installable on 255 turns of 96 games and
+/// installed it 0 times; random seats installed it 32 and used it 19.
+pub(super) fn access_trash_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if w.dismantle_weight == 0.0 {
+        return 0.0;
+    }
+    let Some(cards) = access_trash_cards(def) else { return 0.0 };
+    let pays = identities::on_trash_while_accessing(state, registry, netrunner_core::rules::ServerId::Hq).to_runner(w);
+    (w.dismantle_weight + pays - f64::from(cards) * w.click_weight).max(0.0) * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `access_trash_value` summed over the rig (Phase 5 §52).
+pub(super) fn rig_access_trash_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| access_trash_value(state, registry, def, w, horizon)).sum()
 }
 
 /// What installing a held card would cost the Runner, as the engine asks
@@ -384,7 +425,7 @@ pub(super) fn hosted_installs_value(state: &GameState, registry: &CardRegistry, 
     // Programs: what the installer installs. A grip hardware is not a
     // click it will ever save.
     let delta = |def: &CardDefinition| {
-        if def.card_type == CardType::Program { install_delta(def, held_price(state, registry, def), rig, shown, w, horizon).max(0.0) } else { 0.0 }
+        if def.card_type == CardType::Program { install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, 0.0).max(0.0) } else { 0.0 }
     };
     let mut hosted = 0.0;
     let mut promised = 0.0;
@@ -446,7 +487,17 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// shown (`shown`, from `shown_for`) is worth its coverage less
 /// `unshown_breaker_weight`, and an R&D access the card promises is
 /// worth `rd_access_weight` (Stage 7; both zero at the reference).
-pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32) -> f64 {
+/// `access_trash` is what the card's access ability is worth where the
+/// caller read it (`access_trash_value`, zero for a card with none; Phase
+/// 5 §52). **The memory a console declares is not read here, on purpose:**
+/// the table pays `memory_weight` a free unit once the console is down,
+/// and crediting the held card the same unit (tried in §52) left the
+/// install nothing but its click — Hermes, 2[c] for +1[mu], went from 29
+/// installs in 48 games to 3, and Carnivore read as four credits for a
+/// term the install could not beat. A console is installed for the
+/// memory the held reading does not see, which is the one asymmetry the
+/// guide's "install your console" needs until a console's text is read.
+pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32, access_trash: f64) -> f64 {
     if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
         return 0.0;
     }
@@ -461,7 +512,7 @@ pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], sh
     } else {
         0.0
     };
-    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised
+    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised + access_trash
         - unshown as f64 * w.unshown_breaker_weight
         - f64::from(price) * w.own_credit_weight
         - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
@@ -552,6 +603,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // the grip's programs promise it clicks (`hosted_installs_value`).
     let (hosted, promised) = hosted_installs_value(state, registry, w, horizon);
     *score += hosted + promised * w.click_weight;
+    // An access ability that trashes what it accesses is a trash a turn
+    // to a Dismantle Runner (`access_trash_value`, Phase 5 §52).
+    *score += rig_access_trash_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
@@ -632,6 +686,42 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An access ability that trashes what it accesses is a trash a turn
+    /// to a Dismantle Runner and nothing to any other (Phase 5 §52): at
+    /// the plan's trash (0.5) less two grip cards at a click a card (0.8)
+    /// the ability alone is under nothing, and René "Loup" Arcemont's
+    /// credit and card for the trash (0.8) are what make it pay — over
+    /// the horizon at the future discount. A held copy of a console is
+    /// dead while one is installed: the second trashes the first.
+    #[test]
+    fn an_access_trash_pays_a_dismantle_runner_under_loup_and_nobody_else() {
+        use crate::plans::{Plan, Style};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let carnivore = pool.get(&CardId("carnivore".to_string())).expect("Carnivore").clone();
+        let balanced = Style::BALANCED.planned_weights(Side::Runner);
+        let dismantle = Style::of(Plan::Dismantle).planned_weights(Side::Runner);
+        let mut state = GameState::new(0);
+        assert_eq!(access_trash_value(&state, &pool, &carnivore, &balanced, 5), 0.0, "no plan to trash for");
+        assert_eq!(access_trash_value(&state, &pool, &carnivore, &dismantle, 5), 0.0, "two cards a trash is under the plan's 0.5 without an identity paying");
+        state.runner.identity = Some(CardId("rene_loup_arcemont_party_animal".to_string()));
+        let loup = access_trash_value(&state, &pool, &carnivore, &dismantle, 5);
+        let expected = (dismantle.dismantle_weight + dismantle.own_credit_weight + dismantle.click_weight - 2.0 * dismantle.click_weight) * 5.0 * dismantle.future_credit_weight;
+        assert!((loup - expected).abs() < 1e-9, "{loup} vs {expected}");
+        assert!(loup > 0.0);
+        // Held and installed read alike, so the card is live in hand
+        // exactly when the table credits it.
+        state.runner.grip = vec![CardId("carnivore".to_string())];
+        state.runner.resources.credits = Credits(4);
+        let held = held_cards_value(&state, &pool, &dismantle, 5);
+        let delta = install_delta(&carnivore, 4, [false; 3], [true; 3], &dismantle, 5, loup);
+        assert!((held - delta).abs() < 1e-9 && held > 0.0, "{held} vs {delta}");
+        assert!(install_delta(&carnivore, 4, [false; 3], [true; 3], &dismantle, 5, 0.0) < 0.0, "without the ability a 4[c] console is under its price in hand");
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("carnivore".to_string()), install_id: InstallId(1), ..Default::default() });
+        assert_eq!(held_cards_value(&state, &pool, &dismantle, 5), 0.0, "a second console is dead in hand");
+        assert!((rig_access_trash_value(&state, &pool, &dismantle, 5) - loup).abs() < 1e-9, "the installed one is credited the same");
+    }
     use crate::eval::test_support::*;
     use netrunner_core::dsl::{CardDefinition, CardId};
     use netrunner_core::rules::{Credits, GameState, InstallId, InstalledRunnerCard};
@@ -945,7 +1035,7 @@ mod tests {
         };
         let delta = |id: &str| {
             let def = printed(&registry, id);
-            install_delta(&def, def.cost, [false; 3], [true; 3], &w, 9)
+            install_delta(&def, def.cost, [false; 3], [true; 3], &w, 9, 0.0)
         };
         assert!(delta("cleaver") > w.click_weight && delta("carmen") > w.click_weight);
         assert!(delta("dear_corroder") < 0.0, "9[c] for one subtype is not worth installing");
@@ -1361,7 +1451,7 @@ mod tests {
         let w = guide();
         let rig = [false; 3];
         let telework = printed(&pool, "telework_contract");
-        assert!(install_delta(&telework, telework.cost, rig, [true; 3], &w, horizon(Stage::Early)) > install_delta(&telework, telework.cost, rig, [true; 3], &Weights::default(), 9) + 1.0);
+        assert!(install_delta(&telework, telework.cost, rig, [true; 3], &w, horizon(Stage::Early), 0.0) > install_delta(&telework, telework.cost, rig, [true; 3], &Weights::default(), 9, 0.0) + 1.0);
         let mut held = GameState::new(0);
         held.runner.resources.credits = Credits(5);
         held.runner.memory_units = MemoryUnits(4);

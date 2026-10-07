@@ -85,6 +85,7 @@ rules bug, with the sweeps; a "not modelled" is taken when a pool card needs it 
 - **9.6** — a delayed ability with a stated duration; a trash by a card's text whose event does not say whether the card was rezzed.
 - **9.9** — expose.
 - **10.9** — a card holds one kind of counter (`CardDefinition::counter_kind`), so counters of another kind never make it look loaded (10.9.3).
+- **1.2.2** — a "cannot steal or trash" for the rest of a run (Ansel 1.0, `Prohibition::StealOrTrash`) is asked of the Runner's steal and trash *actions* and not of a card effect that trashes the card being accessed (`Effect::TrashCurrentlyAccessedCard`, Carnivore): found when the planner began using Carnivore (Phase 5 §52), trashing an Offworld Office it could not steal, under Ansel. Whether the prohibition reaches a card's text is a reading of 1.2.2's precedence to make before fixing.
 
 The ledger rows below carry the rest of the "Not modelled" clauses in their notes, each beside the rule it is about.
 

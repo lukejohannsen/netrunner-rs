@@ -2259,6 +2259,61 @@ mod positions {
         assert_eq!(state.runner.rig[0].hosted_cards.len(), 1);
     }
 
+    /// Carnivore is installed by the Runner whose plan it serves (Phase 5
+    /// §52): a Dismantle Runner under René "Loup" Arcemont, early, with
+    /// the credits for it and a click that would otherwise be a credit,
+    /// puts it on the table — the access trash is a trash a turn to that
+    /// plan, and Loup's credit and card pay for the grip it costs — where
+    /// a Runner on another plan (Pressure; a balanced seat under an Anarch
+    /// identity is Dismantle, `Style::or_faction`) on the same board reads
+    /// a 4[c] console as a rig card under its price and keeps the credits. Counted
+    /// over seeds, not read off one: the margin is a click's worth at the
+    /// stage's horizon.
+    #[test]
+    fn a_dismantle_runner_under_loup_installs_carnivore_and_another_plan_does_not() {
+        use crate::plans::{Plan, Style};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut inert = blank_card("filler", CardType::Event);
+        inert.side = Side::Runner;
+        registry.insert(inert);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.turn = 4;
+        state.runner = empty_runner();
+        state.runner.identity = Some(CardId("rene_loup_arcemont_party_animal".to_string()));
+        state.runner.resources = PlayerResources { credits: Credits(6), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("carnivore".to_string()), CardId("filler".to_string()), CardId("filler".to_string()), CardId("filler".to_string())];
+        state.runner.stack = vec![CardId("filler".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        // Every central iced, and no breaker in the rig: a run is not
+        // the click's other use, a credit is.
+        state.corp.installed = [(10, ServerId::Hq), (11, ServerId::RnD), (12, ServerId::Archives)]
+            .into_iter()
+            .map(|(id, server)| InstalledCard { card: CardId("palisade".to_string()), install_id: InstallId(id), server, slot: netrunner_core::rules::InstallSlot::Ice, rezzed: true, ..Default::default() })
+            .collect();
+        state.next_install_id = 20;
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let install = PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()) };
+        assert!(view.legal_actions.contains(&install), "{:?}", view.legal_actions);
+        const SEEDS: u64 = 20;
+        let installs = |style: Style| {
+            (1..=SEEDS)
+                .filter(|&seed| {
+                    let mut agent = PlanningAgent::with_style(Side::Runner, seed, style);
+                    agent.observe(&view);
+                    agent.select_action(&view, &registry) == install
+                })
+                .count() as u64
+        };
+        let dismantle = installs(Style::of(Plan::Dismantle));
+        let pressure = installs(Style::of(Plan::Pressure));
+        assert!(dismantle * 2 > SEEDS, "a Dismantle Runner under Loup installs Carnivore: {dismantle} of {SEEDS}");
+        assert_eq!(pressure, 0, "a Runner on another plan reads a 4[c] console as a rig card under its price: {pressure} of {SEEDS}");
+    }
+
     /// Madani is installed for the clicks it promises on the programs the
     /// grip holds, and a program hosted on it is installed for no click
     /// (Phase 5 §30): with Madani and three breakers in hand the Runner
@@ -2291,7 +2346,14 @@ mod positions {
                 cost_discount_if: None, used_by: None, access: false, from_hand: false, part_of: None }];
             registry.insert(breaker);
         }
-        let filler = || vec![CardId("madani".to_string()); 3];
+        // Inert filler: a blank event, worth nothing held and nothing
+        // played. (It was three more copies of Madani, which §52 reads
+        // as dead once a console is installed — a second console trashes
+        // the first — so the install looked like losing three cards.)
+        let mut inert = blank_card("filler", CardType::Event);
+        inert.side = Side::Runner;
+        registry.insert(inert);
+        let filler = || vec![CardId("filler".to_string()); 3];
         let base = |clicks: u32| {
             let mut state = GameState::new(0);
             state.phase = GamePhase::Action(Side::Runner);
