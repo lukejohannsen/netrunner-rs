@@ -330,7 +330,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("access additional cards from {} equal to {}", describe_server(*server), describe_amount(amount))
         }
         Effect::SetAccessReplacement { server, effect, .. } => {
-            format!("instead of accessing {}, {}", describe_server(*server), describe_effect(effect, registry))
+            let server = server.map_or_else(|| "the attacked server".to_string(), describe_server);
+            format!("instead of accessing {server}, {}", describe_effect(effect, registry))
         }
         Effect::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
         Effect::GainClicks(side, n) => format!("{} gains {}", who(*side), plural(*n, "click", "clicks")),
@@ -577,7 +578,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Remember { what: netrunner_core::dsl::Remembered::CardType(card_type), until } => {
             format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))
         }
+        Effect::Remember { what: netrunner_core::dsl::Remembered::IceType(ice_type), until } => {
+            format!("the chosen subtype is {} {}", crate::board::facts::ice_type_words(&[*ice_type]), duration(until))
+        }
         Effect::ReplaceSubroutines => "for this encounter, the Corp resolves this card's subroutine instead of each subroutine on the ice".to_string(),
+        Effect::SpendChosenServer => "the chosen server is spent for this turn".to_string(),
         Effect::MoveRunToOutermost(Some(server)) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::MoveRunToOutermost(None) => "move the run to the outermost ice of the attacked server".to_string(),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),

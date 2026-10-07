@@ -452,7 +452,11 @@ mod tests {
                                 (None, None) => {}
                             }
                             if let Some(trail) = &trails[i] {
-                                if let Some(run) = &after.active_run {
+                                // A breach with no run (Virtuoso's "breach HQ
+                                // when the run ends", begun in the action that
+                                // completed the run) stands in the view's run
+                                // slot, and is no run a trail follows.
+                                if let Some(run) = after.active_run.as_ref().filter(|run| !(run.breach_only && trail.ended())) {
                                     assert_eq!(trail.ice.len(), run.ice.len(), "seed {seed} {viewer:?}");
                                     for (step, piece) in trail.ice.iter().zip(&run.ice) {
                                         assert_eq!(step.install, piece.install_id);

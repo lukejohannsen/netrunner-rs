@@ -634,6 +634,7 @@ pub fn evaluate_effect(
             let what = match what {
                 crate::dsl::Remembered::SelectedCard => Lingering::ChosenCard(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
                 crate::dsl::Remembered::CardType(card_type) => Lingering::ChosenCardType(card_type.clone()),
+                crate::dsl::Remembered::IceType(ice_type) => Lingering::ChosenIceType(*ice_type),
             };
             let until = crate::rules::lingering::until(state, *until, controller, Some(chooser))?;
             state.lingering.push(LingeringEffect { what, on: crate::rules::lingering::On::Install(chooser), until, source });
@@ -1730,10 +1731,11 @@ pub fn evaluate_effect(
 
         Effect::SetAccessReplacement { server, effect, optional } => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.access_replacement = Some((*server, (**effect).clone(), *optional));
+            let server = server.unwrap_or(run.server);
+            run.access_replacement = Some((server, (**effect).clone(), *optional));
             run.access_replacement_card = acting_card.cloned();
             run.access_replacement_install = ctx.acting_install;
-            Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
+            Ok(vec![GameEvent::AccessReplacementSet { server }])
         }
 
         Effect::Sequence(effects) => evaluate_sequence(state, effects, ctx, registry),
@@ -2002,7 +2004,7 @@ pub fn evaluate_effect(
                 .with_this_server(acting_server(state, ctx))
                 // "That server", the one the card chose (Climactic
                 // Showdown's "1 piece of ice protecting that server").
-                .with_chosen_server(acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card)))
+                .with_chosen_server(acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install)))
                 .with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)))
                 .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref());
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
@@ -2493,6 +2495,12 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser }])
         }
 
+        Effect::SpendChosenServer => {
+            let card = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            lingering::spend_chosen_server(state, &card, ctx.acting_install);
+            Ok(Vec::new())
+        }
+
         Effect::ReplaceSubroutines => {
             let card = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let ice = state
@@ -2502,7 +2510,7 @@ pub fn evaluate_effect(
                 .and_then(|run| run.ice.get(run.position))
                 .map(|ice| ice.install_id)
                 .ok_or(RulesError::NotInEncounter)?;
-            lingering::spend_chosen_server(state, &card);
+            lingering::spend_chosen_server(state, &card, ctx.acting_install);
             state.lingering.push(LingeringEffect { what: Lingering::SubroutinesReplaced, on: On::Install(ice), until: lingering::Until::EndOfEncounter(ice), source: card });
             Ok(Vec::new())
         }
@@ -4573,6 +4581,15 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::EncounteringChosenIceType => {
+            let chosen = ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_ice_type(state, this));
+            let encountering = chosen.is_some_and(|chosen| {
+                state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).is_some_and(|ice| {
+                    ice.ice_type == chosen || continuous::ice_gains_subtype(state, registry, ice.install_id, chosen)
+                })
+            });
+            if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::EncounteringThisIce => {
             let matches = ctx.acting_install.is_some_and(|this| {
                 state.active_run.as_ref().is_some_and(|run| {
@@ -5281,6 +5298,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
         | EffectRequirement::EncounteringChosenIce
+        | EffectRequirement::EncounteringChosenIceType
         | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
@@ -5555,7 +5573,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()), optional: false }, &mut ResolutionContext::for_card(None),
+            &Effect::SetAccessReplacement { server: Some(ServerId::Hq), effect: Box::new(replacement.clone()), optional: false }, &mut ResolutionContext::for_card(None),
             &CardRegistry::new())
         .unwrap();
 
@@ -5573,7 +5591,7 @@ mod tests {
             evaluate_effect(
                 &mut state,
                 &Effect::SetAccessReplacement { optional: false,
-                    server: ServerId::Hq,
+                    server: Some(ServerId::Hq),
                     effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
                 }, &mut ResolutionContext::for_card(None),
                 &CardRegistry::new()),

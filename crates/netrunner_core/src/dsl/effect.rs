@@ -309,7 +309,15 @@ pub enum Effect {
     /// `Box`ed for the same reason as `Trace::on_success` — the first two
     /// other variants that nest another `Effect`.
     SetAccessReplacement {
-        server: ServerId,
+        /// The server whose breach is replaced; none for **the attacked
+        /// server**, read as the replacement is made — Security Testing's
+        /// "the first time each turn you make a successful run on the
+        /// chosen server, instead of breaching it", where the chosen server
+        /// is the state's and may be a remote. A run event that chooses
+        /// its server writes it in (`pending_choice::
+        /// substitute_chosen_server`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server: Option<ServerId>,
         effect: Box<Effect>,
         /// Printed "you **may** … instead" (Account Siphon): the breach's
         /// owner is offered the replacement rather than bound by it — see
@@ -1755,6 +1763,16 @@ pub enum Effect {
     /// only an encounter with such ice, and a second one finds no choice.
     /// Composition didn't work: nothing replaced a subroutine's effect.
     ReplaceSubroutines,
+    /// Spends the acting copy's chosen server (`Lingering::ChosenServer`)
+    /// — what makes Security Testing's "the first time each turn you make
+    /// a successful run on the chosen server" the first: the trigger hears
+    /// only a run on the chosen server (`EventFilter::ChosenServer`), and a
+    /// second one finds no choice. `ReplaceSubroutines` spends Tsakhia's
+    /// the same way. Composition didn't work: `first_each_turn` counts the
+    /// turn's moments by class, and the remotes are one class, so the
+    /// first successful run on a chosen remote could not be told from the
+    /// first on any remote.
+    SpendChosenServer,
     /// Moves the run to the outermost position of `ServerId` — Proprionegation's
     /// "the Runner moves to the outermost position of Archives. (They
     /// approach any ice in that position.)". The run's ice list is rebuilt
@@ -1851,6 +1869,11 @@ pub enum Remembered {
     SelectedCard,
     /// A card type — Engram Flush's.
     CardType(crate::dsl::CardType),
+    /// An ice subtype — Chameleon's barrier, code gate or sentry, read back
+    /// by `EffectRequirement::EncounteringChosenIceType`. Not a `CardType`:
+    /// the three are the ice's types (`IceType`), which a break is
+    /// restricted by.
+    IceType(crate::dsl::IceType),
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -3042,6 +3065,7 @@ impl Effect {
             | Effect::LimitBreaks { .. }
             | Effect::ChooseServer { .. }
             | Effect::ReplaceSubroutines
+            | Effect::SpendChosenServer
             | Effect::MoveRunToOutermost(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
@@ -3206,7 +3230,7 @@ mod tests {
     #[test]
     fn set_access_replacement_round_trips_through_json() {
         let effect = Effect::SetAccessReplacement {
-            server: ServerId::Hq,
+            server: Some(ServerId::Hq),
             effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
             optional: false,
         };
@@ -3262,7 +3286,7 @@ mod tests {
                 chooser: Side::Corp,
                 options: vec![
                     Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) },
-                    Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
+                    Effect::SetAccessReplacement { server: Some(ServerId::Hq), effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
                 texts: Vec::new(),
             },

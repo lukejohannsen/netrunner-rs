@@ -58,11 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 66, 15, 4, 40 | 16, 3, 2, — | in progress: Stages 1a–8a (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 68, 15, 4, 40 | 14, 3, 2, — | in progress: Stages 1a–8b (6 October 2026; `core` has no gate yet) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 710 card files** (7 October
-2026, with tranche 8 Stage 8a, which added no variant; Stage 7d, at 13 of
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 106
+`Effect` variants single-use, none unused, over 712 card files** (7 October
+2026, with tranche 8 Stage 8b, which added one, `SpendChosenServer`, used
+by Security Testing alone; Stage 8a, at 13 of 105 over 710, added none;
+Stage 7d, at 13 of
 105 over 706, added none; Stage 7c, at 13 of
 105 over 704, added none; Stage 7b, at 13 of
 105 over 702, added none; Stage 7a, at 13 of
@@ -1139,6 +1141,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 7c** — two Corp cards with no new `Effect`: ice can be installed in any position, the Corp asked a number for it once the server has ice (`PromptInstallCorpCard::any_position`, CR 6.2.2d), and advancement counters move between two cards (Timely Public Release, Trick of Light) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 7d** — the bioroid pair and Architects of Tomorrow's Sweep deck, Assembly Line, with no new `Effect`: a pass of ice says whether it was a rezzed bioroid, a fact the turn log counts in a column bit it shares with a fact no pass states (`IceFacts::rezzed_bioroid`) (Ravana 1.0, Haas-Bioroid: Architects of Tomorrow) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 8a** — four Runner cards, composed, with no new `Effect` and no change to the engine: a run event's first ice bypassed, a chosen ice bypassed for a credit a subroutine, a program found in either pile and stacked as the turn ends, and an event bought back into the grip (Inside Job, Femme Fatale, Test Run, Networking) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 8b** — two Runner cards and one new `Effect`: a chosen server is the copy's that chose it, spent by the first successful run on it (`SpendChosenServer`); a breach replaced can be the attacked server's; and a card can remember an ice subtype it chose (Security Testing, Chameleon) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1183,9 +1186,8 @@ nine by kind):
    Haas-Bioroid: Architects of Tomorrow).
 8. Remembered choices, triggers a card creates, and X costs. **8a
    closed**, four Runner cards that compose (Inside Job, Femme Fatale,
-   Test Run, Networking, the last moved from 6a). 8b, the remembered
-   choices that need a word: Security Testing (a chosen server's breach
-   replaced) and Chameleon (a chosen subtype). 8c, the X costs: Corporate
+   Test Run, Networking, the last moved from 6a). **8b closed**, two cards
+   (Security Testing, Chameleon). 8c, the X costs: Corporate
    Troubleshooter and Psychographics.
 9. **The machinery the pool has not needed until now:**
    - Ayla “Bios” Rahim: set aside.

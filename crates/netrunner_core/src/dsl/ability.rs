@@ -416,6 +416,13 @@ pub enum EffectRequirement {
     /// Trojan's host and `EncounteringThisIce` about the acting ice, and
     /// the chosen ice is neither.
     EncounteringChosenIce,
+    /// The active run is encountering ice of the subtype the acting card
+    /// chose (`Effect::Remember`, `rules::lingering::chosen_ice_type`),
+    /// printed or gained — Chameleon's "Break 1 subroutine on a piece of
+    /// ice that has the chosen subtype". Asked as `Encountering` is.
+    /// Composition didn't work: `Encountering` names its type in the card
+    /// file, and this one is chosen as the program is installed.
+    EncounteringChosenIceType,
     /// Subroutines on this ice are resolving — Attini's "while subroutines
     /// on this ice are resolving". The run is encountering the acting ice
     /// and a subroutine on it has resolved this encounter: from the first

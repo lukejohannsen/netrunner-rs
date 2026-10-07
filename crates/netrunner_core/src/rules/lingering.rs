@@ -208,6 +208,12 @@ pub enum Lingering {
     /// [`chosen_card_type`]. Public: the Runner is told the type before
     /// anything is revealed.
     ChosenCardType(crate::dsl::CardType),
+    /// The ice subtype a card chose and refers back to (`Effect::Remember`,
+    /// `Remembered::IceType`) — Chameleon's "When you install this program,
+    /// choose **barrier**, **code gate**, or **sentry**", about the
+    /// chooser's install for as long as it is installed, read with
+    /// [`chosen_ice_type`]. Public: the rules make the choice open.
+    ChosenIceType(crate::dsl::IceType),
 }
 
 /// The Runner's mark this turn, if one has been identified (CR 10.11.1a:
@@ -313,7 +319,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
         })
         .sum()
 }
@@ -336,7 +342,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
         })
 }
 
@@ -349,7 +355,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
         })
         .sum()
 }
@@ -416,12 +422,25 @@ pub fn break_limit(state: &GameState, install: InstallId) -> Option<u32> {
 }
 
 /// The server `card` chose this turn (`Effect::ChooseServer`), if it chose
-/// one and has not spent it.
-pub fn chosen_server(state: &GameState, card: &CardId) -> Option<crate::rules::ServerId> {
-    state.lingering.iter().filter(|effect| &effect.source == card && effect.holds(state)).find_map(|effect| match effect.what {
+/// one and has not spent it. A choice made by an install is that copy's
+/// (`On::Install`): two Security Testings choose a server each, and one
+/// spending its choice leaves the other's. `install` is the copy asking;
+/// a choice about a player (a lockdown's, made from the play area) is the
+/// card's.
+pub fn chosen_server(state: &GameState, card: &CardId, install: Option<InstallId>) -> Option<crate::rules::ServerId> {
+    state.lingering.iter().filter(|effect| &effect.source == card && by_copy(effect, install) && effect.holds(state)).find_map(|effect| match effect.what {
         Lingering::ChosenServer(server) => Some(server),
         _ => None,
     })
+}
+
+/// Whether a remembered choice is the asking copy's: one made by an
+/// install answers only that install.
+fn by_copy(effect: &LingeringEffect, install: Option<InstallId>) -> bool {
+    match effect.on {
+        On::Install(chooser) => install == Some(chooser),
+        _ => true,
+    }
 }
 
 /// The install the install `chooser` chose and refers back to
@@ -442,10 +461,20 @@ pub fn chosen_card_type(state: &GameState, chooser: InstallId) -> Option<&crate:
     })
 }
 
-/// Spends `card`'s chosen server: Tsakhia's replacement is for the first
-/// encounter with ice protecting it.
-pub(crate) fn spend_chosen_server(state: &mut GameState, card: &CardId) {
-    state.lingering.retain(|effect| !(matches!(effect.what, Lingering::ChosenServer(_)) && &effect.source == card));
+/// The ice subtype the install `chooser` chose (`Effect::Remember`), while
+/// the choice holds — Chameleon's.
+pub fn chosen_ice_type(state: &GameState, chooser: InstallId) -> Option<crate::dsl::IceType> {
+    state.lingering.iter().filter(|effect| effect.on == On::Install(chooser) && effect.holds(state)).find_map(|effect| match effect.what {
+        Lingering::ChosenIceType(ice_type) => Some(ice_type),
+        _ => None,
+    })
+}
+
+/// Spends the chosen server of `card`'s copy `install`: Tsakhia's
+/// replacement is for the first encounter with ice protecting it, and
+/// Security Testing's for the first successful run on it.
+pub(crate) fn spend_chosen_server(state: &mut GameState, card: &CardId, install: Option<InstallId>) {
+    state.lingering.retain(|effect| !(matches!(effect.what, Lingering::ChosenServer(_)) && &effect.source == card && by_copy(effect, install)));
 }
 
 /// The card whose printed subroutine resolves instead of each subroutine on

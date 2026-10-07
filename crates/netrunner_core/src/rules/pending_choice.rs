@@ -1699,7 +1699,7 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
         // "Run any server. If successful, instead of breaching the attacked
         // server, …" (Pinhole Threading): the breach replaced is the chosen
         // server's.
-        Effect::SetAccessReplacement { effect, optional, .. } => Effect::SetAccessReplacement { server, effect, optional },
+        Effect::SetAccessReplacement { effect, optional, .. } => Effect::SetAccessReplacement { server: Some(server), effect, optional },
         Effect::Sequence(effects) => {
             Effect::Sequence(effects.into_iter().map(|e| substitute_chosen_server(e, server)).collect())
         }
@@ -1883,9 +1883,16 @@ pub(crate) fn resolve_choose_server(
             Some(handle) => crate::rules::lingering::Until::WhileInPlay(handle),
             None => crate::rules::lingering::Until::EndOfTurn(state.turn),
         };
+        // An install's choice is that copy's, so a second copy chooses and
+        // spends its own (`lingering::chosen_server`); a lockdown's is the
+        // card's, in the play area.
+        let on = match source_install {
+            Some(handle) if in_play.is_none() => crate::rules::lingering::On::Install(handle),
+            _ => crate::rules::lingering::On::Player(chooser),
+        };
         state.lingering.push(crate::rules::lingering::LingeringEffect {
             what: crate::rules::lingering::Lingering::ChosenServer(server),
-            on: crate::rules::lingering::On::Player(chooser),
+            on,
             until,
             source: card,
         });

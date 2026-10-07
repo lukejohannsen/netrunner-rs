@@ -742,17 +742,18 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::TrashedFrom(places) = filter {
         return moment.trashed_from.is_some_and(|from| places.contains(&from));
     }
+    let listening = install;
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
-                && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, here), *install)
+                && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, listening, here), *install)
         }
         (EventFilter::InstalledCard(filter), About::Card { card, installed: true, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
         (EventFilter::Mark, About::Server(server)) => crate::rules::lingering::mark(state) == Some(*server),
-        (EventFilter::ChosenServer, About::Server(server)) => crate::rules::lingering::chosen_server(state, listener_card) == Some(*server),
+        (EventFilter::ChosenServer, About::Server(server)) => crate::rules::lingering::chosen_server(state, listener_card, install) == Some(*server),
         (EventFilter::ProtectedByIce, About::Server(server)) => {
             state.corp.installed.iter().any(|card| card.server == *server && card.slot == InstallSlot::Ice)
         }
@@ -768,7 +769,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
 /// and "protecting **the chosen server**" (Tsakhia, `InChosenServer`). A
 /// filter that names neither is returned borrowed, so the scan copies
 /// nothing for the cards that do not ask.
-fn placed<'f>(state: &GameState, filter: &'f crate::dsl::CardFilter, card: &CardId, here: Option<ServerId>) -> std::borrow::Cow<'f, crate::dsl::CardFilter> {
+fn placed<'f>(state: &GameState, filter: &'f crate::dsl::CardFilter, card: &CardId, install: Option<InstallId>, here: Option<ServerId>) -> std::borrow::Cow<'f, crate::dsl::CardFilter> {
     use crate::dsl::CardFilter;
     fn names_a_place(filter: &CardFilter) -> bool {
         match filter {
@@ -780,7 +781,7 @@ fn placed<'f>(state: &GameState, filter: &'f crate::dsl::CardFilter, card: &Card
     if !names_a_place(filter) {
         return std::borrow::Cow::Borrowed(filter);
     }
-    std::borrow::Cow::Owned(filter.clone().with_this_server(here).with_chosen_server(crate::rules::lingering::chosen_server(state, card)))
+    std::borrow::Cow::Owned(filter.clone().with_this_server(here).with_chosen_server(crate::rules::lingering::chosen_server(state, card, install)))
 }
 
 /// Whether `triggered`'s `when` admits the event a queued trigger carries —

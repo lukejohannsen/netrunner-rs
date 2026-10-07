@@ -20317,14 +20317,14 @@ mod parhelion {
         assert_eq!(options(&asked), Some(2), "you may choose a server");
         let (choosing, _) = choose(&asked, &registry, 0);
         let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
-        assert_eq!(crate::rules::lingering::chosen_server(&chosen, &id("tsakhia_bankhar_gantulga")), Some(ServerId::Hq));
+        assert_eq!(crate::rules::lingering::chosen_server(&chosen, &id("tsakhia_bankhar_gantulga"), Some(install_of(&chosen, "tsakhia_bankhar_gantulga"))), Some(ServerId::Hq));
         let (mut ready, _) = close_all_windows(chosen, &registry);
         ready.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
         let at_ice = encounter(&ready, &registry);
         let (done, _) = pass_until_settled(at_ice, &registry);
         assert_eq!(done.runner.grip.len(), 2, "1 net damage, instead of \"End the run.\"");
         assert!(done.active_run.is_none(), "the second Ice Wall ends the run");
-        assert_eq!(crate::rules::lingering::chosen_server(&done, &id("tsakhia_bankhar_gantulga")), None, "spent");
+        assert_eq!(crate::rules::lingering::chosen_server(&done, &id("tsakhia_bankhar_gantulga"), Some(install_of(&done, "tsakhia_bankhar_gantulga"))), None, "spent");
 
         let (declined, _) = choose(&asked, &registry, 1);
         let (mut ready, _) = close_all_windows(declined, &registry);
@@ -28250,5 +28250,90 @@ mod reprints {
             assert_eq!(answered.runner.heap.contains(&id("networking")), !back, "{answer:?}");
             assert_eq!(answered.runner.resources.credits, Credits(if back { 9 } else { 10 }));
         }
+    }
+
+    // ---- Stage 8b: a chosen server per copy, and a chosen subtype ----
+
+    fn successful_run_on(state: &GameState, registry: &CardRegistry, server: ServerId) -> (GameState, Vec<GameEvent>) {
+        let (running, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        let (succeeded, mut events) = apply_action(&running, registry, PlayerAction::CompleteRun).expect("successful");
+        let (settled, more) = pass_until_settled(succeeded, registry);
+        events.extend(more);
+        (settled, events)
+    }
+
+    #[test]
+    fn security_testing_gains_two_instead_of_the_first_breach_each_turn_of_the_chosen_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("security_testing", 0)];
+        state.corp.installed = vec![remote_root("pad_campaign", 1)];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (asked, _) = close_all_windows(state, &registry);
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("you may choose a server");
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(1) }).expect("the remote");
+        let (ready, _) = close_all_windows(chosen, &registry);
+        let before = ready.runner.resources.credits.0;
+
+        let (first, events) = successful_run_on(&ready, &registry, ServerId::Remote(1));
+        assert!(first.active_run.is_none(), "{events:?}");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "instead of breaching it");
+        assert_eq!(first.runner.resources.credits.0, before + 2);
+
+        let (second, events) = successful_run_on(&first, &registry, ServerId::Remote(1));
+        assert_eq!(second.runner.resources.credits.0, before + 2, "the first time each turn only");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "the second run breaches: {events:?}");
+
+        // A run on another server leaves the choice standing.
+        let (other, _) = successful_run_on(&ready, &registry, ServerId::Hq);
+        assert_eq!(crate::rules::lingering::chosen_server(&other, &id("security_testing"), Some(install_of(&other, "security_testing"))), Some(ServerId::Remote(1)));
+    }
+
+    #[test]
+    fn two_security_testings_each_keep_and_spend_their_own_chosen_server() {
+        use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        let registry = registry();
+        let mut state = runner_turn();
+        let (first, second) = (InstallId(7001), InstallId(7002));
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: first, ..rig("security_testing", 0) },
+            crate::rules::InstalledRunnerCard { install_id: second, ..rig("security_testing", 0) },
+        ];
+        for (install, server) in [(first, ServerId::Hq), (second, ServerId::RnD)] {
+            state.lingering.push(LingeringEffect { what: Lingering::ChosenServer(server), on: On::Install(install), until: Until::EndOfTurn(state.turn), source: id("security_testing") });
+        }
+        let before = state.runner.resources.credits.0;
+        let (after_hq, _) = successful_run_on(&state, &registry, ServerId::Hq);
+        assert_eq!(after_hq.runner.resources.credits.0, before + 2);
+        assert_eq!(crate::rules::lingering::chosen_server(&after_hq, &id("security_testing"), Some(first)), None, "spent");
+        assert_eq!(crate::rules::lingering::chosen_server(&after_hq, &id("security_testing"), Some(second)), Some(ServerId::RnD), "the other copy's stands");
+        let (after_rnd, _) = successful_run_on(&after_hq, &registry, ServerId::RnD);
+        assert_eq!(after_rnd.runner.resources.credits.0, before + 4);
+    }
+
+    #[test]
+    fn chameleon_breaks_only_the_chosen_subtype_and_returns_to_the_grip_as_the_discard_phase_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("chameleon")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("chameleon"), trash_first: false }).expect("install");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("code gate");
+        let (chosen, _) = close_all_windows(chosen, &registry);
+        assert_eq!(crate::rules::lingering::chosen_ice_type(&chosen, install_of(&chosen, "chameleon")), Some(crate::dsl::IceType::CodeGate));
+
+        let mut gate = chosen.clone();
+        gate.corp.installed = vec![ice_at_hq("enigma")];
+        let (broken, events) = use_ability(&encounter(&gate, &registry), &registry, "chameleon", 0).expect("1[credit]: break a code gate subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits.0, chosen.runner.resources.credits.0 - 1);
+        let mut wall = chosen.clone();
+        wall.corp.installed = vec![ice_at_hq("ice_wall")];
+        assert!(use_ability(&encounter(&wall, &registry), &registry, "chameleon", 0).is_err(), "a barrier is not the chosen subtype");
+
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&chosen), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.runner.rig.is_empty());
+        assert!(ended.runner.grip.contains(&id("chameleon")), "add this program to your grip");
     }
 }

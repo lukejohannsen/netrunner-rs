@@ -438,6 +438,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 }
                 // Engram Flush: the type its subroutines may trash.
                 (Lingering::ChosenCardType(card_type), _) => format!("the chosen card type is {}", format!("{card_type:?}").to_lowercase()),
+                (Lingering::ChosenIceType(ice_type), _) => format!("the chosen subtype is {}", crate::board::facts::ice_type_words(&[*ice_type])),
                 (Lingering::AllottedClicks(n), on) => {
                     let side = who(on, Side::Runner);
                     let clicks = n.unsigned_abs();
