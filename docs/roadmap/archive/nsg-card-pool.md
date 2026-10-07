@@ -9027,3 +9027,75 @@ and the Core Set at 40 of 113.
   grip for 1[credit], or stays in the heap.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 710 card files.
+
+#### Stage 8b — a chosen server per copy, and a chosen subtype (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Runner cards. **One new `Effect`,
+`SpendChosenServer`.** System Update 2021 is at 68 of 82.
+- **Cards from System Update 2021:** Security Testing and Chameleon.
+
+- **A chosen server is the copy's.** Tsakhia's "you may choose a server"
+  was remembered as the card's (`Lingering::ChosenServer`, about the
+  player, its card the `source`). Tsakhia is unique, and a lockdown's
+  choice lives on the copy in the play area. Security Testing is not
+  unique, so two copies keyed by card id would read one choice and spend
+  both.
+  - A choice made by an install is now about that install
+    (`On::Install`). `lingering::chosen_server` and
+    `spend_chosen_server` take the asking copy.
+  - The listener scan, a selection's "that server" and Tsakhia's
+    replacement pass their own install.
+  - A lockdown's choice stays the card's.
+- **Security Testing: the first successful run on the chosen server.**
+  - The trigger hears a successful run on the chosen server
+    (`EventFilter::ChosenServer`).
+  - It replaces the breach and spends the choice
+    (`Effect::SpendChosenServer`), the way Tsakhia's
+    `ReplaceSubroutines` spends Tsakhia's. A second run on that server
+    finds no choice.
+  - **Why not `first_each_turn`:** the turn log counts successful runs
+    by class, and the remotes are one class. The first successful run on
+    a chosen remote could not be told from the first on any remote.
+  - **Why not `OncePerTurn`:** the house rules keep that for a printed
+    "Once per turn →".
+- **A breach replaced can be the attacked server's.**
+  `SetAccessReplacement::server` is optional, and none means the
+  attacked server, read as the replacement is made. Security Testing's
+  chosen server may be a remote, which no card file can name. A run
+  event that chooses its server still writes it in
+  (`substitute_chosen_server`).
+- **Chameleon: a remembered ice subtype.**
+  - "Choose barrier, code gate, or sentry" is a `PresentChoice` of three
+    `Remember { what: IceType(..), until: WhileInstalled }`
+    (`Lingering::ChosenIceType`, `lingering::chosen_ice_type`).
+  - The break is an unrestricted `BreakSubroutines` under
+    `EffectRequirement::EncounteringChosenIceType`, asked the way
+    `Encountering` is, so a subtype gained counts.
+  - "When your discard phase ends, add this program to your grip" is
+    `OnDiscardPhaseEnd` with `AddToHand`.
+- **Decks.**
+  - Encore takes two Security Testing for its two Debbie “Downtown”
+    Moreira, a resource for a resource; three other decks keep Debbie.
+  - Safety Net takes two Chameleon for its two Euler, an icebreaker for
+    an icebreaker; two other decks keep Euler.
+  - Both decks were already Eternal and Casual.
+- **Client.** The chosen subtype has its line on the board's list of
+  what is in effect ("the chosen subtype is code gate"), and both new
+  words have their engine reading. Nothing new reaches the view: a
+  lingering effect already does.
+- **Tests.** Three new tests.
+  - Security Testing chooses a remote as the turn begins, and gains
+    2[credit] instead of the first breach there. The second run breaches
+    normally. A run on HQ leaves the choice standing.
+  - Two copies each keep and spend their own server.
+  - Chameleon chooses code gate, breaks Enigma and not Ice Wall, and
+    returns to the grip as the discard phase ends.
+  - Tsakhia's test reads its choice by its copy.
+  - The client's run-trail test met a Virtuoso in Encore's new
+    trajectories: "breach HQ when the run ends" begins a breach with no
+    run in the action that completes the run, so the view's run slot is
+    filled while the trail has its outcome. A breach with no run is not
+    a run the trail follows, and the test now says so.
+- **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
+  single-use, none unused, over 712 card files. The one added is
+  `SpendChosenServer`, with its reason on the variant.
