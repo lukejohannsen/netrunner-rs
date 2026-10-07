@@ -1010,6 +1010,15 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::TriggerFired { card, trigger } if concealed(card) => {
             (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
         }
+        // The order a trigger was put in names its card as firing does,
+        // so it is withheld from whoever the card is concealed from, and
+        // dropped whole for the same reason. It passed unmasked, and named
+        // Lycian Multi-Munition to a spectator in the entry where its own
+        // "when your discard phase ends, derez this ice" turned it face
+        // down (the view sweep at 256 seeds, seed 92) — and would name a
+        // face-down card to the Runner whenever the Corp ordered its
+        // trigger beside another.
+        GameEvent::TriggerOrderChosen { card, .. } if concealed(card) => None,
         // A facedown card can ask for credits — an ambush accessed in HQ
         // (Esca) or in its root (Cerebral Overwriter) — and the credits are
         // in the log beside this; which card asked is withheld from whoever
@@ -1710,6 +1719,24 @@ mod tests {
         let accessed = GameEvent::AbilityTookCredits { side: Side::Runner, card: CardId("esca".to_string()) };
         assert_eq!(mask_event_for_player(&accessed, &in_hq, Viewer::Spectator), None);
         assert_eq!(mask_event_for_player(&accessed, &in_hq, Side::Corp), Some(accessed.clone()));
+    }
+
+    /// The order the Corp put a trigger in names the card only to whoever
+    /// may see it: the Corp always, the Runner once they have seen it, and
+    /// a spectator never while it is face down (the view sweep, seed 92).
+    #[test]
+    fn a_chosen_trigger_order_names_no_card_it_conceals() {
+        let mut corp = corp_state_with_cards();
+        let chosen = GameEvent::TriggerOrderChosen { chooser: Side::Corp, card: CardId("ice_wall".to_string()), trigger: crate::dsl::Trigger::OnDiscardPhaseEnd };
+        let state = game_state(corp.clone());
+        assert_eq!(mask_event_for_player(&chosen, &state, Side::Corp), Some(chosen.clone()));
+        assert_eq!(mask_event_for_player(&chosen, &state, Side::Runner), None, "never seen");
+        assert_eq!(mask_event_for_player(&chosen, &state, Viewer::Spectator), None);
+
+        corp.installed[0].seen_by_runner = true;
+        let seen = game_state(corp);
+        assert_eq!(mask_event_for_player(&chosen, &seen, Side::Runner), Some(chosen.clone()), "watched rezzed, then derezzed");
+        assert_eq!(mask_event_for_player(&chosen, &seen, Viewer::Spectator), None, "a spectator saw only the table");
     }
 
     /// A trigger-order prompt is the Corp's, and each entry carries the
