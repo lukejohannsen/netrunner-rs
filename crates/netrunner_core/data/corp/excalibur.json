@@ -1,0 +1,24 @@
+{
+  "id": "excalibur",
+  "title": "Excalibur",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner cannot make another run this turn.",
+      "effect": {
+        "Prohibit": {
+          "what": "Run",
+          "until": "Turn"
+        }
+      }
+    }
+  ],
+  "built_from": 29017,
+  "is_playable": true
+}

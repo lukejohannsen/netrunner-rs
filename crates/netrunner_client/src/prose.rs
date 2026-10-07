@@ -535,6 +535,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
                 (Prohibition::EndTheRun, _) => "subroutines cannot end the run",
                 (Prohibition::RunOnRemote, _) => "the Runner cannot run on a remote server",
+                (Prohibition::Run, _) => "the Runner cannot make another run",
                 (Prohibition::AccessOthers, _) => "the Runner cannot access cards other than this card",
                 (Prohibition::Access, _) => "the Runner cannot access this card",
                 (Prohibition::BreakSubroutines, _) if *this_install => "that card's abilities cannot break subroutines",
@@ -878,6 +879,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             subtype.printed().to_lowercase()
         ),
         ContinuousKind::CannotBeBrokenUsing(subtype) => format!("its subroutines cannot be broken using {} programs", subtype.printed()),
+        ContinuousKind::StrengthCannotBeLowered => "its strength cannot be lowered".to_string(),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",
@@ -888,6 +890,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::EndTheRun => "cannot end the run with a subroutine",
             Prohibition::RunOnRemote if effect.first_each_turn => "cannot make the first run each turn on a remote server",
             Prohibition::RunOnRemote => "cannot run on a remote server",
+            Prohibition::Run => "cannot make another run",
             Prohibition::AccessOthers => "cannot access cards other than this card",
             Prohibition::Access => "cannot access this card",
             Prohibition::BreakSubroutines => "cannot break subroutines",

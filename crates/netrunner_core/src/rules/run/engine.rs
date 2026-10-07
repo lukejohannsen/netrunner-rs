@@ -82,7 +82,7 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
 /// Errors surface through `legal_actions`' `apply_action` probe, so an
 /// ability that can't legally run right now simply isn't offered.
 /// Found by `no_panics_or_deadlocks_across_many_seeds_system_gateway`.
-pub(crate) fn check_run_may_begin(state: &GameState) -> Result<(), RulesError> {
+pub(crate) fn check_run_may_begin(state: &GameState, registry: &CardRegistry) -> Result<(), RulesError> {
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
@@ -92,6 +92,11 @@ pub(crate) fn check_run_may_begin(state: &GameState) -> Result<(), RulesError> {
     );
     if state.phase != GamePhase::Action(Side::Runner) || ending_turn {
         return Err(RulesError::RunNotPermittedNow { phase: state.phase });
+    }
+    // Excalibur's "The Runner cannot make another run this turn": here,
+    // where both doors to a run ask, so neither offers one.
+    if crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::Run) {
+        return Err(RulesError::RunsProhibited);
     }
     Ok(())
 }
@@ -107,7 +112,7 @@ mod run_precondition_tests {
 
     #[test]
     fn a_run_may_begin_in_the_runners_action_phase() {
-        assert_eq!(check_run_may_begin(&runner_action_phase()), Ok(()));
+        assert_eq!(check_run_may_begin(&runner_action_phase(), &CardRegistry::default()), Ok(()));
     }
 
     /// The deadlock this precondition exists for. *Red Team*'s
@@ -128,7 +133,7 @@ mod run_precondition_tests {
         });
 
         assert_eq!(
-            check_run_may_begin(&state),
+            check_run_may_begin(&state, &CardRegistry::default()),
             Err(RulesError::RunNotPermittedNow { phase: GamePhase::Action(Side::Runner) })
         );
     }
@@ -140,7 +145,7 @@ mod run_precondition_tests {
         let state = GameState { phase: GamePhase::StartOfTurn(Side::Runner), ..Default::default() };
 
         assert_eq!(
-            check_run_may_begin(&state),
+            check_run_may_begin(&state, &CardRegistry::default()),
             Err(RulesError::RunNotPermittedNow { phase: GamePhase::StartOfTurn(Side::Runner) })
         );
     }
@@ -149,7 +154,7 @@ mod run_precondition_tests {
     fn a_run_may_not_begin_during_the_corps_turn() {
         let state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
 
-        assert!(matches!(check_run_may_begin(&state), Err(RulesError::RunNotPermittedNow { .. })));
+        assert!(matches!(check_run_may_begin(&state, &CardRegistry::default()), Err(RulesError::RunNotPermittedNow { .. })));
     }
 }
 
@@ -208,7 +213,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
             state.paid_ability_window = None;
         }
     }
-    check_run_may_begin(state)?;
+    check_run_may_begin(state, registry)?;
     // "The first run each turn cannot be made against a remote server"
     // (Front Company), asked as the server is announced (CR 6.3.2a) —
     // here, so a run a card's text makes is refused as the basic action's

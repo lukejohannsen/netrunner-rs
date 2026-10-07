@@ -8777,3 +8777,48 @@ no new word: one event carries a number it was dropping. System Update
   agenda counters) and at exactly 3 (none).
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 697 card files.
+
+#### Stage 7a — no more runs, and a strength that cannot be lowered (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: three Corp cards. **No new `Effect`.** One
+`Prohibition` and one `ContinuousKind`. System Update 2021 is at 57 of
+82 and Salvaged Memories at 15 of 18; the Core Set has 37 of 113 built.
+- **Cards from System Update 2021:** Lotus Field and Crisium Grid.
+- **Cards from Salvaged Memories:** Excalibur.
+
+- **Excalibur: the Runner can be kept from making another run.**
+  - Its subroutine reads "The Runner cannot make another run this turn".
+    That is `Prohibit { what: Run, until: Turn }`.
+  - `Prohibition::Run` is asked in `run::check_run_may_begin`, which both
+    doors to a run share: the basic action and a card's text (Red Team's
+    server choice). It now takes the registry, and refuses with
+    `RulesError::RunsProhibited`. The action list's probe then offers no
+    run.
+  - "Another" needs no word of its own: the run under way has begun, and
+    nothing asks again.
+- **Lotus Field: a strength that cannot be lowered.**
+  - The card reads "The strength of this ice cannot be lowered". That is
+    `ContinuousKind::StrengthCannotBeLowered` on `This`, ice only.
+  - `continuous::installed_ice_strength` is the one question a strength is
+    put to. On such ice it counts each term, standing or lingering, only
+    if it raises: a raise beside a lowering still raises, and the lowering
+    does nothing to this ice (CR 1.2.2). `lingering::ice_strength_terms`
+    gives the lingering terms one at a time for it.
+  - **Why not a `Strength` of the opposite sign:** that would be a raise,
+    not a floor.
+- **Crisium Grid** is Flagship's first line, `CannotBeDeclaredSuccessful`
+  on `RunsOnThisServer`. Its region subtype comes from the catalog, so the
+  limit of one region per server is already the install's.
+- **Moved to stage 7b:** Tollbooth ("must pay 3[credit], if able" is a
+  payment, not an offer, and no word says it yet) and Punitive
+  Counterstrike (the printed points stolen last turn, which the turn log
+  does not sum).
+- **Decks: three swaps,** each in its deck's faction or neutral. Every
+  card given up is still in another deck.
+  - Permafrost: two Lotus Field for two Knowledge Seeker.
+  - Hostile Bid: two Crisium Grid for two Cayambe Grid.
+  - Tag, You're It: two Excalibur for two Palisade.
+- **Tests.** Three new tests. Excalibur's checks the run under way goes
+  on, the next run is refused and not offered, and the next turn is free.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 700 card files.
