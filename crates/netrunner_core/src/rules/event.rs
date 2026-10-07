@@ -632,6 +632,12 @@ pub enum GameEvent {
     /// 7.3.2), once per breach — Nurse Hạnh's "whenever 2 or more facedown
     /// cards in Archives are turned faceup". Never emitted for none.
     ArchivesTurnedFaceup { count: u32 },
+    /// A remote server was created (CR 8.5.16e) — the install whose card is
+    /// the first in its root or protecting it, emitted just before that
+    /// install's `CardInstalled`. What `Trigger::OnServerCreated` hears
+    /// (Turtlebacks, Near-Earth Hub). Public: the new server is on the
+    /// table for both players.
+    ServerCreated { server: ServerId },
     /// `side` looked at `cards`, the top of `deck`'s owner's deck, top
     /// first (`Effect::LookAtTopOfDeck`). Shown to `side` alone
     /// (`masking::mask_event_for_player`): a look is not a reveal, and the
@@ -817,7 +823,7 @@ impl GameEvent {
             | GameEvent::TriggerFired { .. } | GameEvent::VirusCountersPurged { .. }
             | GameEvent::PaymentChoiceOffered { .. }
             | GameEvent::BadPublicityCreditsSpent { .. } | GameEvent::BonusRunCreditsSpent { .. }
-            | GameEvent::CreditsSpentFromOutsidePool { .. } | GameEvent::ArchivesTurnedFaceup { .. }
+            | GameEvent::CreditsSpentFromOutsidePool { .. } | GameEvent::ArchivesTurnedFaceup { .. } | GameEvent::ServerCreated { .. }
             | GameEvent::CardsSelected { .. } | GameEvent::PendingCardSelectionOffered { .. }
             | GameEvent::MemoryLimitExceeded { .. } | GameEvent::PendingServerChoiceOffered { .. }
             | GameEvent::BadPublicityGiven { .. } | GameEvent::BadPublicityRemoved { .. }

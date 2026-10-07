@@ -1164,6 +1164,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::BonusRunCreditsSpent { .. }
         | GameEvent::CreditsSpentFromOutsidePool { .. }
         | GameEvent::ArchivesTurnedFaceup { .. }
+        | GameEvent::ServerCreated { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }
         | GameEvent::BadPublicityGiven { .. }

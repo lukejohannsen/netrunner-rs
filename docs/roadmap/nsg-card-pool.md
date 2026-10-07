@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 37, 6, 3, 31 | 45, 12, 3, — | in progress: Stages 1a–3 (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 40, 8, 3, 31 | 42, 10, 3, — | in progress: Stages 1a–4 (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **13 of 105
-`Effect` variants single-use, none unused, over 671 card files** (7 October
-2026, with tranche 8 Stage 3, which added no variant; Stage 2, at 13 of 105
+`Effect` variants single-use, none unused, over 676 card files** (7 October
+2026, with tranche 8 Stage 4, which added no variant; Stage 3, at 13 of 105
+over 671, added none; Stage 2, at 13 of 105
 over 664, added none; Stage 1b, at 13 of 105
 over 656, added none; Stage 1a, at 13 of 105
 over 648, added none; Downfall Stage 8, at
@@ -1119,6 +1120,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 1b** — eight more Runner cards across the three reprint packs, composed, with no new `Effect` and no change to the engine (Cache, Lucky Find, Prepaid VoicePAD, Indexing, Retrieval Run, Labor Rights, Aesop’s Pawnshop, Emergency Shutdown) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
 - **Stage 2** — eight Corp ice and upgrades, composed, with no new `Effect` and no change to the engine (Rototurret, Eli 1.0, Wraparound, Pop-up Window, Archer, Border Control, Hokusai Grid, Embolus) (`claude/nsg-tranche-8-qmn4v7`, 6 October 2026).
 - **Stage 3** — seven Corp agendas, operations and assets, composed, with no new `Effect` and no change to the engine (House of Knives, License Acquisition, Sweeps Week, Celebrity Gift, Reversed Accounts, Ronin, Corporate Town) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 4** — five cards and two Sweep decks, Express Delivery (Ken "Express" Tenma) and Broadcast Hour (Near-Earth Hub), with no new `Effect`: a remote server's creation is a moment (`Trigger::OnServerCreated`, CR 8.5.16e), and another card can forbid the score of an agenda installed this turn (Ken “Express” Tenma, Near-Earth Hub, Turtlebacks, Hostile Infrastructure, Clot) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1144,8 +1146,8 @@ nine by kind):
    agenda's advancement counters past 3, which nothing remembers once it
    leaves the table) and Timely Public Release to stage 7 (an install of
    ice "in any position").
-4. Trigger words: Ken “Express” Tenma, Near-Earth Hub, Turtlebacks,
-   Hostile Infrastructure, Clot.
+4. Trigger words: **closed**, five cards (Ken “Express” Tenma, Near-Earth
+   Hub, Turtlebacks, Hostile Infrastructure, Clot).
 5. Breaker and ice words: Quetzal, Abagnale, Atman, Swordsman, Hortum,
    Rielle “Kit” Peddler, NEXT Bronze, Parasite.
 6. Amounts and effects.

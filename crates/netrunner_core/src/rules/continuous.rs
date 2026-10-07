@@ -843,6 +843,14 @@ pub fn cannot_install(state: &GameState, registry: &CardRegistry, what: Prohibit
         // the copy, whose `while` asks whether it was.
         || Target::corp_install(state, registry, install)
             .is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::Cannot(what)))
+        // What another card says about an agenda being scored (Clot's "The
+        // Corp cannot score an agenda during the same turn they installed
+        // that agenda"), asked of the install as `score_costs` asks it, so
+        // the filter's instance word is read off that copy.
+        || (what == Prohibition::ScoreAgendas
+            && state.find_corp_install(install).and_then(|installed| registry.get(&installed.card)).is_some_and(|card| {
+                any(state, registry, Target::Scoring { card, install }, |kind| *kind == ContinuousKind::Cannot(Prohibition::ScoreAgendas))
+            }))
 }
 
 /// What the table adds to the cost of trashing the accessed Corp card

@@ -542,6 +542,11 @@ mod tests {
             // Downfall Stage 8: MirrorMorph's deck, on Retirement Package's
             // frame, whose Core Set cards keep it out of Standard.
             ("endless_loop", &neither),
+            // Tranche 8 Stage 4: Ken "Express" Tenma's deck, on Encore's
+            // frame, and Near-Earth Hub's, on Pay to Win's. Both identities
+            // are System Update 2021's, which is in no current pool.
+            ("express_delivery", &neither),
+            ("broadcast_hour", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

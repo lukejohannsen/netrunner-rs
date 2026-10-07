@@ -1,0 +1,26 @@
+{
+  "id": "near_earth_hub_broadcast_center",
+  "title": "Near-Earth Hub: Broadcast Center",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnServerCreated",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you create a remote server, draw 1 card."
+    }
+  ],
+  "built_from": 31060,
+  "is_playable": true
+}

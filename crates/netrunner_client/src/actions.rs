@@ -634,6 +634,7 @@ pub fn narrate_event(
         GameEvent::GameOver { winner } => format!("the game is over: {winner:?} wins"),
         GameEvent::IdentityFlipped { side } => format!("{side:?}'s identity flipped"),
         GameEvent::MarkIdentified { server } => format!("{} became the Runner's mark for this turn", server_name(*server)),
+        GameEvent::ServerCreated { server } => format!("created {}", server_name(*server)),
         GameEvent::MemoryLimitExceeded { over_by } => format!("the Runner is {over_by} MU over the limit"),
 
         // Not narrated: the entry's action line already carries these, or

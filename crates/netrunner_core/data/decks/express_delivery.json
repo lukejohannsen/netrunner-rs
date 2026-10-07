@@ -1,0 +1,101 @@
+{
+  "id": "express_delivery",
+  "name": "Express Delivery",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Ken “Express” Tenma: Disappeared Clone, System Update 2021's Criminal identity, who gains a credit the first time each turn he plays a run event. On Encore's frame, its identity swapped, since Encore plays twelve run events: Carpe Diem, Reprise, Pinhole Threading, Legwork and Dirty Laundry. Two Clot for its two The Price, an Anarch virus that forbids the Corp to score an agenda the turn it was installed and is trashed by a purge, at the same four influence; Encore and Moonlighting keep The Price. Tranche 8 Stage 4.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "ken_express_tenma_disappeared_clone",
+  "cards": [
+    {
+      "card": "carpe_diem",
+      "count": 3
+    },
+    {
+      "card": "backstitching",
+      "count": 3
+    },
+    {
+      "card": "virtuoso",
+      "count": 2
+    },
+    {
+      "card": "tunnel_vision",
+      "count": 2
+    },
+    {
+      "card": "info_bounty",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 1
+    },
+    {
+      "card": "reprise",
+      "count": 2
+    },
+    {
+      "card": "career_fair",
+      "count": 2
+    },
+    {
+      "card": "bukhgalter",
+      "count": 2
+    },
+    {
+      "card": "earthrise_hotel",
+      "count": 2
+    },
+    {
+      "card": "clot",
+      "count": 2
+    },
+    {
+      "card": "chrysopoeian_skimming",
+      "count": 1
+    },
+    {
+      "card": "debbie_downtown_moreira",
+      "count": 2
+    },
+    {
+      "card": "whistleblower",
+      "count": 2
+    },
+    {
+      "card": "capybara",
+      "count": 2
+    },
+    {
+      "card": "pinhole_threading",
+      "count": 3
+    },
+    {
+      "card": "makler",
+      "count": 2
+    },
+    {
+      "card": "legwork",
+      "count": 2
+    },
+    {
+      "card": "dirty_laundry",
+      "count": 2
+    },
+    {
+      "card": "abagnale",
+      "count": 2
+    },
+    {
+      "card": "cache",
+      "count": 2
+    },
+    {
+      "card": "emergency_shutdown",
+      "count": 2
+    }
+  ]
+}

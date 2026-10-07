@@ -8479,3 +8479,71 @@ Memories 6 of 18, the Magnum Opus Reprint 3 of 6; `SU21_UNIMPLEMENTED`
   edited deck was already pinned outside Standard and Startup.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 671 card files.
+
+#### Stage 4 — trigger words: a server created, a score forbidden by another card (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Ken “Express” Tenma, Near-Earth Hub and
+Clot from System Update 2021, and Turtlebacks and Hostile Infrastructure
+from Salvaged Memories. **No new `Effect`; one new `Trigger` and one new
+`GameEvent`.** System Update 2021 40 of 82, Salvaged Memories 8 of 18, the
+Magnum Opus Reprint 3 of 6; `SU21_UNIMPLEMENTED` 45 → 42,
+`SM_UNIMPLEMENTED` 12 → 10.
+
+- **A server's creation is a moment** (`Trigger::OnServerCreated`,
+  `GameEvent::ServerCreated`). CR 8.5.16e: "If the card is to be the first
+  card in the root of or protecting a new remote server, that server is
+  created." Turtlebacks hears it every time and Near-Earth Hub the first
+  time each turn. Both places a Corp card is installed
+  (`engine::place_corp_card` and `InstallFromZoneIgnoringCost`) emit it
+  just before the install's `CardInstalled`, when the destination is a
+  remote nothing is installed in (`engine::creates_server`).
+  - It is asked before 8.5.16c's trash. An install over the only card of a
+    remote leaves a remote of one card, and that server was not created.
+  - **Why not a `when` on `OnInstall`:** whether the server is new is not
+    a fact of the card, and the state no longer holds it after the
+    install.
+  - A moment of its own is also what lets "the first time each turn"
+    count creations rather than installs: the turn log counts by
+    trigger.
+  - It is about the server, heard by the Corp (CR 4.6.8b: only the Corp
+    creates one), and public in the view and the log. The log reads
+    "created Remote 1".
+- **Another card can forbid a score.** Clot's "The Corp cannot score an
+  agenda during the same turn they installed that agenda" is
+  `Cannot(ScoreAgendas)` about `Scoring(InstalledThisTurn)`, Word on the
+  Street's scope.
+  - `continuous::cannot_install` now asks that scope of the agenda being
+    scored, beside the agenda's own word (Vulnerability Audit).
+  - The score action, its probe in the action list and `Effect::Score`
+    all go through `cannot_install`, so none can disagree.
+  - `validate` admits `Cannot(ScoreAgendas)` on a `Scoring` scope and
+    refuses every other prohibition there.
+- **What the rest is made of.**
+  - Ken is Swift's first run event, as `first_each_turn` on
+    `OnCardPlayed`.
+  - Hostile Infrastructure is Solidarity Badge's two triggers (a trash on
+    access, and the Runner's `OnCardTrashed` of a Corp card) without its
+    first time. It hears its own trash while it was rezzed, as Hostile
+    Architecture does.
+  - Clot's purge is Physarum Entangler's.
+- **A false alarm in the fog check.** Two new decks re-dealt the
+  sweep's pairings. At seed 5 the check flagged a card name chosen aloud
+  (Whistleblower) because the card was in HQ. A name both players heard is
+  not a card shown, so the check now counts it as visible. Seed 7 found the
+  trigger-order leak #376 fixed on main at the same time.
+- **Fidelity limits:** Hostile Architecture's, unchanged — a rezzed card
+  trashed by the Runner's card text does not hear its own trash
+  (`CardTrashed` does not carry the rez state).
+- **Client.** Nothing added to the view. The log has one new line, and the
+  card inspector words the trigger from its name.
+- **Decks.** Two new Sweep decks, both pinned `neither`, since System
+  Update 2021 is in no current pool:
+  - **Express Delivery** is Encore's frame under Ken: its twelve run
+    events, and two Clot for its two The Price at the same four influence.
+    Encore and Moonlighting keep The Price.
+  - **Broadcast Hour** is Pay to Win's frame under Near-Earth Hub: two
+    Turtlebacks for its two Drago Ivanov, and two Hostile Infrastructure
+    for its two Chekist Scion, at ten influence of seventeen. Pay to Win
+    keeps both cards given up.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 676 card files.

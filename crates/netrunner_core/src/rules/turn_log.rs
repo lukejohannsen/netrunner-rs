@@ -341,6 +341,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnRunEnded
         | Trigger::OnCreditsSpentOutsidePool
         | Trigger::OnArchivesTurnedFaceup
+        | Trigger::OnServerCreated
         | Trigger::OnTurnStart
         | Trigger::OnActionPhaseEnd
         | Trigger::OnDiscardPhaseEnd

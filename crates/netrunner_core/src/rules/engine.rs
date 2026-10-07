@@ -887,6 +887,10 @@ pub(crate) fn place_corp_card(
     // with `trash_first` whatever else the Corp picks. The second region
     // was refused until Rules Conformance B, and the agenda-or-asset
     // install-over was the only trash an install made.
+    // Asked before anything is trashed: an install over the only card of
+    // a remote leaves a remote of one card, and that server was not
+    // created (CR 8.5.16e).
+    let creates = creates_server(next, zone);
     let mut events = crate::rules::install_trash::before_corp_install(next, registry, &card_id, card_def, zone, slot, trash_first)?;
     // Installing costs the Corp nothing for an agenda, asset or upgrade,
     // and 1[c] per piece of ICE already protecting the server for ICE —
@@ -934,6 +938,9 @@ pub(crate) fn place_corp_card(
         Some(index) => next.corp.installed.insert(index, new_card),
         None => next.corp.installed.push(new_card),
     }
+    if creates {
+        dispatcher::emit(next, registry, &mut events, GameEvent::ServerCreated { server: zone })?;
+    }
     let installed_event = GameEvent::CardInstalled {
         side,
         install: install_id,
@@ -949,6 +956,15 @@ pub(crate) fn place_corp_card(
     dispatcher::emit(next, registry, &mut events, installed_event)?;
 
     Ok(events)
+}
+
+/// Whether a card installed into `zone` now would create it (CR 8.5.16e:
+/// "If the card is to be the first card in the root of or protecting a new
+/// remote server, that server is created") — a remote nothing is installed
+/// in. Asked before the install, by each place a Corp card is installed,
+/// which then emits `GameEvent::ServerCreated` (Turtlebacks).
+pub(crate) fn creates_server(state: &GameState, zone: TargetZone) -> bool {
+    matches!(zone, ServerId::Remote(_)) && !state.corp.installed.iter().any(|installed| installed.server == zone)
 }
 
 /// Every server `card_def` could legally and affordably be installed into
