@@ -1,0 +1,26 @@
+{
+  "id": "sweeps_week",
+  "title": "Sweeps Week",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "CardsInHand": "Runner"
+            }
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] for each card in the Runner's grip."
+    }
+  ],
+  "built_from": 29013,
+  "is_playable": true
+}

@@ -1,0 +1,39 @@
+{
+  "id": "corporate_town",
+  "title": "Corporate Town",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 5,
+  "rez_alternatives": [
+    {
+      "cost": {
+        "Forfeit": 1
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentInstalled",
+            "filter": {
+              "CardType": "Resource"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash 1 installed resource. Trashing a resource this way cannot be prevented."
+    }
+  ],
+  "built_from": 31074,
+  "is_playable": true
+}
