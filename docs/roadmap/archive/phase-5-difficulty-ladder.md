@@ -3433,3 +3433,41 @@ Test: `a_stripped_board_late_in_a_game_is_not_early` (HQ bare is early on turn 1
 - `coverage_identical.py main`: both random shapes identical (`66ec5f5d…`); both planner shapes moved, to one hash (`dc7c4489…` → `2c430dfb…`).
 
 **Verified.** `cargo test --workspace` green (2,750), clippy silent, both 256-seed sweeps green in release.
+
+
+## 47. The ladders after §44: the Corp's steps are still even, the Runner's are not, and the trash-first payment search is exponential in the ice on the server — DONE, measurement only (`diag/ladders-after-44`, 6 October 2026)
+
+**The question §44 left.** One ply took the free rezzes and installs a "may" offers the Corp, which moved the planner's self-pairing +0.052 / +0.078 toward the Corp, and every rung is that planner at an `epsilon`. The steps were spaced on the bot before it (§25 Stage 8), and the pool has grown since (the Standard tournament lists, tranche 8's first Runner cards).
+
+**The ladders, re-taken** the way Stage 8 took them: the full 5 × 5 per chair, 384 games a cell on each of two seeds, every seat in its deck's own style, each rung against the un-handicapped planner on the other chair (`bench --bots level:novice,level:apprentice,level:operator,level:veteran,level:elite --games 384 --deck-styles`, `ladder_report.py --reference level:elite`), on a pinned binary of `main` at `0a1cb81`. Reports in `target/coverage/ladder44/`.
+
+| rung (ε Corp / Runner) | Corp, seed 1 / 2 | Runner, seed 1 / 2 | Stage 8 Corp | Stage 8 Runner |
+|---|---|---|---|---|
+| novice (1.00 / 1.00) | 0.013 / 0.016 | 0.036 / 0.034 | 0.018 / 0.008 | 0.034 / 0.039 |
+| apprentice (0.22 / 0.45) | 0.156 / 0.128 | 0.107 / 0.094 | 0.143 / 0.122 | 0.188 / 0.188 |
+| operator (0.11 / 0.25) | 0.273 / 0.284 | 0.188 / 0.206 | 0.224 / 0.224 | 0.344 / 0.320 |
+| veteran (0.05 / 0.10) | 0.440 / 0.440 | 0.333 / 0.396 | 0.315 / 0.328 | 0.435 / 0.424 |
+| elite (0.00 / 0.00) | **0.570 / 0.547** | **0.430 / 0.453** | 0.401 / 0.469 | 0.599 / 0.531 |
+
+- **The reference moved toward the Corp:** elite against elite, the Corp wins 0.570 / 0.547 where it won 0.401 / 0.469. What moved it is not measured here — §44's stronger Corp, §45 and §46, and the pool's growth all fall between the two tables — and no cause is claimed.
+- **The Corp's ladder is still even:** steps +0.143 / +0.117 / +0.167 / +0.130 (seed 1) and +0.112 / +0.156 / +0.156 / +0.107 (seed 2), every one a rise at 3.0 sd or more and within 0.05 of an even step on its seed. §21's handicaps stand.
+- **The Runner's is not:** steps +0.070 / +0.081 / **+0.146** / +0.096 and +0.060 / +0.112 / **+0.190** / **+0.057**. `operator → veteran` is 0.05 and 0.09 above an even step, and `veteran → elite` on seed 2 is +0.057 at sd 0.036 — 1.6 sd, short of Stage 8's 2.6. Interpolating each seed's measured curve for four even steps gives ε ≈ 0.38 / 0.20 / 0.10 (seed 1) and 0.37 / 0.22 / 0.14 (seed 2): **about 0.37 / 0.21 / 0.12** in place of 0.45 / 0.25 / 0.10. The re-spacing, and its re-take, is owed (Open).
+
+**Cost.** A seed of the 5 × 5 took 3,754 s alone on 20 threads (seed 2), where Stage 8's took 1,866–2,191 s; seed 1's 6,307 s shared the machine with the measurement below. Not attributed.
+
+**The trash-first payment search, measured** (§43's note: "ten pieces of ice on a server is 11¹⁰ orders, and a scratch build's game never finished"). A Corp ICE install that trashes first over a server holding *n* pieces is answered one pick at a time (`payment::Ask::Install`), and both the planner's `answer_payment` and the evaluator's `fundamentals::through_parked_payment` walk every order of every subset. A scratch test (not committed) parked the payment over *n* walls on HQ and timed both, and one whole `select_action` from the action phase:
+
+| ICE on the server | applications | `answer_payment` | evaluator | `select_action` |
+|---|---|---|---|---|
+| 5 | 530 | 0.05 s | 0.12 s | 0.30 s |
+| 6 | 3,192 | 0.50 s | 0.35 s | 0.35 s |
+| 7 | 22,358 | 3.4 s | 3.9 s | 3.1 s |
+| 8 | 178,880 | 30 s | 30 s | 29 s |
+| 9 | 1,609,938 | 293 s | 287 s | 306 s |
+| 10 | 16,099,400 | ≈ 49 min, not run | | |
+
+The count is exact — a(n) = n·a(n−1) + 2n, every subset in every order — and the ninth row was predicted before it was run; the tenth is that count at the measured ≈ 180 µs an application. `PLAN_BUDGET` (2,500) does not bound it: the budget is checked between the beam's nodes, and the payment's recursion is inside one.
+
+**How far real play gets** (a scratch counter on every first trash-first pick, the same binary otherwise; `diag precepts --deck-styles`, 391 planner games over the Casual pool, seed 1, sharing the machine with the ladder): **324,112 questions**, by candidates 2: 250,000, 3: 56,124, 4: 13,491, 5: 4,445, 6: 46, **7: 6** — the six at 10.6–17.1 s each; none at 8 or more, so no game stalled. All but 55 were the planner's own `answer_payment` (the evaluator's 55 were at 5 candidates or fewer). Answering them took **2,737 of about 10,400 thread-seconds, about a quarter of the pass**, most of it in the small questions (2 candidates: 829 s).
+
+**Verified.** No code changed; the tree is `main`'s.
