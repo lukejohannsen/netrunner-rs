@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 70, 15, 4, 42 | 12, 3, 2, — | in progress: Stages 1a–8c (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 71, 15, 4, 42 | 11, 3, 2, — | in progress: Stages 1a–9a (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 106
-`Effect` variants single-use, none unused, over 714 card files** (7 October
-2026, with tranche 8 Stage 8c, which added none; Stage 8b, at 14 of 106
+`Effect` variants single-use, none unused, over 715 card files** (7 October
+2026, with tranche 8 Stage 9a, which added none; Stage 8c, at 14 of 106
+over 714, added none; Stage 8b, at 14 of 106
 over 712, added one, `SpendChosenServer`, used
 by Security Testing alone; Stage 8a, at 13 of 105 over 710, added none;
 Stage 7d, at 13 of
@@ -1144,6 +1145,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 8a** — four Runner cards, composed, with no new `Effect` and no change to the engine: a run event's first ice bypassed, a chosen ice bypassed for a credit a subroutine, a program found in either pile and stacked as the turn ends, and an event bought back into the grip (Inside Job, Femme Fatale, Test Run, Networking) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 8b** — two Runner cards and one new `Effect`: a chosen server is the copy's that chose it, spent by the first successful run on it (`SpendChosenServer`); a breach replaced can be the attacked server's; and a card can remember an ice subtype it chose (Security Testing, Chameleon) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 8c** — two Corp cards with no new `Effect`: an operation can cost X to play, chosen before it is paid and written into its own resolution (`GameEvent::OperationPlayed::x`), and an upgrade's X[credit] trash gives a piece of ice of its server +X strength for the turn (Corporate Troubleshooter, Psychographics) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
+- **Stage 9a** — one Corp card, composed, with no new `Effect` and no change to the engine: an asset's interrupt as it would be uninstalled offers to shuffle it into R&D, and the trash still happens (Marilyn Campaign) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1193,7 +1195,8 @@ nine by kind):
    Troubleshooter, Psychographics).
 9. **The machinery the pool has not needed until now:**
    - Ayla “Bios” Rahim: set aside.
-   - Marilyn Campaign and Daily Business Show: replacements.
+   - Marilyn Campaign and Daily Business Show: replacements. **9a
+     closed**, Marilyn Campaign; Daily Business Show is 9b.
    - Project Beale and SanSan City Grid: changing agenda values.
    - NEXT Silver: added subroutines.
    - Magnet: a program re-hosted and blanked.

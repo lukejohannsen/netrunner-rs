@@ -9160,3 +9160,42 @@ System Update 2021 is at 70 of 82, and the Core Set at 42 of 113.
     counters, carries X on its event, and plays for 0 with no tags.
 - **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
   single-use, none unused, over 714 card files.
+
+#### Stage 9a — a trash that may go to R&D instead (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card, composed, with no new
+`Effect` and no change to the engine. System Update 2021 is at 71 of 82.
+- **Card from System Update 2021:** Marilyn Campaign.
+
+- **"Load 8[credit]… take 2[credit]… when it is empty, trash it"** is
+  Nico Campaign's shape: counters loaded as it is rezzed, two taken as
+  the turn begins, and a trash of itself when none are left. Nothing else
+  takes them, so the turn's beginning is the only moment it can empty.
+- **"[interrupt] → When this asset would be trashed, you may shuffle it
+  into R&D instead of adding it to Archives."**
+  - It is Luana Campos's interrupt (`OnWouldBeUninstalled`), announced by
+    the one door a Corp install leaves the table through, and only for a
+    rezzed card. That is the interrupt's activeness (CR 9.9.4b): an
+    unrezzed Marilyn the Runner trashes goes to Archives, and a copy in HQ
+    or R&D was never active.
+  - The choice is a `PresentChoice` of `AddToDeck(Top)` then
+    `ShuffleIntoDeck([OwnRAndD])`, Oracle Thinktank's shuffle, or
+    nothing.
+  - **The known approximation:** the choice parks, and the trash it
+    interrupts finishes first, so the card reaches Archives and the
+    choice takes it from there. "It is still considered trashed" holds:
+    every trash event is heard. What differs is the turn log, which counts
+    it as a Corp card added to Archives (Regenesis reads that), and an
+    uninstall that is not a trash would offer the shuffle too.
+- **Decks.** Retirement Package takes two Marilyn Campaign for its two
+  Refuge Campaign, a campaign for a campaign; Assembly Line and Endless
+  Loop keep Refuge Campaign. The deck was already Eternal and Casual.
+- **Client.** Nothing new reaches the view.
+- **Tests.** Two new tests.
+  - Emptied as the turn begins, it pays its last 2[credit], is trashed,
+    and goes into R&D (where the turn's draw may find it), or to Archives
+    when the Corp declines.
+  - Trashed by the Runner on access, a rezzed copy may go into R&D, and an
+    unrezzed one goes to Archives with nothing asked.
+- **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
+  single-use, none unused, over 715 card files.

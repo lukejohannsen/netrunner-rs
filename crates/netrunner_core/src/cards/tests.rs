@@ -28394,4 +28394,56 @@ mod reprints {
         let (played, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("X = 0");
         assert_eq!(played.corp.resources.credits, Credits(10));
     }
+
+    // ---- Stage 9a: a trash that may go to R&D instead ----
+
+    fn in_archives(state: &GameState, card: &str) -> bool {
+        state.corp.archives.iter().any(|archived| archived.card == id(card))
+    }
+
+    #[test]
+    fn marilyn_campaign_pays_two_a_turn_and_may_shuffle_itself_into_rnd_when_it_empties() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(0);
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 2, ..remote_root("marilyn_campaign", 0) }];
+        let credits = state.corp.resources.credits.0;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        let (asked, events) = pass_until_settled(state, &registry);
+        assert_eq!(asked.corp.resources.credits.0, credits + 2, "take 2[credit] from this asset");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardTrashed { card, .. } if *card == id("marilyn_campaign"))), "still trashed: {events:?}");
+        assert!(asked.pending_decision.is_some(), "you may shuffle it into R&D");
+
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("shuffle it in");
+        // Shuffled into R&D ahead of the turn's draw, which may find it.
+        assert!(kept.corp.r_and_d.contains(&id("marilyn_campaign")) || kept.corp.hq.contains(&id("marilyn_campaign")));
+        assert_eq!(kept.corp.r_and_d.len() + kept.corp.hq.len(), 4);
+        assert!(!in_archives(&kept, "marilyn_campaign"), "instead of adding it to Archives");
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("leave it");
+        assert!(in_archives(&declined, "marilyn_campaign"));
+    }
+
+    #[test]
+    fn marilyn_campaign_may_go_to_rnd_when_the_runner_trashes_it_rezzed_and_not_unrezzed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 6, ..remote_root("marilyn_campaign", 0) }];
+        let trash = PlayerAction::TrashAccessedCard { card_id: id("marilyn_campaign") };
+        let (accessing, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        let (asked, _) = apply_action(&accessing, &registry, trash.clone()).expect("trash it for 3");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let (shuffled, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("shuffle it in");
+        assert!(shuffled.corp.r_and_d.contains(&id("marilyn_campaign")));
+        assert!(!in_archives(&shuffled, "marilyn_campaign"));
+
+        state.corp.installed[0].rezzed = false;
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (trashed, _) = apply_action(&accessing, &registry, trash).expect("trash it for 3");
+        let (trashed, _) = pass_until_settled(trashed, &registry);
+        assert!(trashed.pending_decision.is_none(), "an unrezzed asset's interrupt is not active");
+        assert!(in_archives(&trashed, "marilyn_campaign"));
+    }
 }
