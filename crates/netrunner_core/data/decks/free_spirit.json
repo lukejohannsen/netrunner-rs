@@ -3,7 +3,7 @@
   "name": "Free Spirit",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a.",
+  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Ice Carver for two Crash Space, which lowers the strength of the ice being encountered and no other. Pay As You Go keeps Crash Space.",
   "style": [
     "rig",
     "dismantle"
@@ -19,7 +19,7 @@
       "count": 1
     },
     {
-      "card": "crash_space",
+      "card": "ice_carver",
       "count": 2
     },
     {

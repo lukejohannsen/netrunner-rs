@@ -88,8 +88,8 @@ pub(crate) enum Purpose<'a> {
     Install(&'a CardDefinition),
     /// Rezzing this install.
     Rez(InstallId),
-    /// The trash cost of the card the Runner is accessing.
-    TrashCost,
+    /// The trash cost of this card, which the Runner is accessing.
+    TrashCost(&'a CardDefinition),
     /// A trace attempt: either player's bid.
     Trace,
     /// The cost of a paid ability printed on this card. **Three sites state
@@ -311,6 +311,7 @@ fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
         (PaysFor::Using(mine), PaysFor::Using(theirs))
         | (PaysFor::UsingDuringRuns(mine), PaysFor::Using(theirs) | PaysFor::UsingDuringRuns(theirs))
         | (PaysFor::Installing(mine), PaysFor::Installing(theirs))
+        | (PaysFor::TrashCosts(mine), PaysFor::TrashCosts(theirs))
         | (PaysFor::Playing(mine), PaysFor::Playing(theirs)) => filter_implies(mine, theirs),
         _ => word == other,
     }
@@ -449,7 +450,7 @@ pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[u32]) -> 
 /// identity, which sits nowhere.
 fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: &GameState, registry: &CardRegistry) -> bool {
     match (word, purpose) {
-        (PaysFor::TrashCosts, Purpose::TrashCost) => true,
+        (PaysFor::TrashCosts(filter), Purpose::TrashCost(card)) => card_matches_filter(card, filter),
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
         (PaysFor::Using(filter), Purpose::Ability(card)) => card_matches_filter(card, filter),
         (PaysFor::Playing(filter), Purpose::Play(card)) => card_matches_filter(card, filter),
@@ -472,7 +473,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             named && host.slot == InstallSlot::Root && host.server == rezzing.server
         }
         (
-            PaysFor::TrashCosts
+            PaysFor::TrashCosts(_)
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
             | PaysFor::TraceAttempts
@@ -1066,7 +1067,7 @@ mod tests {
         state.runner.rig = vec![InstalledRunnerCard { install_id: azimat, card: CardId("azimat".to_string()), counters: 2, ..Default::default() }];
         state.active_run = Some(RunState { bad_publicity_credits: 1, ..Default::default() });
         assert_eq!(
-            sources(&state, &registry, Side::Runner, Purpose::TrashCost, None),
+            sources(&state, &registry, Side::Runner, Purpose::TrashCost(&CardDefinition::default()), None),
             vec![
                 Source { pool: Pool::Hosted(azimat), credits: 2 },
                 Source { pool: Pool::BadPublicity, credits: 1 },
@@ -1099,7 +1100,7 @@ mod tests {
     const TOOLBOX: Pool = Pool::Hosted(InstallId(2));
     const FEEDER: Pool = Pool::Hosted(InstallId(3));
     fn azimat(credits: u32) -> (Source, Class) {
-        entry(AZIMAT, credits, words(&[PaysFor::TrashCosts]), Life::Turn)
+        entry(AZIMAT, credits, words(&[PaysFor::TrashCosts(crate::dsl::CardFilter::Any)]), Life::Turn)
     }
     fn bad_publicity(credits: u32) -> (Source, Class) {
         entry(Pool::BadPublicity, credits, Breadth::Anything, Life::Run)
@@ -1117,8 +1118,8 @@ mod tests {
     #[test]
     fn a_pool_that_is_never_worth_more_is_spent_first_without_asking() {
         // Narrower and no longer-lived: before the broader pool, then the wallet.
-        let narrow = entry(TOOLBOX, 2, words(&[PaysFor::TrashCosts]), Life::Turn);
-        let broad = entry(FEEDER, 1, words(&[PaysFor::TrashCosts, PaysFor::TraceAttempts]), Life::Turn);
+        let narrow = entry(TOOLBOX, 2, words(&[PaysFor::TrashCosts(crate::dsl::CardFilter::Any)]), Life::Turn);
+        let broad = entry(FEEDER, 1, words(&[PaysFor::TrashCosts(crate::dsl::CardFilter::Any), PaysFor::TraceAttempts]), Life::Turn);
         assert_eq!(spend(plan(&[broad.clone(), narrow.clone(), wallet(9)], 1, &[])), Ok(vec![(TOOLBOX, 1), (Pool::Wallet, 0)]));
         assert_eq!(spend(plan(&[broad, narrow, wallet(9)], 4, &[])), Ok(vec![(TOOLBOX, 2), (FEEDER, 1), (Pool::Wallet, 1)]));
     }

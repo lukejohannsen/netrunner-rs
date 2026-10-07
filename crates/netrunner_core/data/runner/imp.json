@@ -1,0 +1,35 @@
+{
+  "id": "imp",
+  "title": "Imp",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this program, place 2 virus counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": "TrashCurrentlyAccessedCard",
+      "text": "Access, once per turn → Hosted virus counter: Trash the card you are accessing."
+    }
+  ],
+  "built_from": 31007,
+  "is_playable": true
+}

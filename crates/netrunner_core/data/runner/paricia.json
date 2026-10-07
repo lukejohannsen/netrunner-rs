@@ -1,18 +1,20 @@
 {
-  "id": "azimat",
-  "title": "Azimat",
+  "id": "paricia",
+  "title": "Paricia",
   "side": "Runner",
   "card_type": "Program",
-  "cost": 1,
-  "memory_cost": 2,
+  "cost": 0,
+  "memory_cost": 1,
   "triggers": [],
   "counter_kind": "Credit",
   "recurring_credits": 2,
   "pays_for": [
     {
-      "TrashCosts": "Any"
+      "TrashCosts": {
+        "CardType": "Asset"
+      }
     }
   ],
-  "built_from": 35029,
+  "built_from": 31034,
   "is_playable": true
 }

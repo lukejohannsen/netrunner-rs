@@ -3,7 +3,7 @@
   "name": "Transhuman",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Rielle “Kit” Peddler: Transhuman, System Update 2021's Shaper identity, whose first piece of ice encountered each turn gains code gate for the rest of the run. On Safety Net's frame, its identity swapped, at nine influence of ten. Tranche 8 Stage 5a.",
+  "description": "Not a published list: built so the sweeps reach Rielle “Kit” Peddler: Transhuman, System Update 2021's Shaper identity, whose first piece of ice encountered each turn gains code gate for the rest of the run. On Safety Net's frame, its identity swapped, at nine influence of ten. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Cerberus \"Lady\" H1 for two World Tree, a fracter that spends a power counter to break two barrier subroutines. Safety Net keeps World Tree.",
   "style": [
     "rig"
   ],
@@ -58,7 +58,7 @@
       "count": 2
     },
     {
-      "card": "world_tree",
+      "card": "cerberus_lady_h1",
       "count": 2
     },
     {

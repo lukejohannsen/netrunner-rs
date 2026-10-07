@@ -983,8 +983,11 @@ pub enum CounterKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaysFor {
     /// The trash cost of a card the Runner is accessing
-    /// (`PlayerAction::TrashAccessedCard`) — Azimat.
-    TrashCosts,
+    /// (`PlayerAction::TrashAccessedCard`) that the filter admits — Azimat's
+    /// "trash costs" (`Any`), Paricia's "trash costs of **assets**"
+    /// (`CardType(Asset)`). Definition-level, read off the card being
+    /// accessed. It was a word with no filter until Paricia.
+    TrashCosts(crate::dsl::CardFilter),
     /// The install cost of a card the filter admits — Open Market's "You
     /// can spend hosted credits to install connection and job resources".
     /// Definition-level filters only: the card being installed is not on
@@ -2741,7 +2744,7 @@ mod tests {
                 card_type: CardType::Program,
                 counter_kind: Some(CounterKind::Credit),
                 recurring_credits: Some(2),
-                pays_for: vec![PaysFor::TrashCosts],
+                pays_for: vec![PaysFor::TrashCosts(crate::dsl::CardFilter::Any)],
                 ..CardDefinition::default()
             };
             edit(&mut card);

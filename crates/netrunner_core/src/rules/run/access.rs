@@ -1368,9 +1368,13 @@ pub fn resolve_trash(
     let pending = require_pending(state, card_id)?;
     let cost = pending.trash_cost.ok_or(RulesError::NotInAccessPhase)?;
     let also = pending.trash_also.clone();
+    // A card the registry does not know is one no filtered pool admits: a
+    // pool for any trash cost still pays for it.
+    let unknown = crate::dsl::CardDefinition::default();
+    let accessed = registry.get(card_id).unwrap_or(&unknown);
     if let Some(also) = &also {
         let ctx = ability::ResolutionContext::for_card(Some(card_id));
-        if !ability::cost_is_affordable(state, registry, Side::Runner, also, Purpose::TrashCost, &ctx) {
+        if !ability::cost_is_affordable(state, registry, Side::Runner, also, Purpose::TrashCost(accessed), &ctx) {
             return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available: 0, requested: cost });
         }
     }
@@ -1380,15 +1384,15 @@ pub fn resolve_trash(
     // run's own: bad publicity, Overclock — counts here too. This was a
     // sum of the credit pool and Azimat, which refused a trash the payment
     // below would have taken the run's credits for.
-    let available = payment::available(state, registry, Side::Runner, Purpose::TrashCost);
+    let available = payment::available(state, registry, Side::Runner, Purpose::TrashCost(accessed));
     if available < cost {
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
     // Paid together (CR 1.16.10b): the credits, then what the card adds.
-    let mut cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
+    let mut cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost(accessed), Some(card_id))?;
     if let Some(also) = &also {
-        cost_events.extend(ability::pay_cost(state, registry, Side::Runner, also, Purpose::TrashCost, Some(card_id))?);
+        cost_events.extend(ability::pay_cost(state, registry, Side::Runner, also, Purpose::TrashCost(accessed), Some(card_id))?);
     }
     let mut events = cost_events.clone();
     events.extend(move_to_archives(state, registry, card_id, pending.server, pending.install)?);

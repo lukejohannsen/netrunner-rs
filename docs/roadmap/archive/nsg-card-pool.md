@@ -8666,3 +8666,60 @@ Memories 10 of 18; `SU21_UNIMPLEMENTED` 38 → 37, `SM_UNIMPLEMENTED` 9 → 8.
     on the second turn on Enigma.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 683 card files.
+
+#### Stage 6a — the Runner's amounts and effects (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: seven Runner cards. **No new `Effect`.**
+One new `CardFilter` word, and one existing word widened. System Update
+2021 is at 49 of 82 and Salvaged Memories at 13 of 18; the Core Set has
+34 of 113 built.
+- **Cards from System Update 2021:** Imp, Egret, Ice Carver and Paricia.
+- **Cards from Salvaged Memories:** Cerberus “Lady” H1, Medium and e3
+  Feedback Implants.
+
+- **Ice Carver: the ice being encountered is a filter word.**
+  - The card reads "While you are encountering a piece of ice, it gets
+    −1 strength". That is a `Strength` on `Scope::Ice(BeingEncountered)`.
+  - `CardFilter::BeingEncountered` is instance-level, like
+    `LastEncounteredLastRun`. It is read off the run in
+    `pending_choice::copy_matches`.
+  - **Why not a `while`:** a `while` of `DuringEncounter` is asked of the
+    card that prints it, so every piece of ice would have lost 1 strength
+    during any encounter. Parasite's host would have been one of them.
+- **Paricia: trash-cost credits say which cards' trash costs they pay.**
+  - The card reads "You can spend hosted credits to pay trash costs of
+    **assets**". That is `PaysFor::TrashCosts(CardType(Asset))`.
+  - The word now carries a filter. Azimat, Scrubber and Bahia Bands's
+    run credits write `Any`.
+  - `Purpose::TrashCost` now names the card being accessed, so the filter
+    is read off it in `payment::covers`.
+  - A narrower trash-cost pool is spent before a wider one, unasked
+    (`word_within`), as `Installing` and `Playing` pools already are.
+- **Egret** is Chromatophores on `host_must_be_rezzed`, the Trojan word
+  from Stage 5b.
+- **Medium** is Conduit's counters on R&D runs. Its breach is a
+  `ChooseNumber` of up to the hosted counters less 1 (`Reduced`), then
+  `AddAdditionalAccessAmount` with the number chosen.
+- **e3 Feedback Implants** offers 1[credit] on every `OnSubroutineBroken`
+  to break one more subroutine on that ice with
+  `BreakSubroutinesUnconditionally`. A break it pays for is a break too,
+  so the offer comes again, as the printed "whenever" says.
+- **Cerberus “Lady” H1** has power counters as its break cost, and **Imp**
+  has Carnivore's access ability with a counter as its cost.
+- **Moved to stage 8: Networking.** Its "you may pay 1[credit] to add this
+  event to your grip" decides where a played event goes. Only a
+  declaration says that today (`removed_after_play`), and a declaration
+  cannot depend on a paid choice.
+- **Decks: seven swaps,** each in its deck's faction. Every card given up
+  is still in at least one other deck.
+  - Transhuman: two Cerberus for two World Tree.
+  - Dead Reckoning: two Egret for two Living Mural.
+  - Street Gallery: two Paricia for two Sipa.
+  - Burn Rate: Imp for Hush.
+  - Grassroots: two Medium for two Audrey v2.
+  - Free Spirit: two Ice Carver for two Crash Space.
+  - Encore: two e3 Feedback Implants for two Capybara.
+- **Tests.** Seven new tests, one per card. Purge's real-card roster now
+  names Imp and Medium.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 690 card files.

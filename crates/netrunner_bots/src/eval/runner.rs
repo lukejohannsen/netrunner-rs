@@ -1728,7 +1728,7 @@ mod tests {
         let overclocked = with_run(&base, RunState { bonus_run_credits: 5, ..hq(vec![wall.clone()]) });
         let gained = score(&overclocked) - score(&broke);
         assert!((gained - (w.active_run_weight + w.own_credit_weight)).abs() < 1e-9, "{gained}");
-        let for_trashing = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::TrashCosts), ..hq(vec![wall.clone()]) });
+        let for_trashing = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::TrashCosts(netrunner_core::dsl::CardFilter::Any)), ..hq(vec![wall.clone()]) });
         assert_eq!(score(&for_trashing), score(&broke), "credits that pay for trashing break nothing");
         let for_breakers = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::Using(netrunner_core::dsl::CardFilter::Icebreaker)), ..hq(vec![wall.clone()]) });
         assert_eq!(score(&for_breakers), score(&overclocked));
