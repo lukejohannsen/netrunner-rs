@@ -1,0 +1,90 @@
+{
+  "id": "femme_fatale",
+  "title": "Femme Fatale",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 9,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": "Ice",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Remember": {
+                "what": "SelectedCard",
+                "until": "WhileInstalled"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you install this program, choose 1 installed piece of ice."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "EncounteringChosenIce",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "CreditsAmount": "EncounteredIceSubroutines"
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] for each subroutine it has. If you do, bypass that ice"
+          }
+        }
+      ],
+      "text": "Whenever you encounter the chosen ice, you may pay 1[credit] for each subroutine it has. If you do, bypass that ice."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 31022,
+  "is_playable": true
+}

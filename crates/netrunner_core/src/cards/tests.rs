@@ -28144,4 +28144,111 @@ mod reprints {
         assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_bioroid: false, .. })), "{events:?}");
         assert!(corp_toggles(&state, &registry).is_empty());
     }
+
+    // ---- Stage 8a: a run's first ice, a chosen ice, a search of either pile, an event back to the grip ----
+
+    fn runner_toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn bypassed(events: &[GameEvent]) -> usize {
+        events.iter().filter(|event| matches!(event, GameEvent::IceBypassed { .. })).count()
+    }
+
+    #[test]
+    fn inside_job_runs_any_server_and_bypasses_only_the_first_ice_encountered() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("inside_job")];
+        state.corp.installed = vec![ice_at_hq("ice_wall"), crate::rules::InstalledCard { install_id: InstallId(4444), ..ice_at_hq("enigma") }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("inside_job") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (approached, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the outermost ice");
+        let (first, events) = pass_until_settled(approached, &registry);
+        assert_eq!(bypassed(&events), 1, "the first ice is bypassed: {events:?}");
+        assert!(first.active_run.is_none(), "the second is encountered, and its \"End the run\" resolves");
+        assert_eq!(first.runner.heap, vec![id("inside_job")]);
+    }
+
+    #[test]
+    fn femme_fatale_bypasses_the_chosen_ice_for_a_credit_a_subroutine_and_breaks_sentries() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("femme_fatale")];
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("femme_fatale"), trash_first: false }).expect("install");
+        assert_eq!(runner_toggles(&asked, &registry), vec![0], "choose 1 installed piece of ice");
+        let chosen = pick(&asked, &registry, &[0]);
+        let chosen = close_all_windows(chosen, &registry).0;
+        assert_eq!(chosen.runner.resources.credits, Credits(11));
+        let femme = install_of(&chosen, "femme_fatale");
+        assert_eq!(crate::rules::lingering::chosen_card(&chosen, femme), Some(fixture_install_id("enigma")));
+
+        let offered = encounter(&chosen, &registry);
+        assert!(offered.pending_paid_choice.is_some(), "you may pay 1[credit] for each subroutine it has");
+        let (paid, events) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+        assert_eq!(bypassed(&events), 1, "{events:?}");
+        assert_eq!(paid.runner.resources.credits, Credits(11 - 2), "Enigma has two subroutines");
+
+        // Other ice: no offer, and the killer breaks only sentries.
+        let mut other = chosen.clone();
+        other.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(4444), ..ice_at_hq("enigma") }];
+        let at_ice = encounter(&other, &registry);
+        assert!(at_ice.pending_paid_choice.is_none() && at_ice.pending_decision.is_none(), "not the chosen ice");
+        assert!(use_ability(&at_ice, &registry, "femme_fatale", 0).is_err(), "a code gate is not a sentry");
+        let (pumped, _) = use_ability(&at_ice, &registry, "femme_fatale", 1).expect("2[credit]: +1 strength");
+        assert_eq!(pumped.runner.resources.credits, Credits(11 - 2));
+    }
+
+    #[test]
+    fn test_run_installs_a_program_from_either_pile_free_and_stacks_it_when_the_turn_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![id("test_run")];
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.heap = vec![id("sure_gamble"), id("corroder")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("test_run") }).expect("play");
+        let (heap, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("your heap");
+        assert_eq!(runner_toggles(&heap, &registry), vec![1], "Corroder, the one program");
+        let installed = pick(&heap, &registry, &[1]);
+        let installed = close_all_windows(installed, &registry).0;
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(0), "the event cost 3, the install nothing");
+
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&installed), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, events) = pass_until_settled(ended, &registry);
+        assert!(ended.runner.rig.is_empty(), "{events:?}");
+        assert_eq!(ended.runner.stack.last(), Some(&id("corroder")), "on top of the stack");
+
+        // A stack with no program finds nothing.
+        let (stack, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("your stack");
+        assert!(stack.pending_decision.is_none() && stack.runner.rig.is_empty());
+    }
+
+    #[test]
+    fn networking_removes_a_tag_and_may_come_back_to_the_grip_for_a_credit() {
+        let registry = registry();
+        for (answer, back) in [(PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }, true), (PlayerAction::DeclinePendingPaidChoice, false)] {
+            let mut state = runner_turn();
+            state.runner.tags = 2;
+            state.runner.grip = vec![id("networking")];
+            let (offered, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("networking") }).expect("play");
+            assert_eq!(offered.runner.tags, 1);
+            let (mut answered, _) = apply_action(&offered, &registry, answer.clone()).expect("answer");
+            if !runner_toggles(&answered, &registry).is_empty() {
+                answered = pick(&answered, &registry, &[0]);
+            }
+            assert_eq!(answered.runner.grip.contains(&id("networking")), back, "{answer:?}");
+            assert_eq!(answered.runner.heap.contains(&id("networking")), !back, "{answer:?}");
+            assert_eq!(answered.runner.resources.credits, Credits(if back { 9 } else { 10 }));
+        }
+    }
 }

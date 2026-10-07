@@ -1,0 +1,32 @@
+{
+  "id": "inside_job",
+  "title": "Inside Job",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnEncounter",
+                "this_run": true,
+                "effect": "BypassEncounteredIce"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server. The first time you encounter a piece of ice during that run, bypass it."
+    }
+  ],
+  "built_from": 31018,
+  "is_playable": true
+}
