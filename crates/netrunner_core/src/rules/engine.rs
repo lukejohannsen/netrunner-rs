@@ -1709,8 +1709,14 @@ pub(crate) fn play_operation_card(
     // the Corp's first Double; an unaffordable one fails the play, which
     // is what makes `legal_actions`' probe drop it.
     let mut cost_events = Vec::new();
+    let mut x = None;
     if let Some(additional) = &additional {
-        cost_events = ability::pay_cost(next, registry, side, additional, Purpose::Other, Some(&card_id))?;
+        // "Psychographics costs X": X is the first answer the payment will
+        // take (CR 1.16.2c), read before paying takes it, as an ability's
+        // is (`activate_ability`) — and its credits are spent to play.
+        let purpose = if additional.names_x() { Purpose::Play(card_def) } else { Purpose::Other };
+        x = additional.names_x().then(|| next.payment_answers.first().copied()).flatten();
+        cost_events = ability::pay_cost(next, registry, side, additional, purpose, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
     // A played Operation resolved in the open, so the Runner has seen it.
@@ -1737,7 +1743,7 @@ pub(crate) fn play_operation_card(
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRun`/`OnInstall` above) from this one event.
-    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
+    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives, x };
     dispatcher::emit(next, registry, &mut events, played_event)?;
     // The additional cost's own events, after the effect as every payer
     // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
@@ -5022,7 +5028,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
@@ -5163,7 +5169,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None },
                 GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
             ]

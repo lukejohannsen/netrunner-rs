@@ -9099,3 +9099,64 @@ and the Core Set at 40 of 113.
 - **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
   single-use, none unused, over 712 card files. The one added is
   `SpendChosenServer`, with its reason on the variant.
+
+#### Stage 8c — the X costs (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Corp cards with no new `Effect`.
+System Update 2021 is at 70 of 82, and the Core Set at 42 of 113.
+- **Cards from System Update 2021:** Corporate Troubleshooter and
+  Psychographics.
+
+- **An operation can cost X to play** (CR 1.16.2c: X is chosen before
+  anything is paid).
+  - Psychographics prints a cost of X, which the catalog reads as 0. Its
+    X is its additional cost to play, `Cost::CreditsX { max: RunnerTags }`,
+    asked by the payment's replay and answered with `ChooseNumber`, as
+    Utae's X is. Its credits are spent to play (`Purpose::Play`).
+  - `play_operation_card` reads X before paying takes it, as
+    `activate_ability` does, and the play's event carries it
+    (`GameEvent::OperationPlayed::x`). The card's own `OnPlay` has it
+    written in as its chosen number when it resolves.
+  - **Why on the event:** a play resolves by a dispatch, which rebuilds
+    its context from the event it heard; the context the play built is
+    gone by then. Rejig's `EventPlayed::paid_with` is the precedent. X is
+    credits spent in the open, so it is public and needs no mask.
+  - `validate` admits an X only first in an operation's additional cost,
+    and admits `ChosenNumber` in that card's `OnPlay`.
+- **Corporate Troubleshooter: X[credit], [trash].**
+  - The cost is `AllOf[CreditsX, TrashSelf]`; X is bounded by what the
+    Corp can pay.
+  - "A rezzed piece of ice protecting this server" is `InThisServer`,
+    resolved from the card's last-known server after its own cost has
+    trashed it, as Hype Machine's root is.
+  - "+X strength for the remainder of the turn" is X repetitions of +1
+    lingering on the chosen ice (`Repeat` of `ModifyStrength` on
+    `This`). `ModifyStrength`'s delta is a printed number in every card
+    file, so an `Amount` there would have rewritten them all for one
+    card.
+- **Decks.**
+  - Brutal Efficiency takes two Corporate Troubleshooter for its two
+    Mahkota Langit Grid, an upgrade for an upgrade; six other decks keep
+    Mahkota Langit Grid.
+  - Fine Print takes a Psychographics for its IP Enforcement, an
+    operation for an operation; Gimbatul keeps IP Enforcement.
+  - Both decks were already Eternal and Casual.
+- **Client.** Nothing new reaches the view. X is asked by the payment
+  question both clients already draw for Utae.
+- **A match thread's stack.** The new decks moved the client's onward
+  test into a planner line that overflowed a thread's default 2 MiB in a
+  debug build: the opponent's paid choice answered twice, inside a parked
+  payment's replay. The frames are large unoptimised
+  (`Search::opponents_answer` 290 KB, `settle` 170 KB, `best_line`
+  273 KB, the engine's `replay_with` 227 KB). The test passes on `main`.
+  A match and a lesson thread now get 16 MiB (`play::MATCH_STACK`), since
+  a dev build of either client plans its bots there, and the test plays
+  on one.
+- **Tests.** Two new tests.
+  - Corporate Troubleshooter asks X, is trashed paying it, offers only
+    the rezzed ice protecting its own server, and gives it +3 for the
+    turn alone.
+  - Psychographics refuses an X above the Runner's tags, places X
+    counters, carries X on its event, and plays for 0 with no tags.
+- **DSL ratio** (`pool_status.py`): 14 of 106 `Effect` variants
+  single-use, none unused, over 714 card files.

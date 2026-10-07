@@ -986,7 +986,7 @@ mod tests {
             &entry(
                 Side::Corp,
                 PlayerAction::PlayOperation { card_id: CardId("reactive".to_string()) },
-                vec![GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()), from_archives: false }],
+                vec![GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()), from_archives: false, x: None }],
             ),
             &registry,
         );
@@ -998,7 +998,7 @@ mod tests {
                 Side::Corp,
                 PlayerAction::PlayOperation { card_id: CardId("reactive".to_string()) },
                 vec![
-                    GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()), from_archives: false },
+                    GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()), from_archives: false, x: None },
                     GameEvent::TriggerFired { card: CardId("reactive".to_string()), trigger: Trigger::OnPlay },
                     GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
                 ],

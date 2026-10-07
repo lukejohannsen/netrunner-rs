@@ -28336,4 +28336,62 @@ mod reprints {
         assert!(ended.runner.rig.is_empty());
         assert!(ended.runner.grip.contains(&id("chameleon")), "add this program to your grip");
     }
+
+    // ---- Stage 8c: X costs ----
+
+    #[test]
+    fn corporate_troubleshooter_trashes_for_x_to_give_a_rezzed_ice_of_its_server_x_strength_for_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            root_of_hq("corporate_troubleshooter"),
+            ice_at_hq("ice_wall"),
+            crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("enigma") },
+            crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("tollbooth") },
+        ];
+        let wall = install_of(&state, "ice_wall");
+        let printed = crate::rules::continuous::installed_ice_strength(&state, &registry, &id("ice_wall"), wall);
+
+        let (asked, _) = use_ability(&state, &registry, "corporate_troubleshooter", 0).expect("X[credit], [trash]");
+        assert!(asked.pending_payment.is_some(), "X is chosen before paying");
+        assert!(apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 11 }).is_err(), "no more than the Corp can pay");
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("X = 3");
+        assert_eq!(paid.corp.resources.credits, Credits(10 - 3));
+        assert!(paid.corp.installed.iter().all(|card| card.card != id("corporate_troubleshooter")), "trashed as the cost");
+        let offered = crate::rules::legal_actions_for(&paid, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .count();
+        assert_eq!(offered, 1, "the rezzed ice protecting its own server, not the unrezzed one or another server's");
+        let chosen = pick(&paid, &registry, &[crate::rules::test_support::position_of(&paid, "ice_wall")]);
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&chosen, &registry, &id("ice_wall"), wall), printed + 3);
+
+        let mut later = chosen.clone();
+        later.corp.r_and_d = vec![id("hedge_fund"); 2];
+        later.runner.stack = vec![id("sure_gamble"); 2];
+        crate::rules::test_support::enter_start_of_turn(&mut later, &registry, Side::Runner);
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&later, &registry, &id("ice_wall"), wall), printed, "for the remainder of the turn");
+    }
+
+    #[test]
+    fn psychographics_costs_x_up_to_the_runners_tags_and_places_x_advancement_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 2;
+        state.corp.hq = vec![id("psychographics")];
+        state.corp.installed = vec![crate::rules::InstalledCard { server: ServerId::Remote(0), slot: InstallSlot::Root, ..ice_at_hq("hostile_takeover") }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("psychographics") }).expect("play it");
+        assert!(asked.pending_payment.is_some(), "X is chosen before paying");
+        assert!(apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).is_err(), "no more than the Runner's tags");
+        let (played, events) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        assert!(events.contains(&GameEvent::OperationPlayed { side: Side::Corp, card: id("psychographics"), from_archives: false, x: Some(2) }), "{events:?}");
+        assert_eq!(played.corp.resources.credits, Credits(10 - 2));
+        let placed = pick(&played, &registry, &[crate::rules::test_support::position_of(&played, "hostile_takeover")]);
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 2);
+
+        state.runner.tags = 0;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("psychographics") }).expect("play it with no tags");
+        let (played, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("X = 0");
+        assert_eq!(played.corp.resources.credits, Credits(10));
+    }
 }

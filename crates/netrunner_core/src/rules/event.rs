@@ -260,11 +260,20 @@ pub enum GameEvent {
     /// `from_archives`: the card was played out of Archives rather than
     /// HQ (`CardDefinition::playable_from_archives`, Petty Cash) — read by
     /// `EffectRequirement::PlayedFromArchives` off the triggering event.
+    ///
+    /// `x`: the X a card that costs X to play was played for
+    /// (Psychographics, `Cost::CreditsX` in `additional_play_cost`),
+    /// written into the card's own `OnPlay` as its chosen number. On the
+    /// event because the play resolves by a dispatch, which rebuilds its
+    /// context from the event it heard; X is credits spent in the open, so
+    /// it is public.
     OperationPlayed {
         side: Side,
         card: CardId,
         #[serde(default)]
         from_archives: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x: Option<u32>,
     },
     /// `credits_paid` is what the install actually cost after every
     /// discount — Bling's "whenever you install a card without spending
