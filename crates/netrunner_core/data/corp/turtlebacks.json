@@ -1,0 +1,25 @@
+{
+  "id": "turtlebacks",
+  "title": "Turtlebacks",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnServerCreated",
+      "subject": "Any",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] whenever you create a server."
+    }
+  ],
+  "built_from": 29012,
+  "is_playable": true
+}

@@ -27339,4 +27339,104 @@ mod reprints {
         let (trashed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
         assert!(trashed.runner.rig.is_empty() && trashed.runner.heap.contains(&id("daily_casts")));
     }
+
+    // ---- Stage 4: trigger words — a server created, a score locked by another card ----
+
+    fn install_corp(state: &GameState, registry: &CardRegistry, card: &str, zone: ServerId, slot: InstallSlot) -> (GameState, Vec<GameEvent>) {
+        let (state, events) = apply_action(state, registry, PlayerAction::InstallCard { card_id: id(card), zone, slot, trash_first: false }).expect("install");
+        (close_all_windows(state, registry).0, events)
+    }
+
+    #[test]
+    fn ken_express_tenma_gains_a_credit_the_first_time_each_turn_a_run_event_is_played() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("ken_express_tenma_disappeared_clone"));
+        state.runner.grip = vec![id("dirty_laundry"), id("dirty_laundry"), id("sure_gamble")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("run Archives");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (ended, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("breach");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert_eq!(ended.runner.resources.credits, Credits(10 - 2 + 1 + 5), "a run event, the first this turn");
+        let (again, _) = apply_action(&ended, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play");
+        let (again, _) = apply_action(&again, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("run Archives");
+        assert_eq!(again.runner.resources.credits, Credits(14 - 2), "the second run event this turn");
+
+        let (gamble, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("play");
+        assert_eq!(gamble.runner.resources.credits, Credits(10 - 5 + 9), "not a run event");
+    }
+
+    #[test]
+    fn near_earth_hub_draws_the_first_time_each_turn_a_remote_server_is_created() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("near_earth_hub_broadcast_center"));
+        state.corp.hq = vec![id("pad_campaign"), id("pad_campaign"), id("ice_wall")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let (ice, _) = install_corp(&state, &registry, "ice_wall", ServerId::Hq, InstallSlot::Ice);
+        assert_eq!(ice.corp.hq.len(), 2, "HQ is not created");
+        let (created, events) = install_corp(&ice, &registry, "pad_campaign", ServerId::Remote(0), InstallSlot::Root);
+        assert!(events.contains(&GameEvent::ServerCreated { server: ServerId::Remote(0) }), "{events:?}");
+        assert_eq!(created.corp.hq.len(), 2, "installed one, drew one");
+        let (second, events) = install_corp(&created, &registry, "pad_campaign", ServerId::Remote(1), InstallSlot::Root);
+        assert!(events.contains(&GameEvent::ServerCreated { server: ServerId::Remote(1) }));
+        assert_eq!(second.corp.hq.len(), 1, "the second server this turn draws nothing");
+    }
+
+    #[test]
+    fn turtlebacks_gains_a_credit_whenever_a_server_is_created_and_not_for_an_install_into_one() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![remote_root("turtlebacks", 0)];
+        state.corp.hq = vec![id("pad_campaign"), id("ice_wall"), id("ice_wall")];
+        let (created, _) = install_corp(&state, &registry, "pad_campaign", ServerId::Remote(1), InstallSlot::Root);
+        assert_eq!(created.corp.resources.credits, Credits(11), "a new remote");
+        let (into, events) = install_corp(&created, &registry, "ice_wall", ServerId::Remote(1), InstallSlot::Ice);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::ServerCreated { .. })), "{events:?}");
+        assert_eq!(into.corp.resources.credits, Credits(11), "the server was there");
+        let (ice, _) = install_corp(&into, &registry, "ice_wall", ServerId::Remote(2), InstallSlot::Ice);
+        assert_eq!(ice.corp.resources.credits, Credits(12), "ice protecting a new remote creates it too");
+
+        state.corp.installed[0].rezzed = false;
+        let (unrezzed, _) = install_corp(&state, &registry, "pad_campaign", ServerId::Remote(1), InstallSlot::Root);
+        assert_eq!(unrezzed.corp.resources.credits, Credits(10), "inactive, it hears nothing");
+    }
+
+    #[test]
+    fn hostile_infrastructure_does_a_net_damage_whenever_the_runner_trashes_a_corp_card_itself_included() {
+        let registry = registry();
+        let trash = |state: &GameState, remote: u32, card: &str| {
+            let (state, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(remote));
+            let (state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id(card) }).expect("trash it");
+            close_all_windows(state, &registry).0
+        };
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![remote_root("hostile_infrastructure", 0), crate::rules::InstalledCard { rezzed: false, ..remote_root("pad_campaign", 1) }];
+        let once = trash(&state, 1, "pad_campaign");
+        assert_eq!(once.runner.grip.len(), 4, "1 net damage");
+        let twice = trash(&once, 0, "hostile_infrastructure");
+        assert_eq!(twice.runner.grip.len(), 3, "whenever, and including itself");
+        assert!(twice.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn clot_forbids_scoring_an_agenda_installed_this_turn_and_is_trashed_by_a_purge() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("clot", 0)];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, installed_this_turn: true, ..remote_root("hostile_takeover", 0) }];
+        let score = PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") };
+        assert_eq!(apply_action(&state, &registry, score.clone()).map(|_| ()), Err(RulesError::CannotScoreAgendasThisTurn));
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&score), "not offered");
+        state.corp.installed[0].installed_this_turn = false;
+        assert!(apply_action(&state, &registry, score.clone()).is_ok(), "installed on an earlier turn");
+
+        state.corp.installed[0].installed_this_turn = true;
+        let (purged, _) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        let (purged, _) = close_all_windows(purged, &registry);
+        assert!(purged.runner.rig.is_empty() && purged.runner.heap.contains(&id("clot")), "trash this program");
+    }
 }

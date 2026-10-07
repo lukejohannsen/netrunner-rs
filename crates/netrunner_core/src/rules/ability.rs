@@ -773,6 +773,7 @@ pub fn evaluate_effect(
             if resolved_slot == crate::rules::InstallSlot::Ice && !matches!(card_def.card_type, crate::dsl::CardType::Ice(_)) {
                 return Err(RulesError::CardTypeMismatch { card: card_id.clone(), expected: "ice" });
             }
+            let creates = crate::rules::engine::creates_server(state, *into);
             let install_id = state.allocate_install_id();
             let new_card = crate::rules::InstalledCard {
                 card: card_id.clone(),
@@ -805,6 +806,9 @@ pub fn evaluate_effect(
             // the turn's *second* install as its first — until
             // `dispatcher::audit` refused the undispatched event.
             let mut events = Vec::new();
+            if creates {
+                dispatcher::emit(state, registry, &mut events, GameEvent::ServerCreated { server: *into })?;
+            }
             dispatcher::emit(
                 state,
                 registry,

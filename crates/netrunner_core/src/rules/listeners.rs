@@ -364,6 +364,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardsSetAside { .. } => Vec::new(),
         // The Runner breached, but the cards are the Corp's: whoever
         // listens hears it, and none of it is a card to be "this".
+        // Only the Corp creates a server (CR 4.6.8b).
+        GameEvent::ServerCreated { server } => vec![moment(Trigger::OnServerCreated, &About::Server(*server), Some(Side::Corp))],
         GameEvent::ArchivesTurnedFaceup { count } => vec![moment(Trigger::OnArchivesTurnedFaceup, &About::Cards(*count), None)],
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.

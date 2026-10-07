@@ -1,0 +1,32 @@
+{
+  "id": "clot",
+  "title": "Clot",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "ScoreAgendas"
+      },
+      "applies_to": {
+        "Scoring": "InstalledThisTurn"
+      },
+      "text": "The Corp cannot score an agenda during the same turn they installed that agenda."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, trash this program."
+    }
+  ],
+  "built_from": 31005,
+  "is_playable": true
+}

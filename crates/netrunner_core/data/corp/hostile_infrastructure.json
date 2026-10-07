@@ -1,0 +1,44 @@
+{
+  "id": "hostile_infrastructure",
+  "title": "Hostile Infrastructure",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 5,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner trashes a Corp card (including Hostile Infrastructure), do 1 net damage."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner trashes a Corp card (including Hostile Infrastructure), do 1 net damage."
+    }
+  ],
+  "built_from": 29011,
+  "is_playable": true
+}

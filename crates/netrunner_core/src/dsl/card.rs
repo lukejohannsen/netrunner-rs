@@ -1879,8 +1879,12 @@ impl CardDefinition {
                 // cannot score this agenda if it was installed this
                 // turn"), asked of the install by `continuous::cannot_install`.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::ScoreAgendas), Scope::This) if self.card_type == CardType::Agenda => {}
+                // Another card's word about the agenda being scored (Clot's
+                // "an agenda … the same turn they installed that agenda"),
+                // asked of the install by `continuous::cannot_install`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::ScoreAgendas), Scope::Scoring(_)) => {}
                 (ContinuousKind::Cannot(_), _) => {
-                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), or an agenda's about its own score (`This`)");
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), or a card's about the agenda being scored (`Scoring`)");
                 }
             }
         }

@@ -451,6 +451,19 @@ pub enum Trigger {
     /// the pool hears. Composition didn't work: a draw was not a moment
     /// until it had happened (`CardDrawn`, heard by nothing).
     OnDrawAboutToResolve,
+    /// "Whenever you create a server" (Turtlebacks), and "the first time
+    /// each turn you create a remote server" (Near-Earth Hub: Broadcast
+    /// Center) — `GameEvent::ServerCreated`, emitted where an install's
+    /// destination is a remote nothing was installed in (CR 8.5.16e: "If
+    /// the card is to be the first card in the root of or protecting a new
+    /// remote server, that server is created"), about that server and
+    /// heard by the Corp, the only player who creates one (4.6.8b).
+    /// Composition didn't work: `OnInstall` is about the card, and whether
+    /// its server is new is not a fact of the card nor one the state still
+    /// holds afterwards — an install over the only card of a remote leaves
+    /// a remote of one card that was not created. A moment of its own, so
+    /// "the first time each turn" counts creations, not installs.
+    OnServerCreated,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -900,7 +913,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 55] = [
+    pub const ALL: [Trigger; 56] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -956,6 +969,7 @@ impl Trigger {
         Trigger::OnAbilityTookCredits,
         Trigger::OnCardRevealed,
         Trigger::OnDrawAboutToResolve,
+        Trigger::OnServerCreated,
     ];
 
     /// This trigger's position in `ALL`.
@@ -1009,7 +1023,8 @@ impl Trigger {
             | Trigger::OnSuccessfulRun
             | Trigger::OnBreach
             | Trigger::OnRunEnded
-            | Trigger::OnCreditsSpentOutsidePool => TriggerAbout::Server,
+            | Trigger::OnCreditsSpentOutsidePool
+            | Trigger::OnServerCreated => TriggerAbout::Server,
             // A phase, a count or a player, never a card.
             Trigger::OnTurnStart
             | Trigger::OnActionPhaseEnd
@@ -1086,6 +1101,7 @@ impl Trigger {
             | Trigger::OnAbilityTookCredits
             | Trigger::OnCardRevealed
             | Trigger::OnDrawAboutToResolve
+            | Trigger::OnServerCreated
             | Trigger::OnCreditsSpentFromInstalledCard => Hears::OwnSide,
             // `OnPlay` and `OnForfeit` are only ever printed about the card
             // itself, so `Subject::This` already says whose they are.
@@ -1140,7 +1156,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnServerCreated => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }
