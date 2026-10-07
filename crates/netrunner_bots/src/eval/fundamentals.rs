@@ -5,6 +5,7 @@
 //! were.
 
 use super::*;
+use netrunner_core::rules::{InstallCandidate, PaymentAsk, PlayerAction};
 
 /// A payment parked on its payer's answer (`netrunner_core::rules::
 /// PendingPayment`), priced as the payment made: each answer is applied,
@@ -36,18 +37,63 @@ pub(super) fn through_parked_payment(state: &GameState, registry: &CardRegistry,
 /// overflowed the test thread's 2 MB. The answer chosen is the same: the
 /// payer's best by their own reckoning, the last of equals.
 fn best_payment(state: &GameState, registry: &CardRegistry, w: &Weights) -> Option<Box<GameState>> {
+    best_payment_after(state, registry, w, None)
+}
+
+fn best_payment_after(state: &GameState, registry: &CardRegistry, w: &Weights, after: Option<u32>) -> Option<Box<GameState>> {
     let payment = state.pending_payment.as_ref()?;
     let payer = payment.side;
     let mut best: Option<(f64, Box<GameState>)> = None;
-    for value in payment.question.answers() {
+    for value in searched_answers(&payment.question, after) {
         let Some(next) = answered(state, registry, payment.question.action_for(value)) else { continue };
-        let paid = best_payment(&next, registry, w).unwrap_or(next);
+        let paid = best_payment_after(&next, registry, w, picked_before(&payment.question, value, &next)).unwrap_or(next);
         let score = evaluate_state_with(&paid, payer, registry, w);
         if best.as_ref().is_none_or(|(top, _)| score.total_cmp(top).is_ge()) {
             best = Some((score, paid));
         }
     }
     best.map(|(_, paid)| paid)
+}
+
+/// The answers a search of a parked payment tries to `ask`: every one,
+/// except that **an install's trash picks are tried as a set, not in every
+/// order.** The engine asks which like card goes next, one at a time
+/// (`payment::Ask::Install`), because the trashes are made in the order
+/// picked (CR 8.5.7) and that order is a person's to choose; a search that
+/// took the question as it is asked tried every order of every subset —
+/// a(n) = n·a(n−1) + 2n applications for *n* pieces of ice on the server,
+/// 293 s at nine and about 49 minutes at ten (Phase 5 §47) — to choose
+/// among results that differ only in the order the same cards reach
+/// Archives. So within one install's picks a candidate is tried only at a
+/// higher position than the last one picked (`after`, from
+/// `picked_before`): each subset once, in ascending order, 2ⁿ rather than
+/// about n!·e. "No more" is always tried, and every other kind of question
+/// is answered whole. The order a search gives up is one no reading of a
+/// board prices, and a person still picks theirs from the engine's list.
+pub(crate) fn searched_answers(ask: &PaymentAsk, after: Option<u32>) -> Vec<u32> {
+    let answers = ask.answers();
+    match (ask, after) {
+        (PaymentAsk::Install(_), Some(last)) => answers
+            .into_iter()
+            .filter(|answer| *answer > last || ask.action_for(*answer) == PlayerAction::ConfirmCardSelection)
+            .collect(),
+        _ => answers,
+    }
+}
+
+/// The position `answer` picked, when `next` asks the same install's next
+/// pick — the question after it names the same card and offers what was
+/// left once that candidate went — so `searched_answers` tries only the
+/// positions above it. `None` for any other question, and for "no more":
+/// a fresh question, such as a second install's in the same action, is
+/// searched whole.
+pub(crate) fn picked_before(asked: &PaymentAsk, answer: u32, next: &GameState) -> Option<u32> {
+    let (PaymentAsk::Install(asked), Some(PaymentAsk::Install(now))) = (asked, next.pending_payment.as_ref().map(|payment| &payment.question)) else {
+        return None;
+    };
+    let picked = asked.eligible.iter().find(|candidate| candidate.position == answer)?;
+    let left: Vec<&InstallCandidate> = asked.eligible.iter().filter(|candidate| candidate.install != picked.install).collect();
+    (now.card == asked.card && now.eligible.iter().eq(left)).then_some(answer)
 }
 
 /// One answer applied, the state boxed before it reaches the search's
