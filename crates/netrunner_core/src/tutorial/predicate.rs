@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn event_predicates_narrow_on_card_server_and_side() {
-        let scored = GameEvent::AgendaScored { card: id("offworld_office"), agenda_points: 2, server: ServerId::Remote(1) };
+        let scored = GameEvent::AgendaScored { card: id("offworld_office"), agenda_points: 2, server: ServerId::Remote(1), advancement_tokens: 0 };
         assert!(EventPredicate::Kind("AgendaScored".to_string()).matches(&scored));
         assert!(EventPredicate::Card { kind: "AgendaScored".to_string(), card: id("offworld_office") }.matches(&scored));
         assert!(!EventPredicate::Card { kind: "AgendaScored".to_string(), card: id("send_a_message") }.matches(&scored));

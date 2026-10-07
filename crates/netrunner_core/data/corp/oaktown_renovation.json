@@ -1,0 +1,55 @@
+{
+  "id": "oaktown_renovation",
+  "title": "Oaktown Renovation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "installs_faceup": true,
+  "triggers": [
+    {
+      "trigger": "OnAdvance",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  5
+                ]
+              }
+            },
+            "effect": {
+              "GainCredits": [
+                "Corp",
+                2
+              ]
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "HostedAdvancementTokens",
+                5
+              ]
+            },
+            "effect": {
+              "GainCredits": [
+                "Corp",
+                3
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you advance this agenda, gain 2[credit]. If there are 5 or more hosted advancement counters"
+    }
+  ],
+  "built_from": 31072,
+  "is_playable": true
+}

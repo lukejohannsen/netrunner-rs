@@ -679,7 +679,21 @@ pub enum GameEvent {
     CreditsLost { side: Side, amount: u32 },
     ClicksLost { side: Side, amount: u32 },
     ClicksGained { side: Side, amount: u32 },
-    AgendaScored { card: CardId, agenda_points: u32, server: ServerId },
+    AgendaScored {
+        card: CardId,
+        agenda_points: u32,
+        server: ServerId,
+        /// The agenda's advancement counters as it began to be scored, its
+        /// last known number (CR 1.17.8): they go back to the bank as it
+        /// moves (1.17.5), so an "on score" trigger that counts them
+        /// (Project Atlas's "for each hosted advancement counter past 3")
+        /// reads them here, as `CardAdvanced` carries its count. On the
+        /// event rather than on `ScoredAgenda`, because only a trigger of
+        /// the score may refer to them. `AgendaStolen` carries none: no
+        /// card in the pool counts them on a steal.
+        #[serde(default)]
+        advancement_tokens: u32,
+    },
     /// Something a card may prevent was parked (`rules::prevention`), and
     /// the players are about to be asked. One event for every kind: what it
     /// is is the payload, as it is for the parked thing itself. Were four

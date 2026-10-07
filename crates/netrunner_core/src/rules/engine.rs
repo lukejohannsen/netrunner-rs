@@ -2910,7 +2910,7 @@ pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, targe
     });
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points as i32);
 
-    let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
+    let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server, advancement_tokens };
     events.extend(announced);
     events.push(scored_event.clone());
     if agenda_counters > 0 {

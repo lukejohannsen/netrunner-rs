@@ -135,7 +135,7 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 let slot = corp_install(after, *install).map_or(InstallSlot::Ice, |c| c.slot);
                 out.push(Transition::CardMoved { card: card.clone(), install: Some(*install), from: Zone::Server(*from, slot), to: Zone::Server(*to, slot) });
             }
-            GameEvent::AgendaScored { card, agenda_points, server } => {
+            GameEvent::AgendaScored { card, agenda_points, server, .. } => {
                 let install = corp_install_by_card(before, card, *server);
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from: Zone::Server(*server, InstallSlot::Root), to: Zone::Scored(Side::Corp) });
                 out.push(Transition::AgendaScored { card: card.clone(), points: *agenda_points });

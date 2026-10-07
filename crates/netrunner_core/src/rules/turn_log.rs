@@ -1190,7 +1190,7 @@ mod tests {
         assert_eq!(Sparse::from(state.this_turn).cells.len(), 2);
 
         record_action_finished(&mut state, SameAction::GainCredit);
-        record(&mut state, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0) });
+        record(&mut state, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0), advancement_tokens: 0 });
         assert_eq!((state.this_turn.actions_finished(), state.this_turn.agenda_points_scored()), (1, 3));
         // The same action is the same basic action, or the same ability on
         // the same card (CR 5.2.5a).
@@ -1208,7 +1208,7 @@ mod tests {
         for action in [SameAction::Ability { install: InstallId(8), index: 0 }, SameAction::GainCredit, SameAction::Ability { install: InstallId(7), index: 0 }, SameAction::GainCredit] {
             record_action_finished(&mut other, action);
         }
-        record(&mut other, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0) });
+        record(&mut other, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0), advancement_tokens: 0 });
         assert_eq!(other.this_turn.same_actions, state.this_turn.same_actions);
         rotate(&mut state);
         assert_eq!(state.this_turn, TurnLog::default());
