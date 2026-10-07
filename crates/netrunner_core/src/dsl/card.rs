@@ -1706,18 +1706,20 @@ impl CardDefinition {
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
         let mut gains = |effect: &Effect| {
-            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice } = e { gained.push((*subtype, *ice)) })
+            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice, for_the_run } = e { gained.push((*subtype, *ice, *for_the_run)) })
         };
         self.triggers.iter().flat_map(|triggered| &triggered.effects).for_each(&mut gains);
         self.abilities.iter().map(|ability| &ability.effect).for_each(&mut gains);
         self.subroutines.iter().map(|subroutine| &subroutine.effect).for_each(&mut gains);
-        if gained.iter().any(|(subtype, _)| *subtype == IceType::Other) {
+        if gained.iter().any(|(subtype, _, _)| *subtype == IceType::Other) {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
         }
         // "The ice you are encountering gains" (Pelangi) may be said by
         // anything; "each piece of ice gains" by nothing in the pool.
-        if gained.iter().any(|(_, ice)| *ice == crate::dsl::StrengthOf::EachIce)
-            || (gained.iter().any(|(_, ice)| *ice == crate::dsl::StrengthOf::This) && !matches!(self.card_type, CardType::Ice(_)))
+        if gained.iter().any(|(_, ice, _)| *ice == crate::dsl::StrengthOf::EachIce)
+            || (gained.iter().any(|(_, ice, _)| *ice == crate::dsl::StrengthOf::This) && !matches!(self.card_type, CardType::Ice(_)))
+            // "For the remainder of this run" is said of the ice encountered.
+            || gained.iter().any(|(_, ice, for_the_run)| *for_the_run && *ice != crate::dsl::StrengthOf::Encountered)
         {
             return Err(CardValidationError::SubtypeGainedByNonIce(self.id.clone()));
         }
@@ -1854,8 +1856,8 @@ impl CardDefinition {
                     return misfit("Player", "only a prohibition or the other player's hand size is about a player named by side");
                 }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
-                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
-                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), _) => {
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_), _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
                 }
                 (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
@@ -2471,7 +2473,7 @@ mod tests {
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
                 text: None,
-                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This }],
+                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false }],
                 requirement: None,
             }],
             ..Default::default()

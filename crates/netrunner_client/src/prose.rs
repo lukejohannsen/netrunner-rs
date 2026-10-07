@@ -508,10 +508,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
-        Effect::GainIceSubtype { subtype, ice } => match ice {
-            netrunner_core::dsl::StrengthOf::Encountered => {
-                format!("the ice you are encountering gains {} for the remainder of this encounter", crate::board::facts::ice_type_words(&[*subtype]))
-            }
+        Effect::GainIceSubtype { subtype, ice, for_the_run } => match ice {
+            netrunner_core::dsl::StrengthOf::Encountered => format!(
+                "the ice you are encountering gains {} for the remainder of this {}",
+                crate::board::facts::ice_type_words(&[*subtype]),
+                if *for_the_run { "run" } else { "encounter" }
+            ),
             netrunner_core::dsl::StrengthOf::EachIce => format!("each piece of ice gains {}", crate::board::facts::ice_type_words(&[*subtype])),
             netrunner_core::dsl::StrengthOf::This => format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*subtype])),
         },
@@ -873,6 +875,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             at_most,
             subtype.printed().to_lowercase()
         ),
+        ContinuousKind::CannotBeBrokenUsing(subtype) => format!("its subroutines cannot be broken using {} programs", subtype.printed()),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",

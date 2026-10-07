@@ -547,6 +547,10 @@ mod tests {
             // are System Update 2021's, which is in no current pool.
             ("express_delivery", &neither),
             ("broadcast_hour", &neither),
+            // Tranche 8 Stage 5a: Quetzal's deck, on Pay As You Go's frame,
+            // and Rielle "Kit" Peddler's, on Safety Net's.
+            ("free_spirit", &neither),
+            ("transhuman", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

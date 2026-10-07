@@ -1,0 +1,41 @@
+{
+  "id": "next_bronze",
+  "title": "NEXT Bronze",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "NEXT Bronze has +1 strength for each rezzed piece of NEXT ice."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 29009,
+  "is_playable": true
+}

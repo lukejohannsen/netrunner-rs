@@ -1284,10 +1284,17 @@ pub enum Effect {
     /// the encountered ice). A word rather than a second variant, as
     /// `ModifyStrength`'s `ice` is: the sentences differ only in which ice
     /// and for how long. `EachIce` is refused by `validate`.
+    ///
+    /// `for_the_run` stretches the encountered ice's gain from the
+    /// encounter to the run — Rielle "Kit" Peddler's "it gains **code
+    /// gate** for the remainder of this run" (`Until::Run`). A word on the
+    /// encountered ice's sentence, refused on the others by `validate`.
     GainIceSubtype {
         subtype: crate::dsl::IceType,
         #[serde(default = "StrengthOf::this", skip_serializing_if = "StrengthOf::is_this")]
         ice: StrengthOf,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        for_the_run: bool,
     },
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked

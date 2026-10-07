@@ -3,7 +3,7 @@
   "name": "Endless Loop",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard.",
+  "description": "Not a published list: MirrorMorph: Endless Iteration's deck, built in Downfall Stage 8 so the sweeps reach a Corp whose first three actions are told apart (the turn log's kinds of action) and an action taken on condition it is a different one. On Retirement Package's frame, Haas-Bioroid's own cards, whose clicks to gain, install, advance, draw and play are each a different action; Retirement Package keeps every card. Eternal-legal: the frame's Core Set cards keep it out of Standard. Tranche 8 Stage 5a: two NEXT Bronze for its two Drafter, a code gate one stronger for each rezzed piece of NEXT ice; Retirement Package keeps Drafter.",
   "style": [
     "glacier"
   ],
@@ -82,7 +82,7 @@
       "count": 2
     },
     {
-      "card": "drafter",
+      "card": "next_bronze",
       "count": 2
     },
     {

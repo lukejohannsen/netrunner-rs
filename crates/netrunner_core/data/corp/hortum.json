@@ -1,0 +1,102 @@
+{
+  "id": "hortum",
+  "title": "Hortum",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeBrokenUsing": "AI"
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          3
+        ]
+      },
+      "text": "If there are 3 or more hosted advancement counters, the Runner cannot break subroutines on this ice using AI programs."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit]. If there are 3 or more hosted advancement counters, instead gain 4[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "AmountAtLeast": [
+                    "HostedAdvancementTokens",
+                    3
+                  ]
+                }
+              },
+              "effect": {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  3
+                ]
+              },
+              "effect": {
+                "GainCredits": [
+                  "Corp",
+                  4
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run. If there are 3 or more hosted advancement counters, instead search R&D for up to 2 cards. Add those cards to HQ, then end the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "HostedAdvancementTokens",
+                  3
+                ]
+              },
+              "effect": {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnRAndD",
+                  "filter": "Any",
+                  "min": 0,
+                  "max": 2,
+                  "reveal": false,
+                  "shuffle_after": true,
+                  "destination": "OwnHq"
+                }
+              }
+            }
+          },
+          "EndTheRun"
+        ]
+      }
+    }
+  ],
+  "built_from": 31076,
+  "is_playable": true
+}

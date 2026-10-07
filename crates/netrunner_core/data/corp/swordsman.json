@@ -1,0 +1,57 @@
+{
+  "id": "swordsman",
+  "title": "Swordsman",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeBrokenUsing": "AI"
+      },
+      "applies_to": "This",
+      "text": "The Runner cannot break subroutines on this ice using AI programs."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed AI program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "HasSubtype": "AI"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 31056,
+  "is_playable": true
+}

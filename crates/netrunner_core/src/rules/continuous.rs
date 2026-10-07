@@ -461,6 +461,18 @@ pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunI
     left
 }
 
+/// Whether `breaker` may break subroutines on the ice `ice` at all, as the
+/// ice says of itself (`ContinuousKind::CannotBeBrokenUsing`, Swordsman's
+/// "using **AI** programs"). Only a program is "using a program": the
+/// subtype is asked of a breaker that is one.
+pub(crate) fn may_break_using(state: &GameState, registry: &CardRegistry, ice: InstallId, breaker: &CardDefinition) -> bool {
+    if breaker.card_type != crate::dsl::CardType::Program {
+        return true;
+    }
+    let Some(target) = Target::corp_install(state, registry, ice) else { return true };
+    !any(state, registry, target, |kind| matches!(kind, ContinuousKind::CannotBeBrokenUsing(subtype) if breaker.subtypes.contains(subtype)))
+}
+
 /// The subroutines the ice `install` gains by its own static ability
 /// (`ContinuousKind::Subroutines`, Echo's and Envelopment's), as copies to
 /// put before its printed ones (CR 9.8.3b) and after them (9.8.3d), each

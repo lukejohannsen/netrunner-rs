@@ -1257,16 +1257,17 @@ pub fn evaluate_effect(
 
         // "The ice you are encountering gains that subtype for the
         // remainder of this encounter" (Pelangi).
-        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::Encountered } => {
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::Encountered, for_the_run } => {
             let run = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
             let install = run.ice.get(run.position).map(|ice| ice.install_id).ok_or(RulesError::NotInEncounter)?;
             let source = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
-            let until = lingering::until(state, crate::dsl::EffectDuration::Encounter, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            let duration = if *for_the_run { crate::dsl::EffectDuration::Run } else { crate::dsl::EffectDuration::Encounter };
+            let until = lingering::until(state, duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
             Ok(Vec::new())
         }
         Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce, .. } => Err(RulesError::UnresolvedCardTarget),
-        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This } => {
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, .. } => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
             let rezzed_ice = state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed && card.slot == InstallSlot::Ice);
             if !rezzed_ice {
@@ -4872,6 +4873,9 @@ fn breakable_now(
     if breaker.is_some_and(|definition| !card_matches_filter(definition, &CardFilter::Icebreaker))
         && continuous::cannot(state, registry, crate::dsl::Prohibition::BreakWithNonIcebreakers)
     {
+        return Vec::new();
+    }
+    if breaker.is_some_and(|definition| !continuous::may_break_using(state, registry, ice.install_id, definition)) {
         return Vec::new();
     }
     let mut left = continuous::breaks_left(state, registry, ice, breaker);

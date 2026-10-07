@@ -8547,3 +8547,62 @@ Magnum Opus Reprint 3 of 6; `SU21_UNIMPLEMENTED` 45 → 42,
     keeps both cards given up.
 - **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
   single-use, none unused, over 676 card files.
+
+#### Stage 5a — breaker and ice words: a break barred by subtype, a subtype for the run (7 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: Quetzal, Rielle “Kit” Peddler, Swordsman
+and Hortum from System Update 2021, and NEXT Bronze from Salvaged
+Memories. **No new `Effect`; one new `ContinuousKind` and one word on an
+existing effect.** System Update 2021 44 of 82, Salvaged Memories 9 of
+18; `SU21_UNIMPLEMENTED` 42 → 38, `SM_UNIMPLEMENTED` 10 → 9.
+
+- **A piece of ice can bar a kind of program** (`ContinuousKind::
+  CannotBeBrokenUsing`). It covers Swordsman's "The Runner cannot break
+  subroutines on this ice using **AI** programs", and Hortum's with a
+  `while` of three hosted advancement counters.
+  - It is about `This`, on ice.
+  - It is asked by both break effects of the breaking card
+    (`ability::breakable_now`, through `continuous::may_break_using`). They
+    then find nothing to break, so the ability is not offered.
+  - It covers every subroutine, a gained one too.
+  - Only a program is "using a program", so a bioroid's own break and
+    Quetzal's are untouched.
+  - **Why not `BreakLimit`:** it counts printed subroutines and excepts a
+    subtype rather than naming one.
+- **The encountered ice can gain a subtype for the run.** Rielle's "it
+  gains **code gate** for the remainder of this run" is Pelangi's
+  `GainIceSubtype` with `for_the_run` (`Until::Run`). `validate` refuses
+  the word on any ice but the encountered one.
+- **What the rest is made of.**
+  - Quetzal is Vic's identity ability, with Botulus's strength-free break
+    (`BreakSubroutinesUnconditionally`) behind `OncePerTurn` and
+    `Encountering(Barrier)`.
+  - Hortum is advanceable ice (an advancement requirement of 0, CR
+    1.18.3). Its "instead" subroutines are two `EffectIf`s on Akhet's
+    `HostedAdvancementTokens`, and its search is Digital Rights
+    Management's, shuffled after.
+  - NEXT Bronze's strength counts `CorpInstalls(All[Ice, Rezzed, NEXT])`,
+    itself included.
+- **Moved to 5b:**
+  - Atman's "you may spend any number of credits to place that many power
+    counters". An X is paid only inside an activated ability's cost
+    (`Cost::CreditsX`), and a "lose" would not be a spend.
+  - Parasite's "When the strength of host ice is 0 or less, trash it".
+    This is a conditional ability with a static condition (CR 9.6.7),
+    which the checkpoint does not yet raise.
+- **Client.** Nothing added to the view. The inspector words the new kind
+  and the run-long gain.
+- **Decks.**
+  - Two new Sweep decks, both pinned `neither`:
+    - **Free Spirit** is Pay As You Go's frame under Quetzal, at six
+      influence of fifteen.
+    - **Transhuman** is Safety Net's frame under Rielle, at nine of ten.
+  - Three swaps, each in its deck's faction:
+    - Second Site takes two Swordsman for its two Phoneutria, which Open
+      Book and Permafrost keep.
+    - Hostile Bid takes two Hortum for its two Anvil, which Ground
+      Control keeps.
+    - Endless Loop takes two NEXT Bronze for its two Drafter, which
+      Retirement Package keeps.
+- **DSL ratio** (`pool_status.py`): 13 of 105 `Effect` variants
+  single-use, none unused, over 681 card files.

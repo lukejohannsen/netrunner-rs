@@ -1,0 +1,41 @@
+{
+  "id": "quetzal_free_spirit",
+  "title": "Quetzal: Free Spirit",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 0
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "And": [
+              "DuringEncounter",
+              {
+                "Encountering": "Barrier"
+              }
+            ]
+          }
+        ]
+      },
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Once per turn → 0[credit]: Break 1 barrier subroutine."
+    }
+  ],
+  "built_from": 31001,
+  "is_playable": true
+}
