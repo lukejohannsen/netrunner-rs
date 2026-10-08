@@ -1,0 +1,49 @@
+{
+  "id": "subliminal_messaging",
+  "title": "Subliminal Messaging",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        { "GainCredits": ["Corp", 1] }
+      ]
+    },
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "requirement": "OncePerTurn",
+      "text": "The first time each turn you play a copy of Subliminal Messaging, gain [click].",
+      "effects": [
+        { "GainClicks": ["Corp", 1] }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "from_discard": true,
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [{ "TimesLastTurn": "OnRunStart" }, 1]
+        }
+      },
+      "text": "When your turn begins, if this card is in Archives and the Runner did not initiate any runs during their last turn, you may reveal this card and add it to HQ.",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "AddToHand",
+              { "Sequence": [] }
+            ],
+            "texts": ["you may reveal this card and add it to HQ", ""]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 31082,
+  "is_playable": true
+}

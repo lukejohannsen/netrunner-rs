@@ -1490,6 +1490,27 @@ pub fn evaluate_effect(
 
         Effect::AddToHand => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // No install at all: the card acts from its owner's discard
+            // pile (`TriggeredEffect::from_discard`), and is taken from
+            // there — Subliminal Messaging's "reveal this card and add it
+            // to HQ", which is faceup in Archives or was not heard — and
+            // recorded as the revealed selection a prompt over Archives
+            // would have made (`CardsSelected`), which Hyoubu Institute
+            // hears as a reveal. The Corp's only: no Runner card adds
+            // itself to the grip from the heap. Not
+            // `PromptChooseCards` over Archives, which never offers the
+            // last faceup copy of the operation it is resolving for
+            // (`pending_choice::resolving_operation_in`): this card is not
+            // resolving, and nothing tells the two apart once a "may" has
+            // parked.
+            if ctx.acting_install.is_none() && registry.get(&card_id).is_some_and(|definition| definition.side == Side::Corp) {
+                let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else { return Ok(Vec::new()) };
+                state.corp.archives.remove(position);
+                state.corp.hq.push(card_id.clone());
+                let mut events = Vec::new();
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardsSelected { side: Side::Corp, cards: vec![card_id], revealed: true })?;
+                return Ok(events);
+            }
             // A Corp install goes to HQ as `Cost::AddSelfToHq` takes it
             // (Wall to Wall's "Add this asset to HQ").
             if let Some(installed) = acting_corp_install(state, ctx).filter(|installed| installed.card == card_id) {
@@ -2816,8 +2837,8 @@ pub(crate) fn fire_card_triggers(
             t.trigger == trigger
                 && due.heard.admits(t.subject)
                 // A heap ability resolves only as heard from the heap, and
-                // a card in play never resolves one (`Heard::FromHeap`).
-                && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
+                // a card in play never resolves one (`Heard::FromDiscard`).
+                && t.from_discard == (due.heard == crate::rules::state::Heard::FromDiscard)
                 && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
                 && !((t.first_each_turn || t.first_each_encounter) && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, card_id, due.install, triggering_event)
@@ -2978,7 +2999,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
     let meant = |t: &&TriggeredEffect| {
         t.trigger == due.trigger
             && due.heard.admits(t.subject)
-            && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
+            && t.from_discard == (due.heard == crate::rules::state::Heard::FromDiscard)
             && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
             && !(t.first_each_turn && due.not_the_first_this_turn)
             && listeners::when_admits(state, registry, t, card.side, &due.card, due.install, due.event.as_ref())
@@ -6241,7 +6262,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -6279,7 +6300,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -6305,7 +6326,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

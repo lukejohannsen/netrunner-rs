@@ -9330,3 +9330,54 @@ the Core Set at 43 of 113.
     and draws 1.
 - **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
   single-use, none unused, over 720 card files.
+
+#### Stage 9f — an operation that comes back from Archives (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card with no new `Effect`.
+**Salvaged Memories is complete (18 of 18).** System Update 2021 is at 75
+of 82.
+- **Card from System Update 2021 and Salvaged Memories:** Subliminal
+  Messaging.
+
+- **"Gain 1[credit]"** is the play.
+- **"The first time each turn you play a copy of Subliminal Messaging,
+  gain [click]"** is a second `OnPlay` entry with `OncePerTurn`. The turn
+  log counts a card's type, never its title, so `first_each_turn` would
+  count the turn's first operation of any name. `OncePerTurn` is exact
+  here for the reason Ryō's is: the entry has no other condition, so the
+  first copy played always spends it, and every copy shares the key
+  (`OncePerTurnKey` with no install). This is the second card held to a
+  first time narrowed by a title.
+- **"When your turn begins, if this card is in Archives and the Runner did
+  not initiate any runs during their last turn, you may reveal this card
+  and add it to HQ":**
+  - A card in Archives now listens, as a card in the heap does (CR
+    9.1.8b). `TriggeredEffect::from_heap` is renamed `from_discard`, with
+    `Heard::FromDiscard`: one word for both discard piles, since it is one
+    rule. `validate` no longer refuses it on a Corp card.
+  - Only a **faceup** card in Archives listens. The Runner may not know a
+    facedown one is there (CR 4.4.6c), and a trigger heard, asked about or
+    declined would tell them. Like the heap, Archives gives one listener a
+    card, so two faceup copies return one a turn.
+  - "The Runner did not initiate any runs during their last turn" is
+    `Not(AmountAtLeast(TimesLastTurn(OnRunStart), 1))`. As the Corp's turn
+    begins, the turn that ended most recently is the Runner's.
+  - "Add it to HQ" is `AddToHand`. A Corp card acting with no install acts
+    from Archives, so its last faceup copy there goes to HQ. This is
+    recorded as a revealed `CardsSelected`, which Hyoubu Institute hears
+    as a reveal. A `PromptChooseCards` over Archives could not do it: it
+    never offers the last faceup copy of an operation that is resolving
+    (`pending_choice::resolving_operation_in`), and after a parked "may"
+    nothing tells that apart from a card heard from Archives.
+- **Decks.** Open Book (Hyoubu Institute, Eternal-only, which Subliminal
+  Messaging needs) takes two Subliminal Messaging for two of its three
+  Hedge Fund. Hedge Fund is in many decks.
+- **Client.** Nothing new reaches the view.
+- **Tests.** Two new tests.
+  - Two copies played in one turn gain 1[credit] each, and only the first
+    gains [click].
+  - After a Runner turn with no run, the Corp's turn begins with the offer,
+    and taking it moves the card to HQ. After a run, nothing is asked. A
+    facedown copy is not heard.
+- **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
+  single-use, none unused, over 721 card files.

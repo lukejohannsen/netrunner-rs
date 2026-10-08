@@ -1602,7 +1602,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1612,7 +1612,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -2377,7 +2377,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnAgendaStolen,
                 effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
@@ -3544,7 +3544,7 @@ mod tests {
     ) -> CardDefinition {
         CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }

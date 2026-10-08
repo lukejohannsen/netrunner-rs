@@ -1182,7 +1182,10 @@ pub enum Effect {
     /// moves. A Corp install goes to HQ — Wall to Wall's "Add this asset to
     /// HQ", one option of several, where Descent and Janaína add themselves
     /// as a cost (`Cost::AddSelfToHq`), which moves the card the same way.
-    /// Composition didn't work:
+    /// A card acting with no install is acting from its discard pile
+    /// (`TriggeredEffect::from_discard`) and comes from there: Subliminal
+    /// Messaging's "reveal this card and add it to HQ", the last faceup
+    /// copy in Archives. Composition didn't work:
     /// `PromptChooseCards` cannot say "this install", and `AddToDeck` moves
     /// only into a deck.
     AddToHand,
