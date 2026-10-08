@@ -1,0 +1,44 @@
+{
+  "id": "ninja",
+  "title": "Ninja",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "3[credit]: +5 strength.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 5,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 1027,
+  "is_playable": true
+}

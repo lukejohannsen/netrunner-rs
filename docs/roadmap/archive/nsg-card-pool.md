@@ -9652,3 +9652,37 @@ vocabulary and no change to the engine.
   stronger.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 751 card files.
+
+#### Stage 11d — the Core Set's breakers, viruses and rig that compose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: seven Runner cards, no new vocabulary and
+no change to the engine.
+- **Cards from the Core Set:** Aurora, Ninja, Battering Ram, Pipeline,
+  Yog.0, Datasucker, Grimoire.
+
+- **The breakers** are Corroder's and Gordian Blade's two abilities at
+  their own prices: a pump for the encounter (Aurora, Ninja) or for the
+  run (Battering Ram, Pipeline), and Yog.0's break for 0[credit] with no
+  pump at all.
+- **Datasucker** is Leech with Datasucker's words: a virus counter for
+  each successful run on a central server, spent for -1 strength on the
+  encountered ice until the encounter ends.
+- **Grimoire** is +2[mu] and Cookbook's trigger without its "may": every
+  virus program installed gets a counter.
+- **Déjà Vu waits.** A played event is filed in the heap after its
+  `OnPlay` has parked a choice, so Déjà Vu's search of the heap would
+  offer the copy resolving it; Networking's "add this event to your grip"
+  is written on that filing, so the fix is the play area's, not this
+  card's.
+- **Decks.** Hit List takes two Aurora for its two Curupira and two Ninja
+  for two of its four Matryoshka; Safety Net two Pipeline for its two
+  Living Mural; Level Pegging two Battering Ram for its two Gauss; Pay As
+  You Go two Yog.0 for its two Utae, two Datasucker for its two Stargate
+  and a Grimoire for one of its two Marrow. Each is in faction, and every
+  card given up stays in another deck.
+- **Tests.** Three new tests: every breaker breaks its own kind at its
+  price, after its pump, and not another kind; Datasucker fed by a run on
+  Archives and spent on an Ice Wall; Grimoire's memory and its counter on
+  a virus and not on a breaker.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 758 card files.

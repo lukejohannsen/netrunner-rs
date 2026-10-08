@@ -1,0 +1,45 @@
+{
+  "id": "datasucker",
+  "title": "Datasucker",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD",
+          "Archives"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "ModifyStrength": {
+          "delta": -1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Hosted virus counter: Rezzed piece of ice currently being encountered has -1 strength until the end of the encounter."
+    }
+  ],
+  "counter_kind": "Virus",
+  "built_from": 1008,
+  "is_playable": true
+}

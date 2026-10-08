@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "fermenter", "hantu", "imp", "leech", "medium", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "datasucker", "fermenter", "hantu", "imp", "leech", "medium", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -29081,5 +29081,79 @@ mod reprints {
             let (advanced, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, ice) }).expect("can be advanced");
             assert_eq!(crate::rules::continuous::installed_ice_strength(&advanced, &registry, &id(ice), install_of(&advanced, ice)), printed + 1, "{ice}");
         }
+    }
+
+    // ---- Stage 11d: the Core Set's breakers and viruses that compose ----
+
+    /// Each breaker breaks its own kind of subroutine at its printed price,
+    /// and nothing else; the pumps cost what they print.
+    #[test]
+    fn the_core_breakers_break_their_kind_at_their_price() {
+        let registry = registry();
+        // (breaker, printed strength, ice it breaks, ice it does not, break price, pump index and price)
+        for (breaker, strength, ice, other, price, pump) in [
+            ("aurora", 1, "ice_wall", "tithe", 2, Some(2)),
+            ("battering_ram", 3, "ice_wall", "tithe", 2, Some(1)),
+            ("pipeline", 1, "tithe", "ice_wall", 1, Some(2)),
+            ("ninja", 0, "tithe", "ice_wall", 1, Some(3)),
+            ("yog_0", 3, "enigma", "ice_wall", 0, None),
+        ] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig(breaker, strength)];
+            state.corp.installed = vec![ice_at_hq(ice)];
+            let mut at_ice = encounter(&state, &registry);
+            let credits = at_ice.runner.resources.credits.0;
+            let mut spent = 0;
+            if let Some(cost) = pump {
+                at_ice = use_ability(&at_ice, &registry, breaker, 1).unwrap_or_else(|error| panic!("{breaker} pumps: {error:?}")).0;
+                // The pump opens a window the Corp passes.
+                at_ice = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes").0;
+                spent += cost;
+                assert_eq!(at_ice.runner.resources.credits, Credits(credits - cost), "{breaker}'s pump costs {cost}");
+            }
+            let (broken, events) = use_ability(&at_ice, &registry, breaker, 0).unwrap_or_else(|error| panic!("{breaker} breaks {ice}: {error:?}"));
+            assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{breaker}: {events:?}");
+            assert_eq!(broken.runner.resources.credits, Credits(credits - spent - price), "{breaker} breaks for {price}");
+
+            state.corp.installed = vec![ice_at_hq(other)];
+            assert!(use_ability(&encounter(&state, &registry), &registry, breaker, 0).is_err(), "{breaker} does not break {other}");
+        }
+    }
+
+    /// Datasucker feeds on central runs and spends a counter for -1
+    /// strength on the encountered ice.
+    #[test]
+    fn datasucker_feeds_on_central_runs_and_weakens_the_encountered_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("datasucker", 0)];
+        state.corp.installed.clear();
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert_eq!(counters_on(&state, "datasucker"), 1, "a successful run on a central server");
+        let mut state = state;
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&state, &registry);
+        let (weakened, _) = use_ability(&at_ice, &registry, "datasucker", 0).expect("hosted virus counter: -1 strength");
+        let run = weakened.active_run.as_ref().expect("the run goes on");
+        assert_eq!(crate::rules::continuous::ice_strength(&weakened, &registry, &run.ice[0]), 0, "Ice Wall's 1, less 1");
+        assert_eq!(counters_on(&weakened, "datasucker"), 0);
+    }
+
+    /// Grimoire gives +2[mu] and a virus counter to every virus program
+    /// installed after it.
+    #[test]
+    fn grimoire_adds_memory_and_a_counter_to_each_virus_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let memory = crate::rules::memory::memory_balance(&state, &registry);
+        state.runner.rig = vec![rig("grimoire", 0)];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), memory + 2);
+        state.runner.grip = vec![id("datasucker"), id("aurora")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("datasucker"), trash_first: false }).expect("install");
+        let (installed, _) = pass_until_settled(installed, &registry);
+        assert_eq!(counters_on(&installed, "datasucker"), 1, "place 1 virus counter on that program");
+        let (installed, _) = apply_action(&installed, &registry, PlayerAction::InstallProgram { card_id: id("aurora"), trash_first: false }).expect("install");
+        let (installed, _) = pass_until_settled(installed, &registry);
+        assert_eq!(counters_on(&installed, "aurora"), 0, "not a virus");
     }
 }

@@ -1,0 +1,39 @@
+{
+  "id": "grimoire",
+  "title": "Grimoire",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "HasSubtype": "Virus"
+        }
+      },
+      "acts_on_subject": true,
+      "text": "place 1 virus counter on that program",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "built_from": 1006,
+  "is_playable": true
+}

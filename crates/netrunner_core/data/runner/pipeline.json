@@ -1,0 +1,44 @@
+{
+  "id": "pipeline",
+  "title": "Pipeline",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength for the remainder of this run.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Run"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 1046,
+  "is_playable": true
+}
