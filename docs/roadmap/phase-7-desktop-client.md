@@ -70,8 +70,8 @@ keep their addresses however long §4's alphabet runs.*
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
 settled are AGENTS.md §5, which is where to read them. **§4's movement, owed since §3, is
-done (§4bm, 8 October 2026). Open: §8's remaining items; §9's search half, not started; and the
-owed list.**
+done (§4bm, 8 October 2026), and so are §8's replay notes (§4bn). Open: §8 item 4; §9's search
+half, not started; and the owed list.**
 
 ## Owed
 
@@ -83,7 +83,7 @@ owed list.**
 - **§4y**: per-identity board styles, deferred at the person's choice.
 - **§6c**: a lesson hint still echoes its prose. **§6d**: Cleaver's menu entries printed raw symbols ("1[credit]") — check against §4bg before fixing.
 - **§7**: a resume over an iroh ticket is tested only over TCP.
-- **§8 item 4**: the take-back's server half ("the server can take (b) later"). **§8 item 5**: replay notes — a file beside the record, and an editor.
+- **§8 item 4**: the take-back's server half ("the server can take (b) later"). ~~**§8 item 5**: replay notes — a file beside the record, and an editor.~~ Done in §4bn (8 October 2026).
 - **§9**: decklists searched from NetrunnerDB, not started. The download half — a published decklist by its link — is done (§10 Stage 6, 1 October 2026); the search half stays here.
 - **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–6 are done (1 October 2026). What the plan left for later: the person's own art (`Art::Custom`, room made in Stage 3), and the terminal client's share of Stages 5–6 (its builder still imports from a pasted list).
 
@@ -158,6 +158,7 @@ owed list.**
   - **§4bk** — Every name on the table is a nameplate, and the buildings are gone (`feat/server-nameplates`, 25 September 2026).
   - **§4bl** — A server shows up to ten strips before its stack sheet, and the servers take the spare height before the rig (`feat/server-slots-take-spare`, 25 September 2026).
   - **§4bm** — Cards are seen moving: a drawn card flies from the deck to the hand, an install from the hand to its tile, a trash from its tile to the pile, as a copy over the board that hides the card it lands on until it has (`feat/card-movement`, 8 October 2026).
+  - **§4bn** — A note is written on a replay's position, kept in a file beside the record, read on the rail in both clients, and stepped to from the bar (`feat/replay-notes`, 8 October 2026).
 - **§5** — The deck builder (`feat/desktop-deck-builder`, 24 September 2026).
   - **§5a** — A card in the deck builder can be read (`feat/deck-builder-readable-cards`, 24 September 2026).
   - **§5b** — A card is read by a right-click, centred; the hover preview is gone (`fix/deck-builder-read-centred`, 24 September 2026).
@@ -211,8 +212,8 @@ exist, never a new action.
    bot is casual, §4af's correction and Phase 3 §2).
    Local games now; the rule sits in the session so the server can take
    (b) later.
-5. ~~**A replay viewer over `MatchHistory`**~~ — done in §4ah; **notes
-   are still owed**.
+5. ~~**A replay viewer over `MatchHistory`**~~ — done in §4ah; ~~**notes
+   are still owed**~~ — done in §4bn (8 October 2026).
 6. ~~**The Corp's run auto-pass toggle.**~~ Done in §4aq.
 7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
 8. ~~**Ghost Trojans in the program row.**~~ Done in §4an.

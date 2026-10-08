@@ -5072,6 +5072,68 @@ person asks.
 
 No engine change, so no coverage run or sweeps.
 
+### 4bn. A note is written on a replay's position, kept beside the record, read in both clients and stepped to from the bar — DONE (8 October 2026)
+
+`feat/replay-notes`. §8 item 5's second half, owed since §4ah ("they need
+a file beside the record and an editor, and nothing else here needed
+either"): jinteki's replays carry notes and bookmarks, and ours carried
+neither.
+
+**A note is about a position, and the book is a file beside the record.**
+`netrunner_client::notes` is a map from the record's cursor — how many
+actions have been applied — to a line of text, saved as
+`<record>.notes.json` next to the `.jsonl` and never inside it: the
+record is the bug report, written once and replayed bit for bit, and a
+note is the person's and changes. So a report can be sent with its
+notes or without, and `bug_report::list`, which lists `.jsonl` alone,
+never lists the book. An empty book removes its file, so an untouched
+record has nothing beside it. A position with a note is a bookmark:
+`Step::PreviousNote` and `Step::NextNote` on the bar ("< Note", "Note >")
+seek to the nearest noted position either side, greyed when there is
+none, the way the rest of the bar greys what would not move.
+
+**The editor is the one-line text field, on the rail.** The rail is
+where a thing to read goes, so the note is read there under its
+"Note" overline, with "Add note" / "Edit note" (N) under the replay's
+title; pressing it puts `widgets::text_field::TextField` in the rail as
+`NoteEditor` holding the note so far, Enter keeps (the book is written
+at once), Escape lets go. A note is one line of up to `notes::MAX_LEN`
+(200) characters — the text field's own doc says a second line is the
+point to adopt Bevy's editor, and a note that wants a paragraph is two
+notes. **While the editor exists, the board's keys stand down**:
+`screens::game::shortcuts` and `escape` return on any `TextField` in
+the world, and `screens::replay::steps` reads no step — the first cut
+let the S of "should" swap the chair. Checked by query rather than by
+`InputCaptured`, because the game's `escape` and the field's system are
+both in `nav::Captures` with no order between them, and a resource set
+by whichever ran first is not a rule. `steps` is also ordered after
+`edit_text_fields`, or the N that opens the editor is typed into it: the
+field's system reads the frame's keys and then feeds every field that
+exists, and a field spawned earlier in the same frame does.
+
+**The terminal reads the book too.** `netrunner_cli replay` loads the
+notes beside the record and puts "Note: …" at the head of its side
+panel's prose for a noted position; writing one stays the desktop's,
+since the terminal's replay has no field and the person asked for the
+desktop's feel.
+
+**Checked.** `tests/replay.rs`
+`a_note_is_written_beside_the_record_shown_on_the_rail_and_stepped_to_from_the_bar`:
+with no notes both Note buttons are greyed and nothing is beside the
+record; two steps back, Add note opens the editor, "should run hq" is
+typed without swapping the chair or stepping, Enter keeps it — the rail
+reads it, the button says Edit note, the file beside the record holds
+it; from the start Note > lands on it and from the end < Note does; N
+reopens it, Escape lets the edit go without the quit prompt; a blank
+note removes it and the file. `netrunner_client::notes::tests` pin the
+trim, the cap, the bookmarks' order and the file's coming and going.
+`models::replay::tests` pin the bar's greying for the note steps.
+Screenshotted on the virtual compositor: a recorded game at its end,
+`NETRUNNER_REPLAY` on a record with a note beside it, the note on the
+rail under the replay's title.
+
+No engine change, so no coverage run or sweeps.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import
