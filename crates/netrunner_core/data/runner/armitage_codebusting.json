@@ -1,0 +1,56 @@
+{
+  "id": "armitage_codebusting",
+  "title": "Armitage Codebusting",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 12
+        }
+      ],
+      "text": "Place 12[credit] from the bank on Armitage Codebusting when it is installed."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": {
+              "Fixed": 2
+            }
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              2
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Take 2[credit] from Armitage Codebusting."
+    }
+  ],
+  "built_from": 1053,
+  "is_playable": true
+}

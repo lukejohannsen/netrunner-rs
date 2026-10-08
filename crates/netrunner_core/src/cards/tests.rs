@@ -28935,4 +28935,78 @@ mod reprints {
         let done = apply_action(&apply_action(&first, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("select").0, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
         assert!(done.corp.installed.iter().all(|installed| installed.advancement_tokens == 1));
     }
+
+    // ---- Stage 11b: the Core Set's Runner economy and rig that compose ----
+
+    /// Easy Mark gains 3[credit]; Special Order finds an icebreaker, and
+    /// only an icebreaker, in the stack.
+    #[test]
+    fn easy_mark_gains_three_and_special_order_finds_an_icebreaker() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("easy_mark"), id("special_order")];
+        state.runner.stack = vec![id("sure_gamble"), id("corroder"), id("easy_mark")];
+        let credits = state.runner.resources.credits;
+        let (marked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("easy_mark") }).expect("play");
+        assert_eq!(marked.runner.resources.credits, Credits(credits.0 + 3));
+        let (searching, _) = apply_action(&marked, &registry, PlayerAction::PlayEvent { card_id: id("special_order") }).expect("play");
+        assert_eq!(runner_toggles(&searching, &registry).len(), 1, "Corroder alone");
+        let position = searching.runner.stack.iter().position(|card| *card == id("corroder")).expect("in the stack");
+        let (toggled, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (done, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(done.runner.grip.contains(&id("corroder")));
+        assert_eq!(done.runner.stack.len(), 2);
+    }
+
+    /// Wyldside draws 2 and takes a [click] as each turn begins.
+    #[test]
+    fn wyldside_draws_two_and_takes_a_click_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("wyldside")];
+        state.runner.stack = vec![id("sure_gamble"); 4];
+        let state = install_resource(&state, &registry, "wyldside");
+        let next = next_runner_turn(state, &registry);
+        assert_eq!(next.runner.grip.len(), 2, "draw 2 cards");
+        assert_eq!(next.runner.resources.clicks, Clicks(3), "and lose [click]");
+    }
+
+    /// +1[link], +1[mu] twice, and Desperado's credit on every successful
+    /// run.
+    #[test]
+    fn access_to_globalsec_akamatsu_and_desperado_raise_link_memory_and_pay_on_success() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let (link, memory) = (crate::rules::continuous::link(&state, &registry), crate::rules::memory::memory_balance(&state, &registry));
+        state.runner.rig = vec![rig("access_to_globalsec", 0), rig("akamatsu_mem_chip", 0), rig("desperado", 0)];
+        assert_eq!(crate::rules::continuous::link(&state, &registry), link + 1);
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), memory + 2);
+        state.corp.installed.clear();
+        let credits = state.runner.resources.credits;
+        let (ran, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert_eq!(ran.runner.resources.credits, Credits(credits.0 + 1), "gain 1[credit] whenever you make a successful run");
+    }
+
+    /// Armitage Codebusting pays out 2[credit] a click until its 12 are
+    /// gone, and Magnum Opus pays 2[credit] a click for ever.
+    #[test]
+    fn armitage_codebusting_and_magnum_opus_pay_two_a_click() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("armitage_codebusting")];
+        state.runner.resources.clicks = Clicks(9);
+        let mut state = install_resource(&state, &registry, "armitage_codebusting");
+        assert_eq!(counters_on(&state, "armitage_codebusting"), 12);
+        let credits = state.runner.resources.credits;
+        for _ in 0..6 {
+            state = use_ability(&state, &registry, "armitage_codebusting", 0).expect("[click]: take 2[credit]").0;
+        }
+        assert_eq!(state.runner.resources.credits, Credits(credits.0 + 12));
+        assert!(state.runner.heap.contains(&id("armitage_codebusting")), "no credits left, so trashed");
+
+        state.runner.rig = vec![rig("magnum_opus", 0)];
+        let credits = state.runner.resources.credits;
+        let (paid, _) = use_ability(&state, &registry, "magnum_opus", 0).expect("[click]: gain 2[credit]");
+        assert_eq!(paid.runner.resources.credits, Credits(credits.0 + 2));
+    }
 }

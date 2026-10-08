@@ -9584,3 +9584,38 @@ and no change to the engine.
   Shipment from Kaguya's second pick offering only a different card.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 734 card files.
+
+#### Stage 11b — the Core Set's Runner cards that compose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: eight Runner cards, no new vocabulary and
+no change to the engine.
+- **Cards from the Core Set:** Easy Mark, Special Order, Wyldside, Access
+  to Globalsec, Akamatsu Mem Chip, Desperado, Armitage Codebusting,
+  Magnum Opus.
+
+- **Declared numbers.** "+1[link]" and "+1[mu]" are `ContinuousKind::Link`
+  and `Memory` on the controller, as The Toolbox's are; Desperado is a
+  console by its printed subtype, so the checkpoint's console limit reads
+  it with no line of its own.
+- **Wyldside**: Earthrise Hotel's turn-start draw with VRcation's lost
+  [click].
+- **Armitage Codebusting**: Liberated Account's loaded credits, 12 taken 2
+  at a time, trashed when empty.
+- **Special Order**: a search of the stack for an `Icebreaker`, revealed,
+  as GameDragon Pro's filter reads one.
+- **Data Dealer waits.** "[click], forfeit 1 agenda" is the first Runner
+  card that forfeits, and `Cost::Forfeit` is the Corp's alone; it joins a
+  later stage rather than this one.
+- **Decks.** Pay As You Go takes two Wyldside for its two Crash Space;
+  Hit List Desperado for its Hermes, a console for a console, and Easy
+  Mark and Special Order for its two Concerto, an event for an event; Safety Net an Akamatsu Mem Chip for its Aniccam
+  and two Magnum Opus for its two Professional Contacts; Level Pegging two
+  Access to Globalsec for its two Decoy and two Armitage Codebusting for
+  its two Environmental Testing. Every card given up stays in another
+  deck.
+- **Tests.** Four new tests: Easy Mark and Special Order (only the
+  icebreaker offered); Wyldside on the next turn; the link and memory
+  three cards add, and Desperado's credit on a successful run; Armitage
+  emptied in six clicks and trashed, and Magnum Opus.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 742 card files.

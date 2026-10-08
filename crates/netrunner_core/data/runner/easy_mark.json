@@ -1,0 +1,23 @@
+{
+  "id": "easy_mark",
+  "title": "Easy Mark",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 1019,
+  "is_playable": true
+}

@@ -1,0 +1,34 @@
+{
+  "id": "wyldside",
+  "title": "Wyldside",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "RunnerClicksAtLeast": 1
+            },
+            "effect": {
+              "LoseClicks": 1
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, draw 2 cards and lose [click]."
+    }
+  ],
+  "built_from": 1016,
+  "is_playable": true
+}

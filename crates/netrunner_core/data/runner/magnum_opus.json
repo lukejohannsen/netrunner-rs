@@ -1,0 +1,26 @@
+{
+  "id": "magnum_opus",
+  "title": "Magnum Opus",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "memory_cost": 2,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          2
+        ]
+      },
+      "text": "[click]: Gain 2[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 1044,
+  "is_playable": true
+}
