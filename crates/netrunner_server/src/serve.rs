@@ -164,7 +164,9 @@ pub struct ServeOptions {
     /// it, and nothing rated.
     ///
     /// **Only a match between two identified people is rated**, and
-    /// between two different keys. A game against a seated bot is
+    /// between two different keys, in a lobby that rates
+    /// (`LobbyInfo::rated`: the server's own, and a player's unless made
+    /// casual — Phase 4 §7 stage 5). A game against a seated bot is
     /// practice wherever it is played (`netrunner_rating::Track`), and an
     /// unidentified seat plays unrated: a rating is filed under a key the
     /// player proved, never under the name they typed.
@@ -426,6 +428,9 @@ struct PlayerLobby {
     /// Held in memory only and never sent: a lobby's password is a
     /// door for a few friends, not an account's.
     password: Option<String>,
+    /// Made for games that count for nothing, on a server that would
+    /// otherwise rate them (`CreateLobby::casual`).
+    casual: bool,
 }
 
 /// A player about to be seated: the name `MatchList` will show, the key
@@ -530,11 +535,11 @@ impl Registry {
 
     /// Lobby `id` as a player sees it, or `None` if there is no such lobby.
     fn lobby_info(&self, id: &str, options: &ServeOptions) -> Option<LobbyInfo> {
-        let (name, format, permanent, closed, password) = match self.player_lobbies.get(id) {
-            Some(lobby) => (lobby.name.clone(), lobby.format, false, lobby.closed, lobby.password.is_some()),
+        let (name, format, permanent, closed, password, casual) = match self.player_lobbies.get(id) {
+            Some(lobby) => (lobby.name.clone(), lobby.format, false, lobby.closed, lobby.password.is_some(), lobby.casual),
             None => {
                 let format = *options.formats.iter().find(|&&format| format_lobby_id(format) == id)?;
-                (format!("{format:?}"), format, true, false, false)
+                (format!("{format:?}"), format, true, false, false, false)
             }
         };
         Some(LobbyInfo {
@@ -544,6 +549,9 @@ impl Registry {
             permanent,
             closed,
             password,
+            // What the server will do with a game paired here: a daemon
+            // with no book rates nothing, whatever a lobby asks.
+            rated: options.data_dir.is_some() && !casual,
             players: self.members.get(id).copied().unwrap_or(0),
             seeking: self.seeking(id),
         })
@@ -1297,7 +1305,7 @@ fn seat_vs_bot(
         Side::Corp => (human, bot),
         Side::Runner => (bot, human),
     };
-    start_match(shared, &mut registry, match_id, seed, format, corp, runner);
+    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false);
 }
 
 /// `ServeBotKind::None`: pair with the first compatible waiter in the same
@@ -1321,9 +1329,12 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     };
     let waiter = registry.lobby.remove(index);
     let format = waiter.format;
+    // Read at pairing, off the lobby both are in: a lobby made casual
+    // stays casual for every game found in it.
+    let rated_lobby = registry.lobby_info(&waiter.lobby, &shared.options).is_some_and(|lobby| lobby.rated);
     let (match_id, seed) = registry.allocate(shared.base_seed);
     let (corp, runner) = assign_sides(waiter, newcomer, seed);
-    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner));
+    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby);
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -1333,8 +1344,11 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
 /// `MatchJoined` must precede the session's first `StateUpdate`, and a
 /// ticket must exist before a client can possibly present it. Runs under
 /// the caller's registry lock so the cap it was admitted under still
-/// holds when the entry lands.
-fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer) {
+/// holds when the entry lands. `rated_lobby` is whether the lobby the
+/// players met in rates its games (`LobbyInfo::rated`); a bot's seat
+/// never is.
+#[allow(clippy::too_many_arguments)]
+fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool) {
     let mut dealt = shared.decks_for(seed, format);
     // A brought deck replaces the deal for its side, pinned or rotating:
     // the player chose it, and the operator's pin is the default for a
@@ -1451,12 +1465,13 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         history.write_jsonl(&header, &mut record).expect("writing to memory cannot fail");
         let ended_at = unix_now();
 
-        // Two proved people with different keys, a winner, and a daemon
-        // that keeps a book: one key in both chairs is someone playing
-        // themselves, which would farm one role's rating off the other's;
-        // a forfeit — surrender, disconnect, clock — is a loss like any
-        // other; a stall is nobody's.
-        let rated = matches!(keys, [Some(corp), Some(runner)] if corp != runner) && outcome.is_some() && shared.options.data_dir.is_some();
+        // Two proved people with different keys, a winner, in a lobby
+        // that rates (which a daemon with no book never has): one key in
+        // both chairs is someone playing themselves, which would farm one
+        // role's rating off the other's; a forfeit — surrender,
+        // disconnect, clock — is a loss like any other; a stall is
+        // nobody's.
+        let rated = matches!(keys, [Some(corp), Some(runner)] if corp != runner) && outcome.is_some() && rated_lobby;
         let [corp_commitment, runner_commitment] = entry.commitments.map(|commitment| commitment.and_then(|commitment| commitment.signed));
         let receipt = Receipt {
             match_id,

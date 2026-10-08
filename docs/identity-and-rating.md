@@ -177,8 +177,11 @@ Under the daemon's `--data-dir`:
 ## 5. What is rated, and what a rating is worth
 
 - **Rated:** two distinct identified keys, on a daemon with a data directory,
-  seating no bot. A forfeit — surrender, disconnect, clock — is a loss and a
-  stall is nobody's, as today.
+  seating no bot, **in a lobby that rates** (Phase 4 §7 stage 5): the
+  daemon's own lobbies do, and a player's does unless they made it casual —
+  `LobbyInfo::rated` says which, and the Server page says it over Find a
+  game. A forfeit — surrender, disconnect, clock — is a loss and a stall is
+  nobody's, as today.
 - **Never rated: a game hosted in-process from the menu** (Phase 6 §3). The
   host's process holds the seed and the unmasked state of a game its own
   player is in. That entry's "Open: hosted games are unrated" closes as *by
@@ -187,9 +190,9 @@ Under the daemon's `--data-dir`:
   `rng_step` unmoved, the other seat silent — is fair between people and is
   the only kind a rated game offers: one `ClientMessage`, one retracted log
   entry for the other seat (Phase 7 §4af reserved exactly this).
-  `Rewind::Undo` needs the opponent's consent, or an unrated room. This is why
-  the classifiers behind that line were kept when local play stopped charging
-  for it.
+  `Rewind::Undo` needs the opponent's consent, or an unrated room — which a
+  casual lobby now is. This is why the classifiers behind that line were kept
+  when local play stopped charging for it.
 - **The trust boundary, stated plainly: a rating is a claim by one server's
   operator.** Whoever runs the daemon can see every seed. Keys are free, so a
   new key is provisional — Glicko-2's deviation already says so, and a ladder

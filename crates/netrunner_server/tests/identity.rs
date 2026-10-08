@@ -12,6 +12,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use netrunner_core::decks;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_identity::{Identity, PublicKey, Signed};
 use netrunner_rating::{RatingBook, Track};
@@ -84,6 +85,20 @@ async fn identify(url: &str, identity: &Identity) -> (Socket, ServerMessage) {
 /// Attached as `name` (identified first when `identity` is given), in the
 /// Startup lobby, and looking for a game in `chair`.
 async fn seek(url: &str, identity: Option<&Identity>, name: &str, chair: Chair) -> Socket {
+    seek_in(url, identity, name, "startup", chair).await
+}
+
+/// `seek`, in lobby `lobby` — the server's Startup lobby or a code.
+async fn seek_in(url: &str, identity: Option<&Identity>, name: &str, lobby: &str, chair: Chair) -> Socket {
+    let mut socket = attach(url, identity, name).await;
+    send(&mut socket, ClientMessage::JoinLobby { lobby: lobby.into(), password: None }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
+    send(&mut socket, ClientMessage::Seek { chair }).await;
+    socket
+}
+
+/// Attached as `name`, proving `identity` first when there is one.
+async fn attach(url: &str, identity: Option<&Identity>, name: &str) -> Socket {
     let mut socket = match identity {
         Some(identity) => {
             let (socket, answer) = identify(url, identity).await;
@@ -94,9 +109,6 @@ async fn seek(url: &str, identity: Option<&Identity>, name: &str, chair: Chair) 
     };
     send(&mut socket, ClientMessage::Attach { player_name: name.into() }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
-    send(&mut socket, ClientMessage::JoinLobby { lobby: "startup".into(), password: None }).await;
-    assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
-    send(&mut socket, ClientMessage::Seek { chair }).await;
     socket
 }
 
@@ -278,6 +290,44 @@ async fn a_game_with_an_unidentified_seat_is_rated_by_nobody() {
     let dir = scratch("unidentified");
     let (url, _) = start(Some(dir.clone())).await;
     play_one(&url, (Some(&player(1)), "ann"), (None, "bo")).await;
+    assert_nothing_rated(&url, &dir).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A lobby says whether its games count, and a lobby made casual on a
+/// daemon that keeps a book rates nobody, two proved keys or not — while
+/// the daemon's own lobby beside it still does (Phase 4 §7 stage 5).
+#[tokio::test]
+async fn a_casual_lobby_between_two_keys_is_rated_by_nobody() {
+    let dir = scratch("casual");
+    let (url, _) = start(Some(dir.clone())).await;
+    let (ann, bo) = (player(1), player(2));
+    let mut maker = attach(&url, Some(&ann), "ann").await;
+    send(&mut maker, ClientMessage::ListLobbies).await;
+    let ServerMessage::Lobbies { lobbies } = next(&mut maker).await else { panic!() };
+    assert!(lobbies.iter().all(|lobby| lobby.rated), "a daemon with a book rates its own lobbies: {lobbies:?}");
+    send(&mut maker, ClientMessage::CreateLobby { name: "just trying".into(), format: NsgFormat::Startup, closed: true, password: None, casual: true }).await;
+    let ServerMessage::LobbyJoined { lobby } = next(&mut maker).await else { panic!() };
+    assert!(!lobby.rated, "{lobby:?}");
+    // The maker is in the lobby already (and leaving would empty it, which
+    // is the end of a player's lobby): seek from that socket.
+    let mut corp_socket = maker;
+    send(&mut corp_socket, ClientMessage::Seek { chair: corp() }).await;
+    assert!(matches!(next(&mut corp_socket).await, ServerMessage::Queued { .. }));
+    let mut runner_socket = seek_in(&url, Some(&bo), "bo", &lobby.id, runner()).await;
+    assert!(matches!(next(&mut runner_socket).await, ServerMessage::MatchJoined { .. }));
+    assert!(matches!(next(&mut corp_socket).await, ServerMessage::MatchJoined { .. }));
+    send(&mut runner_socket, ClientMessage::Surrender).await;
+    // Back in the lobby with no `Rated` between the end and the return.
+    let after_end = next_where(&mut corp_socket, |message| match message {
+        ServerMessage::GameEnded { .. } => Some(None),
+        ServerMessage::Rated { .. } => Some(Some("rated")),
+        _ => None,
+    })
+    .await;
+    assert_eq!(after_end, None);
+    let next_message = next(&mut corp_socket).await;
+    assert!(matches!(next_message, ServerMessage::BackInLobby { .. }), "a casual game ends in no receipt for the players: {next_message:?}");
     assert_nothing_rated(&url, &dir).await;
     let _ = std::fs::remove_dir_all(&dir);
 }

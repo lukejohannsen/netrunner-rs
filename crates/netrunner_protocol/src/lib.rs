@@ -52,8 +52,10 @@ pub enum ClientMessage {
     SeatSigned { signature: Signature },
     /// This connection's standing at the server: answered with
     /// `Standing`, first thing on a socket (after proving a key) or from
-    /// an attached connection. Never cached by the client as the truth —
-    /// the server's book is.
+    /// an attached connection — which asks when it attaches and again
+    /// when a game puts it back in its lobby, so the Server page shows
+    /// the number the game just moved. Never cached by the client as the
+    /// truth — the server's book is.
     MyStanding,
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
@@ -100,7 +102,15 @@ pub enum ClientMessage {
     /// Make a lobby and join it: open (listed) or closed (joined by its
     /// id, and by `password` when one is set). Answered with
     /// `LobbyJoined`, whose id is the one to share, or `LobbyRefused`.
-    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String> },
+    ///
+    /// `casual` makes a lobby whose games count for nothing, on a server
+    /// that would otherwise rate them (Phase 4 §7 stage 5): two friends
+    /// trying a deck, or a game nobody wants on their record. It is the
+    /// lobby's property, not a seat's, so both players know before they
+    /// look. A rated lobby is what a server's own lobbies are when it
+    /// keeps a book, and `casual: false` on a server that keeps none is
+    /// still unrated — `LobbyInfo::rated` says what the server will do.
+    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool },
     /// Join a lobby by its id — a listed one, or a closed one given by its
     /// maker — leaving the one this connection was in. A password is
     /// asked of a lobby made with one. Answered with `LobbyJoined` or
@@ -149,6 +159,12 @@ pub struct LobbyInfo {
     pub closed: bool,
     /// Joining asks for a password.
     pub password: bool,
+    /// Whether a game paired here counts: the server keeps a book and
+    /// the lobby was not made casual. A seat still plays unrated in a
+    /// rated lobby when it proved no key, or when both chairs are one
+    /// key; `rated` is what the lobby offers, and `Standing` is what
+    /// this connection stands to gain.
+    pub rated: bool,
     /// Attached connections in the lobby.
     pub players: usize,
     /// Of them, how many are looking for a game.

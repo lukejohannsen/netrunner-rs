@@ -83,6 +83,7 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let ids: Vec<&str> = lobbies.iter().map(|lobby| lobby.id.as_str()).collect();
     assert_eq!(ids, ["startup", "standard", "eternal", "casual"], "`serve::DEFAULT_FORMATS`");
     assert!(lobbies.iter().all(|lobby| lobby.permanent && !lobby.closed && lobby.players == 0));
+    assert!(lobbies.iter().all(|lobby| !lobby.rated), "a daemon with no data directory rates nothing, and its lobbies say so");
 
     let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "standard", None).await else { panic!() };
     assert_eq!((lobby.format, lobby.players), (NsgFormat::Standard, 1));
@@ -96,7 +97,7 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
 async fn a_closed_lobby_is_joined_by_its_id_and_password() {
     let url = human_daemon().await;
     let (mut host, _) = attach(&url, "host").await;
-    send(&mut host, ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()) }).await;
+    send(&mut host, ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()), casual: false }).await;
     let ServerMessage::LobbyJoined { lobby } = next(&mut host).await else { panic!() };
     assert!(lobby.closed && lobby.password && !lobby.permanent && lobby.id.len() == 6, "{lobby:?}");
 

@@ -34,6 +34,7 @@
 //! not looked for — is tested without a socket.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
+use netrunner_client::identity::StandingHere;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
@@ -121,6 +122,8 @@ pub enum Intent {
     SetFormat(NsgFormat),
     /// Whether the lobby being made is listed or joined by its code.
     SetClosed(bool),
+    /// Make a lobby's: whether its games count.
+    SetCasual(bool),
     /// Which side of the table a spectator sits nearer.
     SetWatchFrom(Side),
     /// Host's, Join's and Make a lobby's primary button.
@@ -162,6 +165,8 @@ pub enum Intent {
     SeekCancelled,
     /// The game is over and the connection is back in its lobby.
     BackInLobby(Option<LobbyInfo>),
+    /// The server's answer about this connection's standing there.
+    Standing(StandingHere),
     /// The attached connection's link: its status line while it is down,
     /// `None` when it is up again.
     Link(Option<String>),
@@ -190,7 +195,7 @@ pub enum Outcome {
     ListLobbies,
     JoinLobby { id: String, password: Option<String> },
     LeaveLobby,
-    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String> },
+    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool },
     Seek(Chair),
     CancelSeek,
 }
@@ -216,11 +221,20 @@ pub struct ServerState {
     pub runner_deck: usize,
     /// The link's status line while it is down.
     pub link: Option<String>,
+    /// This person's standing at the server, as it last answered: asked
+    /// on attaching and after every game.
+    pub standing: StandingHere,
 }
 
 impl ServerState {
     fn new(address: String, hosting: bool, lobbies: Vec<LobbyInfo>) -> Self {
-        ServerState { address, hosting, lobbies, lobby: None, seeking: None, decks: Vec::new(), chair: ChairChoice::Corp, corp_deck: 0, runner_deck: 0, link: None }
+        ServerState { address, hosting, lobbies, lobby: None, seeking: None, decks: Vec::new(), chair: ChairChoice::Corp, corp_deck: 0, runner_deck: 0, link: None, standing: StandingHere::Unasked }
+    }
+
+    /// The line over Find a game: what the lobby offers and what this
+    /// person stands to gain there (`identity::lobby_rating_line`).
+    pub fn rating_line(&self, lobby: &LobbyInfo) -> String {
+        netrunner_client::identity::lobby_rating_line(lobby.rated, self.hosting, &self.standing)
     }
 
     pub fn corp_decks(&self) -> Vec<&DeckFile> {
@@ -258,6 +272,8 @@ pub struct MakeLobby {
     pub format: NsgFormat,
     pub closed: bool,
     pub password: String,
+    /// Games here count for nothing, on a server that would rate them.
+    pub casual: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +316,7 @@ impl OnlineForm {
             port: DEFAULT_PORT.to_string(),
             reach: Reach::Network,
             format,
-            make: MakeLobby { name: String::new(), format, closed: false, password: String::new() },
+            make: MakeLobby { name: String::new(), format, closed: false, password: String::new(), casual: false },
             watch_from: Side::Corp,
             matches: Vec::new(),
             listed: false,
@@ -409,6 +425,10 @@ impl OnlineForm {
             }
             Intent::SetClosed(closed) => {
                 self.make.closed = closed;
+                Outcome::Redraw
+            }
+            Intent::SetCasual(casual) => {
+                self.make.casual = casual;
                 Outcome::Redraw
             }
             Intent::SetWatchFrom(side) => {
@@ -615,6 +635,12 @@ impl OnlineForm {
                 }
                 Outcome::Redraw
             }
+            Intent::Standing(standing) => {
+                if let Some(server) = &mut self.server {
+                    server.standing = standing;
+                }
+                Outcome::Redraw
+            }
         }
     }
 
@@ -649,7 +675,7 @@ impl OnlineForm {
                 }
                 self.notice = None;
                 let password = Some(self.make.password.clone()).filter(|password| !password.is_empty());
-                Outcome::CreateLobby { name: self.make.name.clone(), format: self.make.format, closed: self.make.closed, password }
+                Outcome::CreateLobby { name: self.make.name.clone(), format: self.make.format, closed: self.make.closed, password, casual: self.make.casual }
             }
             Page::Home | Page::Watch | Page::Waiting | Page::Server => Outcome::Nothing,
         }
@@ -687,7 +713,7 @@ mod tests {
     }
 
     fn lobby(id: &str, format: NsgFormat) -> LobbyInfo {
-        LobbyInfo { id: id.into(), name: id.into(), format, permanent: true, closed: false, password: false, players: 0, seeking: 0 }
+        LobbyInfo { id: id.into(), name: id.into(), format, permanent: true, closed: false, password: false, rated: true, players: 0, seeking: 0 }
     }
 
     /// Connected to a server with two lobbies, as a joiner.
@@ -879,8 +905,9 @@ mod tests {
         form.apply(Intent::SetFormat(NsgFormat::Startup));
         form.apply(Intent::SetClosed(true));
         form.apply(Intent::Typed(Field::LobbyPassword, "swordfish".to_string()));
-        assert_eq!(form.apply(Intent::Go), Outcome::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()) });
-        let made = LobbyInfo { closed: true, password: true, permanent: false, ..lobby("K7M2QX", NsgFormat::Startup) };
+        form.apply(Intent::SetCasual(true));
+        assert_eq!(form.apply(Intent::Go), Outcome::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()), casual: true });
+        let made = LobbyInfo { closed: true, password: true, permanent: false, rated: false, ..lobby("K7M2QX", NsgFormat::Startup) };
         assert_eq!(form.apply(Intent::LobbyJoined(made.clone())), Outcome::Decks(NsgFormat::Startup));
         assert_eq!((form.page, form.server.as_ref().unwrap().lobby.as_ref()), (Page::Server, Some(&made)));
         form.apply(Intent::Open(Page::MakeLobby));
@@ -912,6 +939,36 @@ mod tests {
         let mut form = attached();
         form.apply(Intent::Failed("could not reconnect within 60s".to_string()));
         assert_eq!((form.page, form.server.is_none(), form.notice.is_some()), (Page::Join, true, true));
+    }
+
+    /// The line over Find a game says what the lobby offers and, once
+    /// the server has answered, what this person stands to gain there —
+    /// a casual lobby says so whatever the standing, and the host's own
+    /// server never rates (Phase 4 §7 stage 5).
+    #[test]
+    fn the_lobby_says_whether_a_game_there_counts() {
+        let mut guest = attached();
+        guest.apply(Intent::JoinLobby(0));
+        guest.apply(Intent::LobbyJoined(lobby("startup", NsgFormat::Startup)));
+        let line = |form: &OnlineForm| {
+            let server = form.server.as_ref().unwrap();
+            server.rating_line(server.lobby.as_ref().unwrap())
+        };
+        assert_eq!(line(&guest), "Rated here.", "before the server has answered");
+        guest.apply(Intent::Standing(StandingHere::Unrated));
+        assert_eq!(line(&guest), "Rated here. No rated games here yet.");
+        guest.apply(Intent::Standing(StandingHere::NoKey));
+        assert_eq!(line(&guest), "Unrated for you: this client has no key, so nothing here counts.");
+        guest.apply(Intent::LobbyJoined(LobbyInfo { rated: false, permanent: false, name: "Friday".into(), ..lobby("K7M2QX", NsgFormat::Startup) }));
+        assert_eq!(line(&guest), "Unrated: nothing in this lobby is rated.");
+
+        let mut host = form();
+        host.apply(Intent::Open(Page::Host));
+        host.apply(Intent::Typed(Field::Port, "0".to_string()));
+        host.apply(Intent::Go);
+        host.apply(Intent::Attached { lobbies: vec![LobbyInfo { rated: false, ..lobby("startup", NsgFormat::Startup) }], hosting: true });
+        host.apply(Intent::LobbyJoined(LobbyInfo { rated: false, ..lobby("startup", NsgFormat::Startup) }));
+        assert_eq!(line(&host), "Unrated: a game hosted from this machine is never rated.");
     }
 
     #[test]

@@ -132,11 +132,11 @@ impl Attached {
                 let list = self.shared.match_list();
                 self.send(list);
             }
-            ClientMessage::CreateLobby { name, format, closed, password } => {
+            ClientMessage::CreateLobby { name, format, closed, password, casual } => {
                 if playing.is_some() {
                     return self.send(ServerMessage::LobbyRefused { reason: BUSY.into() });
                 }
-                match self.create(name, format, closed, password) {
+                match self.create(name, format, closed, password, casual) {
                     Ok(id) => self.move_to(id),
                     Err(reason) => self.send(ServerMessage::LobbyRefused { reason }),
                 }
@@ -173,8 +173,8 @@ impl Attached {
                     self.send(ServerMessage::SeekCancelled);
                 }
             }
-            // Watching from an attached connection is a later stage; a
-            // second hello is the client repeating itself.
+            // Asked when the client attaches and after every game, for
+            // the Server page's line (Phase 4 §7 stage 5).
             ClientMessage::MyStanding => {
                 let standing = self.shared.standing_of(self.key);
                 self.send(standing);
@@ -310,7 +310,7 @@ impl Attached {
     }
 
     /// Makes a player's lobby, returning its id.
-    fn create(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>) -> Result<String, String> {
+    fn create(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool) -> Result<String, String> {
         let name: String = name.trim().chars().take(MAX_LOBBY_NAME).collect();
         if name.is_empty() {
             return Err("a lobby needs a name".into());
@@ -326,7 +326,7 @@ impl Attached {
                 break id;
             }
         };
-        registry.player_lobbies.insert(id.clone(), PlayerLobby { name, format, closed, password });
+        registry.player_lobbies.insert(id.clone(), PlayerLobby { name, format, closed, password, casual });
         Ok(id)
     }
 

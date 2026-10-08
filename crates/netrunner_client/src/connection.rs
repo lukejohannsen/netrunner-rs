@@ -209,6 +209,9 @@ pub enum Event {
     SeekRefused(String),
     /// No longer looking, after `CancelSeek`.
     SeekCancelled,
+    /// The answer to `MyStanding`: whether this connection proved a key,
+    /// and its standing on the server's book if it has one there.
+    Standing { key: Option<PublicKey>, standing: Option<netrunner_protocol::Standing> },
     /// A server that keeps its key, met for the first time: remember it
     /// for this address.
     ServerKey(PublicKey),
@@ -409,6 +412,9 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Lobbies { lobbies }) => {
                 self.events.push_back(Event::Lobbies(lobbies));
             }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Standing { key, standing }) => {
+                self.events.push_back(Event::Standing { key, standing });
+            }
             (Phase::Attached, ServerMessage::LobbyJoined { lobby }) => {
                 // Asked for by the player, with a password; or put back by
                 // a reattach, with the one it was let in by before.
@@ -497,8 +503,7 @@ impl Connection {
                 }
                 self.events.push_back(Event::Message(message));
             }
-            // A `MatchList` or a `Standing` answering nothing — a standing
-            // asked from a lobby is stage 5's — or a message ahead of the
+            // A `MatchList` answering nothing, or a message ahead of the
             // place it belongs to: nothing to do with it.
             _ => {}
         }
@@ -731,7 +736,7 @@ mod tests {
     }
 
     fn lobby() -> LobbyInfo {
-        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, permanent: true, closed: false, password: false, players: 1, seeking: 0 }
+        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, permanent: true, closed: false, password: false, rated: false, players: 1, seeking: 0 }
     }
 
     fn joined(token: Uuid) -> ServerMessage {
@@ -861,7 +866,7 @@ mod tests {
         events(&mut conn);
         assert!(conn.submit(ClientMessage::ListLobbies));
         conn.on_message(ServerMessage::Lobbies { lobbies: vec![lobby()] }, t0);
-        assert!(conn.submit(ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()) }));
+        assert!(conn.submit(ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()), casual: false }));
         let made = LobbyInfo { id: "K7M2QX".into(), name: "Friday".into(), permanent: false, closed: true, password: true, ..lobby() };
         conn.on_message(ServerMessage::LobbyJoined { lobby: made.clone() }, t0);
         assert_eq!(conn.lobby, Some(("K7M2QX".to_string(), Some("swordfish".to_string()))), "the lobby and the password it was made with");
@@ -870,9 +875,16 @@ mod tests {
         assert_eq!(conn.lobby, None);
         assert!(conn.submit(ClientMessage::JoinLobby { lobby: "nowhere".into(), password: None }));
         conn.on_message(ServerMessage::LobbyRefused { reason: "no lobby NOWHERE".into() }, t0);
+        // The standing is asked from the lobby too, and answered where
+        // the connection stands (Phase 4 §7 stage 5).
+        assert!(conn.submit(ClientMessage::MyStanding));
+        conn.on_message(ServerMessage::Standing { key: None, standing: None }, t0);
         let events = events(&mut conn);
-        assert!(matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason)] if *info == made && reason == "no lobby NOWHERE"), "{events:?}");
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::ListLobbies, ClientMessage::CreateLobby { .. }, ClientMessage::LeaveLobby, ClientMessage::JoinLobby { .. }]));
+        assert!(
+            matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason), Event::Standing { key: None, standing: None }] if *info == made && reason == "no lobby NOWHERE"),
+            "{events:?}"
+        );
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::ListLobbies, ClientMessage::CreateLobby { .. }, ClientMessage::LeaveLobby, ClientMessage::JoinLobby { .. }, ClientMessage::MyStanding]));
     }
 
     /// Stopping looking is answered by the server, and until it is the

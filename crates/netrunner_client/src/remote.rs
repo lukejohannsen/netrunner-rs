@@ -102,6 +102,9 @@ pub enum AttachedEvent {
     Queued(usize),
     SeekRefused(String),
     SeekCancelled,
+    /// The answer to `standing`: whether this connection proved a key,
+    /// and its standing on the server's book if it has one there.
+    Standing { key: Option<netrunner_identity::PublicKey>, standing: Option<netrunner_protocol::Standing> },
     /// A place at a match, with the channels to play it through.
     Joined(Box<Joined>),
     /// The game is over and the connection is in its lobby again.
@@ -141,8 +144,17 @@ impl Attached {
         self.send(ClientMessage::ListLobbies);
     }
 
-    pub fn create_lobby(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>) {
-        self.send(ClientMessage::CreateLobby { name, format, closed, password });
+    /// Make a lobby and join it; `casual` for one whose games count for
+    /// nothing on a server that would otherwise rate them.
+    pub fn create_lobby(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool) {
+        self.send(ClientMessage::CreateLobby { name, format, closed, password, casual });
+    }
+
+    /// Ask this connection's standing at the server, answered with
+    /// `AttachedEvent::Standing`: on attaching and after every game, so
+    /// the page shows the number the game just moved.
+    pub fn standing(&self) {
+        self.send(ClientMessage::MyStanding);
     }
 
     pub fn join_lobby(&self, lobby: String, password: Option<String>) {
@@ -260,7 +272,7 @@ impl Connecting {
             AttachedEvent::Joined(joined) => Some(ConnectEvent::Joined(joined)),
             AttachedEvent::Link(Link::Down(error)) => Some(ConnectEvent::Failed(error)),
             AttachedEvent::Link(link) => Some(ConnectEvent::Link(link)),
-            AttachedEvent::Attached(_) | AttachedEvent::LobbyJoined(_) | AttachedEvent::Lobbies(_) | AttachedEvent::LobbyLeft | AttachedEvent::SeekCancelled | AttachedEvent::BackInLobby(_) => None,
+            AttachedEvent::Attached(_) | AttachedEvent::LobbyJoined(_) | AttachedEvent::Lobbies(_) | AttachedEvent::LobbyLeft | AttachedEvent::SeekCancelled | AttachedEvent::BackInLobby(_) | AttachedEvent::Standing { .. } => None,
         }
     }
 }
@@ -492,6 +504,7 @@ async fn drive(
                 Event::Queued(position) => AttachedEvent::Queued(position),
                 Event::SeekRefused(reason) => AttachedEvent::SeekRefused(reason),
                 Event::SeekCancelled => AttachedEvent::SeekCancelled,
+                Event::Standing { key, standing } => AttachedEvent::Standing { key, standing },
             };
             let _ = events.send(report);
         }
@@ -957,6 +970,15 @@ mod tests {
         })
         .await;
         assert_eq!(lobby.id, "startup", "rejoined without being asked");
+        // The standing is asked over the same connection; this one proved
+        // no key, and the daemon keeps no book.
+        attached.standing();
+        let standing = next_where(&mut attached, |event| match event {
+            AttachedEvent::Standing { key, standing } => Some((key, standing)),
+            _ => None,
+        })
+        .await;
+        assert_eq!(standing, (None, None));
         attached.seek(Chair::Corp(Box::new(deck("brick_stack"))));
         let mut joined = next_where(&mut attached, |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),

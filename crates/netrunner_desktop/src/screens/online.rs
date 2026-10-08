@@ -45,6 +45,7 @@ use bevy::prelude::*;
 
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
+use netrunner_client::identity::StandingHere;
 use netrunner_client::online;
 use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
@@ -199,6 +200,8 @@ pub enum Control {
     Format(NsgFormat),
     /// Make a lobby's: listed, or joined by its code.
     Closed(bool),
+    /// Make a lobby's: whether its games count.
+    Casual(bool),
     WatchFrom(Side),
     Watch(usize),
     /// The `n`th thing the host gives out.
@@ -244,7 +247,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
         .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), ..default() })
         .with_children(|parent| {
             parent.spawn(widgets::title(&theme, AppScreen::Online.title()));
-            parent.spawn(widgets::dim(&theme, format!("Against a person, as {}. Casual: nothing is rated, and a move cannot be taken back.", core.player_name())));
+            parent.spawn(widgets::dim(&theme, format!("Against a person, as {}. A lobby says whether its games are rated; a move cannot be taken back.", core.player_name())));
         })
         .add_child(panel)
         .id();
@@ -339,6 +342,7 @@ fn controls(
             Control::Reach(reach) => Intent::SetReach(reach),
             Control::Format(format) => Intent::SetFormat(format),
             Control::Closed(closed) => Intent::SetClosed(closed),
+            Control::Casual(casual) => Intent::SetCasual(casual),
             Control::WatchFrom(side) => Intent::SetWatchFrom(side),
             Control::Watch(index) => Intent::Watch(index),
             Control::JoinLobby(index) => Intent::JoinLobby(index),
@@ -491,7 +495,7 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::ListLobbies => connected.attached.list_lobbies(),
         Outcome::JoinLobby { id, password } => connected.attached.join_lobby(id, password),
         Outcome::LeaveLobby => connected.attached.leave_lobby(),
-        Outcome::CreateLobby { name, format, closed, password } => connected.attached.create_lobby(name, format, closed, password),
+        Outcome::CreateLobby { name, format, closed, password, casual } => connected.attached.create_lobby(name, format, closed, password, casual),
         Outcome::Seek(chair) => connected.attached.seek(chair),
         Outcome::CancelSeek => connected.attached.cancel_seek(),
         _ => {}
@@ -737,14 +741,23 @@ fn net(
         while let Some(event) = connected.attached.poll() {
             dirty.0 = true;
             let intent = match event {
-                AttachedEvent::Attached(lobbies) => Intent::Attached { lobbies, hosting },
+                // The standing is asked on attaching and after every game,
+                // so the page shows the number the game just moved.
+                AttachedEvent::Attached(lobbies) => {
+                    connected.attached.standing();
+                    Intent::Attached { lobbies, hosting }
+                }
+                AttachedEvent::Standing { key, standing } => Intent::Standing(StandingHere::from_reply(key, standing)),
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Intent::Refused(reason),
                 AttachedEvent::Queued(position) => Intent::Queued(position),
                 AttachedEvent::SeekCancelled => Intent::SeekCancelled,
-                AttachedEvent::BackInLobby(lobby) => Intent::BackInLobby(lobby),
+                AttachedEvent::BackInLobby(lobby) => {
+                    connected.attached.standing();
+                    Intent::BackInLobby(lobby)
+                }
                 AttachedEvent::Link(Link::Down(error)) => {
                     commands.remove_resource::<Connected>();
                     net.shown.clear();
@@ -1013,6 +1026,7 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
     });
     if let Some(lobby) = &server.lobby {
         section(parent, theme, format!("Find a game in {}", lobby_title(lobby)), |section| {
+            section.spawn((widgets::dim(theme, server.rating_line(lobby)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
             section.spawn(widgets::row(10.0)).with_children(|row| {
                 for chair in ChairChoice::ALL {
                     let kind = if chair == server.chair { ButtonKind::Primary } else { ButtonKind::Secondary };
@@ -1047,12 +1061,13 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
 }
 
 /// One lobby's line: its name, its format, who is in it and how many of
-/// them are looking.
+/// them are looking, and whether a game there counts.
 fn lobby_line(lobby: &LobbyInfo) -> String {
     let mut line = format!("{} · {} here, {} looking", lobby_title(lobby), lobby.players, lobby.seeking);
     if lobby.password {
         line.push_str(" · password");
     }
+    line.push_str(if lobby.rated { " · rated" } else { " · unrated" });
     line
 }
 
@@ -1085,6 +1100,15 @@ fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onl
             }
         });
         section.spawn(widgets::dim(theme, if form.make.closed { "Not listed: joined by the code the server gives it, which you pass on." } else { "Listed for anyone on the server to join." }));
+    });
+    section(parent, theme, "Do its games count", |section| {
+        section.spawn(widgets::row(10.0)).with_children(|row| {
+            for (casual, label) in [(false, "Rated"), (true, "Unrated")] {
+                let kind = if casual == form.make.casual { ButtonKind::Primary } else { ButtonKind::Secondary };
+                row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Casual(casual)));
+            }
+        });
+        section.spawn(widgets::dim(theme, if form.make.casual { "Nothing played here is rated: for trying a deck, or a game nobody wants on their record." } else { "Rated as the server's own lobbies are — between two players with keys, on a server that keeps ratings." }));
     });
     section(parent, theme, "Password", |section| field_box(section, theme, Field::LobbyPassword, &form.make.password, "none", false));
     buttons(parent, |row| {
