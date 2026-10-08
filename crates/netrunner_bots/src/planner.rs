@@ -2497,6 +2497,56 @@ mod positions {
         assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
     }
 
+    /// The Corp purges a ripe trojan off its dear ice (Phase 5 §55):
+    /// with a Tranquilizer at three counters on its Brân 1.0 — derezzed
+    /// by it, and derezzed again every turn it is put back — three
+    /// clicks and a hand that offers nothing better, the Corp spends the
+    /// turn purging rather than clicking for three credits: the purge
+    /// ends three turns of Brân's rez as tax. Before, nothing on the
+    /// Corp's side read a program hosted on its ice: a trojan one counter
+    /// short on a rezzed piece was purged, since the line sees the derez
+    /// at its end, but a piece already down stayed down, and the Corp
+    /// re-rezzed it at the Runner's approach instead, 6[c] a run.
+    #[test]
+    fn purges_a_ripe_trojan_off_its_dear_ice() {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut dead = blank_card("dead", CardType::Operation);
+        dead.side = Side::Corp;
+        dead.cost = 99;
+        registry.insert(dead);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.turn = 6;
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.identity = Some(CardId("haas_bioroid_precision_design".to_string()));
+        state.corp.hq = vec![CardId("dead".to_string()); 4];
+        state.corp.r_and_d = vec![CardId("dead".to_string()); 10];
+        state.corp.installed = vec![InstalledCard { card: CardId("bran_1_0".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.runner.grip = vec![CardId("dead".to_string()); 4];
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("tranquilizer".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(1)), counters: 3, ..Default::default() }];
+        state.next_install_id = 20;
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::PurgeVirusCounters), "{:?}", view.legal_actions);
+        const SEEDS: u64 = 20;
+        let purges = (1..=SEEDS)
+            .filter(|&seed| {
+                // The Corp knows its deck is dead cards, so a draw buys
+                // nothing in the sample either: without a deck the sample
+                // fills R&D from the pool, and three draws of real cards
+                // outscored the purge.
+                let dead_deck = netrunner_core::rules::Deck { identity: CardId("haas_bioroid_precision_design".to_string()), cards: vec![(CardId("dead".to_string()), 49)] };
+                let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(dead_deck)));
+                agent.observe(&view);
+                agent.select_action(&view, &registry) == PlayerAction::PurgeVirusCounters
+            })
+            .count() as u64;
+        assert!(purges * 2 > SEEDS, "the Corp purges: {purges} of {SEEDS}");
+    }
+
     /// A trojan that derezzes its host is installed on the dearest rezzed
     /// piece of ice (Phase 5 §54): with 4[c], a Tranquilizer in hand and
     /// a Brân 1.0 rezzed on HQ beside a Whitespace on R&D, the Runner
