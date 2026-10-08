@@ -389,7 +389,8 @@ impl ActionMap {
     /// What the prompt is asking: every entry that is on no target and on
     /// no control — the mulligan, a bid, a choice, an access decision —
     /// plus the selection positions, which the board does not place
-    /// (a `ChooseCards` prompt's zone is not drawn as clickable cards yet),
+    /// (a `ChooseCards` prompt's candidates are drawn as cards in the
+    /// pop-up, each its own button — never as a board click),
     /// less the ones a button for an identical copy already stands for, and
     /// in the order a selection reads (`Selection::rank`) — and a card
     /// effect's choice of server, which is on a server column too but is
