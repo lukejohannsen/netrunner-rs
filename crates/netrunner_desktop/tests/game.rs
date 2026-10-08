@@ -2360,3 +2360,63 @@ fn a_name_in_the_log_opens_its_card() {
     app.update();
     assert_eq!(app.world().resource::<Model>().0.inspecting, Some(card), "the press opened the card it names");
 }
+
+// ---- cards seen moving (§4bm) ----
+
+use netrunner_desktop::models::flight::Place;
+use netrunner_desktop::screens::flight::{Arriving, Flight};
+
+fn flights(app: &mut App) -> Vec<Flight> {
+    app.world_mut().query::<&Flight>().iter(app.world()).cloned().collect()
+}
+
+/// As the Corp, keeping the hand starts the Corp's turn, whose mandatory
+/// draw is a card moved from R&D to the hand: at animation speed 1 a
+/// flying copy is launched for it, from the R&D plate to the hand card,
+/// under the screen root and out of the pointer's way, the hand card it
+/// lands on hidden until it does; at speed 0 nothing flies.
+#[test]
+fn a_drawn_card_flies_from_rnd_to_the_hand_and_lands_and_speed_zero_flies_nothing() {
+    let (mut app, _dir) = headless_client();
+    app.world_mut().resource_mut::<ClientCore>().settings.desktop.animation_speed = 1.0;
+    start_a_game_as(&mut app, Side::Corp);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let before = app.world().resource::<Model>().0.applied;
+    let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is a decision");
+    press_entity(&mut app, keep);
+    wait_for(&mut app, "the kept hand to be applied", |app| app.world().resource::<Model>().0.applied > before);
+    // The redraw took the transitions; the next frame lays the board out
+    // and the one after launches.
+    wait_for(&mut app, "a flight", |app| !flights(app).is_empty());
+    let in_flight = flights(&mut app);
+    let draw = in_flight.iter().find(|f| matches!(f.plan.to.place, Place::HandCard(_))).unwrap_or_else(|| panic!("the mandatory draw flies to the hand: {in_flight:?}"));
+    assert_eq!(draw.plan.from.place, Place::Plate(ServerId::RnD), "from the deck's plate");
+    assert!(draw.plan.card.is_some(), "the Corp sees its own draw");
+    let (entity, parent, pickable) = app.world_mut().query::<(Entity, &ChildOf, &Pickable, &Flight)>().iter(app.world()).map(|(e, p, k, _)| (e, p.parent(), *k)).next().unwrap();
+    assert!(app.world().get::<DespawnOnExit<AppScreen>>(parent).is_some(), "a flight is a child of the screen root, not of the board");
+    assert_eq!(pickable, Pickable::IGNORE, "a click through a card in flight lands on the board");
+    assert!(app.world().get::<GlobalZIndex>(entity).is_some());
+    // Its card is hidden while it is in the air, with the flight's
+    // places matched by the same walk.
+    let hidden = app.world_mut().query::<(&Arriving, &Visibility, &Click)>().iter(app.world()).map(|(_, v, c)| (*v, c.clone())).collect::<Vec<_>>();
+    assert!(hidden.iter().any(|(v, c)| *v == Visibility::Hidden && matches!(c, Click::Target(Target::HandCard(_)))), "{hidden:?}");
+    // And lands: the copy goes and the card is shown.
+    wait_for(&mut app, "the flight to land", |app| flights(app).is_empty());
+    app.update();
+    assert_eq!(app.world_mut().query::<&Arriving>().iter(app.world()).count(), 0, "nothing stays hidden after the landing");
+    assert!(app.world_mut().query::<(&Visibility, &Click)>().iter(app.world()).filter(|(_, c)| matches!(c, Click::Target(Target::HandCard(_)))).all(|(v, _)| *v != Visibility::Hidden));
+
+    // Instant: the same draw, and no flight is ever made.
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Corp);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let before = app.world().resource::<Model>().0.applied;
+    let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is a decision");
+    press_entity(&mut app, keep);
+    wait_for(&mut app, "the kept hand to be applied", |app| app.world().resource::<Model>().0.applied > before);
+    for _ in 0..4 {
+        app.update();
+        assert!(flights(&mut app).is_empty(), "speed 0 is instant");
+    }
+    assert_eq!(app.world_mut().query::<&Arriving>().iter(app.world()).count(), 0);
+}

@@ -13,6 +13,7 @@ pub mod deck_editor;
 pub mod decks;
 pub mod drag;
 pub mod first_launch;
+pub mod flight;
 pub mod game;
 pub mod layout;
 pub mod online;

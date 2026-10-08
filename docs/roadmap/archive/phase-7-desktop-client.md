@@ -4989,6 +4989,89 @@ game grew a remote past four cards before the Runner won, so the fold
 of a nine-card server is held by `tests/game.rs` rather than a
 screenshot.
 
+### 4bm. Cards are seen moving: a drawn card flies from the deck to the hand, an install from the hand to its tile, a trash from its tile to the pile — DONE (8 October 2026)
+
+`feat/card-movement`. §4's movement, owed since §3 (15 September 2026):
+the transitions `board::diff` computes were drawn as a highlight on the
+card where it ended up, and the person saw a card appear in the hand or
+on a server with nothing between. Now each `CardMoved` is a flight.
+
+**The board is respawned whole on every view, so a card that moved is
+not a node that moved.** `redraw` despawns the board's children and
+spawns them again (§3), and the node a card was is gone by the time the
+node it now is exists. The movement is therefore drawn *over* the board,
+as a flying copy under the screen root: `screens::flight::flights` runs
+after `poll` and before `redraw` (ordered by name, not added to the
+chain — §4n's lesson), reads where every box on the laid-out board is
+(`models::flight::Survey`: a server tile or rig face by its install, the
+person's hand cards by card, the central plates, the server columns, the
+Runner's Stack and Heap buttons, each side's Agendas readout, each
+side's avatar bar and the rig area), and when `redraw` is about to take
+transitions keeps that survey and the transitions. One frame later the
+new board is laid out, it surveys again and `models::flight::plan` joins
+the two: the card leaves the box it was drawn in and lands on the box it
+is drawn in now. The card at the destination is hidden until the flight
+lands (`Arriving`), so it is never on the table twice; a pile is never
+hidden, because the card flies into it. The copy is `Pickable::IGNORE`
+and drawn at `GlobalZIndex` 11 — over the board and the pop-up, under
+the actions menu and the sheets — so a click through it reaches the
+board and nothing being read is covered.
+
+**Why a copy and not the real node.** `raise_hand` moves the real hand
+card for a hover or a drag, because that node lives through the hover. A
+moving card's node does not live through the redraw that moves it, and
+a copy under the root is the one thing on the board that does not care
+which redraw it is over. A board redrawn mid-flight — the next message,
+a resize — only moves the destination, which the flight re-reads from
+the survey every frame by place and copy (the `nth` card of that id in
+the hand), never by entity.
+
+**A place stands in for a zone the board does not draw as cards.** The
+Corp's deck is its R&D plate, its discard the Archives plate, the Corp's
+hand from the Runner's chair its HQ plate, the opponent's hand their
+avatar bar (it is not drawn, §4bi), a score area its Agendas readout. A
+zone names its places best first (`models::flight::places`), so a Runner
+whose Stack button is not on the bar still has the bar; a zone with no
+box (removed from the game, somewhere hidden) is a move nobody can see
+and is not flown, and a move whose two ends resolve to the same box — the
+opponent's draw from their deck to their hand, both their bar when the
+Stack button is absent — shows nothing and is not flown either. A card
+the viewer may not name flies as the back of the side it belongs to
+(`models::flight::owner`).
+
+**The pace is the person's.** `FLIGHT` is 480 ms at animation speed 1,
+scaled by `DesktopPrefs::animation_speed` as the pacer's beat is, and
+the cards of one action set off `STAGGER` (110 ms) apart, so a draw of
+five is a fan. The documented 0, "instant", makes no flight at all and
+lands whatever is in the air — which is how the headless tests run and
+how a person turns it off. Eased with a smoothstep, so a card leaves and
+arrives gently; the copy is drawn at the width of the face it lands on
+(so its picture is one the board already decoded) or, into a pile, of
+the face it left, and scaled between the two boxes' widths.
+
+**Checked.** `tests/game.rs`
+`a_drawn_card_flies_from_rnd_to_the_hand_and_lands_and_speed_zero_flies_nothing`:
+as the Corp, keeping the hand starts the Corp's turn and its mandatory
+draw flies from the R&D plate to the hand card, as a child of the screen
+root, `Pickable::IGNORE`, with the hand card hidden while it is in the
+air and shown once it has landed and nothing left hidden; the same draw
+at speed 0 makes no flight. `models::flight::tests` pin the places a
+zone names, two copies landing on two cards, the opponent's draw as a
+back from the Stack to the bar, a removed card not flown, the stagger,
+the easing and the interpolation. Screenshotted on the virtual
+compositor from the Corp's chair with the new `NETRUNNER_HOLD_FLIGHT=1`
+hook (every flight frozen halfway once the autoplay is done, the shot
+waiting for the first): the turn's two draws, Tithe and Urtica Cipher,
+in the air between the R&D plate and their hidden places in the hand.
+The dev log's one scroll area is the hidden log, not the board.
+
+**Left.** A rez is still a highlight, not a flip, and `Revealed`,
+`Advancement` and the numbers are drawn as they were; a card into a pile
+shrinks to the plate and does not fade. Both are §4's to take when the
+person asks.
+
+No engine change, so no coverage run or sweeps.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

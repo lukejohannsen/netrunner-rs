@@ -13,6 +13,7 @@ pub mod boot;
 pub mod card_browser;
 pub mod deck_editor;
 pub mod first_launch;
+pub mod flight;
 pub mod decks;
 pub mod game;
 pub mod guide;

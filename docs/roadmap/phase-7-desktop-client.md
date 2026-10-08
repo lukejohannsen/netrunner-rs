@@ -69,12 +69,13 @@ keep their addresses however long §4's alphabet runs.*
 **Where it stands (29 September 2026).** §1–§3 and §5–§7 are built; §4 has sixty-four lettered
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
-settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, owed since
-§3 (its sound is done); §8's remaining items; §9's search half, not started; and the owed list.**
+settled are AGENTS.md §5, which is where to read them. **§4's movement, owed since §3, is
+done (§4bm, 8 October 2026). Open: §8's remaining items; §9's search half, not started; and the
+owed list.**
 
 ## Owed
 
-- **Movement** (§3 → §4): the transitions are highlights, not tweened movement, and the tween module exists only in the plan. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with six AI-assisted tracks (the sounds themselves were Kenney's CC0 recordings until §13 replaced them with a set synthesized here); five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
+- **Movement** (§3 → §4): **built** (§4bm, `feat/card-movement`, 8 October 2026): every `CardMoved` transition is a flight over the board (`screens::flight`, `models::flight`), the card at its destination hidden until it lands; a rez is still a highlight rather than a flip. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with six AI-assisted tracks (the sounds themselves were Kenney's CC0 recordings until §13 replaced them with a set synthesized here); five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
 - **§3's other gaps**: a `ChooseCards` prompt's positions are reachable only from the panel; the log keeps 80 lines.
 - **§4m**: a 3D or perspective board — deferred, not refused; revisit when a run should feel dramatic.
 - **§4n, §4r — art still on the drawn tier**: panels' own art, the remaining icons, player bars, the fanned hand, the hovered card, the right-hand side; and `"tint": "state"` is promised by the skin guide and not wired (§4q delivered the contact shadows; §4t tried and removed a central's mark).
@@ -156,6 +157,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, 
   - **§4bj** — A server is a few strips and a stack sheet, its strips framed by kind, and the rig takes the height (`feat/server-stacks-and-tile-frames`, 25 September 2026).
   - **§4bk** — Every name on the table is a nameplate, and the buildings are gone (`feat/server-nameplates`, 25 September 2026).
   - **§4bl** — A server shows up to ten strips before its stack sheet, and the servers take the spare height before the rig (`feat/server-slots-take-spare`, 25 September 2026).
+  - **§4bm** — Cards are seen moving: a drawn card flies from the deck to the hand, an install from the hand to its tile, a trash from its tile to the pile, as a copy over the board that hides the card it lands on until it has (`feat/card-movement`, 8 October 2026).
 - **§5** — The deck builder (`feat/desktop-deck-builder`, 24 September 2026).
   - **§5a** — A card in the deck builder can be read (`feat/deck-builder-readable-cards`, 24 September 2026).
   - **§5b** — A card is read by a right-click, centred; the hover preview is gone (`fix/deck-builder-read-centred`, 24 September 2026).
