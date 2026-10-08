@@ -1,0 +1,41 @@
+{
+  "id": "next_silver",
+  "title": "NEXT Silver",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": {
+              "CorpInstalls": {
+                "All": [
+                  "Ice",
+                  "Rezzed",
+                  {
+                    "HasSubtype": "NEXT"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" for each rezzed piece of NEXT ice."
+    }
+  ],
+  "triggers": [],
+  "built_from": 29010,
+  "is_playable": true
+}

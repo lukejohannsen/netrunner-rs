@@ -22213,6 +22213,18 @@ mod midnight_sun {
 
     /// CR 6.5.7c: with no counters Echo has no subroutines, and the Runner
     /// fully breaks it as the encounter begins — by no object.
+    /// Tranche 8 Stage 9d: Echo's grant at a rate of the rezzed NEXT ice,
+    /// itself among them.
+    #[test]
+    fn next_silver_gains_an_end_the_run_for_each_rezzed_piece_of_next_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("next_silver", ServerId::Hq, true), ice_at("next_bronze", ServerId::RnD, false)];
+        assert_eq!(encountered_list(&encounter_with_events(&state, &registry).0), etr(1), "this ice is a rezzed piece of NEXT ice");
+        state.corp.installed[1].rezzed = true;
+        assert_eq!(encountered_list(&encounter_with_events(&state, &registry).0), etr(2), "and so is NEXT Bronze, once rezzed");
+    }
+
     #[test]
     fn echo_with_no_counters_is_fully_broken_as_the_encounter_begins() {
         let registry = registry();

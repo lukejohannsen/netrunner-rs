@@ -9278,3 +9278,23 @@ the Core Set at 43 of 113.
     An unrezzed grid, or one in another server, does not.
 - **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
   single-use, none unused, over 718 card files.
+
+#### Stage 9d — subroutines for each NEXT ice (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card, composed, with no new
+`Effect` and no change to the engine. Salvaged Memories is at 17 of 18.
+- **Card from Salvaged Memories:** NEXT Silver.
+
+- **"This ice gains '[subroutine] End the run.' for each rezzed piece of
+  NEXT ice"** is Echo's `Subroutines` grant, counted with NEXT Bronze's
+  amount: `CorpInstalls(All[Ice, Rezzed, HasSubtype(NEXT)])`. A rezzed
+  NEXT Silver counts itself.
+- **Decks.** Endless Loop takes two NEXT Silver for its two Hákarl 1.0,
+  barrier for barrier, beside the NEXT Bronze it already runs. Hákarl 1.0
+  is still in other decks.
+- **Client.** Nothing new reaches the view.
+- **Tests.** One new test. Alone, a rezzed NEXT Silver has one "End the
+  run". With NEXT Bronze rezzed it has two, and with NEXT Bronze unrezzed
+  it still has one.
+- **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
+  single-use, none unused, over 719 card files.

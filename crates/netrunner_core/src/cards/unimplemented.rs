@@ -69,7 +69,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.
 pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("next_silver", "NEXT Silver"),
     ("subliminal_messaging", "Subliminal Messaging"),
 ];
 
