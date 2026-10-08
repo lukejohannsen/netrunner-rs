@@ -595,7 +595,7 @@ pub fn narrate_event(
         GameEvent::AgendaStolen { card, agenda_points } => {
             format!("stole {} for {agenda_points} point(s)", title(card))
         }
-        GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
+        GameEvent::AgendaForfeited { card, .. } => format!("forfeited {}", title(card)),
         GameEvent::CardAddedToHand { side, card, .. } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
             match card {

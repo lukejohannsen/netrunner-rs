@@ -9942,3 +9942,37 @@ Update 2021, with no new `Effect`.
   chooses a rez it cannot pay.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 785 card files.
+
+#### Stage 11l — the Runner forfeits an agenda (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Data Dealer, "[click], forfeit 1 agenda: Gain 9[credit]."
+
+- **The Runner pays `Cost::Forfeit`.** "To forfeit an agenda is to move
+  it from a player's score area to the removed-from-game zone" (CR
+  8.2.5), and the cost had been the Corp's alone: `forfeitable` and
+  `forfeit_at` take the side, the agenda's points leave that side's
+  score, and a stolen agenda still joins the Corp's removed cards, since
+  it is the Corp's card. Which agenda is the Runner's to choose, asked
+  inside the payment as the Corp's is.
+- **A forfeit says whose it was** (`GameEvent::AgendaForfeited::side`).
+  Greenmail prints "when you forfeit this agenda", and a trigger about
+  the card itself (`Subject::This`) is heard whoever acted, as Strike
+  Fund is heard trashed by the Corp. So `OnForfeit` is phrased about its
+  controller (`Hears::OwnSide`), and Greenmail says `when: Whose(Corp)`:
+  a stolen Greenmail forfeited by the Runner pays the Corp nothing. The
+  desktop's forfeit animation reads the side off the event, where it
+  guessed it from which score area held the card.
+- **Déjà Vu is not built here.** A played event goes to the heap as its
+  `OnPlay` returns, even when a choice it parked is still open, so
+  "Add 1 card … from your heap" could return Déjà Vu itself. The event
+  belongs in the play area until it finishes resolving (CR 3.7.1); that
+  is its own stage.
+- **Decks.** Hit List takes two Data Dealer for its two Boomerang, which
+  stay in the Virtual Intelligence tournament list.
+- **Tests.** Data Dealer offered only with an agenda to forfeit, the
+  Runner choosing which, 9[credit] for the click, the point leaving the
+  Runner's score, and Greenmail silent.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 786 card files.

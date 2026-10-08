@@ -145,9 +145,8 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from, to: Zone::Scored(Side::Runner) });
                 out.push(Transition::AgendaStolen { card: card.clone(), points: *agenda_points });
             }
-            GameEvent::AgendaForfeited { card } => {
-                let side = if before.runner.scored_agendas.iter().any(|scored| scored.card == *card) { Side::Runner } else { Side::Corp };
-                out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Scored(side), to: Zone::Discard(Side::Corp) });
+            GameEvent::AgendaForfeited { side, card } => {
+                out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Scored(*side), to: Zone::Discard(Side::Corp) });
             }
             GameEvent::IceRezzed { install, card, .. } => out.push(Transition::Revealed { install: *install, card: card.clone() }),
             // Both advance events animate identically: the counter moves on

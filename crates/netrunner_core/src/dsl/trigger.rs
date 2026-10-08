@@ -1153,11 +1153,15 @@ impl Trigger {
             | Trigger::OnCardRevealed
             | Trigger::OnDrawAboutToResolve
             | Trigger::OnServerCreated
-            | Trigger::OnCreditsSpentFromInstalledCard => Hears::OwnSide,
-            // `OnPlay` and `OnForfeit` are only ever printed about the card
-            // itself, so `Subject::This` already says whose they are.
+            | Trigger::OnCreditsSpentFromInstalledCard
+            // "When you forfeit this agenda": the Runner forfeits stolen
+            // agendas too (Data Dealer), so whose forfeit it was is a word
+            // the card says (`EventFilter::Whose`) — `Subject::This` alone
+            // hears it whoever forfeited, as it hears Strike Fund trashed.
+            | Trigger::OnForfeit => Hears::OwnSide,
+            // `OnPlay` is only ever printed about the card itself, so
+            // `Subject::This` already says whose it is.
             Trigger::OnPlay
-            | Trigger::OnForfeit
             | Trigger::OnWouldBeUninstalled
             // Printed only about the card itself, as "this upgrade".
             | Trigger::OnCardMoved

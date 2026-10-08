@@ -3643,14 +3643,21 @@ pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardReg
     GameEvent::AgendaAddedToScoreArea { card, agenda_points }
 }
 
-/// The positions in the Corp's score area that may be forfeited: every one
+/// The positions in `side`'s score area that may be forfeited: every one
 /// but a card added "as an agenda" with "You cannot forfeit this agenda."
 /// (Word on the Street). The one list `Cost::Forfeit`'s affordability and
-/// its payment read.
-fn forfeitable(state: &GameState) -> Vec<usize> {
-    (0..state.corp.scored_agendas.len())
-        .filter(|&position| state.corp.scored_agendas[position].as_agenda.is_none_or(|as_agenda| !as_agenda.cannot_forfeit))
-        .collect()
+/// its payment read. The Runner forfeits from their own score area too
+/// (Data Dealer's "forfeit 1 agenda": "from a player's score area", CR 8.2.5).
+fn forfeitable(state: &GameState, side: Side) -> Vec<usize> {
+    let area = score_area(state, side);
+    (0..area.len()).filter(|&position| area[position].as_agenda.is_none_or(|as_agenda| !as_agenda.cannot_forfeit)).collect()
+}
+
+fn score_area(state: &GameState, side: Side) -> &[crate::rules::state::ScoredAgenda] {
+    match side {
+        Side::Corp => &state.corp.scored_agendas,
+        Side::Runner => &state.runner.scored_agendas,
+    }
 }
 
 /// Where the agenda whose ability is being paid for sits in the Corp's
@@ -3658,25 +3665,34 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
 /// affordability and its payment.
 fn forfeitable_self(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
     let install = ctx.acting_install?;
-    forfeitable(state).into_iter().find(|&position| state.corp.scored_agendas[position].install_id == install)
+    forfeitable(state, Side::Corp).into_iter().find(|&position| state.corp.scored_agendas[position].install_id == install)
 }
 
-/// Forfeits the agenda at `position` in the Corp's score area: out of the
+/// Forfeits the agenda at `position` in `side`'s score area: out of the
 /// game with its points and counters. The events are returned, not
 /// dispatched: the payer dispatches (`dispatch_cost_events`), which is how
 /// Greenmail hears its own forfeit.
-fn forfeit_at(state: &mut GameState, registry: &CardRegistry, position: usize) -> Vec<GameEvent> {
-    let forfeited = state.corp.scored_agendas.remove(position);
+fn forfeit_at(state: &mut GameState, registry: &CardRegistry, side: Side, position: usize) -> Vec<GameEvent> {
+    let forfeited = match side {
+        Side::Corp => state.corp.scored_agendas.remove(position),
+        Side::Runner => state.runner.scored_agendas.remove(position),
+    };
     // "The sum of all agenda points on agendas in a player's score area is
     // that player's score" (CR 1.17.1), so a forfeited agenda takes its
     // points with it. The win check recounts the score area and was right;
     // this is the number the view, the HUD and the bots read, which kept
     // the forfeited points.
-    let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
-    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
+    let points = crate::rules::win::scored_value(state, registry, &forfeited, side);
+    let resources = match side {
+        Side::Corp => &mut state.corp.resources,
+        Side::Runner => &mut state.runner.resources,
+    };
+    resources.agenda_points = resources.agenda_points.gain(-points);
     // Out of the game rather than to Archives (it was never on the table).
+    // A stolen agenda is still the Corp's card, so it joins the Corp's
+    // removed cards whoever forfeited it.
     state.corp.removed_from_game.push(forfeited.card.clone());
-    vec![GameEvent::AgendaForfeited { card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
+    vec![GameEvent::AgendaForfeited { side, card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
 }
 
 /// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
@@ -3842,7 +3858,7 @@ pub(crate) fn cost_is_affordable(
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
-        Cost::Forfeit(count) => side == Side::Corp && forfeitable(state).len() >= *count as usize,
+        Cost::Forfeit(count) => forfeitable(state, side).len() >= *count as usize,
         Cost::ForfeitSelf => side == Side::Corp && forfeitable_self(state, ctx).is_some(),
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
@@ -4098,21 +4114,19 @@ pub(crate) fn pay_cost_ctx(
         }
 
         Cost::Forfeit(count) => {
-            // Only the Corp's score area holds agendas with a handle each;
-            // no Runner card in the pool forfeits.
-            let eligible = forfeitable(state);
-            if side != Side::Corp || eligible.len() < *count as usize {
+            let eligible = forfeitable(state, side);
+            if eligible.len() < *count as usize {
                 return Err(RulesError::NotEnoughAgendasToForfeit { required: *count, available: eligible.len() as u32 });
             }
             let zone = crate::dsl::CardZoneRef::OwnScoreArea;
             let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, None)?;
             // Resolved to handles before any agenda leaves, which would
             // shift the positions still to be read.
-            let installs: Vec<InstallId> = picked.iter().map(|&p| state.corp.scored_agendas[p].install_id).collect();
+            let installs: Vec<InstallId> = picked.iter().map(|&p| score_area(state, side)[p].install_id).collect();
             let mut events = Vec::new();
             for install in installs {
-                let Some(position) = state.corp.scored_agendas.iter().position(|s| s.install_id == install) else { continue };
-                events.extend(forfeit_at(state, registry, position));
+                let Some(position) = score_area(state, side).iter().position(|s| s.install_id == install) else { continue };
+                events.extend(forfeit_at(state, registry, side, position));
             }
             Ok(events)
         }
@@ -4121,7 +4135,7 @@ pub(crate) fn pay_cost_ctx(
             let card = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?;
             let position = forfeitable_self(state, ctx).filter(|_| side == Side::Corp).ok_or(RulesError::NotEnoughAgendasToForfeit { required: 1, available: 0 })?;
             debug_assert_eq!(&state.corp.scored_agendas[position].card, card);
-            Ok(forfeit_at(state, registry, position))
+            Ok(forfeit_at(state, registry, Side::Corp, position))
         }
 
         Cost::Trash { from, filter, count, reveal } => {

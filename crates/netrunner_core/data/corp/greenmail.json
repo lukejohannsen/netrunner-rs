@@ -22,6 +22,9 @@
     {
       "trigger": "OnForfeit",
       "subject": "This",
+      "when": {
+        "Whose": "Corp"
+      },
       "effects": [
         {
           "GainCredits": [
