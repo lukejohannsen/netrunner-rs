@@ -512,6 +512,52 @@ pub fn punishes_access_with_damage(def: &CardDefinition) -> bool {
     found
 }
 
+/// What a program hosted on a piece of ice does to its host on a count of
+/// its own counters (Phase 5 §54): Tranquilizer's "When you install this
+/// program and when your turn begins, place 1 virus counter on this
+/// program. Then, if there are 3 or more hosted virus counters, derez host
+/// ice." The counters placed on install and at each turn start, and the
+/// count at which the host is derezzed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct HostDerez {
+    pub on_install: u32,
+    pub per_turn: u32,
+    pub at: u32,
+}
+
+/// `HostDerez` read off a card's triggers, `None` for a card that
+/// derezzes its host on no count — a program that does not install on ice
+/// among them.
+pub(super) fn host_derez(def: &CardDefinition) -> Option<HostDerez> {
+    use netrunner_core::dsl::{CardTarget, EffectRequirement};
+    if !def.installs_on_ice {
+        return None;
+    }
+    let (mut on_install, mut per_turn, mut at) = (0, 0, None);
+    for trigger in &def.triggers {
+        let mut counters = 0;
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut |effect| match effect {
+                Effect::AddCounters(n) => counters += *n,
+                Effect::EffectIf { condition: EffectRequirement::ThisCardCountersAtLeast(n), effect } => {
+                    let mut derezzes = false;
+                    effect.for_each_effect(&mut |inner| derezzes |= matches!(inner, Effect::DerezCard(CardTarget::HostIce)));
+                    if derezzes {
+                        at = Some(*n);
+                    }
+                }
+                _ => {}
+            });
+        }
+        match trigger.trigger {
+            Trigger::OnInstall => on_install += counters,
+            Trigger::OnTurnStart => per_turn += counters,
+            _ => {}
+        }
+    }
+    at.map(|at| HostDerez { on_install, per_turn, at })
+}
+
 /// The grip cards an access ability that trashes the card being accessed
 /// asks for — Carnivore's "Access, once per turn → Trash 2 cards from your
 /// grip: Trash the card you are accessing." — or `None` for a card with
@@ -1584,6 +1630,18 @@ pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A trojan's derez of its host is read off its triggers (Phase 5
+    /// §54): Tranquilizer places one counter on install and one a turn
+    /// and derezzes at three; Carnivore, no trojan, reads none.
+    #[test]
+    fn a_trojans_derez_is_read_off_its_counters() {
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let tranquilizer = pool.get(&CardId("tranquilizer".to_string())).expect("Tranquilizer");
+        assert_eq!(host_derez(tranquilizer), Some(HostDerez { on_install: 1, per_turn: 1, at: 3 }));
+        assert_eq!(host_derez(pool.get(&CardId("carnivore".to_string())).expect("Carnivore")), None);
+    }
 
     /// An access ability that trashes the card being accessed is read off
     /// the card (Phase 5 §52): Carnivore's, at two grip cards; Madani, a

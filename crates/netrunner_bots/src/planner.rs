@@ -2497,6 +2497,51 @@ mod positions {
         assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
     }
 
+    /// A trojan that derezzes its host is installed on the dearest rezzed
+    /// piece of ice (Phase 5 §54): with 4[c], a Tranquilizer in hand and
+    /// a Brân 1.0 rezzed on HQ beside a Whitespace on R&D, the Runner
+    /// hosts it on Brân — its 6[c] rez a turn from the third counter —
+    /// rather than clicking for credits. Before, a program with no
+    /// breaker subtype and no declared income read as a rig card under
+    /// its price, and the planner installed Tranquilizer in 0 of 48
+    /// games of its decks.
+    #[test]
+    fn hosts_tranquilizer_on_the_dearest_rezzed_ice() {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut inert = blank_card("filler", CardType::Event);
+        inert.side = Side::Runner;
+        registry.insert(inert);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.turn = 4;
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(4), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("tranquilizer".to_string()), CardId("filler".to_string()), CardId("filler".to_string()), CardId("filler".to_string())];
+        state.runner.stack = vec![CardId("filler".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.installed = vec![
+            InstalledCard { card: CardId("bran_1_0".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            InstalledCard { card: CardId("whitespace".to_string()), install_id: InstallId(2), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        state.next_install_id = 20;
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let on_bran = PlayerAction::InstallProgramOnIce { card_id: CardId("tranquilizer".to_string()), host: InstallId(1), trash_first: false };
+        assert!(view.legal_actions.contains(&on_bran), "{:?}", view.legal_actions);
+        const SEEDS: u64 = 20;
+        let hosted = (1..=SEEDS)
+            .filter(|&seed| {
+                let mut agent = PlanningAgent::new(Side::Runner, seed);
+                agent.observe(&view);
+                agent.select_action(&view, &registry) == on_bran
+            })
+            .count() as u64;
+        assert!(hosted * 2 > SEEDS, "Tranquilizer is hosted on Brân 1.0: {hosted} of {SEEDS}");
+    }
+
     /// A run event that pays when the run ends is played for what the end
     /// pays (Phase 5 §53): with 6[c], a Cleaver and the centrals behind a
     /// barrier, the Runner plays Bravado and runs — 6[c] plus one for the
