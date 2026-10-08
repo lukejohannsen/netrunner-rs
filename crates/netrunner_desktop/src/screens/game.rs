@@ -164,6 +164,7 @@ impl Plugin for GamePlugin {
             .init_resource::<table::LastTable>()
             .init_resource::<Pointer>()
             .init_resource::<AvatarCrops>()
+            .init_resource::<crate::screens::flight::Flights>()
             .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
@@ -174,6 +175,11 @@ impl Plugin for GamePlugin {
             // it (§4n moved `button_feedback` that way and broke twelve
             // board tests).
             .add_systems(Update, shadows.run_if(in_state(AppScreen::Game)))
+            // The cards seen moving (§4bm): ordered against two links of
+            // the chain by name rather than added to it — after `poll` has
+            // applied the messages, before `redraw` takes their
+            // transitions and despawns the board they left.
+            .add_systems(Update, crate::screens::flight::flights.after(poll).before(redraw).run_if(in_state(AppScreen::Game)))
             // The avatars' crops, on their own line for the same reason:
             // what they fill is read by the next redraw, whenever it is.
             .add_systems(Update, crop_avatars.run_if(in_state(AppScreen::Game)))
@@ -567,6 +573,12 @@ pub(crate) struct Dirty {
 }
 
 impl Dirty {
+    /// Whether the board is about to be redrawn this frame, which
+    /// `screens::flight` reads before `redraw` takes the transitions.
+    pub(crate) fn board(&self) -> bool {
+        self.board
+    }
+
     pub(crate) fn all(&mut self) {
         self.board = true;
         self.rail = true;

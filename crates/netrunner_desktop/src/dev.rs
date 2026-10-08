@@ -101,6 +101,12 @@
 //!   meet) and the autoplay counts as done, so the
 //!   screenshot catches a run in flight: the column under run and the
 //!   run panel.
+//! - `NETRUNNER_HOLD_FLIGHT=1` — on the board, once the autoplay is done,
+//!   every card seen moving (`screens::flight`) freezes halfway and
+//!   never lands, and the screenshot waits for the first to freeze, so
+//!   it catches cards in flight over the table: the opponent's turn
+//!   after the person's last decision is a draw and an install or two.
+//!   Give the autoplay a few decisions so there is a turn to follow.
 //! - `NETRUNNER_HOLD_ICE=1` — stop the autoplay at the first encounter
 //!   the person is asked anything in, so the screenshot catches the
 //!   marks on the ice's subroutines. **Not `HOLD_RUN` narrowed**: that
@@ -286,6 +292,10 @@ pub struct Dev {
     pub online: Option<String>,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
+    /// Freeze every card in flight halfway, once the autoplay is done.
+    pub hold_flight: bool,
+    /// Whether a flight has frozen, which the screenshot waits for.
+    pub flight_held: bool,
     /// Stop the autoplay at the first encounter the person is asked
     /// anything in, whether or not their rig can break it.
     pub hold_ice: bool,
@@ -363,6 +373,8 @@ impl Dev {
             fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
             online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
+            hold_flight: std::env::var_os("NETRUNNER_HOLD_FLIGHT").is_some_and(|v| !v.is_empty()),
+            flight_held: false,
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
@@ -528,7 +540,9 @@ fn screenshot_then_exit(
     // A card held for the shot (`NETRUNNER_DRAG`) waits for the person's
     // own action phase, which may be several opponent turns away, so the
     // frames do not start counting until it is in hand.
-    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag {
+    // A flight held for the shot (`NETRUNNER_HOLD_FLIGHT`) likewise waits
+    // for a card to be in the air.
+    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag || (dev.hold_flight && !dev.flight_held) {
         // The frames are counted from when the screen has nothing left
         // to do by itself, so an autoplayed board is shot after its last
         // decision, not during it.

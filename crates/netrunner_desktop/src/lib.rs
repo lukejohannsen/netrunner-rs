@@ -36,8 +36,11 @@
 //!   its own thread and the board polls it once a frame.
 //! - The board renders a `ClientView` and submits what it chose from
 //!   `netrunner_client::board::ActionMap`, built from `legal_actions`;
-//!   what to highlight comes from `board::diff`'s `Transition`s, never
-//!   from comparing what is on screen. A click on a card or a zone opens
+//!   what to highlight, and what is seen moving (`screens::flight`: a
+//!   copy flown over the board, since the board is respawned whole and
+//!   a card that moved is not a node that moved), comes from
+//!   `board::diff`'s `Transition`s, never from comparing what is on
+//!   screen. A click on a card or a zone opens
 //!   its actions as a menu above it and never acts, and a secondary
 //!   click (the right button, or Ctrl or Cmd with the primary) opens its
 //!   sheet to read — the card, an install's state, a zone's contents;
