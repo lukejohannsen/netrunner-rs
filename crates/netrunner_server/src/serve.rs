@@ -80,8 +80,8 @@ use netrunner_rating::{Outcome, RatingBook, Track};
 use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
-use crate::protocol::statements::{self, Receipt, ReceiptSeat, SeatStatement, RECEIPT_TAG, SEAT_TAG};
-use crate::protocol::{format_lobby_id, Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
+use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
+use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
@@ -433,6 +433,76 @@ struct PlayerLobby {
     casual: bool,
 }
 
+/// A tournament the daemon holds (Phase 4 §7 stage 6a): what
+/// `ClientMessage::CreateTournament` made, with every entrant's two decks
+/// — which the daemon deals from and never sends — beside the commitment
+/// that names them. Kept whole in `tournaments.json`, rewritten on every
+/// change like the players file: a tournament outlives any socket, and
+/// a daemon restarted mid-registration must still hold the lists it
+/// promised to deal from.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Tournament {
+    name: String,
+    format: NsgFormat,
+    /// The key that made it, which the policies give the final say.
+    organizer: PublicKey,
+    created_at: u64,
+    state: TournamentState,
+    /// By the entrant's rating id, in registration order.
+    entrants: Vec<Entry>,
+}
+
+/// One entrant's registration: the decks the server holds for them, the
+/// salt both sides know, and the signed statement that commits to both.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Entry {
+    name: String,
+    key: PublicKey,
+    corp: DeckFile,
+    runner: DeckFile,
+    salt: String,
+    commitment: Signed,
+}
+
+impl Tournament {
+    /// The tournament as the wire reports it: the entrants by their
+    /// commitments, never their lists.
+    fn info(&self, id: &str) -> TournamentInfo {
+        TournamentInfo {
+            id: id.to_string(),
+            name: self.name.clone(),
+            format: self.format,
+            organizer: self.organizer,
+            state: self.state,
+            entrants: self
+                .entrants
+                .iter()
+                .map(|entry| {
+                    let said: RegistrationStatement = serde_json::from_str(&entry.commitment.payload).expect("the server checked this statement when it took it");
+                    Entrant { name: entry.name.clone(), key: entry.key, corp_hash: said.corp_hash, runner_hash: said.runner_hash, commitment: entry.commitment.clone() }
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Every tournament, by id.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct Tournaments(std::collections::BTreeMap<String, Tournament>);
+
+impl Tournaments {
+    /// Oldest first.
+    fn list(&self) -> Vec<TournamentInfo> {
+        let mut all: Vec<(&String, &Tournament)> = self.0.iter().collect();
+        all.sort_by_key(|(id, tournament)| (tournament.created_at, (*id).clone()));
+        all.into_iter().map(|(id, tournament)| tournament.info(id)).collect()
+    }
+
+    fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("tournaments serialize")
+    }
+}
+
 /// A player about to be seated: the name `MatchList` will show, the key
 /// they proved (`None` for one who did not and for a bot, which is what
 /// leaves their game unrated), the token `MatchJoined` will carry (already
@@ -482,6 +552,8 @@ struct Registry {
     player_lobbies: HashMap<String, PlayerLobby>,
     /// How many attached connections are in each lobby, by id.
     members: HashMap<String, usize>,
+    /// The tournaments the daemon holds; see `ServeOptions::data_dir`.
+    tournaments: Tournaments,
     /// Claimed by `allocate`, never reused: match `n` plays on
     /// `base_seed + n` whether or not match `n - 1` finished, so a
     /// `--seed` run is reproducible connection for connection.
@@ -746,6 +818,18 @@ impl Shared {
         }
     }
 
+    /// Rewrites the tournaments file after a change, under the caller's
+    /// lock. A failed write is logged, as a failed rating write is; a
+    /// daemon with no data directory holds no tournament (`attached`
+    /// refuses to make one), so there is nothing to write.
+    fn save_tournaments(&self, registry: &Registry) {
+        let Some(dir) = &self.options.data_dir else { return };
+        let path = dir.join(TOURNAMENTS_FILE);
+        if let Err(error) = write_atomically(&path, &registry.tournaments.to_json()) {
+            tracing::warn!(path = %path.display(), ?error, "could not save the tournaments file");
+        }
+    }
+
     /// Notes that `key` has attached as `name`, and rewrites the players
     /// file. A failed write is logged, as a failed rating write is.
     fn saw_player(&self, key: PublicKey, name: &str) {
@@ -817,6 +901,7 @@ pub fn rebuild_ratings(data_dir: &Path) -> std::io::Result<usize> {
 }
 const PLAYERS_FILE: &str = "players.json";
 const RATINGS_FILE: &str = "ratings.json";
+const TOURNAMENTS_FILE: &str = "tournaments.json";
 
 /// Where a match's record lives: a directory per month, so a daemon that
 /// runs for years never holds one directory of every match it played.
@@ -883,11 +968,12 @@ struct Kept {
     lasting: bool,
     ratings: RatingBook,
     players: Players,
+    tournaments: Tournaments,
 }
 
 fn load_kept(data_dir: Option<&Path>) -> std::io::Result<Kept> {
     let Some(dir) = data_dir else {
-        return Ok(Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), players: Players::default() });
+        return Ok(Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), players: Players::default(), tournaments: Tournaments::default() });
     };
     std::fs::create_dir_all(dir)?;
     let identity = load_or_make_identity(&dir.join(IDENTITY_FILE))?;
@@ -898,7 +984,13 @@ fn load_kept(data_dir: Option<&Path>) -> std::io::Result<Kept> {
     } else {
         Players::default()
     };
-    Ok(Kept { identity, lasting: true, ratings, players })
+    let tournaments_path = dir.join(TOURNAMENTS_FILE);
+    let tournaments = if tournaments_path.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&tournaments_path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    } else {
+        Tournaments::default()
+    };
+    Ok(Kept { identity, lasting: true, ratings, players, tournaments })
 }
 
 /// The daemon's key: read, or made and written with only its owner able
@@ -985,7 +1077,7 @@ impl Server {
 
     fn with_listener(listener: TcpListener, options: ServeOptions) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let Kept { identity, lasting, ratings, players } = load_kept(options.data_dir.as_deref())?;
+        let Kept { identity, lasting, ratings, players, tournaments } = load_kept(options.data_dir.as_deref())?;
         let cards = fixtures::sample_registry();
         let mut pinned = PinnedDecks::default();
         for &format in &options.formats {
@@ -1004,7 +1096,7 @@ impl Server {
         let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
-            registry: Arc::new(StdMutex::new(Registry { ratings, players, ..Registry::default() })),
+            registry: Arc::new(StdMutex::new(Registry { ratings, players, tournaments, ..Registry::default() })),
             options,
             base_seed,
             pinned,

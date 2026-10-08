@@ -72,8 +72,9 @@ use std::time::{Duration, Instant};
 
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_identity::PublicKey;
-use netrunner_protocol::statements::{deck_hash, SeatStatement, SEAT_TAG};
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, ServerMessage};
+use netrunner_core::decks::DeckFile;
+use netrunner_protocol::statements::{deck_hash, RegistrationStatement, SeatStatement, REGISTRATION_TAG, SEAT_TAG};
+use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, ServerMessage, TournamentInfo};
 use uuid::Uuid;
 
 /// What the connection is for.
@@ -212,6 +213,13 @@ pub enum Event {
     /// The answer to `MyStanding`: whether this connection proved a key,
     /// and its standing on the server's book if it has one there.
     Standing { key: Option<PublicKey>, standing: Option<netrunner_protocol::Standing> },
+    /// The answer to `ListTournaments`.
+    Tournaments(Vec<TournamentInfo>),
+    /// A tournament as it now stands, after making, entering or leaving
+    /// one.
+    Tournament(TournamentInfo),
+    /// Making, entering or leaving a tournament refused, with the reason.
+    TournamentRefused(String),
     /// A server that keeps its key, met for the first time: remember it
     /// for this address.
     ServerKey(PublicKey),
@@ -412,6 +420,15 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Lobbies { lobbies }) => {
                 self.events.push_back(Event::Lobbies(lobbies));
             }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Tournaments { tournaments }) => {
+                self.events.push_back(Event::Tournaments(tournaments));
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Tournament { tournament }) => {
+                self.events.push_back(Event::Tournament(tournament));
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::TournamentRefused { reason }) => {
+                self.events.push_back(Event::TournamentRefused(reason));
+            }
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Standing { key, standing }) => {
                 self.events.push_back(Event::Standing { key, standing });
             }
@@ -577,7 +594,13 @@ impl Connection {
             ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::TakeBack | ClientMessage::SeatSigned { .. } => self.phase == Phase::Joined,
             ClientMessage::JoinLobby { .. } | ClientMessage::CreateLobby { .. } | ClientMessage::LeaveLobby | ClientMessage::Seek { .. } => self.phase == Phase::Attached,
             ClientMessage::CancelSeek => self.phase == Phase::Queued,
-            ClientMessage::ListLobbies | ClientMessage::ListMatches | ClientMessage::MyStanding => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
+            ClientMessage::ListLobbies
+            | ClientMessage::ListMatches
+            | ClientMessage::MyStanding
+            | ClientMessage::CreateTournament { .. }
+            | ClientMessage::ListTournaments
+            | ClientMessage::Register { .. }
+            | ClientMessage::Unregister { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => false,
         };
         if !allowed {
@@ -590,6 +613,33 @@ impl Connection {
         }
         self.outbox.push_back(message);
         true
+    }
+
+    /// Enter tournament `tournament` with these two decks (Phase 4 §7
+    /// stage 6a): the registration statement — each deck's `deck_hash`
+    /// under `salt`, this key, this server — signed with the credentials
+    /// and sent with the decks and the salt. Returns the statement signed,
+    /// for the driver to keep beside the key with the salt, or `None` when
+    /// nothing was sent: no credentials to sign with, no server key yet,
+    /// or a connection with no server to send to. The salt is the
+    /// caller's, because this machine has no randomness of its own.
+    pub fn register(&mut self, tournament: String, corp: DeckFile, runner: DeckFile, salt: String) -> Option<RegistrationStatement> {
+        if !matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined) {
+            return None;
+        }
+        let credentials = self.credentials()?;
+        let server_key = self.server_key?;
+        let statement = RegistrationStatement {
+            tournament: tournament.clone(),
+            server_key,
+            key: credentials.identity.public_key(),
+            corp_hash: deck_hash(&salt, &corp.to_deck()),
+            runner_hash: deck_hash(&salt, &runner.to_deck()),
+        };
+        let payload = serde_json::to_string(&statement).expect("a registration statement serializes");
+        let signed = credentials.identity.sign(REGISTRATION_TAG, payload);
+        self.outbox.push_back(ClientMessage::Register { tournament, corp: Box::new(corp), runner: Box::new(runner), salt, statement: signed });
+        Some(statement)
     }
 
     /// The player has left. The driver closes the transport, which is how a
@@ -1203,6 +1253,52 @@ mod tests {
         assert!(matches!(&events(&mut conn)[..], [Event::ServerKey(key)] if *key == server().public_key()), "met for the first time: remember it");
         conn.on_message(ServerMessage::Identified { key: me }, t0);
         assert!(matches!(sent(&mut conn)[..], [ClientMessage::Attach { .. }]));
+    }
+
+    /// A registration is signed by the machine with the key it proved,
+    /// naming this server and the two decks by their salted hashes, and
+    /// the server's answers come back as events; a connection with no
+    /// key signs nothing and sends nothing.
+    #[test]
+    fn a_registration_is_signed_with_the_key_for_this_server() {
+        let t0 = Instant::now();
+        let mut conn = Connection::new(Goal::Attach(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        conn.on_message(challenge(true), t0);
+        let me = Identity::from_secret([1; 32]).public_key();
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
+        sent(&mut conn);
+        events(&mut conn);
+
+        let corp = netrunner_core::decks::by_id("brick_stack").unwrap();
+        let runner = netrunner_core::decks::by_id("dashing_mad").unwrap();
+        let said = conn.register("K7M2QX".into(), corp.clone(), runner.clone(), "salt".into()).expect("signed and sent");
+        assert_eq!((said.tournament.as_str(), said.server_key, said.key), ("K7M2QX", server().public_key(), me));
+        assert_eq!(said.corp_hash, deck_hash("salt", &corp.to_deck()));
+        assert_eq!(said.runner_hash, deck_hash("salt", &runner.to_deck()));
+        let [ClientMessage::Register { tournament, salt, statement, corp: sent_corp, .. }] = &sent(&mut conn)[..] else { panic!("one Register") };
+        assert_eq!((tournament.as_str(), salt.as_str(), sent_corp.id.as_str()), ("K7M2QX", "salt", "brick_stack"));
+        let payload = statement.verify(REGISTRATION_TAG).expect("signed by this key");
+        assert_eq!(serde_json::from_str::<RegistrationStatement>(payload).unwrap(), said);
+
+        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![] };
+        conn.on_message(ServerMessage::Tournament { tournament: info.clone() }, t0);
+        conn.on_message(ServerMessage::TournamentRefused { reason: "no such tournament".into() }, t0);
+        conn.on_message(ServerMessage::Tournaments { tournaments: vec![info.clone()] }, t0);
+        let events = events(&mut conn);
+        assert!(
+            matches!(&events[..], [Event::Tournament(one), Event::TournamentRefused(reason), Event::Tournaments(list)] if *one == info && reason == "no such tournament" && *list == vec![info.clone()]),
+            "{events:?}"
+        );
+
+        let mut unsigned = Connection::new(Goal::Attach(who()), t0);
+        unsigned.poll_dial();
+        attach(&mut unsigned, t0);
+        sent(&mut unsigned);
+        assert_eq!(unsigned.register("K7M2QX".into(), corp, runner, "salt".into()), None);
+        assert!(sent(&mut unsigned).is_empty(), "nothing to sign with, nothing sent");
     }
 
     /// A server that makes a new key each run is neither remembered nor

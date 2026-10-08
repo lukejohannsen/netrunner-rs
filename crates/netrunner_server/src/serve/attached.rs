@@ -184,6 +184,24 @@ impl Attached {
                     self.shared.accept_commitment(seat.token, signature);
                 }
             }
+            // Tournaments (Phase 4 §7 stage 6a): held by a daemon that
+            // keeps things, made and entered by proved keys.
+            ClientMessage::CreateTournament { name, format } => match self.create_tournament(name, format) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
+            ClientMessage::ListTournaments => {
+                let tournaments = self.shared.lock().tournaments.list();
+                self.send(ServerMessage::Tournaments { tournaments });
+            }
+            ClientMessage::Register { tournament, corp, runner, salt, statement } => match self.register(&tournament, *corp, *runner, salt, statement) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
+            ClientMessage::Unregister { tournament } => match self.unregister(&tournament) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
             // A key is proved before attaching, never after.
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }
@@ -364,14 +382,110 @@ const MAX_LOBBY_NAME: usize = 40;
 /// A lobby id as a person typed it: a format's lobby in any case
 /// (`Startup`, `startup`), a player's code in any case (`k7m2qx`), with
 /// the spaces around it gone.
+impl Attached {
+    /// A tournament of this key's, on a daemon that keeps things.
+    fn create_tournament(&self, name: String, format: NsgFormat) -> Result<TournamentInfo, String> {
+        let organizer = self.key.ok_or("a tournament is run by a key: prove one before attaching")?;
+        if self.shared.options.data_dir.is_none() {
+            return Err("this server keeps nothing between runs, so it cannot hold a tournament".into());
+        }
+        let name: String = name.trim().chars().take(MAX_LOBBY_NAME).collect();
+        if name.is_empty() {
+            return Err("a tournament needs a name".into());
+        }
+        if !self.shared.options.formats.contains(&format) {
+            return Err(format!("this server does not play {format:?}"));
+        }
+        let mut registry = self.shared.lock();
+        let id = loop {
+            let id = lobby_code();
+            if !registry.tournaments.0.contains_key(&id) {
+                break id;
+            }
+        };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new() };
+        let info = tournament.info(&id);
+        registry.tournaments.0.insert(id, tournament);
+        self.shared.save_tournaments(&registry);
+        Ok(info)
+    }
+
+    /// This key's entry in a tournament: the statement checked against
+    /// the key, the server, the tournament and the decks sent, and the
+    /// decks against the tournament's format, before any of it is kept.
+    fn register(&self, id: &str, corp: DeckFile, runner: DeckFile, salt: String, statement: Signed) -> Result<TournamentInfo, String> {
+        let key = self.key.ok_or("registering needs a key: prove one before attaching")?;
+        if statement.key != key {
+            return Err("the statement is signed by another key".into());
+        }
+        let payload = statement.verify(REGISTRATION_TAG).map_err(|error| format!("the statement does not hold: {error}"))?;
+        let said: RegistrationStatement = serde_json::from_str(payload).map_err(|error| format!("not a registration statement: {error}"))?;
+        // A code is read out and typed back in any case: the id and the
+        // one the statement names are both taken as the code they spell.
+        let id = id.trim().to_uppercase();
+        if said.tournament.trim().to_uppercase() != id || said.key != key || said.server_key != self.shared.identity.public_key() {
+            return Err("the statement names another tournament, key or server".into());
+        }
+        if salt.trim().is_empty() || salt.len() > 64 {
+            return Err("a salt is 1 to 64 characters".into());
+        }
+        let (format, open) = {
+            let registry = self.shared.lock();
+            let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
+            (tournament.format, tournament.state == TournamentState::Registering)
+        };
+        if !open {
+            return Err("registration has closed".into());
+        }
+        for (deck, side) in [(&corp, Side::Corp), (&runner, Side::Runner)] {
+            if deck.side != side {
+                return Err(format!("{:?} is a {:?} deck, not a {side:?} one", deck.name, deck.side));
+            }
+            deck.validate(&self.shared.cards, format).map_err(|error| format!("{:?} is not legal in {format:?}: {error}", deck.name))?;
+        }
+        if said.corp_hash != statements::deck_hash(&salt, &corp.to_deck()) || said.runner_hash != statements::deck_hash(&salt, &runner.to_deck()) {
+            return Err("the commitment does not name the decks sent".into());
+        }
+        let mut registry = self.shared.lock();
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        let entry = Entry { name: self.player_name.clone(), key, corp, runner, salt, commitment: statement };
+        match tournament.entrants.iter_mut().find(|entry| entry.key == key) {
+            Some(existing) => *existing = entry,
+            None => tournament.entrants.push(entry),
+        }
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        Ok(info)
+    }
+
+    fn unregister(&self, id: &str) -> Result<TournamentInfo, String> {
+        let key = self.key.ok_or("withdrawing needs a key: prove one before attaching")?;
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        if tournament.state != TournamentState::Registering {
+            return Err("registration has closed".into());
+        }
+        let before = tournament.entrants.len();
+        tournament.entrants.retain(|entry| entry.key != key);
+        if tournament.entrants.len() == before {
+            return Err("you are not registered there".into());
+        }
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        Ok(info)
+    }
+}
+
 fn lobby_id_as_typed(typed: &str) -> String {
     let typed = typed.trim();
     let lower = typed.to_lowercase();
     if NsgFormat::ALL.iter().any(|&format| format_lobby_id(format) == lower) { lower } else { typed.to_uppercase() }
 }
 
-/// A player lobby's id: six characters from an alphabet with no look-alikes
-/// (no 0/O, 1/I/L), short enough to read out and never a format's name.
+/// A player lobby's id — and a tournament's: six characters from an
+/// alphabet with no look-alikes (no 0/O, 1/I/L), short enough to read out
+/// and never a format's name.
 fn lobby_code() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     (0..6).map(|_| ALPHABET[rand::random_range(0..ALPHABET.len())] as char).collect()

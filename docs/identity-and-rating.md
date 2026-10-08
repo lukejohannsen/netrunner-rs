@@ -130,6 +130,14 @@ The server is the rating authority. The question signatures answer is narrower:
   §2's long-standing "not built: telling the remote client its new rating".
   A player who keeps their receipts can show their history even if the server
   loses its own.
+- **A tournament entrant signs a registration** (Phase 4 §7 stage 6a):
+  `{ tournament, server_key, own_key, corp_hash, runner_hash }` under the tag
+  `netrunner-registration-v1`, each hash the salted `deck_hash` of a deck
+  locked for the whole event, the salt the player's own and kept by both
+  sides (`registrations.jsonl` beside the key). The server checks it against
+  the decks sent before it keeps either, publishes it beside the entrant in
+  place of the list, and so cannot deal from a list the player did not
+  choose: at the reveal, list and salt check against it.
 - **The seed leaves the host only inside a finished record.** During play it
   stays where Phase 4 §3 put it.
 - **Statements are signed as bytes, never as re-serialized JSON.** The envelope

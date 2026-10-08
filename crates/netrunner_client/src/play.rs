@@ -1063,7 +1063,10 @@ impl Feed {
             | ServerMessage::LobbyLeft
             | ServerMessage::SeekRefused { .. }
             | ServerMessage::SeekCancelled
-            | ServerMessage::BackInLobby { .. } => {}
+            | ServerMessage::BackInLobby { .. }
+            | ServerMessage::Tournaments { .. }
+            | ServerMessage::Tournament { .. }
+            | ServerMessage::TournamentRefused { .. } => {}
         }
     }
 
