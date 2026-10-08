@@ -12,7 +12,7 @@ take-back online (8 October 2026). The closed record is in
 
 - **§5 leftovers**: key rotation (the old key signing the new) is recorded and not designed; an undo past the free line in a rated game is refused rather than asked of the other seat.
 - **§7 stage 6**, tournaments (design below, none built).
-- **§3 leftovers**: no graceful server shutdown; no delayed omniscient stream (~~no spectator count cap~~: done, `feat/spectator-cap`, 9 October 2026 — a match takes `DEFAULT_MAX_SPECTATORS` watchers, 32, or what `--max-spectators` says, 0 for no limit; the session answers a watcher itself, `Spectating` first or `ConnectRejected` at the cap); `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; the TUI header does not show the matchup.
+- **§3 leftovers**: no graceful server shutdown; no delayed omniscient stream (~~no spectator count cap~~: done, `feat/spectator-cap`, 9 October 2026 — a match takes `DEFAULT_MAX_SPECTATORS` watchers, 32, or what `--max-spectators` says, 0 for no limit; the session answers a watcher itself, `Spectating` first or `ConnectRejected` at the cap); `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; ~~The TUI header does not show the matchup.~~ Done (`feat/tui-header-names-the-matchup`, 9 October 2026): the header is two rows, the two identities on the first and the numbers on the second.
 - **§6 leftovers**: port mapping is untested against a real router (a manual check); the server's handshake is not sans-IO (item 2, "the server's side"); the terminal's settings form does not edit `relay`; a resume after a dropped QUIC connection is tested only over TCP (item 3).
 
 ## Closed — one line each
