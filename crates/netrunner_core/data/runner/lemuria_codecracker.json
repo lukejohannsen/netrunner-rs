@@ -1,0 +1,53 @@
+{
+  "id": "lemuria_codecracker",
+  "title": "Lemuria Codecracker",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          }
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Hq"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": "Unrezzed",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "Expose"
+        }
+      },
+      "text": "[click], 1[credit]: Expose 1 card."
+    }
+  ],
+  "built_from": 1023,
+  "is_playable": true
+}

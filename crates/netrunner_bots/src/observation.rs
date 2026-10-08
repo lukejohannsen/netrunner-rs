@@ -207,7 +207,8 @@ pub const DECISION_BLOCK_LEN: usize = 8 + 2 + 3 + 1 + 1 + 3 + 2 + 1;
 /// the twelve packs the plan builds would otherwise have been a reshape and a
 /// retrain of its own. The first 184 slots are the pool as it stood
 /// (`LEGACY_SLOTS`), untouched; the packs take fixed blocks after them
-/// (`RESERVED_BLOCKS`, ending at slot 758); the rest is room for the Fantasy
+/// (`RESERVED_BLOCKS`, ending at slot 758, and the Core Set's after them at
+/// 871); the rest is room for the Fantasy
 /// Flight Games cycles' plan to reserve its own.
 pub const CARD_VOCAB: usize = 1024;
 
@@ -282,7 +283,7 @@ fn set_rank(set: Option<&str>, id: &str) -> u32 {
         Some("system_gateway") => 0,
         Some("core_set") if CORE_AFTER_ELEVATION.contains(&id) => 3,
         Some("core_set") if CORE_THIRD_WAVE.contains(&id) => 4,
-        Some("core_set") => 1,
+        Some("core_set") if CORE_FIRST_WAVE.contains(&id) => 1,
         Some("elevation") => 2,
         _ => 5,
     }
@@ -292,6 +293,34 @@ fn set_rank(set: Option<&str>, id: &str) -> u32 {
 fn built_from_set(card: &netrunner_core::dsl::CardDefinition) -> Option<&'static str> {
     card.built_from.and_then(netrunner_core::cards::catalog::printing).map(|printing| printing.set.as_str())
 }
+
+/// The Core Set cards backfilled after System Gateway, ranked `core`
+/// (slots 77..=95). **Named, since NSG tranche 8 Stage 10a**: until then
+/// every Core Set card not on a later wave's list was one of them, and the
+/// first Core card built after the reserved blocks (Infiltration) would
+/// have sorted into the middle of them. The Core Set's later cards take its
+/// reserved block instead (`RESERVED_BLOCKS`).
+const CORE_FIRST_WAVE: [&str; 19] = [
+    "noise_hacker_extraordinaire",
+    "corroder",
+    "gabriel_santiago_consummate_professional",
+    "account_siphon",
+    "kate_mac_mccaffrey_digital_tinker",
+    "diesel",
+    "the_makers_eye",
+    "gordian_blade",
+    "haas_bioroid_engineering_the_future",
+    "jinteki_personal_evolution",
+    "snare",
+    "nbn_making_news",
+    "weyland_consortium_building_a_better_world",
+    "hostile_takeover",
+    "scorched_earth",
+    "ice_wall",
+    "pad_campaign",
+    "enigma",
+    "wall_of_static",
+];
 
 /// See `set_rank`.
 const CORE_AFTER_ELEVATION: [&str; 3] = ["decoy", "net_shield", "sacrificial_construct"];
@@ -323,7 +352,14 @@ const LEGACY_SLOTS: usize = 184;
 ///
 /// Reserved for all twelve packs before any of their cards existed, so the
 /// one reshape covers the whole plan. They end at slot 758.
-const RESERVED_BLOCKS: [(&str, u32, u32); 12] = [
+///
+/// **The Core Set's block follows them** (NSG tranche 8 Stage 10a, 8 October
+/// 2026, slots 758..=870): its cards the legacy pool did not close over —
+/// Infiltration was the first — are placed by code as the packs' are. The
+/// 25 legacy Core cards keep their legacy slots, since `vocabulary` asks
+/// whether a card is legacy before it asks for a block, so the block's
+/// slots for their codes stay empty.
+const RESERVED_BLOCKS: [(&str, u32, u32); 13] = [
     ("vantage_point", 36001, 66),
     ("rebellion_without_rehearsal", 34066, 65),
     ("the_automata_initiative", 34001, 65),
@@ -336,6 +372,7 @@ const RESERVED_BLOCKS: [(&str, u32, u32); 12] = [
     ("system_update_2021", 31001, 82),
     ("salvaged_memories", 29001, 18),
     ("magnum_opus_reprint", 28001, 6),
+    ("core_set", 1001, 113),
 ];
 
 /// The first slot after every reserved block: where a card with neither a
@@ -393,10 +430,10 @@ fn vocabulary() -> &'static HashMap<CardId, usize> {
         let mut rest: Vec<(u32, String)> = Vec::new();
         for card in registry.iter() {
             let code = card.built_from.map_or(u32::MAX, |printing| printing.0);
-            if let Some(slot) = reserved_slot(code) {
-                slots.insert(card.id.clone(), slot);
-            } else if is_legacy(built_from_set(card), &card.id.0) {
+            if is_legacy(built_from_set(card), &card.id.0) {
                 legacy.push((set_rank(built_from_set(card), &card.id.0), code, card.id.0.clone()));
+            } else if let Some(slot) = reserved_slot(code) {
+                slots.insert(card.id.clone(), slot);
             } else {
                 rest.push((code, card.id.0.clone()));
             }
@@ -1101,7 +1138,8 @@ mod tests {
             let set = match built_from_set(card) {
                 Some("core_set") if CORE_AFTER_ELEVATION.contains(&card.id.0.as_str()) => "core, second wave".to_string(),
                 Some("core_set") if CORE_THIRD_WAVE.contains(&card.id.0.as_str()) => "core, third wave".to_string(),
-                Some("core_set") => "core".to_string(),
+                Some("core_set") if CORE_FIRST_WAVE.contains(&card.id.0.as_str()) => "core".to_string(),
+                Some("core_set") => "core, reserved block".to_string(),
                 Some("system_gateway") => "sg".to_string(),
                 Some("elevation") => "elev".to_string(),
                 set => set.unwrap_or("none").to_string(),
@@ -1114,7 +1152,7 @@ mod tests {
         // then Elevation. A new set adds a pair here and nothing else.
         // A set's later wave (`CORE_AFTER_ELEVATION`) is set apart here as
         // it is in `set_rank`: by when it entered, not by its code.
-        for (earlier, later) in [("sg", "core"), ("core", "elev"), ("elev", "core, second wave"), ("core, second wave", "core, third wave")] {
+        for (earlier, later) in [("sg", "core"), ("core", "elev"), ("elev", "core, second wave"), ("core, second wave", "core, third wave"), ("core, third wave", "core, reserved block")] {
             let (Some(top), Some(bottom)) = (highest.get(earlier), lowest.get(later)) else {
                 panic!("both {earlier} and {later} should be in the playable pool");
             };
@@ -1141,7 +1179,6 @@ mod tests {
         netrunner_core::cards::register_playable_cards(&mut registry);
         let legacy = registry
             .iter()
-            .filter(|card| card.built_from.and_then(|id| reserved_slot(id.0)).is_none())
             .filter(|card| is_legacy(built_from_set(card), &card.id.0))
             .count();
         assert_eq!(legacy, LEGACY_SLOTS);
@@ -1164,15 +1201,18 @@ mod tests {
     }
 
     /// Pinned by slot: the blocks start where the legacy pool ends, follow
-    /// one another in the plan's order, and end at 758 — and a card is
+    /// one another in the plan's order, and end at 871 — and a card is
     /// placed by its code, whatever else is built.
     #[test]
     fn a_reserved_card_takes_its_codes_slot() {
         assert_eq!(reserved_slot(36001), Some(184), "Vantage Point's first printing opens the blocks");
         assert_eq!(reserved_slot(36066), Some(249));
         assert_eq!(reserved_slot(34066), Some(250), "Rebellion Without Rehearsal follows");
-        assert_eq!(reserved_slot(28006), Some(757), "the Magnum Opus Reprint's last printing closes them");
-        assert_eq!(RESERVED_END, 758);
+        assert_eq!(reserved_slot(28006), Some(757), "the Magnum Opus Reprint's last printing closes the NSG packs");
+        assert_eq!(reserved_slot(1049), Some(806), "and the Core Set's block follows them");
+        assert_eq!(slot_of(&CardId("infiltration".to_string())), 806);
+        assert_eq!(slot_of(&CardId("enigma".to_string())), 94, "a legacy Core card keeps its legacy slot");
+        assert_eq!(RESERVED_END, 871);
         assert_eq!(reserved_slot(35001), None, "Elevation is legacy");
     }
 

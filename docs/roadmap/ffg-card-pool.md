@@ -109,7 +109,8 @@ No cards. Four parts, each its own PR.
   network policy refuses**: it is run on the person's machine, or after
   the host is added to the environment's allowed domains.
 - **0b — the observation vocabulary, once.** `CARD_VOCAB` is 1,024: the
-  legacy 184 slots and the NSG packs' blocks end at slot 758, so 265 are
+  legacy 184 slots and the NSG packs' blocks end at slot 758, and the Core
+  Set's block after them at 871 (NSG tranche 8 Stage 10a), so 152 are
   free, and the FFG sets bring about 1,220 cards. Grow it once, to 2,560,
   with a fixed block per FFG set after the NSG blocks (`RESERVED_BLOCKS`),
   every existing slot untouched. That is room for the whole of Eternal and

@@ -1882,6 +1882,17 @@ pub enum Effect {
     /// choose, so a grip with none of the chosen type was never revealed
     /// at all.
     RevealHand(crate::rules::Side),
+    /// Exposes the selected card (CR 1.21.4: "to expose a card is to
+    /// reveal it, except that only installed, unrezzed cards can be
+    /// exposed") — Infiltration's and Lemuria Codecracker's "expose 1
+    /// card", the `then` of a selection over the Corp's `Unrezzed` installs,
+    /// acting on the card chosen. The card stays facedown, and the Runner
+    /// remembers it (`InstalledCard::seen_by_runner`). Nothing if it was
+    /// rezzed or has left the table while the choice waited. Composition
+    /// didn't work: a selection's `reveal` names the card to its chooser,
+    /// and the log mask hides a facedown install from the Runner, who is
+    /// the one exposing it.
+    Expose,
     /// The card whose text this is remembers a choice for `until` (CR
     /// 9.10.3) — Boomerang's "choose 1 installed piece of ice. Use this
     /// hardware only during encounters with that ice" (`Remembered::
@@ -3111,6 +3122,7 @@ impl Effect {
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
             | Effect::RevealHand(_)
+            | Effect::Expose
             | Effect::Remember { .. }
             | Effect::PlaceRunCredits { .. }
             | Effect::InstallProgramOnHost { .. }
