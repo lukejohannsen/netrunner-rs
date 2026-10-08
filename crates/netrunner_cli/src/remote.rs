@@ -9,8 +9,7 @@
 //! block its main thread, so the desktop could not have used it; the
 //! machine and its driver replace both (Phase 4 §6 item 2).
 
-pub use netrunner_client::connection::Goal;
-pub use netrunner_client::remote::{connect, list_matches, seat, spawn, ConnectEvent, Connecting, Joined};
+pub use netrunner_client::remote::{connect, list_matches, seat, seek, watch, ConnectEvent, Connecting, Joined};
 
 /// `netrunner_cli matches`: what the daemon is hosting, one line each.
 /// `netrunner_cli standing`: the key, then the standing the server at

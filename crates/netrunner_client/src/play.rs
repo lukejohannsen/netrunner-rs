@@ -1644,7 +1644,7 @@ mod lesson_tests {
             url
         });
         let hello = crate::remote::seat_in_format("tester", netrunner_core::format::NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
-        let joined = runtime.block_on(crate::remote::connect(&url, crate::connection::Goal::Play(hello), |_| {})).unwrap();
+        let joined = runtime.block_on(async { crate::remote::connect(crate::remote::seek(url.clone(), hello), |_| {}).await }).unwrap();
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let mut handle = MatchHandle::start_remote(registry, joined, Side::Runner).unwrap();
         assert_eq!((handle.side(), handle.viewer(), handle.is_remote()), (Side::Corp, Viewer::Player(Side::Corp), true), "a player sits in their seat's chair");

@@ -90,8 +90,8 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
     let brought_id = brought.as_ref().map(|deck| deck.id.clone());
-    let goal = match config.spectate {
-        Some(match_id) => remote::Goal::Watch { match_id },
+    let connecting = match config.spectate {
+        Some(match_id) => remote::watch(config.server.clone(), match_id),
         None => {
             let deck = brought.expect("a player always brings a deck");
             let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(config.format.into()));
@@ -105,11 +105,12 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                     None
                 }
             };
-            remote::Goal::Play(remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials))
+            let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials);
+            remote::seek(config.server.clone(), seat)
         }
     };
     // Before the terminal is taken, so the lobby wait goes to stderr.
-    let joined = remote::connect(&config.server, goal, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await?;
+    let joined = remote::connect(connecting, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await?;
     let mut terminal = ratatui::init();
     let result = play_remote(&mut terminal, joined, brought_id.as_deref());
     ratatui::restore();

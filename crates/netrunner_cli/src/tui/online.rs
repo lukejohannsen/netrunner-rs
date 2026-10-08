@@ -9,10 +9,10 @@
 //! or to a host by the ticket it gave out (`netrunner_client::peer`).
 //! **Watch** lists a server's matches and spectates one.
 //!
-//! **A player brings their own deck** (`ClientMessage::Connect::deck`), and
-//! its side is their seat; the server checks it against its format and
-//! refuses an illegal one at the door. "Let the host deal" is still offered,
-//! for either side or a preferred one — what `--mode remote` always did.
+//! **A player brings their own deck** (`Chair`, on the seek), and its side
+//! is their seat; the server checks it against its format and refuses an
+//! illegal one at the door. There is no "let the host deal": a server deals
+//! nobody a deck (Phase 4 §7 stage 3).
 //!
 //! **Nothing here waits on the network with the keyboard dead.** A
 //! connection runs as a task (`remote::spawn`) that the menu polls
@@ -331,10 +331,10 @@ impl OnlineScreen {
                     KeyCode::Char('a') => editing = true,
                     KeyCode::Enter if !matches.is_empty() => {
                         let url = normalize_address(&address);
-                        let goal = remote::Goal::Watch { match_id: matches[cursor].match_id };
+                        let match_id = matches[cursor].match_id;
                         let back = Box::new(Mode::Watch { address, editing, matches, cursor });
                         self.mode = Mode::Waiting {
-                            connecting: remote::spawn(url.clone(), goal),
+                            connecting: remote::watch(url.clone(), match_id),
                             status: format!("Connecting to {url}…"),
                             url,
                             brought: None,
@@ -452,7 +452,7 @@ impl OnlineScreen {
         let lobby = named.unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(self.format));
         let hello = remote::seat(&self.player, lobby, None, choice).with_credentials(credentials);
         self.mode = Mode::Waiting {
-            connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
+            connecting: remote::seek(url.clone(), hello),
             status,
             url,
             brought,

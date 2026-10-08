@@ -1,6 +1,6 @@
-//! A match on a server, played over a WebSocket: the one driver around
-//! [`connection::Connection`](crate::connection), and the only code in the
-//! client that touches a socket for a game (Phase 4 §6 item 2).
+//! A player's connection to a server, over a WebSocket: the one driver
+//! around [`connection::Connection`](crate::connection), and the only code
+//! in the client that touches a socket for a game (Phase 4 §6 item 2).
 //!
 //! **An address or a ticket.** What a player gives is either a server's
 //! address (`ws://…`, dialled over TCP) or a host's ticket (`endpoint…`,
@@ -15,22 +15,37 @@
 //! Everything that is a *decision* (when to retry, what to say on
 //! reconnect, when to give up) is the machine's and is tested there.
 //!
-//! **Two stages, like the handshake.** [`spawn`] returns a [`Connecting`]
-//! that reports the lobby and ends in a [`Joined`]: the place at the match,
-//! the channel pair to play it through, and the [`Link`] to show. A resume
-//! after a drop happens *under* the channel pair — the same `rx` keeps
-//! delivering: the `MatchJoined` (or `Spectating`) the server answered the
-//! resume with, then its fresh view, which no action produced
+//! **The connection outlives the game** (Phase 4 §7 stage 4b). [`spawn`]
+//! returns an [`Attached`]: the connection as a screen holds it, on which
+//! lobbies are listed, made, joined and left and a game is looked for,
+//! each answered as an [`AttachedEvent`]. A game is handed out as a
+//! [`Joined`] — the place at the match and a channel pair of its own to
+//! play it through — and when it ends the player is `BackInLobby` on the
+//! same `Attached`, free to look for the next with other decks. A resume
+//! after a drop happens *under* the game's channel pair — the same `rx`
+//! keeps delivering: the `MatchJoined` (or `Spectating`) the server
+//! answered the resume with, then its fresh view, which no action produced
 //! (`connection::Connection::seated` says why the first is passed on), and
-//! `link` says what happened in between. The terminal client's blocking
-//! `Reconnector`, and the channel pair it swapped in, are what this
-//! replaces.
+//! `link` says what happened in between.
 //!
-//! **Leaving closes the socket properly.** Dropping the [`Connecting`], or
-//! every `tx` of a [`Joined`], ends the driver with a WebSocket `Close`, so
-//! a player who stops waiting leaves the daemon's lobby rather than sitting
-//! in it to be paired after they have gone. That is why the task is never
-//! aborted from here.
+//! **One game, one connection, is still a shape** ([`Connecting`]): the
+//! terminal's `--server` flag path, a hosted game's own seat and a
+//! spectator each want exactly one, so [`seek`] gives the machine the
+//! lobby and the chair up front — asked for as the answers come, by the
+//! rule a reattach uses to put them back, so nothing depends on the handle
+//! being polled — and reports the `Joined` it ends in; [`watch`] does the
+//! same for a match to watch. The screens play through `Connecting` until
+//! stages 4c and 4d give them the lobby browser.
+//!
+//! **Leaving closes the socket properly.** The driver stays while anyone
+//! holds the connection — the `Attached`, or a game's `tx` — and ends
+//! with a WebSocket `Close` when the last of them is dropped, so a player
+//! who stops waiting leaves the daemon's lobby rather than sitting in it to
+//! be paired after they have gone. That is why the task is never aborted
+//! from here. **A game left before its end is conceded**: a `Joined` whose
+//! `tx` is dropped while the game is live has its seat surrendered by the
+//! driver, because an attached socket cannot tell the server the board was
+//! closed any other way — the socket is still there.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -45,89 +60,139 @@ use uuid::Uuid;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_protocol::{Chair, ClientMessage, MatchSummary, ServerMessage};
+use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
 
-use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Seat};
+use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Who};
 use crate::identity::{Credentials, KnownServers};
 use crate::peer::{self, Dialer, Ticket};
 
 /// A place at a match: the perspective it was given, the seat's token
 /// (`None` for a spectator), the decks `MatchJoined` named, and the channel
-/// pair to play or watch it through. `rx` closes only when the driver has
-/// stopped for good; while it reconnects, `link` says so and `rx` waits.
+/// pair to play or watch it through. `rx` closes when the game is over and
+/// the connection has let it go, or when the connection has stopped for
+/// good; while it reconnects, `link` says so and `rx` waits.
 pub struct Joined {
     pub viewer: Viewer,
     pub session_token: Option<Uuid>,
     /// Corp then Runner, and only the seat's own is ever filled in: a
     /// server tells nobody their opponent's deck (Phase 4 §7 stage 2).
-    /// Both empty for a spectator. A player who brought a deck compares
-    /// their own against it, because a daemon older than `Connect::deck`
-    /// ignores it and deals.
+    /// Both empty for a spectator.
     pub decks: (String, String),
-    /// Messages to the server. Sent while the link is down, they are
-    /// dropped: an action chosen from a view before a drop may be stale by
-    /// the time the seat is back.
+    /// Messages to the server about this game. Sent while the link is
+    /// down, they are dropped: an action chosen from a view before a drop
+    /// may be stale by the time the seat is back. Dropping it before the
+    /// game ends concedes.
     pub tx: mpsc::UnboundedSender<ClientMessage>,
     /// Messages about the match: views, log entries, clocks, rejections,
-    /// the end.
+    /// the end, the receipt.
     pub rx: mpsc::UnboundedReceiver<ServerMessage>,
     pub link: watch::Receiver<Link>,
 }
 
-/// What a connection in progress has to say.
-pub enum ConnectEvent {
-    /// In the lobby at this position.
+/// What an attached connection has to say — the machine's events, with a
+/// game's place carrying its channel pair.
+pub enum AttachedEvent {
+    /// Attached, and the open lobbies: first, and again after a reattach.
+    Attached(Vec<LobbyInfo>),
+    Lobbies(Vec<LobbyInfo>),
+    LobbyJoined(LobbyInfo),
+    LobbyLeft,
+    LobbyRefused(String),
+    /// Looking for a game, at this position in the queue.
     Queued(usize),
-    /// The lobby place's connection dropped and is being taken back, or is
-    /// back (`Link::Up`).
+    SeekRefused(String),
+    SeekCancelled,
+    /// A place at a match, with the channels to play it through.
+    Joined(Box<Joined>),
+    /// The game is over and the connection is in its lobby again.
+    BackInLobby(Option<LobbyInfo>),
+    /// The link went down, came back, or is down for good
+    /// (`Link::Down`, after which nothing more comes).
+    Link(Link),
+}
+
+/// A connection, as a screen holds it: what the player asks goes in, what
+/// the server answers comes out, and dropping it closes the socket — once
+/// no game's `tx` holds the connection either.
+pub struct Attached {
+    commands: mpsc::UnboundedSender<ClientMessage>,
+    events: mpsc::UnboundedReceiver<AttachedEvent>,
+    link: watch::Receiver<Link>,
+}
+
+impl Attached {
+    /// The next thing to report, without waiting.
+    pub fn poll(&mut self) -> Option<AttachedEvent> {
+        self.events.try_recv().ok()
+    }
+
+    /// The next thing to report, waiting for it. `None` once there is
+    /// nothing more.
+    pub async fn next(&mut self) -> Option<AttachedEvent> {
+        self.events.recv().await
+    }
+
+    /// The link as it stands.
+    pub fn link(&self) -> Link {
+        self.link.borrow().clone()
+    }
+
+    pub fn list_lobbies(&self) {
+        self.send(ClientMessage::ListLobbies);
+    }
+
+    pub fn create_lobby(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>) {
+        self.send(ClientMessage::CreateLobby { name, format, closed, password });
+    }
+
+    pub fn join_lobby(&self, lobby: String, password: Option<String>) {
+        self.send(ClientMessage::JoinLobby { lobby, password });
+    }
+
+    pub fn leave_lobby(&self) {
+        self.send(ClientMessage::LeaveLobby);
+    }
+
+    /// Look for a game in the lobby joined, in `chair` with its deck or
+    /// decks.
+    pub fn seek(&self, chair: Chair) {
+        self.send(ClientMessage::Seek { chair });
+    }
+
+    pub fn cancel_seek(&self) {
+        self.send(ClientMessage::CancelSeek);
+    }
+
+    /// The machine refuses what makes no sense where the connection is
+    /// (`connection::Connection::submit`), and the server refuses the
+    /// rest with a reason that comes back as an event; a send into a
+    /// driver that has stopped is the `Link::Down` already reported.
+    fn send(&self, message: ClientMessage) {
+        let _ = self.commands.send(message);
+    }
+}
+
+/// What a connection in progress has to say, until it has a place.
+pub enum ConnectEvent {
+    /// Looking for a game at this position.
+    Queued(usize),
+    /// The connection dropped and is being taken back, or is back
+    /// (`Link::Up`).
     Link(Link),
     Joined(Box<Joined>),
     Failed(ConnectionError),
 }
 
-/// What the driver tells a `Connecting`, before the channel pair exists
-/// for anyone else.
-enum Setup {
-    Queued(usize),
-    Link(Link),
-    Joined { viewer: Viewer, session_token: Option<Uuid>, decks: (String, String) },
-    Failed(ConnectionError),
-}
-
-/// A connection running in the background, until it has a place.
-pub struct Connecting {
-    setup: mpsc::UnboundedReceiver<Setup>,
-    /// The parts a `Joined` is made of, held here until then so that
-    /// dropping this before a place leaves the driver with no `tx` — which
-    /// is how it knows to close.
-    parts: Option<(mpsc::UnboundedSender<ClientMessage>, mpsc::UnboundedReceiver<ServerMessage>, watch::Receiver<Link>)>,
-}
-
-impl Connecting {
-    /// The next thing to report, without waiting.
-    pub fn poll(&mut self) -> Option<ConnectEvent> {
-        let setup = self.setup.try_recv().ok()?;
-        Some(self.report(setup))
-    }
-
-    /// The next thing to report, waiting for it. `None` once there is
-    /// nothing more.
-    pub async fn next(&mut self) -> Option<ConnectEvent> {
-        let setup = self.setup.recv().await?;
-        Some(self.report(setup))
-    }
-
-    fn report(&mut self, setup: Setup) -> ConnectEvent {
-        match setup {
-            Setup::Queued(position) => ConnectEvent::Queued(position),
-            Setup::Link(link) => ConnectEvent::Link(link),
-            Setup::Failed(error) => ConnectEvent::Failed(error),
-            Setup::Joined { viewer, session_token, decks } => match self.parts.take() {
-                Some((tx, rx, link)) => ConnectEvent::Joined(Box::new(Joined { viewer, session_token, decks, tx, rx, link })),
-                None => ConnectEvent::Failed(ConnectionError::ClosedBeforeSeat),
-            },
-        }
-    }
+/// One game, looked for in `lobby` as `chair` by `player_name` — the
+/// script [`seek`] plays over an [`Attached`]. `credentials` is the key
+/// proved; `None` plays unrated.
+#[derive(Debug, Clone)]
+pub struct Seat {
+    pub player_name: String,
+    pub lobby: String,
+    pub password: Option<String>,
+    pub chair: Chair,
+    pub credentials: Option<Box<Credentials>>,
 }
 
 /// A game looked for in `lobby` with one deck, whose side is the chair.
@@ -145,6 +210,10 @@ impl Seat {
         self.credentials = credentials.map(Box::new);
         self
     }
+
+    fn who(&self) -> Who {
+        Who { player_name: self.player_name.clone(), credentials: self.credentials.clone() }
+    }
 }
 
 /// A game looked for in the server's own lobby for `format`, with one deck.
@@ -152,30 +221,92 @@ pub fn seat_in_format(player_name: &str, format: NsgFormat, deck: DeckFile) -> S
     seat(player_name, netrunner_protocol::format_lobby_id(format), None, deck)
 }
 
-/// Starts a connection to `url` — a server's address or a host's ticket —
-/// for `goal`. Must be called inside a tokio runtime; the caller polls the
-/// result between frames.
-pub fn spawn(url: String, goal: Goal) -> Connecting {
-    let (setup_tx, setup) = mpsc::unbounded_channel();
-    let (tx, commands) = mpsc::unbounded_channel();
-    let (messages, rx) = mpsc::unbounded_channel();
+/// A connection running in the background until it has one place: a seat
+/// looked for, or a match to watch. Dropping it before the place closes
+/// the socket; the `Joined` it ends in holds the connection afterwards.
+pub struct Connecting {
+    attached: Attached,
+}
+
+impl Connecting {
+    /// The next thing to report, without waiting.
+    pub fn poll(&mut self) -> Option<ConnectEvent> {
+        loop {
+            let event = self.attached.poll()?;
+            if let Some(report) = self.step(event) {
+                return Some(report);
+            }
+        }
+    }
+
+    /// The next thing to report, waiting for it. `None` once there is
+    /// nothing more.
+    pub async fn next(&mut self) -> Option<ConnectEvent> {
+        loop {
+            let event = self.attached.next().await?;
+            if let Some(report) = self.step(event) {
+                return Some(report);
+            }
+        }
+    }
+
+    /// What a caller waiting for one place is told: the queue, the link,
+    /// the place, or why there will be none — a lobby or a seek refused is
+    /// a refused connection here, as a refused `Connect` used to be.
+    fn step(&mut self, event: AttachedEvent) -> Option<ConnectEvent> {
+        match event {
+            AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Some(ConnectEvent::Failed(ConnectionError::Rejected(reason))),
+            AttachedEvent::Queued(position) => Some(ConnectEvent::Queued(position)),
+            AttachedEvent::Joined(joined) => Some(ConnectEvent::Joined(joined)),
+            AttachedEvent::Link(Link::Down(error)) => Some(ConnectEvent::Failed(error)),
+            AttachedEvent::Link(link) => Some(ConnectEvent::Link(link)),
+            AttachedEvent::Attached(_) | AttachedEvent::LobbyJoined(_) | AttachedEvent::Lobbies(_) | AttachedEvent::LobbyLeft | AttachedEvent::SeekCancelled | AttachedEvent::BackInLobby(_) => None,
+        }
+    }
+}
+
+/// One game at `url`, looked for as `seat` asks: attaches, joins the
+/// lobby, seeks, and reports the place. Must be called inside a tokio
+/// runtime; the caller polls the result between frames.
+pub fn seek(url: String, seat: Seat) -> Connecting {
+    let lobby = Some((seat.lobby.clone(), seat.password.clone()));
+    Connecting { attached: start(url, Goal::Attach(seat.who()), lobby, Some(seat.chair)) }
+}
+
+/// A running match at `url` to watch.
+pub fn watch(url: String, match_id: Uuid) -> Connecting {
+    Connecting { attached: spawn(url, Goal::Watch { match_id }) }
+}
+
+/// A connection to `url` — a server's address or a host's ticket — for
+/// `goal`, started in the background. Must be called inside a tokio
+/// runtime; the caller polls the result between frames.
+pub fn spawn(url: String, goal: Goal) -> Attached {
+    start(url, goal, None, None)
+}
+
+/// `spawn`, with a lobby and a chair the first attach asks for
+/// (`connection::Connection::with_lobby_and_seek`).
+fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, chair: Option<Chair>) -> Attached {
+    let (events_tx, events) = mpsc::unbounded_channel();
+    let (commands, commands_rx) = mpsc::unbounded_channel();
     let (link_tx, link) = watch::channel(Link::Up);
     let target = Target::of(url);
     let known = target.known_servers(&goal);
     let pinned = known.as_ref().and_then(|(path, address)| KnownServers::load(path).ok()?.get(address));
     let receipts = match &goal {
-        Goal::Play(seat) => seat.credentials.as_ref().and_then(|credentials| credentials.receipts()),
+        Goal::Attach(who) => who.credentials.as_ref().and_then(|credentials| credentials.receipts()),
         Goal::Watch { .. } => None,
     };
-    let connection = Connection::new(goal, Instant::now()).with_pinned(pinned);
-    tokio::spawn(drive(target, connection, Kept { known, receipts }, commands, setup_tx, messages, link_tx));
-    Connecting { setup, parts: Some((tx, rx, link)) }
+    let connection = Connection::new(goal, Instant::now()).with_pinned(pinned).with_lobby_and_seek(lobby, chair);
+    tokio::spawn(drive(target, connection, Kept { known, receipts }, commands_rx, events_tx, link_tx));
+    Attached { commands, events, link }
 }
 
-/// `spawn`, awaited to a place: for a caller with nothing to draw while it
-/// waits (`--mode remote` connects before the terminal is taken).
-pub async fn connect(url: &str, goal: Goal, mut on_queued: impl FnMut(usize)) -> Result<Joined, ConnectionError> {
-    let mut connecting = spawn(url.to_string(), goal);
+/// `seek` or `watch`, awaited to a place: for a caller with nothing to
+/// draw while it waits (`--mode remote` connects before the terminal is
+/// taken).
+pub async fn connect(mut connecting: Connecting, mut on_queued: impl FnMut(usize)) -> Result<Joined, ConnectionError> {
     loop {
         match connecting.next().await {
             Some(ConnectEvent::Joined(joined)) => return Ok(*joined),
@@ -203,12 +334,12 @@ enum Target {
 
 impl Target {
     /// Where the server's key is remembered, and under which address:
-    /// only for a server dialled by address, by a seat that proves a key.
+    /// only for a server dialled by address, by a player who proves a key.
     /// A ticket names its host's key already, and a hosted game is never
     /// rated, so it remembers nothing.
     fn known_servers(&self, goal: &Goal) -> Option<(std::path::PathBuf, String)> {
-        let Goal::Play(seat) = goal else { return None };
-        let path = seat.credentials.as_ref()?.known_servers()?;
+        let Goal::Attach(who) = goal else { return None };
+        let path = who.credentials.as_ref()?.known_servers()?;
         match self {
             Target::Url(url) => Some((path, url.clone())),
             Target::Peer(_) => None,
@@ -265,19 +396,41 @@ struct Kept {
     receipts: Option<std::path::PathBuf>,
 }
 
+/// The game under way, as the driver holds its end of the channel pair.
+struct Game {
+    /// The match's messages, to the `Joined`'s `rx`.
+    messages: mpsc::UnboundedSender<ServerMessage>,
+    /// What the `Joined`'s `tx` sends; `None` once that was dropped.
+    commands: Option<mpsc::UnboundedReceiver<ClientMessage>>,
+    /// A player's seat, which leaving concedes; a spectator's place is
+    /// simply left.
+    player: bool,
+    /// `GameEnded` has passed, or the player surrendered: nothing to
+    /// concede.
+    over: bool,
+}
+
+/// The game's next command, or never when there is no game or its `tx`
+/// has gone.
+async fn from_game(game: &mut Option<Game>) -> Option<ClientMessage> {
+    match game.as_mut().and_then(|game| game.commands.as_mut()) {
+        Some(commands) => commands.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
 async fn drive(
     target: Target,
     mut conn: Connection,
     kept: Kept,
     mut commands: mpsc::UnboundedReceiver<ClientMessage>,
-    setup: mpsc::UnboundedSender<Setup>,
-    messages: mpsc::UnboundedSender<ServerMessage>,
+    events: mpsc::UnboundedSender<AttachedEvent>,
     link: watch::Sender<Link>,
 ) {
     let dialer = Dialer::default();
     let mut socket: Option<Socket> = None;
     let mut dial: Option<Dial> = None;
-    let mut joined = false;
+    let mut game: Option<Game> = None;
     let mut commands_open = true;
     loop {
         if conn.poll_dial() {
@@ -293,7 +446,7 @@ async fn drive(
             }
         }
         while let Some(event) = conn.poll_event() {
-            match event {
+            let report = match event {
                 // A failed write costs a warning next time, not this game.
                 Event::ServerKey(key) => {
                     if let Some((path, address)) = &kept.known {
@@ -301,30 +454,52 @@ async fn drive(
                         servers.insert(address, key);
                         let _ = servers.save(path);
                     }
-                }
-                Event::Queued(position) => {
-                    let _ = setup.send(Setup::Queued(position));
+                    continue;
                 }
                 Event::Joined { viewer, session_token, decks } => {
-                    joined = true;
-                    let _ = setup.send(Setup::Joined { viewer, session_token, decks });
+                    let (messages, rx) = mpsc::unbounded_channel();
+                    let (tx, game_commands) = mpsc::unbounded_channel();
+                    game = Some(Game { messages, commands: Some(game_commands), player: matches!(viewer, Viewer::Player(_)), over: false });
+                    AttachedEvent::Joined(Box::new(Joined { viewer, session_token, decks, tx, rx, link: link.subscribe() }))
                 }
                 Event::Message(message) => {
                     if let (ServerMessage::Rated { receipt, .. }, Some(path)) = (&message, &kept.receipts) {
                         let _ = crate::identity::keep_receipt(path, receipt);
                     }
-                    let _ = messages.send(message);
+                    if let Some(game) = &mut game {
+                        if matches!(message, ServerMessage::GameEnded { .. }) {
+                            game.over = true;
+                        }
+                        let _ = game.messages.send(message);
+                    }
+                    continue;
+                }
+                // The game's channel closes with the game: its reader sees
+                // the end, and nothing of the next game reaches it.
+                Event::BackInLobby(lobby) => {
+                    game = None;
+                    AttachedEvent::BackInLobby(lobby)
                 }
                 Event::Link(state) => {
-                    if !joined {
-                        let _ = setup.send(match &state {
-                            Link::Down(error) => Setup::Failed(error.clone()),
-                            other => Setup::Link(other.clone()),
-                        });
-                    }
-                    link.send_replace(state);
+                    link.send_replace(state.clone());
+                    AttachedEvent::Link(state)
                 }
-            }
+                Event::Attached(lobbies) => AttachedEvent::Attached(lobbies),
+                Event::Lobbies(lobbies) => AttachedEvent::Lobbies(lobbies),
+                Event::LobbyJoined(lobby) => AttachedEvent::LobbyJoined(lobby),
+                Event::LobbyLeft => AttachedEvent::LobbyLeft,
+                Event::LobbyRefused(reason) => AttachedEvent::LobbyRefused(reason),
+                Event::Queued(position) => AttachedEvent::Queued(position),
+                Event::SeekRefused(reason) => AttachedEvent::SeekRefused(reason),
+                Event::SeekCancelled => AttachedEvent::SeekCancelled,
+            };
+            let _ = events.send(report);
+        }
+        // Nobody holds the connection any more: the screen has let the
+        // `Attached` go and no game's `tx` is alive.
+        let held_by_a_game = game.as_ref().is_some_and(|game| game.commands.is_some());
+        if !commands_open && !held_by_a_game {
+            conn.close();
         }
         if !conn.wants_transport() {
             dial = None;
@@ -365,9 +540,25 @@ async fn drive(
                 Some(message) => {
                     conn.submit(message);
                 }
+                None => commands_open = false,
+            },
+            command = from_game(&mut game) => match command {
+                Some(message) => {
+                    if let (ClientMessage::Surrender, Some(game)) = (&message, &mut game) {
+                        game.over = true;
+                    }
+                    conn.submit(message);
+                }
+                // The board was closed on a live game: concede it, since
+                // the socket stays and the server cannot tell otherwise.
                 None => {
-                    commands_open = false;
-                    conn.close();
+                    if let Some(game) = &mut game {
+                        game.commands = None;
+                        if game.player && !game.over {
+                            game.over = true;
+                            conn.submit(ClientMessage::Surrender);
+                        }
+                    }
                 }
             },
             () = tokio::time::sleep_until(deadline.unwrap_or_else(tokio::time::Instant::now)), if deadline.is_some() => {
@@ -481,10 +672,15 @@ mod tests {
 
     use super::*;
     use netrunner_core::rules::PlayerAction;
+    use netrunner_protocol::GameEndReason;
     use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 
     async fn start_server() -> std::net::SocketAddr {
-        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() };
+        start_server_with(ServeBotKind::Planner).await
+    }
+
+    async fn start_server_with(bot_runner: ServeBotKind) -> std::net::SocketAddr {
+        let options = ServeOptions { bot_runner, seed: Some(1), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -533,18 +729,46 @@ mod tests {
         }
     }
 
+    async fn ended(rx: &mut mpsc::UnboundedReceiver<ServerMessage>) -> (Side, GameEndReason) {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await.expect("the game ends in time") {
+                Some(ServerMessage::GameEnded { winner, reason }) => return (winner, reason),
+                Some(_) => continue,
+                None => panic!("the channel closed before GameEnded"),
+            }
+        }
+    }
+
     async fn link_is(link: &mut watch::Receiver<Link>, wanted: impl Fn(&Link) -> bool) {
         tokio::time::timeout(Duration::from_secs(10), link.wait_for(|state| wanted(state))).await.expect("the link settles").unwrap();
     }
 
-    fn corp() -> Goal {
-        Goal::Play(seat_in_format("tester", NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck")))
+    /// The next event `wanted` picks out, within ten seconds.
+    async fn next_where<T>(attached: &mut Attached, wanted: impl Fn(AttachedEvent) -> Option<T>) -> T {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let event = attached.next().await.expect("the connection is alive");
+                if let Some(found) = wanted(event) {
+                    return found;
+                }
+            }
+        })
+        .await
+        .expect("the server answers within 10s")
+    }
+
+    fn deck(id: &str) -> DeckFile {
+        netrunner_core::decks::by_id(id).expect("a built-in deck")
+    }
+
+    fn corp(url: &str) -> Connecting {
+        seek(url.to_string(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")))
     }
 
     #[tokio::test]
     async fn a_seat_plays_through_the_driver() {
         let url = format!("ws://{}", start_server().await);
-        let mut joined = connect(&url, corp(), |_| {}).await.unwrap();
+        let mut joined = connect(corp(&url), |_| {}).await.unwrap();
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         assert!(joined.session_token.is_some());
         next_view(&mut joined.rx).await;
@@ -553,8 +777,95 @@ mod tests {
         assert_eq!(*joined.link.borrow(), Link::Up);
     }
 
-    /// Against a server that keeps its key: the seat proves its own, the
-    /// server's is remembered for the address, and when another key
+    /// Two players on a human daemon, each attached once: the lobbies
+    /// listed with no deck, a lobby joined, a game found and played to its
+    /// end, both back in the lobby, and the next game found on the same
+    /// two connections in the other chairs — while a game's channel pair
+    /// closes with its game and carries nothing of the next.
+    #[tokio::test]
+    async fn the_next_game_is_found_on_the_same_connection() {
+        let url = format!("ws://{}", start_server_with(ServeBotKind::None).await);
+        let who = |name: &str| Goal::Attach(Who { player_name: name.into(), credentials: None });
+        let mut one = spawn(url.clone(), who("one"));
+        let mut two = spawn(url.clone(), who("two"));
+        for attached in [&mut one, &mut two] {
+            let lobbies = next_where(attached, |event| match event {
+                AttachedEvent::Attached(lobbies) => Some(lobbies),
+                _ => None,
+            })
+            .await;
+            assert!(lobbies.iter().any(|lobby| lobby.id == "startup"), "{lobbies:?}");
+            attached.join_lobby("startup".into(), None);
+            let lobby = next_where(attached, |event| match event {
+                AttachedEvent::LobbyJoined(lobby) => Some(lobby),
+                _ => None,
+            })
+            .await;
+            assert_eq!(lobby.format, NsgFormat::Startup);
+        }
+        one.seek(Chair::Corp(Box::new(deck("brick_stack"))));
+        assert!(matches!(next_where(&mut one, Some).await, AttachedEvent::Queued(1)));
+        two.seek(Chair::Runner(Box::new(deck("stolen_goods"))));
+        let joined = |event| match event {
+            AttachedEvent::Joined(joined) => Some(joined),
+            _ => None,
+        };
+        let mut first = next_where(&mut one, joined).await;
+        let mut second = next_where(&mut two, joined).await;
+        assert_eq!((first.viewer, second.viewer), (Viewer::Player(Side::Corp), Viewer::Player(Side::Runner)));
+        assert_eq!(first.decks, ("brick_stack".to_string(), String::new()), "told its own deck, never the other's");
+        next_view(&mut first.rx).await;
+        next_view(&mut second.rx).await;
+        first.tx.send(ClientMessage::Surrender).unwrap();
+        assert_eq!(ended(&mut first.rx).await, (Side::Runner, GameEndReason::Surrender));
+        assert_eq!(ended(&mut second.rx).await, (Side::Runner, GameEndReason::Surrender));
+        let back = |event| match event {
+            AttachedEvent::BackInLobby(lobby) => Some(lobby),
+            _ => None,
+        };
+        assert_eq!(next_where(&mut one, back).await.map(|lobby| lobby.id).as_deref(), Some("startup"));
+        assert_eq!(next_where(&mut two, back).await.map(|lobby| lobby.id).as_deref(), Some("startup"));
+        assert!(tokio::time::timeout(Duration::from_secs(5), async { while first.rx.recv().await.is_some() {} }).await.is_ok(), "a game's channel closes with its game");
+
+        one.seek(Chair::Runner(Box::new(deck("dashing_mad"))));
+        two.seek(Chair::Corp(Box::new(deck("glyph_of_warding"))));
+        let mut third = next_where(&mut one, joined).await;
+        let fourth = next_where(&mut two, joined).await;
+        assert_eq!((third.viewer, fourth.viewer), (Viewer::Player(Side::Runner), Viewer::Player(Side::Corp)));
+        assert_eq!(fourth.decks.0, "glyph_of_warding");
+        next_view(&mut third.rx).await;
+        assert!(second.rx.try_recv().is_err(), "the first game's channel carries nothing of the second");
+    }
+
+    /// The board closed on a live game — its `tx` dropped with the
+    /// connection still held — concedes it: the opponent is told at once.
+    #[tokio::test]
+    async fn dropping_a_games_channel_while_attached_concedes_it() {
+        let url = format!("ws://{}", start_server_with(ServeBotKind::None).await);
+        let who = |name: &str| Goal::Attach(Who { player_name: name.into(), credentials: None });
+        let mut one = spawn(url.clone(), who("one"));
+        let mut two = spawn(url.clone(), who("two"));
+        for (attached, chair) in [(&mut one, Chair::Corp(Box::new(deck("brick_stack")))), (&mut two, Chair::Runner(Box::new(deck("stolen_goods"))))] {
+            next_where(attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+            attached.join_lobby("startup".into(), None);
+            next_where(attached, |event| matches!(event, AttachedEvent::LobbyJoined(_)).then_some(())).await;
+            attached.seek(chair);
+        }
+        let joined = |event| match event {
+            AttachedEvent::Joined(joined) => Some(joined),
+            _ => None,
+        };
+        let first = next_where(&mut one, joined).await;
+        let mut second = next_where(&mut two, joined).await;
+        next_view(&mut second.rx).await;
+        drop(first);
+        assert_eq!(ended(&mut second.rx).await, (Side::Runner, GameEndReason::Surrender));
+        next_where(&mut one, |event| matches!(event, AttachedEvent::BackInLobby(_)).then_some(())).await;
+        assert_eq!(one.link(), Link::Up, "the connection stays");
+    }
+
+    /// Against a server that keeps its key: the player proves their own,
+    /// the server's is remembered for the address, and when another key
     /// answers at that address later the connection is refused before
     /// anything is proved to it.
     #[tokio::test]
@@ -567,12 +878,9 @@ mod tests {
         tokio::spawn(server.run());
         let url = format!("ws://{addr}");
         let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
-        let signed_in = || {
-            let deck = netrunner_core::decks::by_id("brick_stack").expect("a built-in deck");
-            Goal::Play(seat_in_format("tester", NsgFormat::Startup, deck).with_credentials(Some(credentials.clone())))
-        };
+        let signed_in = || seek(url.clone(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).with_credentials(Some(credentials.clone())));
 
-        let mut joined = connect(&url, signed_in(), |_| {}).await.unwrap();
+        let mut joined = connect(signed_in(), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
         let known_path = dir.join("client").join(crate::identity::KNOWN_SERVERS_FILE);
         assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
@@ -582,7 +890,7 @@ mod tests {
         let impostor = netrunner_identity::Identity::from_secret([7; 32]).public_key();
         known.insert(&url, impostor);
         known.save(&known_path).unwrap();
-        let refused = connect(&url, signed_in(), |_| {}).await.err().expect("a server with another key is refused");
+        let refused = connect(signed_in(), |_| {}).await.err().expect("a server with another key is refused");
         assert!(matches!(refused, ConnectionError::ServerKeyChanged { remembered, found } if remembered == impostor && found == server_key), "{refused}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -617,7 +925,7 @@ mod tests {
     #[tokio::test]
     async fn a_cut_socket_is_resumed_under_the_same_channels() {
         let (proxy, url) = Proxy::start(start_server().await).await;
-        let mut joined = connect(&url, corp(), |_| {}).await.unwrap();
+        let mut joined = connect(corp(&url), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
 
         proxy.cut();
@@ -625,6 +933,36 @@ mod tests {
         link_is(&mut joined.link, |state| *state == Link::Up).await;
         next_view(&mut joined.rx).await;
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        next_view(&mut joined.rx).await;
+    }
+
+    /// The socket is cut while attached in a lobby, with no game: the
+    /// connection attaches again and is back in its lobby by itself, and
+    /// a game is then found on it.
+    #[tokio::test]
+    async fn a_cut_socket_while_in_a_lobby_rejoins_it() {
+        let (proxy, url) = Proxy::start(start_server().await).await;
+        let mut attached = spawn(url, Goal::Attach(Who { player_name: "tester".into(), credentials: None }));
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+        attached.join_lobby("startup".into(), None);
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::LobbyJoined(_)).then_some(())).await;
+
+        proxy.cut();
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::Link(Link::Reconnecting { .. })).then_some(())).await;
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::Link(Link::Up)).then_some(())).await;
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+        let lobby = next_where(&mut attached, |event| match event {
+            AttachedEvent::LobbyJoined(lobby) => Some(lobby),
+            _ => None,
+        })
+        .await;
+        assert_eq!(lobby.id, "startup", "rejoined without being asked");
+        attached.seek(Chair::Corp(Box::new(deck("brick_stack"))));
+        let mut joined = next_where(&mut attached, |event| match event {
+            AttachedEvent::Joined(joined) => Some(joined),
+            _ => None,
+        })
+        .await;
         next_view(&mut joined.rx).await;
     }
 
@@ -659,7 +997,7 @@ mod tests {
         let ticket = crate::peer::Ticket::parse(&ticket).unwrap().relay_only();
         assert!(ticket.relay().is_some(), "the ticket names the relay: {ticket}");
         let ticket = ticket.to_string();
-        let mut joined = connect(&ticket, corp(), |_| {}).await.unwrap();
+        let mut joined = connect(corp(&ticket), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
         next_view(&mut joined.rx).await;
@@ -673,7 +1011,7 @@ mod tests {
         let (_host, ticket) = start_peer_host().await;
         let (matches, waiting, _) = list_matches(&ticket).await.unwrap();
         assert_eq!((matches.len(), waiting), (0, 0), "a ticket answers ListMatches too");
-        let mut joined = connect(&ticket, corp(), |_| {}).await.unwrap();
+        let mut joined = connect(corp(&ticket), |_| {}).await.unwrap();
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         next_view(&mut joined.rx).await;
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
@@ -688,7 +1026,7 @@ mod tests {
         let (host, ticket) = start_peer_host().await;
         drop(host);
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let result = tokio::time::timeout(Duration::from_secs(30), connect(&ticket, corp(), |_| {})).await.expect("the machine bounds the first dial");
+        let result = tokio::time::timeout(Duration::from_secs(30), connect(corp(&ticket), |_| {})).await.expect("the machine bounds the first dial");
         assert!(matches!(result, Err(ConnectionError::Transport(_))), "{:?}", result.err());
     }
 
@@ -697,13 +1035,24 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("ws://{}", listener.local_addr().unwrap());
         drop(listener);
-        assert!(matches!(connect(&url, corp(), |_| {}).await, Err(ConnectionError::Transport(_))));
+        assert!(matches!(connect(corp(&url), |_| {}).await, Err(ConnectionError::Transport(_))));
     }
 
     #[tokio::test]
     async fn a_match_that_is_not_running_refuses_a_spectator() {
         let url = format!("ws://{}", start_server().await);
-        let result = connect(&url, Goal::Watch { match_id: Uuid::new_v4() }, |_| {}).await;
+        let result = connect(watch(url, Uuid::new_v4()), |_| {}).await;
         assert!(matches!(result, Err(ConnectionError::Rejected(_))), "{:?}", result.err());
+    }
+
+    /// A deck the lobby's format refuses is a failed one-shot connection
+    /// with the server's reason, as a refused `Connect` used to be.
+    #[tokio::test]
+    async fn a_refused_seek_fails_the_one_shot_connection() {
+        let url = format!("ws://{}", start_server().await);
+        let wrong = seat("tester", "startup".into(), None, deck("stolen_goods"));
+        let wrong = Seat { chair: Chair::Corp(Box::new(deck("stolen_goods"))), ..wrong };
+        let result = connect(seek(url, wrong), |_| {}).await;
+        assert!(matches!(&result, Err(ConnectionError::Rejected(reason)) if reason.contains("Runner deck")), "{:?}", result.err());
     }
 }

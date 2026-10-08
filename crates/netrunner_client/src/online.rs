@@ -1,8 +1,8 @@
 //! The deck a person brings to a game online, shared by both clients'
 //! Play Online screens.
 //!
-//! **A player brings their own deck** (`ClientMessage::Connect::deck`),
-//! and its side is their seat; the host checks it against its format and
+//! **A player brings their own deck** (`Chair`, on the seek), and its
+//! side is their seat; the host checks it against its format and
 //! refuses an illegal one at the door. **There is no "let the host deal"**
 //! (Phase 4 §7 stage 3, 26 September 2026): the game is about decks built
 //! to surprise, and a server deals nobody a deck unless its operator says
