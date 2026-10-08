@@ -2,15 +2,15 @@
 
 Area roadmap; the index is `ROADMAP.md`. Addresses: "Phase 4 §1"–"§6". The server sends **full masked `ClientView` snapshots** after every action, not deltas — the current design, not an oversight (§4).
 
-**Where it stands (8 October 2026).** §1–§3 and §6 are built; §4 is deferred; §5's stages
-(a)–(d) are built and (e) is open; §7's lobbies are built through stage 5 (the client core stays
-attached across games, both clients browse lobbies on it, and a lobby says whether its games count,
-8 October 2026) with 6 open. The closed record is in
+**Where it stands (8 October 2026).** §1–§3, §5 and §6 are built; §4 is deferred; §7's lobbies
+are built through stage 5 (the client core stays attached across games, both clients browse lobbies
+on it, and a lobby says whether its games count, 8 October 2026) with 6 open. §5 closed with the free
+take-back online (8 October 2026). The closed record is in
 [the archive](archive/phase-4-network.md).
 
 ## Open
 
-- **§5 (e)**: the free take-back online (`Session::rewind` for an `External` seat, fair only while nothing was taught — AGENTS.md's Session Rule); key rotation is recorded and not designed.
+- **§5 leftovers**: key rotation (the old key signing the new) is recorded and not designed; an undo past the free line in a rated game is refused rather than asked of the other seat.
 - **§7 stage 6**, tournaments (design below, none built).
 - **§3 leftovers**: no graceful server shutdown; no spectator count cap or delayed omniscient stream; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; the TUI header does not show the matchup.
 - **§6 leftovers**: port mapping is untested against a real router (a manual check); the server's handshake is not sans-IO (item 2, "the server's side"); the terminal's settings form does not edit `relay`; a resume after a dropped QUIC connection is tested only over TCP (item 3).
@@ -19,6 +19,7 @@ attached across games, both clients browse lobbies on it, and a lobby says wheth
 
 - **§1** — the event stream to clients: a per-viewer masked action log (`PublicHistoryEntry`) beside full masked snapshots.
 - **§2** — reconnection and session recovery: a channel-backed seat is one connection's worth and can be replaced mid-match.
+- **§5** — a rating is a server's to keep: identity is an Ed25519 key, a game between two proved keys in a lobby that rates leaves a signed receipt, the clients show the standing, and a move is taken back online as at home — the free kind in any game, an undo where the lobby does not rate.
 - **§3** — the multi-match daemon: a `Registry` under one mutex with lobby, rooms, cap and per-match seed; per-decision turn timers that forfeit; spectators masked as the intersection of both views; the daemon deals the published pool; a player brings their own deck (Phase 6 §3).
 - **§5 (a)–(d)** — the server keeps match records; `netrunner_identity` and the Identify/Challenge/Prove handshake with `--data-dir`; seat commitments, signed receipts, `Rated` and `results.jsonl` as the truth; the clients' rated and standing lines and the player's own receipts (26 September 2026).
 - **§6** — a host reachable from outside: IPv6 and one dual-stack socket with the router asked to open the port; a sans-IO client connection and its tokio driver; a peer-to-peer transport joined by ticket over iroh (25 September 2026). Rejected: STUN alone, raw WireGuard, Tailscale as a feature (it is the documented fallback, `docs/playing-online.md`).
@@ -26,26 +27,9 @@ attached across games, both clients browse lobbies on it, and a lobby says wheth
 ## 4. Transport Efficiency — deferred
 - [ ] State deltas instead of full snapshots — only once profiling shows full `ClientView` broadcasts are a bottleneck. Do not trade simple-and-correct away speculatively.
 
-## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — stages (a)–(d) built, (e) open (26 September 2026)
+## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — DONE (8 October 2026)
 
-`docs/server-tracked-rating`. **No code; the reasoning is `docs/identity-and-rating.md` and this entry is its index.** It follows `fix/local-play-is-casual` (Phase 3 §2, same day), which took the rating *out* of the client: a rating is a claim to someone else, so it means something only between people and only when somebody other than the rated player keeps it. What is left to decide is how a server keeps one, and the hole in what it does today.
-
-**The daemon already rates human against human, under whatever name the client typed.** `Track::HumanVsHuman` and `Shared::rate` work and survive a restart (`tests/lobby.rs`), but the participant id is `Connect.player_name`, unverified (`PendingHuman::seated`). Anyone can be anyone. And the evidence is thrown away: `MatchRecordHeader` + the JSON-Lines `MatchHistory` replay bit-identically, and `MatchSession::run_with_outcome` drops the history it is handed.
-
-**The decisions, each with what was rejected:**
-
-- **Identity is an Ed25519 key the client holds; a name is a label.** Confirmed by the person on 26 September 2026: trust at login matters, and changing a name must change nothing, because the key is who someone is. The rating id is `key:<base32>`. The secret has its own 0600 file, never `settings.json` (the file people paste into bug reports). Rejected: accounts — a user table, a reset flow and a secret the *server* must protect, for a hobby server. A new pure crate `netrunner_identity` carries it; `netrunner_core` keeps its three dependencies, and `deny.toml` needs no edit (`ed25519-dalek` is BSD-3-Clause, already allowed).
-- **Proved by a challenge that names the server.** `Identify` → `Challenge { nonce, server_key }` → `Prove`, signed over `"netrunner-auth-v1" ‖ server_key ‖ nonce`: the server's own key in the signed bytes is what stops a hostile server relaying an honest one's challenge to log in there as its visitor. An unidentified `Connect` still plays, unrated. The handshake protects the key, not the session: a public rating server sits behind TLS, as a deployment requirement and not daemon code.
-- **Seat commitments and a server receipt, not a signature per action.** Each player signs once at `MatchJoined` (match, side, both keys, deck hash); the server signs the finished record's hash with the result and sends both players that receipt in a new `ServerMessage::Rated` — which is also Phase 3 §2's "not built: telling the remote client its new rating". Statements are signed as bytes, never as re-serialized JSON. Rejected *for now*: a per-action hash chain, which buys verification by someone who does not trust the server (federation, portable ratings) at a signature per `SubmitAction`; the record's footer reserves the field.
-- **The results log is the truth and `ratings.json` is a cache.** Append-only receipts under `--data-dir`; folding them through `RatingBook::record` in order rebuilds the book exactly, so a corrupt book, a Glicko parameter change or voiding a cheater's games is a rebuild. Rejected for now: SQLite — nothing yet asks what a fold over a log cannot answer.
-- **What is never rated:** any game with a bot in it (Phase 3 §2), and a game hosted in-process from the menu — the host's process holds the seed. Phase 6 §3's "Open: hosted games are unrated" closes as *by design*. Online, `Rewind::Free` is the only take-back a rated game offers; `Rewind::Undo` needs the other seat's consent — which is why the session's line and the engine's two classifiers were kept when local play stopped charging for it.
-- **The trust boundary, stated:** a rating is a claim by one server's operator, who can see every seed. Keys are free, so a new key is provisional. Smurfing and win-trading are moderation, which the rebuildable log makes possible and cryptography does not solve.
-
-**Stages, each its own branch and each useful without the next:** (a) the server keeps match records — no protocol change, and the server half of Phase 7 §8 item 15; (b) `netrunner_identity`, the client's key file, the handshake, ratings keyed by key; (c) seat commitments, receipts, `Rated`, `results.jsonl`, `--rebuild-ratings`; (d) client surfaces — the game-over panel and "your standing at `<server>`" on Profile, fetched and never stored as truth; (e) the free take-back online.
-
-- **Left for later:** stage (e), the free take-back online. Rotating a key (the old one signing the new) is still recorded and not designed. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
-
-**Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
+Keys, records, signed receipts, the clients' standing and the free take-back online, stages (a)–(e); the full entry is in [the archive](archive/phase-4-network.md). Open: key rotation is recorded and not designed, and an undo in a rated game is refused rather than asked of the other seat.
 
 ## 7. A public server: lobbies by format, decks nobody sees — OPEN (26 September 2026)
 

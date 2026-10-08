@@ -1415,7 +1415,11 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         commitments[index] = Some(Commitment { key, payload, signed: None });
     }
 
+    // A move is taken back at a host as in a local game: the free kind
+    // in every match, and the undo past it only where the lobby does not
+    // rate — a bot's lobby never does (Phase 4 §5 stage e).
     let session = MatchSession::new(state, shared.cards.clone(), corp.slot, runner.slot)
+        .with_undo(!rated_lobby)
         .with_reconnect_grace(shared.options.reconnect_grace)
         .with_turn_timeout(shared.options.turn_timeout);
     let handle = session.reattach_handle();

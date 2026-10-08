@@ -188,11 +188,14 @@ Under the daemon's `--data-dir`:
   design*.
 - **Take-backs.** `netrunner_session`'s `Rewind::Free` — nothing taught,
   `rng_step` unmoved, the other seat silent — is fair between people and is
-  the only kind a rated game offers: one `ClientMessage`, one retracted log
-  entry for the other seat (Phase 7 §4af reserved exactly this).
-  `Rewind::Undo` needs the opponent's consent, or an unrated room — which a
-  casual lobby now is. This is why the classifiers behind that line were kept
-  when local play stopped charging for it.
+  the only kind a rated game offers: one `ClientMessage::TakeBack`, and for
+  every seat the restored view and a `TakenBack` naming the log entries
+  that no longer happened (Phase 7 §4af reserved exactly this; stage 5
+  built it). `Rewind::Undo` needs the opponent's consent, or an unrated
+  room — which a casual lobby is, and where the host takes it at one press;
+  nothing asks for the consent yet, so in a rated lobby it is refused with
+  that reason. This is why the classifiers behind that line were kept when
+  local play stopped charging for it.
 - **The trust boundary, stated plainly: a rating is a claim by one server's
   operator.** Whoever runs the daemon can see every seed. Keys are free, so a
   new key is provisional — Glicko-2's deviation already says so, and a ladder
@@ -228,7 +231,12 @@ Each its own branch, in this order; each is useful without the next.
    *Built 26 September 2026* (`feat/rated-client-surfaces`): the standing
    is shown at every server in `known_servers.json`, and the client keeps
    its receipts in `receipts.jsonl`.
-5. **The free take-back online.**
+5. **The free take-back online.** *Built 8 October 2026*
+   (`feat/take-back-online`): `MatchSession` keeps its channel seats' last
+   moves, tells each seat what its take-back would do (`Back`), takes the
+   free kind in any game and the undo only where the lobby does not rate,
+   and answers every seat with the restored view and `TakenBack`. Both
+   clients reach it through the take-back they had against a bot.
 
 **Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
 `ServerMessage` live in `netrunner_protocol`, which the server re-exports and

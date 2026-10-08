@@ -52,6 +52,10 @@ pub struct App {
     pub action_log: Vec<String>,
     /// The last log entry the server sent this seat (`RenderableView::last_entry`).
     last_entry: Option<netrunner_client::play::PublicHistoryEntry>,
+    /// Whether `u` has a move to take back, as the host last said
+    /// (`ServerMessage::Back`). The kind is not kept: the host offers
+    /// only what it will take, so one press is one take-back.
+    pub back: bool,
     /// The connection is down — reconnecting, or gone for good — so
     /// nothing is submitted: an action chosen from the last view may be
     /// stale by the time the seat is back.
@@ -110,6 +114,7 @@ impl App {
             rated: None,
             action_log: Vec::new(),
             last_entry: None,
+            back: false,
             connection_lost: false,
             connection_notice: None,
             link: None,
@@ -237,6 +242,21 @@ impl App {
                 ServerMessage::ActionRejected { reason } => {
                     self.breaking = None;
                     self.last_rejection = Some(reason);
+                }
+                ServerMessage::Back { rewind } => self.back = rewind.is_some(),
+                // The restored view came just before; the log loses what
+                // no longer happened, and the line says whose move it was.
+                ServerMessage::TakenBack { by, removed, .. } => {
+                    let note = match self.viewer {
+                        Viewer::Player(side) if side == by => "You took that back.".to_string(),
+                        _ => format!("The {by:?} took that back."),
+                    };
+                    netrunner_client::actions::pop_log_entries(&mut self.action_log, removed, &note);
+                    self.last_entry = None;
+                    self.breaking = None;
+                    self.run_pass.stop();
+                    self.last_rejection = None;
+                    self.back = false;
                 }
                 ServerMessage::GameEnded { winner, reason } => {
                     self.game_ended = Some((winner, reason));
@@ -396,6 +416,11 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
+            // Goes at once, as in a local game: the host offered only what
+            // it will take, and answers with the restored view.
+            KeyCode::Char('u') if self.back && !self.connection_lost => {
+                let _ = self.tx.send(ClientMessage::TakeBack);
+            }
             KeyCode::Char('y') => self.remember(Answer::Always),
             KeyCode::Char('n') => self.remember(Answer::Never),
             KeyCode::Char('w') => self.toggle_run_pass(),
@@ -716,7 +741,8 @@ impl RenderableView for App {
     }
     fn notice(&self) -> Option<String> {
         let view = self.view.as_ref()?;
-        let notices: Vec<String> = [remember_hint(view, &self.registry), run_pass_hint(self.run_pass, view)].into_iter().flatten().collect();
+        let notices: Vec<String> =
+            [self.back.then(|| "u to take it back".to_string()), remember_hint(view, &self.registry), run_pass_hint(self.run_pass, view)].into_iter().flatten().collect();
         (!notices.is_empty()).then(|| notices.join(" · "))
     }
 }
@@ -846,6 +872,38 @@ mod connection_tests {
         let (mut state, _) = GameState::setup(&corp_deck, &runner_deck, registry, 1).unwrap();
         state.phase = GamePhase::Action(Side::Corp);
         build_client_view(&state, registry, Side::Corp)
+    }
+
+    /// `u` asks the host for the move back once the host has offered it
+    /// and not before; the host's word pops the log and says whose move
+    /// it was, and the hint line names the key only while there is one.
+    #[test]
+    fn u_asks_the_host_for_the_move_back_and_its_word_pops_the_log() {
+        let (mut app, server_tx, mut client_rx) = app_with_channels();
+        let view = a_view(&app.registry);
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
+        app.drain_messages();
+        app.handle_key(KeyEvent::from(KeyCode::Char('u')));
+        assert!(client_rx.try_recv().is_err(), "nothing offered, nothing asked");
+        assert!(app.notice().is_none_or(|notice| !notice.contains("take it back")));
+
+        server_tx.send(ServerMessage::Back { rewind: Some(netrunner_client::play::Rewind::Free) }).unwrap();
+        app.drain_messages();
+        assert!(app.notice().is_some_and(|notice| notice.contains("u to take it back")));
+        app.handle_key(KeyEvent::from(KeyCode::Char('u')));
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::TakeBack)));
+
+        app.action_log = ["[turn 1] Corp: one", "[turn 1] Corp: two", "           and what it did"].map(str::to_string).to_vec();
+        server_tx.send(ServerMessage::TakenBack { by: Side::Corp, removed: 1, kind: netrunner_client::play::Rewind::Free }).unwrap();
+        app.drain_messages();
+        assert_eq!(app.action_log.len(), 2, "{:?}", app.action_log);
+        assert!(app.action_log[1].contains("You took that back."));
+        assert!(!app.back, "one move, one take-back");
+
+        // The other seat's move goes back on this board too, in its name.
+        server_tx.send(ServerMessage::TakenBack { by: Side::Runner, removed: 1, kind: netrunner_client::play::Rewind::Undo }).unwrap();
+        app.drain_messages();
+        assert!(app.action_log.last().is_some_and(|line| line.contains("The Runner took that back.")), "{:?}", app.action_log);
     }
 
     /// A view that lists only a pass is answered with the pass as it

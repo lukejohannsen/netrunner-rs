@@ -574,7 +574,7 @@ impl Connection {
     /// handshake's messages are the machine's own.
     pub fn submit(&mut self, message: ClientMessage) -> bool {
         let allowed = match &message {
-            ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::SeatSigned { .. } => self.phase == Phase::Joined,
+            ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::TakeBack | ClientMessage::SeatSigned { .. } => self.phase == Phase::Joined,
             ClientMessage::JoinLobby { .. } | ClientMessage::CreateLobby { .. } | ClientMessage::LeaveLobby | ClientMessage::Seek { .. } => self.phase == Phase::Attached,
             ClientMessage::CancelSeek => self.phase == Phase::Queued,
             ClientMessage::ListLobbies | ClientMessage::ListMatches | ClientMessage::MyStanding => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),

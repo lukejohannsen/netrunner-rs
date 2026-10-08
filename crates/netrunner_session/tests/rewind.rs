@@ -159,3 +159,25 @@ fn the_record_still_replays_after_a_take_back() {
     assert_eq!(&replayed, session.state());
     assert_eq!(session.history().len(), 2, "the move taken back is not in the record");
 }
+
+/// A host seats two people, and the newest kept state is whichever of
+/// them moved last: the Runner's move is the Runner's to take back, and
+/// the Corp asking gets nothing — not the Runner's move, and not a move of
+/// their own from further down, which the Runner's move has built on.
+#[test]
+fn only_the_seat_that_moved_takes_its_move_back() {
+    let before = the_report();
+    let mut session = Session::new(before.clone(), registry(), Seat::External, Seat::External).with_undo(UNDO_DEPTH);
+    let ability = red_team(&mut session);
+    session.submit(ability).unwrap();
+    assert_eq!(session.can_rewind(), Some(Rewind::Free), "the move is free whoever asks about it");
+    assert_eq!(session.can_rewind_by(Side::Corp), None, "but it is not the Corp's");
+    assert_eq!(session.rewind_by(Side::Corp), None);
+    assert!(session.state().pending_decision.is_some(), "the Corp's asking changed nothing");
+
+    assert_eq!(session.can_rewind_by(Side::Runner), Some(Rewind::Free));
+    let rewound = session.rewind_by(Side::Runner).expect("the Runner's own move");
+    assert_eq!((rewound.kind, rewound.removed), (Rewind::Free, 1));
+    assert_eq!(session.state(), &before);
+    assert_eq!(session.can_rewind_by(Side::Runner), None, "one move, one take-back");
+}

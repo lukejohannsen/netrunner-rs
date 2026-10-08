@@ -1093,8 +1093,11 @@ impl Game {
             // moved *to* here, so there is no transition to play, and the
             // log loses what no longer happened. The `Awaiting` that
             // follows hands the controls back.
-            MatchMessage::Rewound { view, removed, .. } => {
-                pop_log_entries(&mut self.log, removed, "You took that back.");
+            MatchMessage::Rewound { view, removed, by, .. } => {
+                // At a host the other seat's move goes back on this
+                // board too, and the line says whose it was.
+                let note = if by == self.side { "You took that back.".to_string() } else { format!("The {by:?} took that back.") };
+                pop_log_entries(&mut self.log, removed, &note);
                 self.entries.truncate(self.entries.len().saturating_sub(removed));
                 self.tally = Tally::of(&self.entries);
                 self.asking_again = true;
@@ -2320,7 +2323,7 @@ mod tests {
         assert!(!game.awaiting, "the controls come back with the next Awaiting");
 
         game.log = ["[turn 2] Runner: one", "[turn 2] Runner: two", "           and what it did"].map(|line| LogLine::from(line.to_string())).to_vec();
-        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free, by: Side::Runner });
         assert_eq!(game.log.len(), 2, "{:?}", game.log);
         assert_eq!(game.log[0].text, "[turn 2] Runner: one");
         assert!(game.log[1].text.contains("took that back"));
@@ -2330,9 +2333,32 @@ mod tests {
         say(&mut game, MatchMessage::Awaiting { view: view() });
         assert_eq!(game.back_label(), Some("Take it back"), "one wording, whatever the move had shown");
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::TakeBack)), Outcome::Rewind, "the first press goes");
-        say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo });
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo, by: Side::Runner });
         assert!(game.log.last().is_some_and(|line| line.text.contains("took that back")));
     }
+    /// At a host the other seat's move goes back on this board too, and
+    /// the log line says whose it was.
+    #[test]
+    fn the_other_seats_take_back_is_named_in_the_log() {
+        use netrunner_client::play::Rewind;
+        use netrunner_core::rules::GameState;
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks.0 = 3;
+        let view = || Box::new(build_client_view(&state, &registry, Side::Runner));
+        let say = |game: &mut Game, message: MatchMessage| game.apply(Intent::Message(MatchMessageRef(message)));
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        say(&mut game, MatchMessage::Awaiting { view: view() });
+        game.log = ["[turn 2] Corp: one", "[turn 2] Corp: two"].map(|line| LogLine::from(line.to_string())).to_vec();
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Undo, by: Side::Corp });
+        assert_eq!(game.log.len(), 2, "{:?}", game.log);
+        assert_eq!(game.log[0].text, "[turn 2] Corp: one");
+        assert!(game.log[1].text.contains("The Corp took that back."), "{:?}", game.log);
+    }
+
     /// The end-of-match table counts what still happened: a take-back
     /// drops the moves it undid from the tally as it does from the log.
     #[test]
@@ -2357,7 +2383,7 @@ mod tests {
         say(&mut game, MatchMessage::Applied { entry: click_for_a_credit(), view: view() });
         say(&mut game, MatchMessage::Applied { entry: click_for_a_credit(), view: view() });
         assert_eq!((game.tally.runner.clicks_spent, game.tally.runner.credits_gained), (2, 2));
-        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free, by: Side::Runner });
         assert_eq!((game.tally.runner.clicks_spent, game.tally.runner.credits_gained), (1, 1), "the second click no longer happened");
     }
 
@@ -2402,7 +2428,7 @@ mod tests {
         assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Submit(yes.clone()), "and not again");
         assert!(!game.awaiting);
 
-        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free, by: Side::Runner });
         assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Redraw, "a take-back asks");
         assert_eq!(game.apply(Intent::Remember(Answer::Never)), Outcome::Submit(PlayerAction::ResolvePendingChoice { option_index: 1 }));
         assert_eq!(game.answers.get(&prompt.key), Some(Answer::Never), "the new answer replaces the old");
