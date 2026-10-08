@@ -263,6 +263,40 @@ pub(super) fn scored_agenda_counters(state: &GameState, registry: &CardRegistry,
         .sum()
 }
 
+/// What the Runner's programs hosted on the Corp's ice cost it (Phase 5
+/// §55): a trojan that derezzes its host on a count of its own counters
+/// (`read::host_derez`, Tranquilizer) is the host's rez cost, at
+/// `own_credit_weight`, for every turn the count is ripe within the
+/// length of one count — the tax of keeping the piece up until the
+/// Corp's next purge, which is the Corp's own decision and read no
+/// further. Not the Runner's reading (`host_derez_value`: the rez a turn
+/// over the horizon at the income discount), on purpose: at that rate a
+/// purge off a piece already derezzed tied three credits, and in play the
+/// Corp sat under a ripe trojan on 63 of its turns in 48 games, purged on
+/// none of them, and had its ice derezzed 87 times. Read on a rezzed host and an
+/// unrezzed one alike: the Corp knows its own ice's cost, and the piece
+/// already derezzed by a ripe trojan is the one it must not pay for
+/// again. So a purge (three clicks, every counter gone) is worth the
+/// turns of tax it ends, dear against an expensive host and not against
+/// a 1[c] one; an install over the host (CR 8.5.6b, the trojan trashed
+/// with it at the checkpoint, 10.3.1g) is worth the tax gone; and a
+/// trojan one counter short on a rezzed piece needs no term at all,
+/// since the line ends in the Runner's start of turn where the derez
+/// fires, and the planner purged there already.
+pub(super) fn trojans_on_ice(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|program| {
+            let host = state.corp.installed.iter().find(|ice| Some(ice.install_id) == program.hosted_on_ice)?;
+            let derez = read::host_derez(registry.get(&program.card)?)?;
+            let delay = derez.at.saturating_sub(program.counters).div_ceil(derez.per_turn.max(1));
+            Some(f64::from(registry.get(&host.card)?.cost) * w.own_credit_weight * f64::from(derez.at.saturating_sub(delay)))
+        })
+        .sum()
+}
+
 /// What one agenda counter on `def` is worth: what the agenda's own use of
 /// it buys, at `identities::counter_worth`'s share (Phase 5 §37) — Off the
 /// Books' search installed free, Sericulture Expansion's two advancement
@@ -574,6 +608,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score += corp_install_value(state, installed, registry, w, rig, horizon);
         *score -= revealed_trap_cost(state, installed, registry, w, rig, horizon);
     }
+    *score -= trojans_on_ice(state, registry, w);
     *score += scored_agenda_counters(state, registry, w);
     *score += identity_counters(state, registry, w);
     *score += held_for_a_later_score(state, registry, w);
@@ -723,6 +758,39 @@ pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A trojan on the Corp's ice costs it the host's rez for every turn
+    /// its count is ripe within one count's length (Phase 5 §55):
+    /// Tranquilizer at one counter on Brân 1.0 is one turn of tax, at
+    /// three it is three; a purge (every counter gone) ends it, and
+    /// against Brân the three clicks pay; derezzed by it, the piece costs
+    /// the same as rezzed; a Whitespace host is its share of a Brân.
+    #[test]
+    fn a_trojan_on_the_corps_ice_costs_the_hosts_rez_a_turn() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let w = Weights::default().at_the_guides_rate();
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![InstalledCard { card: CardId("bran_1_0".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        assert_eq!(trojans_on_ice(&state, &pool, &w), 0.0, "nothing hosted");
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("tranquilizer".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(1)), counters: 1, ..Default::default() });
+        let bran = f64::from(pool.get(&CardId("bran_1_0".to_string())).expect("Brân 1.0").cost);
+        let one = trojans_on_ice(&state, &pool, &w);
+        assert!((one - bran * w.own_credit_weight).abs() < 1e-9, "one turn of tax: {one}");
+        state.runner.rig[0].counters = 3;
+        let ripe = trojans_on_ice(&state, &pool, &w);
+        assert!((ripe - 3.0 * one).abs() < 1e-9, "three turns of tax: {ripe}");
+        state.runner.rig[0].counters = 0;
+        assert_eq!(trojans_on_ice(&state, &pool, &w), 0.0, "a purge ends it");
+        assert!(ripe > 3.0 * w.click_weight, "against Brân the purge's three clicks pay: {ripe}");
+        state.runner.rig[0].counters = 3;
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(trojans_on_ice(&state, &pool, &w), ripe, "derezzed by it, the piece costs what it would to put back");
+        state.corp.installed[0].card = CardId("whitespace".to_string());
+        let whitespace = f64::from(pool.get(&CardId("whitespace".to_string())).expect("Whitespace").cost);
+        assert!((trojans_on_ice(&state, &pool, &w) - ripe * whitespace / bran).abs() < 1e-9);
+    }
     use crate::eval::test_support::*;
     use crate::plans::{Plan, Style};
     use netrunner_core::dsl::{CardId, DamageType, Trigger, TriggeredEffect};
