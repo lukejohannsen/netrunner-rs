@@ -612,6 +612,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     *score += scored_agenda_counters(state, registry, w);
     *score += identity_counters(state, registry, w);
     *score += held_for_a_later_score(state, registry, w);
+    *score += lockdown_tax(state, registry, w);
     *score -= f64::from(archived_agenda_points(state, registry)) * w.archived_agenda_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
     if w.installed_agenda_weight != 0.0 {
@@ -711,6 +712,28 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     if w.bluff_weight != 0.0 && bluffed_root(state, registry, w) {
         *score += w.bluff_weight;
     }
+}
+
+/// What a lockdown in play is worth to the Corp (Phase 5 §58): what it
+/// takes from the Runner's next run (`identities::lockdowns_on_the_
+/// next_run`) — the Runner's credits at the rate the Corp reads them, a
+/// point of damage at the rate the Runner fears a trap's, a point of core
+/// damage at its weight, and a tag at what the Runner pays to be rid of
+/// it, a click and 2[credit] (CR 5.2.7g, the basic action). Not the
+/// Runner's `tag_weight`: that is what a tag threatens a Runner who
+/// keeps it, which is the Corp's to collect only with a card that
+/// punishes tags (`tag_leverage_weight`'s reading).
+fn lockdown_tax(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    let pays = identities::lockdowns_on_the_next_run(state, registry);
+    if pays == identities::Pays::default() {
+        return 0.0;
+    }
+    let tag = w.click_weight + 2.0 * w.opponent_credit_weight;
+    -f64::from(pays.runner_credits) * w.opponent_credit_weight
+        + f64::from(pays.corp_credits) * w.own_credit_weight
+        + f64::from(pays.damage - pays.core_damage) * w.known_trap_damage_weight
+        + f64::from(pays.core_damage) * w.core_damage_weight
+        + f64::from(pays.tags) * tag
 }
 
 /// `state` as it stands between runs: the run taken off the board, and

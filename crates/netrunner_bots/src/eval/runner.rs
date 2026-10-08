@@ -685,6 +685,19 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
             let pays = identities::run_success(state, registry, run);
             *score += f64::from(pays.runner_credits) * w.own_credit_weight + f64::from(pays.runner_cards) * w.click_weight
                 - f64::from(pays.corp_credits + pays.corp_cards) * w.opponent_credit_weight;
+            // And what a lockdown in play does to it (§58): Argus
+            // Crackdown's 2 meat damage on a server protected by ice, a
+            // trap's damage at a trap's rate, and the flatline it can be.
+            // Read only for a lockdown, so an identity's success scores
+            // as it did.
+            if !state.corp.play_area.is_empty() {
+                *score -= if pays.damage as usize > state.runner.grip.len() {
+                    w.lethal_trap_weight
+                } else {
+                    f64::from(pays.damage) * w.known_trap_damage_weight
+                } + f64::from(pays.tags) * w.tag_weight
+                    + f64::from(pays.core_damage) * w.core_damage_weight;
+            }
         }
         // What the run pays when it ends, succeed or not (Phase 5 §53):
         // Bravado's "When that run ends, gain 6[credit] plus 1[credit]

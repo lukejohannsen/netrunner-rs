@@ -2100,6 +2100,46 @@ mod positions {
         assert_eq!(after.corp.resources.agenda_points, AgendaPoints(2), "{played:?}");
     }
 
+    /// A lockdown is played with a click the Corp has nothing better for:
+    /// SYNC Rerouting's "give the Runner 1 tag unless they pay 4[credit]"
+    /// and Argus Crackdown's 2 meat damage on a successful run on a server
+    /// protected by ice, each read as what it takes from the Runner's next
+    /// run (Phase 5 §58). Before, a lockdown paid on a turn the line does
+    /// not reach and was a click spent for nothing: the planner never
+    /// played either on a pass of the full pool, random seats did.
+    #[test]
+    fn plays_a_lockdown_with_the_last_click_for_what_it_takes_from_the_runners_next_run() {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        for lockdown in ["sync_rerouting", "argus_crackdown"] {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.runner = empty_runner();
+            state.runner.resources.credits = Credits(6);
+            state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+            // A full hand and no credits for its Hedge Funds: the click's
+            // alternatives are a credit and a card.
+            state.corp.resources = PlayerResources { credits: Credits(0), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+            state.corp.hq = vec![CardId(lockdown.to_string())];
+            state.corp.hq.extend(vec![CardId("hedge_fund".to_string()); 4]);
+            state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 5];
+            for (index, server) in [ServerId::Hq, ServerId::RnD].into_iter().enumerate() {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("ice_wall".to_string()),
+                    install_id: InstallId(index as u32 + 1),
+                    server,
+                    slot: InstallSlot::Ice,
+                    rezzed: true,
+                    ..Default::default()
+                });
+            }
+            let mut agent = PlanningAgent::new(Side::Corp, 1);
+            let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+            assert!(after.corp.play_area.iter().any(|card| card.card.0 == lockdown), "{lockdown}: {played:?}");
+        }
+    }
+
     /// The Runner-side counterpart: a rezzed ICE the rig cannot break
     /// makes a run worth less than a credit, and an unrezzed one does not
     /// (ROADMAP Phase 2 §5's eagerness item).
