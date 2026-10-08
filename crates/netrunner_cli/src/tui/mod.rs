@@ -89,7 +89,6 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         }
         None => None,
     };
-    let brought_id = brought.as_ref().map(|deck| deck.id.clone());
     let connecting = match config.spectate {
         Some(match_id) => remote::watch(config.server.clone(), match_id),
         None => {
@@ -112,7 +111,7 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // Before the terminal is taken, so the lobby wait goes to stderr.
     let joined = remote::connect(connecting, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await?;
     let mut terminal = ratatui::init();
-    let result = play_remote(&mut terminal, joined, brought_id.as_deref());
+    let result = play_remote(&mut terminal, joined);
     ratatui::restore();
     result
 }
@@ -123,33 +122,16 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// The wire protocol never transmits a `CardRegistry`, so the client
 /// builds one locally to resolve card titles. It needs no agreement with
-/// the host beyond the embedded pool: every deck the daemon deals or
-/// accepts is validated against it, whose cards are exactly
-/// `register_playable_cards`.
-///
-/// `brought` is the id of the deck this player sent, if any. A daemon
-/// older than `Connect::deck` ignores the field and deals, so the dealt id
-/// is checked and a mismatch is said on the header rather than discovered
-/// by drawing someone else's cards.
-pub fn play_remote(
-    terminal: &mut ratatui::DefaultTerminal,
-    joined: remote::Joined,
-    brought: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// the host beyond the embedded pool: every deck a server accepts is
+/// validated against it, whose cards are exactly
+/// `register_playable_cards`. The deck played is the one brought on the
+/// seek: a server deals nobody a deck (Phase 4 §7 stage 3), so there is
+/// no dealt id to check against.
+pub fn play_remote(terminal: &mut ratatui::DefaultTerminal, joined: remote::Joined) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
-    let dealt = match joined.viewer {
-        Viewer::Player(Side::Corp) => Some(joined.decks.0.clone()),
-        Viewer::Player(Side::Runner) => Some(joined.decks.1.clone()),
-        Viewer::Spectator => None,
-    };
     let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
     app.follow_link(joined.link);
     app.answers = crate::settings::answers();
-    if let (Some(brought), Some(dealt)) = (brought, dealt)
-        && brought != dealt
-    {
-        app.connection_notice = Some(format!("This server dealt you {dealt:?} instead of your deck — it predates bringing your own"));
-    }
     run_event_loop(terminal, &mut app)
 }
 

@@ -94,7 +94,7 @@ impl Entry {
 pub enum Launch {
     Local { config: Box<Config> },
     Learn { pick: LearnPick, config: Box<Config> },
-    Remote { joined: Box<crate::remote::Joined>, brought: Option<String> },
+    Remote { joined: Box<crate::remote::Joined> },
 }
 
 /// Which kind of launch just came back, for `Menu::returned` — the
@@ -528,7 +528,7 @@ impl Menu {
                 self.screen = Screen::Main;
                 MenuStep::Continue
             }
-            OnlineStep::Play { joined, brought, .. } => MenuStep::Launch(Launch::Remote { joined, brought }),
+            OnlineStep::Play { joined } => MenuStep::Launch(Launch::Remote { joined }),
         }
     }
 
@@ -547,7 +547,8 @@ impl Menu {
 
     /// Back from a launch. A game against the computer reopens the form on
     /// the game just played; a lesson leaves the Learn screen where it was;
-    /// an online game stops the server this player hosted, if they did.
+    /// an online game leaves Play Online attached, on the Server page the
+    /// game was found from, so the next is a chair and a deck away.
     /// A game that stopped on an error — a deck that failed validation, a
     /// record file that would not open — says why under the screen instead
     /// of dropping the player out of the TUI.
@@ -729,7 +730,7 @@ fn drive(terminal: &mut ratatui::DefaultTerminal, menu: &mut Menu) -> Result<(),
                 let result = match launch {
                     Launch::Local { config } => super::play_local(terminal, &config),
                     Launch::Learn { pick, config } => learn::play(terminal, &pick, &config),
-                    Launch::Remote { joined, brought } => super::play_remote(terminal, *joined, brought.as_deref()),
+                    Launch::Remote { joined } => super::play_remote(terminal, *joined),
                 };
                 menu.returned(played, result.err().map(|error| error.to_string()));
             }
