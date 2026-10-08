@@ -36,6 +36,10 @@ Counts, not ratios, are what the reports hold; the ratio here is derived
 once, planner over random, so a card used 40 times by random and 0 by
 the planner reads 0.00 and one used 40 / 38 reads 0.95.
 
+The matchup pass deals Sample decks only; a card that only a Sweep deck
+holds (most of a new set) is measured on two `diag precepts --sweep-decks`
+reports, the sweeps' schedule (Phase 5 §57).
+
 Usage:
     scripts/blind_cards.py random.json planner.json [--min 5] [--ratio 0.1]
     scripts/blind_cards.py --coverage random.json planner.json [--min 5]

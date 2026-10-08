@@ -296,16 +296,15 @@ struct Price {
 ///   copy still faceup (Matryoshka) — `faceup_hosted`, never every hosted
 ///   copy: one turned facedown on the turn's first run is not back until
 ///   the Runner's next turn begins.
+/// - `TrashSelf`: once, at the card's install cost — the card is what is
+///   spent (Boomerang, Revolver's "[trash]").
 /// - `AllOf`: the credits summed, the tightest stock.
 ///
 /// Before this, only `Credits` was priced and every other break was
 /// skipped, so Matryoshka with a copy hosted and Lobisomem with a counter
 /// read as breaking nothing — and a hosted copy, which the evaluator
 /// could not see paying for anything, was never worth the click that
-/// hosts it. Botulus's and Poison Vial's counter-costed
-/// `BreakSubroutinesUnconditionally` is still not a spend this reading is
-/// about (Botulus's is on its host ICE alone, which no cost says), and
-/// Audrey v2's pump pays in a grip card, which is not priced either.
+/// hosts it. Audrey v2's pump pays in a grip card, which is not priced.
 fn price_of(cost: Option<&Cost>, card: &InstalledRunnerCard, pending: u32, state: &GameState, registry: &CardRegistry) -> Option<Price> {
     Some(match cost {
         None => Price { credits: 0, stock: None },
@@ -314,6 +313,9 @@ fn price_of(cost: Option<&Cost>, card: &InstalledRunnerCard, pending: u32, state
         Some(Cost::CreditsAmount(amount)) => Price { credits: netrunner_core::rules::amount_on_table(amount, state, registry), stock: None },
         Some(Cost::RemoveCounters(each)) => Price { credits: 0, stock: Some(card.counters / (*each).max(1)) },
         Some(Cost::TurnHostedFacedown) => Price { credits: 0, stock: Some(card.faceup_hosted()) },
+        // The card is spent: once, at what it cost to install (Boomerang,
+        // Revolver's last break).
+        Some(Cost::TrashSelf) => Price { credits: registry.get(&card.card).map_or(0, |def| def.cost), stock: Some(1) },
         Some(Cost::AllOf(parts)) => {
             let mut price = Price { credits: 0, stock: None };
             for part in parts {
@@ -358,6 +360,9 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
     let shortfall = (continuous::ice_strength(state, registry, ice) - continuous::breaker_strength(state, registry, card)).max(0) as u32;
     let mut cheapest_break: Option<(u32, u32)> = None;
     let mut cheapest_pump: Option<(u32, u32)> = None;
+    // A break with no strength contest and no subtype, which needs no pump
+    // (`Effect::BreakSubroutinesUnconditionally`).
+    let mut cheapest_outright: Option<(u32, u32)> = None;
     let keep_min = |slot: &mut Option<(u32, u32)>, cost: (u32, u32)| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
     for ability in def.abilities.iter().filter(|a| a.trigger == Trigger::Paid) {
         let Some(price) = price_of(ability.cost.as_ref(), card, pending, state, registry) else { continue };
@@ -381,6 +386,15 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     keep_min(&mut cheapest_break, cost);
                 }
             }
+            Effect::BreakSubroutinesUnconditionally { count } if unconditional_reach(ability.requirement.as_ref(), state, card, ice, registry) => {
+                let activations = match count {
+                    SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
+                    SubroutineBreakCount::All | SubroutineBreakCount::ChosenNumber => 1,
+                };
+                if let Some(cost) = spend(activations) {
+                    keep_min(&mut cheapest_outright, cost);
+                }
+            }
             Effect::BoostStrength { amount, .. } => {
                 if let Some(cost) = spend(shortfall.div_ceil((*amount).max(1))) {
                     keep_min(&mut cheapest_pump, cost);
@@ -394,9 +408,41 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
             _ => {}
         });
     }
-    let (break_credits, break_stock) = cheapest_break?;
-    let (pump_credits, pump_stock) = if shortfall == 0 { (0, 0) } else { cheapest_pump? };
-    Some(Spend { credits: break_credits + pump_credits, stock: break_stock + pump_stock })
+    let contested = cheapest_break.and_then(|(break_credits, break_stock)| {
+        let (pump_credits, pump_stock) = if shortfall == 0 { (0, 0) } else { cheapest_pump? };
+        Some((break_credits + pump_credits, break_stock + pump_stock))
+    });
+    let (credits, stock) = match (contested, cheapest_outright) {
+        (Some(a), Some(b)) => a.min(b),
+        (a, b) => a.or(b)?,
+    };
+    Some(Spend { credits, stock })
+}
+
+/// Whether an unconditional break's requirement admits an encounter with
+/// `ice` — read for the ICE, not for the moment, since a break is priced
+/// ahead of the encounter. The requirement *is* such a break's reach: it
+/// has no subtype and no strength, so "use this only during encounters
+/// with that ice" (Boomerang) and "break 1 subroutine on host ice"
+/// (Botulus) are what keep it off every other piece. A requirement this
+/// does not know — Poison Vial's "only if you have already broken a
+/// subroutine", Quetzal's "once per turn" — is not priced, the cheaper
+/// direction, as an unpriced cost always has been.
+///
+/// **Why** (Phase 5 §57). `break_cost` read only `BreakSubroutines`, so
+/// Boomerang, Botulus, Endurance and Poison Vial broke nothing to the
+/// evaluator: on a pass of the pool (seed 2, 391 games) random seats used
+/// Boomerang 7 times and the planner never did, and Botulus 82 to 6. Read
+/// here, the planner uses them 7 and 74 times.
+fn unconditional_reach(requirement: Option<&EffectRequirement>, state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> bool {
+    match requirement {
+        None | Some(EffectRequirement::DuringEncounter) => true,
+        Some(EffectRequirement::EncounteringHostIce) => card.hosted_on_ice == Some(ice.install_id),
+        Some(EffectRequirement::EncounteringChosenIce) => netrunner_core::rules::lingering::chosen_card(state, card.install_id) == Some(ice.install_id),
+        Some(EffectRequirement::Encountering(subtype)) => ice_is(state, ice, *subtype, registry),
+        Some(EffectRequirement::And(a, b)) => unconditional_reach(Some(a), state, card, ice, registry) && unconditional_reach(Some(b), state, card, ice, registry),
+        Some(_) => false,
+    }
 }
 
 /// Subroutines on `ice` still waiting to be broken or resolved.
@@ -711,6 +757,10 @@ pub(super) struct Income {
     /// (Gabriel Santiago's HQ) or to this card's (Stowaway) is not a run
     /// a turn and is counted as nothing, the cheaper direction.
     pub run_credits: u32,
+    /// Cards each successful run draws, at a run a turn as `run_credits`
+    /// is (DreamNet's "the first time each turn you make a successful
+    /// run, draw 1 card").
+    pub run_cards: u32,
     /// Credits per hosted counter a trash-and-cash ability pays.
     pub cashout_per_counter: u32,
     /// The credits come off hosted counters, so the counters bound them;
@@ -905,6 +955,7 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
             Trigger::OnRez | Trigger::OnInstall => income.printed_stock += sum.counters.max(0) as u32,
             Trigger::OnSuccessfulRun if about_every_run(trigger) => {
                 income.run_credits += sum.credits.max(0) as u32;
+                income.run_cards += sum.cards.max(0) as u32;
                 run_counters += sum.counters.max(0) as u32;
             }
             _ => {}
@@ -950,11 +1001,15 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
     income
 }
 
-/// Whether a trigger on a successful run is about every successful run:
-/// any run's, on any server, with no condition to meet.
+/// Whether a trigger on a successful run pays a run a turn: any run's, on
+/// any server, with no condition to meet. "The first time each turn" is
+/// one of those — it is exactly a run a turn, which is the rate every
+/// such trigger is read at — so DreamNet's draw is read, where it was
+/// counted as nothing and the planner never installed the card (Phase 5
+/// §57: 0 → 19 uses on a pass of the pool, random seats 8).
 fn about_every_run(trigger: &netrunner_core::dsl::TriggeredEffect) -> bool {
     use netrunner_core::dsl::Subject;
-    trigger.subject != Some(Subject::This) && trigger.when.is_none() && trigger.requirement.is_none() && !trigger.first_each_turn
+    trigger.subject != Some(Subject::This) && trigger.when.is_none() && trigger.requirement.is_none()
 }
 
 /// The rider a click ability's run pays on success, if the ability begins
@@ -1005,7 +1060,7 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
     let turn = stock.map_or(turn, |stock| turn.min(stock));
     // A run's credits are a run a turn's (`Income::run_credits`), and the
     // stock they are placed into is not printed, so nothing bounds them.
-    let run = income.run_credits * horizon;
+    let run = (income.run_credits + income.run_cards) * horizon;
     // A click that begins a run buys the run (`Income::click_runs`).
     let charged = if income.click_runs { 0 } else { income.click_cost };
     let click = if income.click_credits > charged && !income.click_places {
@@ -1940,6 +1995,9 @@ mod tests {
         assert_eq!(income("stowaway").run_credits, 0, "a run on its own server is not a run a turn");
         assert_eq!(income("gabriel_santiago_consummate_professional").run_credits, 0, "nor is the first on HQ");
         assert_eq!(income("leech").run_credits, 0, "counters nothing cashes are not credits");
+        let dreamnet = income("dreamnet");
+        assert_eq!((dreamnet.run_credits, dreamnet.run_cards), (1, 1), "the first successful run each turn is a run a turn: a card and, read for what it can do, a credit");
+        assert_eq!(future("dreamnet", None, 4), 8.0);
         assert_eq!(income("baker"), Income::default(), "a run with no rider pays nothing");
         assert_eq!(future("regolith_mining_license", None, 9), 10.0, "a click that begins no run is still charged");
     }
@@ -2130,5 +2188,39 @@ mod tests {
         assert_eq!(price(&state, &two), Some(3));
         state.runner.rig.push(rig_card("t400_memory_diamond"));
         assert_eq!(price(&state, &two), Some(2), "one cybernetic hardware installed");
+    }
+
+    /// A break with no strength contest is priced where its requirement
+    /// reaches: Botulus breaks a subroutine on its host ice for a hosted
+    /// counter and nothing elsewhere; Boomerang breaks two on the ice it
+    /// chose, once, at the card itself; Poison Vial's "only if you have
+    /// already broken a subroutine" is not read, and so not priced.
+    #[test]
+    fn an_unconditional_break_is_priced_on_the_ice_its_requirement_reaches() {
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::rules::InstallId;
+        let pool = pool();
+        let registry = CardRegistry::from_cards(vec![printed(&pool, "botulus"), printed(&pool, "boomerang"), printed(&pool, "poison_vial")]);
+        let price = |state: &GameState, ice: &RunIce| {
+            let registry = with_printed_ice(&registry, std::slice::from_ref(ice));
+            cheapest_break_cost(state, ice, &registry, &mut fresh_stock(state))
+        };
+        let on = |id: u32, subroutines: usize| RunIce { install_id: InstallId(id), ..run_ice(5, IceType::Sentry, subroutines, true) };
+        let mut state = GameState::new(0);
+
+        state.runner.rig = vec![InstalledRunnerCard { counters: 1, hosted_on_ice: Some(InstallId(7)), ..rig_card("botulus") }];
+        assert_eq!(price(&state, &on(7, 1)), Some(0), "a counter breaks the host's one subroutine, whatever its strength");
+        assert_eq!(price(&state, &on(7, 2)), None, "one counter, two subroutines");
+        assert_eq!(price(&state, &on(8, 1)), None, "not the host");
+
+        state.runner.rig = vec![InstalledRunnerCard { install_id: InstallId(20), ..rig_card("boomerang") }];
+        assert_eq!(price(&state, &on(7, 2)), None, "no ice chosen");
+        state.lingering.push(LingeringEffect { what: Lingering::ChosenCard(InstallId(7)), on: On::Install(InstallId(20)), until: Until::WhileInstalled(InstallId(20)), source: CardId("boomerang".to_string()) });
+        assert_eq!(price(&state, &on(7, 2)), Some(2), "two on the chosen ice, for the card");
+        assert_eq!(price(&state, &on(7, 3)), None, "one use breaks two of three");
+        assert_eq!(price(&state, &on(8, 2)), None, "not the chosen ice");
+
+        state.runner.rig = vec![InstalledRunnerCard { counters: 3, ..rig_card("poison_vial") }];
+        assert_eq!(price(&state, &on(7, 2)), None, "its requirement is not read");
     }
 }
