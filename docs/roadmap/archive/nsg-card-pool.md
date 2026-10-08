@@ -9619,3 +9619,36 @@ no change to the engine.
   emptied in six clicks and trashed, and Magnum Opus.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 742 card files.
+
+#### Stage 11c — the Core Set's ice that composes (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: nine pieces of Corp ice, no new
+vocabulary and no change to the engine.
+- **Cards from the Core Set:** Heimdall 1.0, Ichi 1.0, Viktor 1.0, Neural
+  Katana, Wall of Thorns, Data Mine, Hunter, Hadrian's Wall, Shadow.
+
+- **The bioroids** carry Eli 1.0's "Lose [click]: Break 1 subroutine on
+  this ice. Only the Runner can use this ability." Their core damage is
+  `DealDamage(Brain, n)`, and Ichi's trace does core damage and a tag on
+  success.
+- **Data Mine** is ice of none of the three types (`IceType::Other`, a
+  Trap): "Do 1 net damage. Trash Data Mine." is one subroutine, a
+  `Sequence` ending in `TrashCard(ThisCard)`, as Envelopment's is.
+- **Hadrian's Wall and Shadow** are advanceable and declare Ice Wall's
+  `Strength` per hosted advancement token.
+- **Hunter and Shadow** trace at 3 for a tag, as SEA Source does.
+- **Decks.** Assembly Line takes two Ichi 1.0 for its two Drafter and two
+  Heimdall 1.0 for its two Hákarl 1.0; Retirement Package two Viktor 1.0
+  for its two Pulse; A Thousand Cuts two Neural Katana for its two Cloud
+  Eater; Open Book two Wall of Thorns for its two Tatu-Bola and two Data
+  Mine for its two Phoneutria; Hostile Bid two Hadrian's Wall for its two
+  Envelopment and two Shadow for its two Stavka; Tag, You're It two Hunter
+  for its two Tithe. Each is ice for ice of the same kind, and every card
+  given up stays in another deck.
+- **Tests.** Four new tests: the three net-damage ice (Wall of Thorns
+  ending the run, Data Mine trashing itself); Viktor's core damage and
+  Heimdall broken for a [click]; Hunter's trace and Ichi's, whose success
+  is a core damage and a tag; Hadrian's Wall and Shadow advanced and one
+  stronger.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 751 card files.

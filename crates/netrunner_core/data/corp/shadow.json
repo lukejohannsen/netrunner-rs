@@ -1,0 +1,50 @@
+{
+  "id": "shadow",
+  "title": "Shadow",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 1,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Corp gains 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Trace[3]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 1104,
+  "is_playable": true,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "Shadow can be advanced and has +1 strength for each advancement token on it."
+    }
+  ]
+}

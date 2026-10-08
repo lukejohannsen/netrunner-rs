@@ -1,0 +1,31 @@
+{
+  "id": "data_mine",
+  "title": "Data Mine",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 0,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage. Trash Data Mine.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 1076,
+  "is_playable": true
+}

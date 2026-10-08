@@ -1,0 +1,50 @@
+{
+  "id": "heimdall_1_0",
+  "title": "Heimdall 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 8,
+  "strength": 6,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 1061,
+  "is_playable": true
+}
