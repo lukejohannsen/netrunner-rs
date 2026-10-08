@@ -38,7 +38,7 @@
   "opponent": [],
   "steps": [
     {
-      "prose": "Install Nico Campaign from HQ into a new remote server. Installing a card there is what creates the server, and this one will be called Remote 0.",
+      "prose": "An asset earns credits over the turns it stays on the table, but it needs a server of its own. Installing a card where there is no server yet creates one, and this first one will be called Remote 0.",
       "allow": {
         "Card": {
           "kind": "InstallCard",
