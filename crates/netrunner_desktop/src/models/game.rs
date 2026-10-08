@@ -177,6 +177,11 @@ pub struct ReplayAt {
     pub len: usize,
     /// What names the record: its file, and the bot it was against.
     pub title: String,
+    /// The person's note on this position (`netrunner_client::notes`).
+    pub note: Option<String>,
+    /// Every position with a note, in order: the bookmarks the bar steps
+    /// between.
+    pub noted: Vec<usize>,
 }
 
 /// `MatchMessage` is not `Clone` (a view is large), so an intent carries

@@ -50,6 +50,7 @@ pub mod deck_builder;
 pub mod deck_store;
 pub mod placement;
 pub mod bug_report;
+pub mod notes;
 pub mod play;
 pub mod decks;
 pub mod guide;

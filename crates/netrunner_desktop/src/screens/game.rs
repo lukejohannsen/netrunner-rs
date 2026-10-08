@@ -143,7 +143,8 @@ use crate::models::shortcuts::{self, Shortcut};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::models::lesson::LessonBoard;
 use crate::screens::new_game::{ActiveMatch, LastGame};
-use crate::screens::replay::{ActiveReplay, OpenReplay, ReplayClick};
+use crate::screens::replay::{ActiveReplay, EditNote, OpenReplay, ReplayClick};
+use crate::widgets::text_field::TextField;
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
 use crate::screens::AppScreen;
 use crate::skin::{self, Drawn, Slot};
@@ -771,7 +772,7 @@ fn spawn(
             };
             Some((game, active.handle.side()))
         }
-        (None, Some(replay)) => Some((crate::screens::replay::board_for(&core, &replay.0), replay.0.side())),
+        (None, Some(replay)) => Some((crate::screens::replay::board_for(&core, &replay.0, &replay.1.notes), replay.0.side())),
         (None, None) => None,
     };
     let Some((game, side)) = source else {
@@ -1348,8 +1349,10 @@ fn autoplay(
 
 /// Escape is the board's: it closes what is open, and otherwise asks to
 /// quit, so the navigation rule never leaves the game without asking.
-fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut pending: ResMut<Pending>, model: Option<Res<Model>>) {
-    if model.is_none() || !keys.just_pressed(KeyCode::Escape) {
+fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut pending: ResMut<Pending>, model: Option<Res<Model>>, fields: Query<(), With<TextField>>) {
+    // A text field being edited (a replay's note) takes its own Escape,
+    // whichever of the two systems in `Captures` runs first.
+    if model.is_none() || !keys.just_pressed(KeyCode::Escape) || !fields.is_empty() {
         return;
     }
     captured.0 = true;
@@ -1574,11 +1577,17 @@ fn shortcuts(
     mut notices: ResMut<Notices>,
     mut dirty: ResMut<Dirty>,
     mut sounds: MessageWriter<PlaySfx>,
+    fields: Query<(), With<TextField>>,
 ) {
     let Some(model) = model else {
         keyboard.clear();
         return;
     };
+    // The letters typed into a text field (a replay's note) are not keys.
+    if !fields.is_empty() {
+        keyboard.clear();
+        return;
+    }
     if held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight, KeyCode::AltLeft, KeyCode::AltRight]) {
         keyboard.clear();
         return;
@@ -3490,7 +3499,7 @@ fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Ga
     // the board keeps its layout, and nothing on it is an action.
     if let Some(at) = &game.replay {
         for step in crate::models::replay::Step::BAR {
-            if step.moves(at.cursor, at.len) {
+            if step.moves(at.cursor, at.len, &at.noted) {
                 parent.spawn(widgets::button(theme, step.label(), Val::Auto, ReplayClick(step)));
             } else {
                 parent.spawn(widgets::disabled_button(theme, step.label(), Val::Auto, ReplayClick(step)));
@@ -3525,6 +3534,14 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if let Some(at) = &game.replay {
         parent.spawn((widgets::label(theme, format!("Replay · step {} of {}", at.cursor, at.len)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         parent.spawn((widgets::dim(theme, at.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        // The person's note on this position (§8 item 5), and the way to
+        // write one: on the rail, where a thing to read goes, and the
+        // editor takes its place while the note is being written.
+        if let Some(note) = &at.note {
+            parent.spawn(widgets::overline(theme, "Note"));
+            parent.spawn((widgets::label(theme, note.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+        parent.spawn(widgets::button(theme, if at.note.is_some() { "Edit note" } else { "Add note" }, Val::Auto, EditNote));
     }
     if let Some(lesson) = &game.lesson
         && !game.finished()
@@ -3568,7 +3585,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     // directly above: the routes under the prompt are what change it.
     if game.replay.is_some() {
         parent.spawn((
-            widgets::dim(theme, "Left and Right step, Page Up and Down ten at a time, Home and End go to either end, S is the other chair. A click reads a card."),
+            widgets::dim(theme, "Left and Right step, Page Up and Down ten at a time, Home and End go to either end, S is the other chair, N writes a note on this position and the bar's Note buttons step between notes. A click reads a card."),
             TextLayout::new(Justify::Left, LineBreak::WordBoundary),
         ));
         return;

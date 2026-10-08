@@ -9,13 +9,18 @@ use netrunner_core::rules::Side;
 
 /// A move through a recorded match. The terminal client's keys, less the
 /// letters it needs for its own panes: a step, ten, either end, the other
-/// chair.
+/// chair — and, since §8 item 5's notes, the note before or after this
+/// one, which is what a bookmark is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     First,
     Back(usize),
     Forward(usize),
     Last,
+    /// The nearest position before this one with a note.
+    PreviousNote,
+    /// The nearest position after this one with a note.
+    NextNote,
     SwapChair,
 }
 
@@ -23,7 +28,7 @@ impl Step {
     /// The bar, left to right. Ten at a time is on the keys only
     /// (Page Up, Page Down): the bar is a row of the board and its room is
     /// the hand's.
-    pub const BAR: [Step; 5] = [Step::First, Step::Back(1), Step::Forward(1), Step::Last, Step::SwapChair];
+    pub const BAR: [Step; 7] = [Step::First, Step::Back(1), Step::Forward(1), Step::Last, Step::PreviousNote, Step::NextNote, Step::SwapChair];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -31,16 +36,21 @@ impl Step {
             Step::Back(_) => "< Back",
             Step::Forward(_) => "Next >",
             Step::Last => "End >|",
+            Step::PreviousNote => "< Note",
+            Step::NextNote => "Note >",
             Step::SwapChair => "Other chair",
         }
     }
 
-    /// Whether the step would move anything at `cursor` of `len`. The
-    /// chair can always be swapped.
-    pub fn moves(self, cursor: usize, len: usize) -> bool {
+    /// Whether the step would move anything at `cursor` of `len`, with
+    /// notes at `noted` (in order). The chair can always be swapped; a
+    /// note step needs a note on its side.
+    pub fn moves(self, cursor: usize, len: usize, noted: &[usize]) -> bool {
         match self {
             Step::First | Step::Back(_) => cursor > 0,
             Step::Forward(_) | Step::Last => cursor < len,
+            Step::PreviousNote => noted.iter().any(|p| *p < cursor),
+            Step::NextNote => noted.iter().any(|p| *p > cursor),
             Step::SwapChair => true,
         }
     }
@@ -110,10 +120,15 @@ mod tests {
 
     #[test]
     fn the_bar_greys_what_would_not_move() {
-        assert!(!Step::Back(1).moves(0, 10));
-        assert!(!Step::First.moves(0, 10));
-        assert!(Step::Forward(1).moves(0, 10));
-        assert!(!Step::Last.moves(10, 10));
-        assert!(Step::SwapChair.moves(10, 10));
+        assert!(!Step::Back(1).moves(0, 10, &[]));
+        assert!(!Step::First.moves(0, 10, &[]));
+        assert!(Step::Forward(1).moves(0, 10, &[]));
+        assert!(!Step::Last.moves(10, 10, &[]));
+        assert!(Step::SwapChair.moves(10, 10, &[]));
+        assert!(!Step::NextNote.moves(4, 10, &[]), "no notes, nowhere to go");
+        assert!(Step::NextNote.moves(4, 10, &[2, 6]));
+        assert!(!Step::NextNote.moves(6, 10, &[2, 6]), "the note here is not after here");
+        assert!(Step::PreviousNote.moves(4, 10, &[2, 6]));
+        assert!(!Step::PreviousNote.moves(2, 10, &[2, 6]));
     }
 }

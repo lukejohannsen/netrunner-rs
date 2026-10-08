@@ -222,3 +222,110 @@ fn a_click_on_a_replay_reads_the_card_and_escape_goes_back_through_the_list() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- notes beside the record (§8 item 5) ----
+
+use netrunner_desktop::screens::replay::{EditNote, NoteEditor};
+
+fn edit_note(app: &mut App) -> Entity {
+    let mut q = app.world_mut().query::<(Entity, &EditNote)>();
+    q.iter(app.world()).map(|(e, _)| e).next().expect("the rail offers the note")
+}
+
+fn type_text(app: &mut App, text: &str) {
+    for c in text.chars() {
+        let logical = if c == ' ' { Key::Space } else { Key::Character(c.to_string().into()) };
+        key(app, KeyCode::KeyA, logical);
+    }
+}
+
+/// The words on the rail's note button.
+fn edit_note_label(app: &mut App) -> String {
+    let mut buttons = app.world_mut().query::<(&EditNote, &Children)>();
+    let mut texts = app.world_mut().query::<&Text>();
+    let (_, children) = buttons.iter(app.world()).next().expect("the rail offers the note");
+    children.iter().find_map(|child| texts.get(app.world(), child).ok().map(|t| t.0.clone())).expect("a labelled button")
+}
+
+fn rail_texts(app: &mut App) -> Vec<String> {
+    app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect()
+}
+
+/// A note is written on the position the replay stands at, kept in a
+/// file beside the record, shown on the rail, and stepped to from the
+/// bar; typing into it reaches no key of the board's, Escape lets the
+/// edit go without leaving the board, and a reopened record still has
+/// the note.
+#[test]
+fn a_note_is_written_beside_the_record_shown_on_the_rail_and_stepped_to_from_the_bar() {
+    let (mut app, dir) = headless_client();
+    a_saved_game(&mut app);
+    let watch = entity_with(&mut app, &Click::WatchReport).expect("a saved report can be watched");
+    press_entity(&mut app, watch);
+    wait_for(&mut app, "the replay board", |app| screen(app) == AppScreen::Game && app.world().contains_resource::<ActiveReplay>() && app.world().contains_resource::<Model>());
+    let end = replay(&app).cursor();
+    assert!(end > 2, "a saved game has positions to note");
+    // No notes yet: nothing to step to, nothing beside the record.
+    assert!(bar_button(&mut app, Step::NextNote).1 && bar_button(&mut app, Step::PreviousNote).1, "no note to step to");
+    assert_eq!(edit_note_label(&mut app), "Add note");
+    let record = app.world().resource::<ActiveReplay>().1.path.clone();
+    let beside = netrunner_client::notes::path_for(&record);
+    assert!(!beside.exists());
+
+    // Back two, then a note here: the editor opens on the rail, the typed
+    // letters are its (S would otherwise swap the chair), Enter keeps.
+    key(&mut app, KeyCode::ArrowLeft, Key::ArrowLeft);
+    key(&mut app, KeyCode::ArrowLeft, Key::ArrowLeft);
+    let here = replay(&app).cursor();
+    assert_eq!(here, end - 2);
+    let add = edit_note(&mut app);
+    press_entity(&mut app, add);
+    assert_eq!(count::<NoteEditor>(&mut app), 1, "the editor is on the rail");
+    type_text(&mut app, "should run hq");
+    assert_eq!(app.world().resource::<Model>().0.side, Side::Runner, "typing an s into the note did not swap the chair");
+    assert_eq!(replay(&app).cursor(), here, "nor did the letters step");
+    key(&mut app, KeyCode::Enter, Key::Enter);
+    assert_eq!(count::<NoteEditor>(&mut app), 0, "Enter kept the note and closed the editor");
+    let at = app.world().resource::<Model>().0.replay.clone().expect("a replay");
+    assert_eq!(at.note.as_deref(), Some("should run hq"));
+    assert_eq!(at.noted, vec![here]);
+    assert!(rail_texts(&mut app).iter().any(|t| t == "should run hq"), "the note is read on the rail");
+    assert_eq!(edit_note_label(&mut app), "Edit note", "and may be edited");
+    assert_eq!(netrunner_client::notes::load(&record).get(here), Some("should run hq"), "written beside the record");
+    assert!(beside.exists());
+
+    // From the start, Note > steps to it; from the end, < Note does.
+    key(&mut app, KeyCode::Home, Key::Home);
+    let (next, disabled) = bar_button(&mut app, Step::NextNote);
+    assert!(!disabled, "a note lies ahead");
+    press_entity(&mut app, next);
+    assert_eq!(replay(&app).cursor(), here);
+    assert!(bar_button(&mut app, Step::NextNote).1 && bar_button(&mut app, Step::PreviousNote).1, "the only note is here");
+    key(&mut app, KeyCode::End, Key::End);
+    let (previous, disabled) = bar_button(&mut app, Step::PreviousNote);
+    assert!(!disabled);
+    press_entity(&mut app, previous);
+    assert_eq!(replay(&app).cursor(), here);
+
+    // N opens the editor on the note; Escape lets the edit go, keeps the
+    // note, and does not leave the board.
+    key(&mut app, KeyCode::KeyN, Key::Character("n".into()));
+    assert_eq!(count::<NoteEditor>(&mut app), 1);
+    type_text(&mut app, "xx");
+    key(&mut app, KeyCode::Escape, Key::Escape);
+    assert_eq!(count::<NoteEditor>(&mut app), 0);
+    assert_eq!(screen(&app), AppScreen::Game, "Escape was the editor's");
+    assert!(!app.world().resource::<Model>().0.confirm_quit, "and not the board's");
+    assert_eq!(netrunner_client::notes::load(&record).get(here), Some("should run hq"));
+
+    // A blank note removes it, and the file goes with the last one.
+    key(&mut app, KeyCode::KeyN, Key::Character("n".into()));
+    for _ in 0.."should run hq".len() {
+        key(&mut app, KeyCode::Backspace, Key::Backspace);
+    }
+    key(&mut app, KeyCode::Enter, Key::Enter);
+    assert_eq!(app.world().resource::<Model>().0.replay.as_ref().and_then(|at| at.note.clone()), None);
+    assert!(!beside.exists(), "an empty book has no file");
+
+    let _ = std::fs::remove_dir_all(dir);
+}

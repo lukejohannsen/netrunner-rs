@@ -14,6 +14,7 @@ use std::path::Path;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
+use netrunner_client::notes::{self, Notes};
 use netrunner_client::replay::{self as core_replay, describe_event};
 
 pub use netrunner_client::replay::Start;
@@ -23,6 +24,9 @@ use crate::app::{Coaching, RenderableView};
 /// A recorded match from one chair, with the terminal's side panel.
 pub struct Replay {
     inner: core_replay::Replay,
+    /// The person's notes beside the record, written by the desktop's
+    /// replay board and read here (`netrunner_client::notes`).
+    notes: Notes,
     /// Owned and rebuilt on every move because `RenderableView::coaching`
     /// hands out a borrow.
     coaching: Coaching,
@@ -38,17 +42,17 @@ impl Replay {
         side: Side,
         title: &str,
     ) -> Result<Self, core_replay::ReplayError> {
-        Ok(Self::wrap(core_replay::Replay::load(header, history, registry, side, title)?))
+        Ok(Self::wrap(core_replay::Replay::load(header, history, registry, side, title)?, Notes::default()))
     }
 
     /// Reads a record and replays it, opening where
     /// `netrunner_client::replay::opening` says for the flags given.
     pub fn open(path: &Path, registry: CardRegistry, side: Option<Side>, at: Option<Start>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(Self::wrap(core_replay::Replay::open(path, registry, side, at)?))
+        Ok(Self::wrap(core_replay::Replay::open(path, registry, side, at)?, notes::load(path)))
     }
 
-    fn wrap(inner: core_replay::Replay) -> Self {
-        let mut replay = Self { inner, coaching: Coaching { title: String::new(), step: 0, total: 0, prose: String::new(), hint: None, gated: true, showing_all: false } };
+    fn wrap(inner: core_replay::Replay, notes: Notes) -> Self {
+        let mut replay = Self { inner, notes, coaching: Coaching { title: String::new(), step: 0, total: 0, prose: String::new(), hint: None, gated: true, showing_all: false } };
         replay.refresh();
         replay
     }
@@ -79,10 +83,13 @@ impl Replay {
 
     fn refresh(&mut self) {
         let cursor = self.inner.cursor();
-        let prose = match self.inner.entry(cursor) {
+        let mut prose = match self.inner.entry(cursor) {
             None => "Setup — the opening position, before any action.".to_string(),
             Some(entry) => format!("Turn {}, {:?} acted.\n\n{}", entry.turn_number, entry.side, self.inner.lines_of(cursor).join("\n")),
         };
+        if let Some(note) = self.notes.get(cursor) {
+            prose = format!("Note: {note}\n\n{prose}");
+        }
         self.coaching = Coaching {
             title: format!("Replay — {} ({:?}'s chair)", self.inner.title(), self.inner.side()),
             step: cursor,

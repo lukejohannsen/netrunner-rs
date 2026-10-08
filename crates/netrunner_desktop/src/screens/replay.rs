@@ -28,6 +28,7 @@
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
+use netrunner_client::notes::{self, Notes};
 use netrunner_client::play::MatchMessage;
 use netrunner_client::replay::{Replay, Start};
 
@@ -37,9 +38,10 @@ use crate::models::game::{Game, Intent, ReplayAt};
 use crate::models::pace::Pacer;
 use crate::models::replay::{self as model, Step};
 use crate::nav::{screen_root, Navigate};
-use crate::screens::game::{Dirty, Model, Pace};
+use crate::screens::game::{Dirty, Model, Pace, Rail};
 use crate::screens::AppScreen;
-use crate::theme::Theme;
+use crate::theme::{size, Theme};
+use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, Pressed};
 
 pub struct ReplayPlugin;
@@ -50,15 +52,36 @@ impl Plugin for ReplayPlugin {
             .add_systems(Update, pick.run_if(in_state(AppScreen::Replay)))
             // Between the board's input and its redraw: a step moves the
             // model and marks it, and the frame that read the press draws
-            // it.
-            .add_systems(Update, steps.after(crate::screens::game::controls).before(crate::screens::game::fit).run_if(in_state(AppScreen::Game)));
+            // it. After the text field's own system, so the N that opens
+            // the note's editor is not also typed into it: that system
+            // reads the frame's keys and then feeds every field that
+            // exists, and the editor spawned this frame would.
+            .add_systems(Update, steps.after(crate::screens::game::controls).after(crate::widgets::text_field::edit_text_fields).before(crate::screens::game::fit).run_if(in_state(AppScreen::Game)));
     }
 }
 
-/// The record on the board. Present only while one is: the list removes
-/// it on entry and the board on exit.
+/// The record on the board, with the person's notes on it. Present only
+/// while one is: the list removes it on entry and the board on exit.
 #[derive(Resource)]
-pub struct ActiveReplay(pub Replay);
+pub struct ActiveReplay(pub Replay, pub NoteBook);
+
+/// The notes beside a record (`netrunner_client::notes`), and the record
+/// they are beside, which is where a change is written.
+pub struct NoteBook {
+    pub path: PathBuf,
+    pub notes: Notes,
+}
+
+/// The rail's button that opens the note at this position for writing;
+/// N is its key.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditNote;
+
+/// The one-line editor on the rail while a note is being written. Its
+/// keys are its own (`widgets::text_field`): the replay's and the
+/// board's stand down while it exists.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoteEditor;
 
 /// A record to open as soon as the list is entered — the board's "Watch
 /// it" beside a report it just saved, or `NETRUNNER_REPLAY` — and where in
@@ -84,8 +107,9 @@ struct BackButton;
 /// Replays the record at `path` against the client's registry, opening
 /// where a record says it should: a bug report at its end, from the
 /// person's chair.
-pub fn open(core: &ClientCore, path: &Path, at: Option<Start>) -> Result<Replay, String> {
-    Replay::open(path, (*core.registry).clone(), None, at).map_err(|error| error.to_string())
+pub fn open(core: &ClientCore, path: &Path, at: Option<Start>) -> Result<(Replay, NoteBook), String> {
+    let replay = Replay::open(path, (*core.registry).clone(), None, at).map_err(|error| error.to_string())?;
+    Ok((replay, NoteBook { path: path.to_path_buf(), notes: notes::load(path) }))
 }
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiting: Option<Res<OpenReplay>>, mut navigate: MessageWriter<Navigate>) {
@@ -94,8 +118,8 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiti
     if let Some(waiting) = waiting {
         commands.remove_resource::<OpenReplay>();
         match open(&core, &waiting.0, waiting.1) {
-            Ok(replay) => {
-                commands.insert_resource(ActiveReplay(replay));
+            Ok((replay, book)) => {
+                commands.insert_resource(ActiveReplay(replay, book));
                 navigate.write(Navigate(AppScreen::Game));
             }
             Err(reason) => error = Some(reason),
@@ -165,8 +189,8 @@ fn pick(
         }
         let Ok(ReportRow(path)) = rows.get(*entity) else { continue };
         match open(&core, path, None) {
-            Ok(replay) => {
-                commands.insert_resource(ActiveReplay(replay));
+            Ok((replay, book)) => {
+                commands.insert_resource(ActiveReplay(replay, book));
                 navigate.write(Navigate(AppScreen::Game));
                 return;
             }
@@ -180,14 +204,28 @@ fn pick(
 }
 
 /// The board a replay opens on: its position, from its chair.
-pub fn board_for(core: &ClientCore, replay: &Replay) -> Game {
-    let mut game = Game::replay(core.registry.clone(), replay.side(), at(replay));
+pub fn board_for(core: &ClientCore, replay: &Replay, notes: &Notes) -> Game {
+    let mut game = Game::replay(core.registry.clone(), replay.side(), at(replay, notes));
     game.apply(Intent::Show { view: Box::new(replay.view().clone()), log: replay.log().to_vec() });
     game
 }
 
-fn at(replay: &Replay) -> ReplayAt {
-    ReplayAt { cursor: replay.cursor(), len: replay.len(), title: replay.title().to_string() }
+fn at(replay: &Replay, notes: &Notes) -> ReplayAt {
+    ReplayAt { cursor: replay.cursor(), len: replay.len(), title: replay.title().to_string(), note: notes.get(replay.cursor()).map(str::to_string), noted: notes.positions() }
+}
+
+/// Spawns the note's editor on the rail, holding the note so far.
+fn spawn_editor(commands: &mut Commands, theme: &Theme, rail: Entity, current: &str) {
+    commands.entity(rail).with_children(|rail| {
+        rail.spawn((
+            NoteEditor,
+            TextField::new(current.to_string(), notes::MAX_LEN),
+            widgets::field_node(percent(100)),
+            BackgroundColor(theme.glass_strong),
+            BorderColor::all(theme.accent),
+            children![(Text::new(format!("{current}|")), theme.font(size::BODY), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::AnyCharacter))],
+        ));
+    });
 }
 
 /// The replay bar's buttons and its keys, applied to the record and the
@@ -196,20 +234,56 @@ fn at(replay: &Replay) -> ReplayAt {
 /// they stand down while anything covers the board, as the board's do.
 #[allow(clippy::too_many_arguments)]
 fn steps(
+    mut commands: Commands,
     mut pressed: MessageReader<Pressed>,
     marks: Query<&ReplayClick>,
+    edits: Query<(), With<EditNote>>,
+    editor: Query<(Entity, Option<&TextFieldEvent>), With<NoteEditor>>,
+    rail: Query<Entity, With<Rail>>,
     keys: Res<ButtonInput<KeyCode>>,
     replay: Option<ResMut<ActiveReplay>>,
     model: Option<ResMut<Model>>,
     pace: Option<ResMut<Pace>>,
     dirty: Option<ResMut<Dirty>>,
     core: Res<ClientCore>,
+    theme: Res<Theme>,
+    mut notices: ResMut<crate::core::Notices>,
 ) {
     let (Some(mut replay), Some(mut model), Some(mut pace), Some(mut dirty)) = (replay, model, pace, dirty) else {
         pressed.clear();
         return;
     };
-    let mut asked: Vec<Step> = pressed.read().filter_map(|Pressed(entity)| marks.get(*entity).ok()).map(|click| click.0).collect();
+    // A note being written: its keys are the editor's, and a commit
+    // writes the book beside the record (`netrunner_client::notes`).
+    if let Ok((entity, event)) = editor.single() {
+        pressed.clear();
+        match event {
+            Some(TextFieldEvent::Committed(text)) => {
+                let ActiveReplay(replay, book) = &mut *replay;
+                book.notes.set(replay.cursor(), text);
+                if let Err(error) = notes::save(&book.path, &book.notes) {
+                    notices.push(format!("Note not saved: {error}"));
+                }
+                commands.entity(entity).despawn();
+                model.0.replay = Some(at(replay, &book.notes));
+                dirty.all();
+            }
+            Some(TextFieldEvent::Cancelled) => {
+                commands.entity(entity).despawn();
+            }
+            None => {}
+        }
+        return;
+    }
+    let mut asked: Vec<Step> = Vec::new();
+    let mut edit = false;
+    for Pressed(entity) in pressed.read() {
+        if let Ok(click) = marks.get(*entity) {
+            asked.push(click.0);
+        } else if edits.contains(*entity) {
+            edit = true;
+        }
+    }
     if !model.0.covered() {
         for (key, step) in [
             (KeyCode::ArrowRight, Step::Forward(1)),
@@ -224,10 +298,19 @@ fn steps(
                 asked.push(step);
             }
         }
+        if keys.just_pressed(KeyCode::KeyN) {
+            edit = true;
+        }
+    }
+    if edit && let Ok(rail) = rail.single() {
+        let ActiveReplay(replay, book) = &*replay;
+        spawn_editor(&mut commands, &theme, rail, book.notes.get(replay.cursor()).unwrap_or_default());
+        return;
     }
     for step in asked {
-        let replay = &mut replay.0;
-        if !step.moves(replay.cursor(), replay.len()) {
+        let ActiveReplay(replay, book) = &mut *replay;
+        let noted = book.notes.positions();
+        if !step.moves(replay.cursor(), replay.len(), &noted) {
             continue;
         }
         let before = replay.cursor();
@@ -236,6 +319,8 @@ fn steps(
             Step::Back(by) => replay.step_back(by),
             Step::Forward(by) => replay.step_forward(by),
             Step::Last => replay.seek(usize::MAX),
+            Step::PreviousNote => replay.seek(book.notes.previous_before(before).expect("moves checked")),
+            Step::NextNote => replay.seek(book.notes.next_after(before).expect("moves checked")),
             Step::SwapChair => replay.set_side(replay.side().other()),
         }
         let speed = core.settings.desktop.animation_speed;
@@ -243,16 +328,16 @@ fn steps(
             // The chair is the board's whole frame of reference — which
             // hand is face up, which side is near — so the other chair is
             // a new board, as a new match would be.
-            model.0 = board_for(&core, replay);
+            model.0 = board_for(&core, replay, &book.notes);
             pace.0 = Pacer::new(replay.side(), speed);
         } else if replay.cursor() == before + 1 && pace.0.is_empty() {
             let entry = replay.entry(replay.cursor()).expect("a step on has an entry").clone();
             pace.0.push(MatchMessage::Applied { entry, view: Box::new(replay.view().clone()) });
-            model.0.replay = Some(at(replay));
+            model.0.replay = Some(at(replay, &book.notes));
         } else {
             pace.0 = Pacer::new(replay.side(), speed);
             model.0.apply(Intent::Show { view: Box::new(replay.view().clone()), log: replay.log().to_vec() });
-            model.0.replay = Some(at(replay));
+            model.0.replay = Some(at(replay, &book.notes));
         }
         dirty.all();
     }
