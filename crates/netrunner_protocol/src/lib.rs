@@ -121,7 +121,7 @@ pub enum ClientMessage {
 /// Which chair a player looks for a game in, and the deck it needs: one
 /// deck for a chair chosen, one for each side for a random one, whose
 /// side the server picks at pairing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Chair {
     Corp(Box<DeckFile>),
     Runner(Box<DeckFile>),

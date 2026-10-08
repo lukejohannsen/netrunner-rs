@@ -170,6 +170,7 @@ Open: §8 item 4; §9's and §10's terminal share; and the owed list.**
   - **§6d** — The coach says where on the board each move is made (`feat/lesson-where`, 25 September 2026).
 - **§7** — Online (25 September 2026).
   - **§7a** — The spectator's board looked at, and the relay in Settings (26 September 2026).
+  - **§7b** — The Server page: attached once, the lobbies browsed, one made, a chair and its decks chosen and a game found, the board leading back to it for the next (Phase 4 §7 stage 4c, 8 October 2026; the entry is there).
 - **§12** — The first launch asks, once, whether to download the card images, and a no is told where the download lives (`feat/first-launch-card-images`, 4 October 2026).
 - **§13** — The sounds are a cyberpunk set synthesized in this project, in place of the recorded cards and chips, and a run, a panel, a rez, an advance, damage, a tag, an agenda, the turn and the end of the match are heard (`feat/cyberpunk-sound-theme`, 4 October 2026).
 
