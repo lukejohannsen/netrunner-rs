@@ -1781,6 +1781,9 @@ impl CardDefinition {
             }
             match (&effect.kind, &effect.applies_to) {
                 (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
+                (_, Scope::Hosted) if !matches!(self.card_type, CardType::Ice(_)) => {
+                    return misfit("Hosted", "only a piece of ice says what becomes of the cards hosted on it");
+                }
                 (_, Scope::RootOfThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
                     return misfit("RootOfThisServer", "only an asset or an upgrade is in a server's root");
                 }
@@ -1910,9 +1913,9 @@ impl CardDefinition {
                 (ContinuousKind::Subroutines { .. }, _) => {
                     return misfit("Subroutines", "a subroutine a piece of ice gains by its own static ability is said by the ice of itself (`This`, CR 9.8.3b/d); another card's grant is `GainSubroutine`");
                 }
-                (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host) => {}
+                (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host | Scope::Hosted) => {}
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
-                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`)");
+                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`) or the ice hosting it (`Hosted`)");
                 }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
                 // An agenda about its own score (Vulnerability Audit's "You

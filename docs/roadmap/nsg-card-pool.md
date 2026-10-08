@@ -58,12 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 75, 18, 6, 43 | 7, 0, 0, — | in progress: Stages 1a–9g; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 43 | 6, 0, 0, — | in progress: Stages 1a–9h; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 108
-`Effect` variants single-use, none unused, over 722 card files** (8 October
-2026, with tranche 8 Stage 9g, which added one, `TopOfDeck`, used by Slot
-Machine alone, and one `Amount`, `RevealedThisEncounterSharingAType`;
+`Effect` variants single-use, none unused, over 723 card files** (8 October
+2026, with tranche 8 Stage 9h, which added none and one `Scope`, `Hosted`,
+used by Magnet alone; Stage 9g, at 16 of 108 over 722, added one,
+`TopOfDeck`, used by Slot Machine alone, and one `Amount`, `RevealedThisEncounterSharingAType`;
 Stage 9f, at 15 of 107 over 721, added none; Stage 9e, at 15 of 107
 over 720, added none; Stage 9d, at 15 of 107
 over 719, added none; Stage 9c, at 15 of 107
@@ -1160,6 +1161,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 9e** — one Runner card, composed, with no new `Effect` and no change to the engine: a resource that installs itself from the heap, free, as the turn ends after three successful runs (Crowdfunding) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 9f** — one Corp card with no new `Effect`, which completes Salvaged Memories: a card in Archives, faceup, hears its `from_discard` triggers as a card in the heap does (`from_heap` renamed), and `AddToHand` takes a card acting with no install from Archives (Subliminal Messaging) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 9g** — one Corp card and one new `Effect`, which completes Magnum Opus Reprint: the top cards of a deck can be taken, and revealed, one at a time (`TopOfDeck`), and a card revealed during an encounter is the encounter's, which its subroutines count by type on a later action (`EncounterTally::revealed`, `Amount::RevealedThisEncounterSharingAType`) (Slot Machine) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 9h** — one Corp card with no new `Effect`: a piece of ice can say what becomes of the cards hosted on it (`Scope::Hosted`), so a program it hosts loses its abilities and cannot gain any while the ice is rezzed, unless the program takes the ice's first (CR 9.12.1e); and ice that parks a `HostRigCardOnInstall` hosts the program it chose (Magnet) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1214,7 +1216,8 @@ nine by kind):
    - Project Beale and SanSan City Grid: changing agenda values. **9c
      closed.**
    - NEXT Silver: added subroutines. **9d closed**, composed.
-   - Magnet: a program re-hosted and blanked.
+   - Magnet: a program re-hosted and blanked. **9h closed**, with no new
+     `Effect` and one new `Scope` (`Hosted`).
    - Subliminal Messaging and Crowdfunding: abilities from Archives and
      the heap. **9e closed**, Crowdfunding, composed on Jeitinho's
      `from_heap`; **9f closed**, Subliminal Messaging, heard from

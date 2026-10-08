@@ -9423,3 +9423,46 @@ of 82.
   shared type (lose 3 only). In all three the top card goes to the bottom.
 - **DSL ratio** (`pool_status.py`): 16 of 108 `Effect` variants
   single-use, none unused, over 722 card files.
+
+#### Stage 9h — an ice that blanks what it hosts (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card, no new `Effect`.
+- **Card from System Update 2021:** Magnet.
+
+- **"When you rez this ice, choose 1 installed program hosted on a piece
+  of ice. Host that program on this ice"** is an `OnRez` trigger: the Corp
+  chooses a trojan program from the rig (`All[Program, HasSubtype(Trojan)]`,
+  since only a trojan is hosted on ice), then `HostRigCardOnInstall`.
+  - The substitution in `pending_choice` now reads which end parks the
+    choice. A Runner card hosts itself on the install it chose (GAMEDRAGON™
+    Pro, Spree's trojan); a piece of ice hosts the program it chose. A piece
+    of ice is never hosted.
+  - With no trojan installed there is nothing to choose, and the rez goes
+    ahead.
+- **"Each hosted program loses all abilities and cannot gain abilities"**
+  is `LosesAbilities` and `CannotGainAbilities` about a new `Scope`,
+  `Hosted`: each card hosted on this one. It is Hush's `Host` read from
+  the other end. `validate` admits it only on ice.
+  - `rules::active::lost_abilities` and `may_have_granted` ask it
+    (`host_takes`), and so does `installs_without_abilities`, so the
+    listeners, the continuous scan and the paid abilities all read it.
+  - An unrezzed Magnet takes nothing (CR 9.1).
+  - **A Hush on a Magnet wins.** Each would take the other's abilities,
+    and CR 9.12.1e settles that loop: "treat effects from hosted objects as
+    if they did not depend on effects from the objects they are hosted
+    on". So Hush's effect applies first, Magnet loses its abilities, and
+    Hush keeps its own. The ice's standing is asked of what it hosts, and
+    the hosted card's never of its host, so the two questions cannot ask
+    each other.
+- **Decks.** Retirement Package (Engineering the Future, Eternal-only)
+  takes two Magnet for its two Rototurret, ice for ice. Assembly Line keeps
+  Rototurret.
+- **Client.** A blanked program's sheet says so ("Has lost all its
+  abilities (Magnet)"), unless a Hush on the same ice has taken Magnet's
+  first. The prose reads `Hosted` as "each card hosted on this".
+- **Tests.** One new test: a rez with no trojan asks nothing. Egret moved
+  from Ice Wall to Magnet is blanked, so neither ice gains a sentry's type.
+  A Hush on Magnet takes Magnet's abilities and keeps its own `[click]`
+  ability.
+- **DSL ratio** (`pool_status.py`): 16 of 108 `Effect` variants
+  single-use, none unused, over 723 card files.
