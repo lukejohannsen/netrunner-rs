@@ -1,0 +1,21 @@
+{
+  "id": "access_to_globalsec",
+  "title": "Access to Globalsec",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 1052,
+  "is_playable": true
+}

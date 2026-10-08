@@ -1,0 +1,21 @@
+{
+  "id": "akamatsu_mem_chip",
+  "title": "Akamatsu Mem Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 1038,
+  "is_playable": true
+}

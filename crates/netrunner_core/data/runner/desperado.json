@@ -1,0 +1,36 @@
+{
+  "id": "desperado",
+  "title": "Desperado",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] whenever you make a successful run."
+    }
+  ],
+  "built_from": 1024,
+  "is_playable": true
+}
