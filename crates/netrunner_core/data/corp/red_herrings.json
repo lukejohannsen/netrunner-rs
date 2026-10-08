@@ -1,0 +1,23 @@
+{
+  "id": "red_herrings",
+  "title": "Red Herrings",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "Credits": 5
+        }
+      },
+      "applies_to": "StealingFromThisServer",
+      "text": "Persistent → As an additional cost to steal an agenda from this server or its root, the Runner must pay 5[credit]."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 1,
+  "persistent_after_trash": true,
+  "built_from": 1091,
+  "is_playable": true
+}
