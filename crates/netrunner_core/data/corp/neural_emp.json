@@ -1,0 +1,31 @@
+{
+  "id": "neural_emp",
+  "title": "Neural EMP",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnRunStart"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 1072,
+  "is_playable": true
+}

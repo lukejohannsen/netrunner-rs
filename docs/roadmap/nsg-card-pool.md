@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 46 | 6, 0, 0, — | in progress: Stages 1a–10b; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 54 | 6, 0, 0, — | in progress: Stages 1a–11a; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 109
-`Effect` variants single-use, none unused, over 726 card files** (8 October
-2026, with tranche 8 Stage 10b, which added none and one `Preventable`,
+`Effect` variants single-use, none unused, over 734 card files** (8 October
+2026, with tranche 8 Stage 11a, which added none and changed nothing in the
+engine; Stage 10b, at 16 of 109 over 726, which added none and one `Preventable`,
 `Expose`, used by Zaibatsu Loyalty alone; Stage 10a, at 16 of 109 over
 725, added one, `Expose`, used by both its cards; Stage 9h, at 16 of 108 over 723, added none and one `Scope`,
 `Hosted`, used by Magnet alone; Stage 9g, at 16 of 108 over 722, added one,
@@ -1166,6 +1167,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 9h** — one Corp card with no new `Effect`: a piece of ice can say what becomes of the cards hosted on it (`Scope::Hosted`), so a program it hosts loses its abilities and cannot gain any while the ice is rezzed, unless the program takes the ice's first (CR 9.12.1e); and ice that parks a `HostRigCardOnInstall` hosts the program it chose (Magnet) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 10a** — two Runner cards and one new `Effect`: the Runner can expose an installed, unrezzed Corp card, which is revealed, stays facedown and is remembered (`Expose`, the `then` of a selection over the Corp's `Unrezzed` installs) (Infiltration, Lemuria Codecracker) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 10b** — one Corp asset and no new `Effect`: an expose is about to happen before it happens, so it can be prevented (`Preventable::Expose`, `Trigger::OnExposeAboutToResolve`), and a facedown card can hear the moment that lets it rez (`TriggeredEffect::while_unrezzed`, CR 9.1.8c) (Zaibatsu Loyalty) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 11a** — eight Core Set Corp operations, composed with no change to the engine (Beanstalk Royalties, Anonymous Tip, Closed Accounts, Aggressive Negotiation, Neural EMP, SEA Source, Precognition, Shipment from Kaguya) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1231,6 +1233,11 @@ nine by kind):
     Loyalty, from the Core Set. **10a closed**, Infiltration and Lemuria
     Codecracker, with one new `Effect` (`Expose`). **10b closed**, Zaibatsu
     Loyalty, the prevention of an expose, heard facedown.
+11. **The Core Set's remainder (C), by kind.** **11a closed**, eight Corp
+    operations that compose (Beanstalk Royalties, Anonymous Tip, Closed
+    Accounts, Aggressive Negotiation, Neural EMP, SEA Source, Precognition,
+    Shipment from Kaguya); Shipment from MirrorMorph waits for the stage of
+    installs from HQ.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

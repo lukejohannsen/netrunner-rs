@@ -1,0 +1,35 @@
+{
+  "id": "sea_source",
+  "title": "SEA Source",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnSuccessfulRun"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1086,
+  "is_playable": true
+}
