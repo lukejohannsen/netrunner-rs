@@ -86,7 +86,7 @@
       "hint": "Spend a click to take 1 credit."
     },
     {
-      "prose": "And click to draw a card from your stack.",
+      "prose": "The stack is your deck, and drawing from it is the last of the four basic actions: a click for a card.",
       "allow": {
         "Kind": "DrawCardClick"
       },

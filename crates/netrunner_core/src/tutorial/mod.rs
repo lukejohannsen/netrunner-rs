@@ -410,10 +410,26 @@ mod tests {
             }
             // A hint the prose already says was shown twice, one under
             // the other, once the labels were gone from the hints.
+            // The substring check missed a prose that *opens* with the
+            // instruction in slightly other words ("Install Nico Campaign
+            // from HQ into a new remote server." over "Install Nico
+            // Campaign in a new remote server."), so a hint is also held
+            // to add a word the prose's first sentence does not have. The
+            // first sentence only: a hint is meant to condense a long
+            // step to the move ("Rez Palisade (3 credits)" under four
+            // lines about the approach), and against the whole prose
+            // every good hint would fail.
             let plain = |text: &str| text.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '&').collect::<String>();
+            let words = |text: &str| plain(text).split_whitespace().filter(|word| word.len() > 2).map(str::to_string).collect::<HashSet<_>>();
             for (index, step) in lesson.steps.iter().enumerate() {
                 if let Some(hint) = &step.hint {
                     assert!(!plain(&step.prose).contains(plain(hint).trim()), "lesson {} step {index}: the hint repeats the prose: {hint}", lesson.id);
+                    let opening = step.prose.split_inclusive(['.', '!', '?']).next().unwrap_or(&step.prose);
+                    assert!(
+                        !words(hint).is_subset(&words(opening)),
+                        "lesson {} step {index}: the hint says nothing the prose's first sentence does not: {hint:?} under {opening:?}",
+                        lesson.id
+                    );
                 }
             }
         }
