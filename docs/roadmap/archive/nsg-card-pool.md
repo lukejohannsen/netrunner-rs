@@ -9976,3 +9976,39 @@ Update 2021, with no new `Effect`.
   Runner's score, and Greenmail silent.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 786 card files.
+
+#### Stage 11m — a played event is trashed once it has resolved (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Déjà Vu, "Add 1 card (or up to 2 virus cards) from your heap
+  to your grip": a choice of the two, each a selection from the heap.
+
+- **An event is trashed once its abilities are fully resolved (CR
+  3.7.1).** `engine::play_event` filed it in the heap as its `OnPlay`
+  returned, even with a choice it parked still open, so Déjà Vu's
+  selection offered Déjà Vu. Now `dispatcher::event_trashed` files it at
+  once when nothing waits, as before, and otherwise holds it in the
+  Runner's play area (`RunnerState::play_area`) and queues its trash
+  behind what it parked, the way `finished_resolving` announces an
+  operation's end. `fire_one` moves it to the heap as the trash is
+  announced, so Aniccam still hears it there. The operation's twin
+  (`pending_choice::resolving_operation_in`) said filing late "would need
+  the end of a resolution that may be parked across several actions,
+  which nothing marks"; the announcement queue is that mark, and the Corp
+  side is left as it is.
+- **Networking adds itself to the grip** (`Effect::AddToHand`, which now
+  takes a Runner event out of the play area). Its "add this event to your
+  grip" chose any Networking in the heap, another copy included; held in
+  the play area behind its own payment, only this copy can go, and a copy
+  that went is never trashed.
+- **The view carries it** (`RunnerClientView::play_area`), drawn by
+  `hud::in_effect` as "resolving: …" in both clients, copied by
+  `determinize` and counted by both sweeps' card conservation.
+- **Decks.** Pay As You Go takes two Déjà Vu for its two Time Bomb, which
+  stay in Free Spirit.
+- **Tests.** Déjà Vu in the play area while it asks, one card of any kind
+  or only the two virus cards, and in the heap once it has resolved;
+  Networking's test passes unchanged.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 787 card files.

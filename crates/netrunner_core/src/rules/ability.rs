@@ -1577,6 +1577,18 @@ pub fn evaluate_effect(
                 events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install, faceup: removed.rezzed });
                 return Ok(events);
             }
+            // A Runner event still resolving is in the play area
+            // (`RunnerState::play_area`): Networking's "add this event to
+            // your grip", after the payment it parked. The play area holds
+            // it only while something it parked is open, so an event that
+            // resolved at once has already been trashed, and stays so.
+            if ctx.acting_install.is_none()
+                && let Some(position) = state.runner.play_area.iter().rposition(|held| *held == card_id)
+            {
+                state.runner.play_area.remove(position);
+                state.runner.grip.push(card_id.clone());
+                return Ok(vec![GameEvent::CardAddedToHand { side: Side::Runner, card: Some(card_id), install: InstallId::PLACEHOLDER, faceup: true }]);
+            }
             let Some(install) = ctx.acting_install.filter(|install| state.runner.rig.iter().any(|c| c.install_id == *install && c.card == card_id)) else {
                 return Ok(Vec::new());
             };

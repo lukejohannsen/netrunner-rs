@@ -20,22 +20,7 @@
             "cost": {
               "Credits": 1
             },
-            "if_paid": {
-              "PromptChooseCards": {
-                "side": "Runner",
-                "source": "OwnHeap",
-                "filter": {
-                  "AmongCards": [
-                    "networking"
-                  ]
-                },
-                "min": 1,
-                "max": 1,
-                "reveal": false,
-                "shuffle_after": false,
-                "destination": "OwnGrip"
-              }
-            },
+            "if_paid": "AddToHand",
             "if_declined": {
               "Sequence": []
             },

@@ -1620,10 +1620,8 @@ fn play_event(
     } else {
         // Trashed as it finishes resolving (CR 3.7.1): the rules' trash,
         // and a moment (Aniccam's "an event is trashed"), heard with the
-        // card already in the heap.
-        next.runner.heap.push(card_id.clone());
-        let trashed = GameEvent::CardTrashed { side, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
-        dispatcher::emit(&mut next, registry, &mut events, trashed)?;
+        // card already in the heap — once whatever it parked has resolved.
+        dispatcher::event_trashed(&mut next, registry, &mut events, side, card_id)?;
     }
 
     Ok((next, events))

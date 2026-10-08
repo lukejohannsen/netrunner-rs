@@ -95,6 +95,12 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
             GameEvent::EventPlayed { card, .. }
                 if after.runner.removed_from_game.iter().filter(|c| *c == card).count()
                     > before.runner.removed_from_game.iter().filter(|c| *c == card).count() => {}
+            // Held in the play area while a choice of its own is open
+            // (CR 3.7.1): it reaches the heap with a `CardTrashed` of its
+            // own once it has resolved, which is that move.
+            GameEvent::EventPlayed { card, .. }
+                if after.runner.play_area.iter().filter(|c| *c == card).count()
+                    > before.runner.play_area.iter().filter(|c| *c == card).count() => {}
             GameEvent::EventPlayed { card, .. } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Runner), to: Zone::Discard(Side::Runner) });
             }
@@ -316,6 +322,7 @@ mod tests {
             .chain(view.runner.rig.iter().map(|c| c.card.clone()))
             .chain(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter().cloned()))
             .chain(view.runner.heap.iter().cloned())
+            .chain(view.runner.play_area.iter().cloned())
             .chain(view.runner.removed_from_game.iter().cloned())
             .chain(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))
             .chain(view.corp.identity.iter().cloned())

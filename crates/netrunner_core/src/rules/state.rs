@@ -723,6 +723,15 @@ pub struct RunnerState {
     /// emptied by the same resolution, which shuffles the rest back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
+    /// The Runner's events played and not yet fully resolved, because a
+    /// choice their text parked is still open: "once those abilities are
+    /// fully resolved the event is trashed" (CR 3.7.1). Déjà Vu's "from
+    /// your heap" is not about itself, so it is not in the heap while it
+    /// asks. An event that resolves at once never stops here; one held
+    /// here reaches the heap when its trash, queued behind what it parked,
+    /// is announced (`dispatcher::event_trashed`). Faceup, so public.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub play_area: Vec<CardId>,
     /// Agendas the Runner has stolen, in steal order, and cards added "as
     /// an agenda" (Jeitinho). Fully public — never masked. See
     /// `CorpState::scored_agendas`'s doc comment. The same entry as the

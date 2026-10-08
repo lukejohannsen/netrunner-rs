@@ -106,6 +106,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         heap: _,                // drawn: the Heap pile button and sheet, the terminal's pile line
         removed_from_game: _,   // drawn: under the Heap's sheet; the terminal's identity line and card picker
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients; the chooser's pop-up draws the ones it offers
+        play_area: _,           // drawn: hud::in_effect ("resolving: …"), both clients: an event whose own choice is still open (CR 3.7.1)
         rig,                    // below
         link_strength: _,       // drawn: hud::details
         scored_agendas: runner_scored, // below, as the Corp's
