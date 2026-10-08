@@ -1,0 +1,41 @@
+{
+  "id": "cell_portal",
+  "title": "Cell Portal",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 7,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner moves to the outermost position of the attacked server. They may jack out. Derez this ice.",
+      "effect": {
+        "Sequence": [
+          {
+            "MoveRunToOutermost": null
+          },
+          {
+            "OfferPaidChoice": {
+              "side": "Runner",
+              "cost": "JackOut",
+              "if_paid": {
+                "Sequence": []
+              },
+              "if_declined": {
+                "Sequence": []
+              },
+              "text": "They may jack out"
+            }
+          },
+          {
+            "DerezCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 1074,
+  "is_playable": true
+}

@@ -244,6 +244,13 @@ impl RunTrail {
                 step.card = Some(identity.card.clone());
                 step.subs = identity.subroutines.iter().map(|s| s.status).collect();
                 step.texts = identity.subroutines.iter().map(|s| s.definition.text.clone()).collect();
+            } else if step.card.is_some() {
+                // Derezzed mid-run (Cell Portal's "Derez this ice"): it is
+                // facedown again, and the view's word is that nobody may
+                // name it, whatever the encounter showed.
+                step.card = None;
+                step.subs.clear();
+                step.texts.clear();
             }
             step.state = match run.phase {
                 RunPhase::Initiation => IceState::Upcoming,

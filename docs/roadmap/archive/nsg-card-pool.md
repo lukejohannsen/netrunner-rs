@@ -9777,3 +9777,48 @@ one engine fix the sweep found.
   trace, and Data Raven's two answers and its counter.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 773 card files.
+
+#### Stage 11g — Core Set cards that compose with what the pool has (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: five cards, no new vocabulary and no change
+to the engine.
+- **Cards from the Core Set:** Modded, Wyrm, Red Herrings, Cell Portal,
+  Shipment from MirrorMorph.
+
+- **Modded** is Career Fair with a program or a piece of hardware in
+  place of a resource: an install from the grip for 3[credit] less.
+- **Wyrm** is three paid abilities: Leech's "-1 strength for the
+  remainder of this encounter" for 1[credit], a pump, and a break at
+  3[credit] whose requirement is the encountered ice at 0 strength or
+  less (`Not(AmountAtLeast(EncounteredIceStrength, 1))`, Chisel's test).
+- **Red Herrings** is Daniela Jorge Inácio's persistent steal cost with
+  5[credit] in place of two grip cards (`StealingFromThisServer`).
+- **Cell Portal** is Letheia Nisei's move to the outermost position and
+  offer to jack out, then a `DerezCard` of itself, which happens whether
+  or not the Runner leaves.
+  It is the first card the sweeps' decks carry that derezzes a piece of
+  ice in the middle of a run, and the client's run trail
+  (`board::trail::RunTrail::sync`) kept naming it to the Runner after the
+  view had turned it facedown; the trail now forgets a name the view no
+  longer gives, which `a_trail_follows_real_runs_as_both_viewers` found.
+- **Shipment from MirrorMorph** is Humanoid Resources' install offer three
+  times: each a card from HQ that is not an operation, installed paying
+  its costs, one at a time.
+- **Deferred:** Aggressive Secretary, because a "that many" selection
+  (`PromptChooseCards::count`) does nothing when fewer cards qualify,
+  where "trash 1 program for each advancement token" trashes every program
+  there is; Tinkering, because no effect gives a chosen piece of ice
+  subtypes until the end of the turn.
+- **Decks.** Safety Net takes two Modded for its two Spark of
+  Inspiration; Pay as You Go two Wyrm for its two Take a Dive; A Thousand
+  Cuts two Cell Portal for its two Knowledge Seeker, code gate for code
+  gate; Retirement Package two Shipment from MirrorMorph for its two
+  Archived Memories; Fine Print two Red Herrings for its two Amaze
+  Amusements. Every card given up stays in another deck.
+- **Tests.** Five new tests: Modded offering a program and not a
+  resource; Wyrm refused at 1 strength and breaking at 0; Red Herrings
+  stealable with 5[credit] and not with 4; Cell Portal derezzed whether
+  the Runner stays or jacks out; Shipment installing two cards and never
+  offering an operation.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 778 card files.

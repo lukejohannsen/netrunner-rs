@@ -29377,4 +29377,109 @@ mod reprints {
         let (used, _) = use_ability(&state, &registry, "data_raven", 0).expect("hosted power counter: give 1 tag");
         assert_eq!((used.runner.tags, used.corp.installed[0].counters), (1, 0));
     }
+
+    // ---- Stage 11g: Core Set cards that compose with what the pool has ----
+
+    /// Modded installs a program or a piece of hardware for 3[credit] less;
+    /// a resource is not offered.
+    #[test]
+    fn modded_installs_a_program_or_hardware_for_three_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("modded"), id("daily_casts"), id("corroder")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("modded") }).expect("play");
+        let corroder = asked.runner.grip.iter().position(|card| *card == id("corroder")).expect("in the grip");
+        assert_eq!(runner_toggles(&asked, &registry), vec![corroder], "a program, not a resource");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: corroder }).expect("select");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("install");
+        let (installed, _) = close_all_windows(installed, &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(10), "Corroder's 2[credit], lowered by 3");
+    }
+
+    /// Wyrm breaks only ice at 0 strength or less, and takes the
+    /// encountered ice down a point at a time to get there.
+    #[test]
+    fn wyrm_weakens_the_encountered_ice_and_breaks_it_at_zero() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("wyrm", 1)];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&state, &registry);
+        assert!(use_ability(&at_ice, &registry, "wyrm", 0).is_err(), "Ice Wall is at 1 strength");
+        let (weakened, _) = use_ability(&at_ice, &registry, "wyrm", 1).expect("1[credit]: -1 strength");
+        let weakened = apply_action(&weakened, &registry, PlayerAction::PassPriority { side: Side::Corp }).map(|(state, _)| state).unwrap_or(weakened);
+        let run = weakened.active_run.as_ref().expect("the run goes on");
+        assert_eq!(crate::rules::continuous::ice_strength(&weakened, &registry, &run.ice[0]), 0);
+        let (broken, events) = use_ability(&weakened, &registry, "wyrm", 0).expect("3[credit]: break 1 subroutine");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. })), "{events:?}");
+        assert_eq!(broken.runner.resources.credits, Credits(6), "1 and then 3");
+    }
+
+    /// Red Herrings makes an agenda in its server cost 5[credit] more to
+    /// steal.
+    #[test]
+    fn red_herrings_charges_five_to_steal_from_its_server() {
+        let registry = registry();
+        for (credits, stolen) in [(5, true), (4, false)] {
+            let mut state = runner_turn();
+            state.runner.resources.credits = Credits(credits);
+            state.corp.installed = vec![remote_root("red_herrings", 0), crate::rules::InstalledCard { rezzed: false, ..remote_root("hostile_takeover", 0) }];
+            let agenda = install_of(&state, "hostile_takeover");
+            let (breaching, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+            let accessing = apply_action(&breaching, &registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(agenda) })
+                .map(|(state, _)| state)
+                .unwrap_or(breaching);
+            let steal = PlayerAction::StealAgenda { card_id: id("hostile_takeover") };
+            let offered = crate::rules::legal_actions_for(&accessing, &registry, Side::Runner).contains(&steal);
+            assert_eq!(offered, stolen, "with {credits}[credit]");
+            if stolen {
+                let (taken, _) = apply_action(&accessing, &registry, steal).expect("pay 5 and steal");
+                assert_eq!((taken.runner.resources.credits, taken.runner.scored_agendas.len()), (Credits(0), 1));
+            }
+        }
+    }
+
+    /// Cell Portal sends the Runner back to the outermost position, lets
+    /// them jack out, and derezzes itself either way.
+    #[test]
+    fn cell_portal_sends_the_runner_back_and_derezzes_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("cell_portal")];
+        let asked = fire(&state, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "they may jack out");
+        let (stayed, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("stay in");
+        assert!(stayed.active_run.is_some(), "the run goes on from the outermost position");
+        assert!(!stayed.corp.installed[0].rezzed, "derez this ice");
+        let (left, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out");
+        let (left, _) = pass_until_settled(left, &registry);
+        assert!(left.active_run.is_none(), "jacked out");
+        assert!(!left.corp.installed[0].rezzed, "derez this ice");
+    }
+
+    /// Shipment from MirrorMorph installs up to three cards from HQ one at
+    /// a time, never an operation.
+    #[test]
+    fn shipment_from_mirrormorph_installs_up_to_three_cards_from_hq() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("shipment_from_mirrormorph"), id("ice_wall"), id("hedge_fund"), id("pad_campaign")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("shipment_from_mirrormorph") }).expect("play");
+        let hedge = state.corp.hq.iter().position(|card| *card == id("hedge_fund")).expect("in HQ");
+        assert!(!corp_toggles(&state, &registry).contains(&hedge), "not an operation");
+        let wall = state.corp.hq.iter().position(|card| *card == id("ice_wall")).expect("in HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: wall }).expect("the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        let pad = state.corp.hq.iter().position(|card| *card == id("pad_campaign")).expect("in HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: pad }).expect("the asset");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("a new remote");
+        let (state, _) = close_all_windows(state, &registry);
+        let installed: Vec<_> = state.corp.installed.iter().map(|installed| installed.card.clone()).collect();
+        assert!(installed.contains(&id("ice_wall")) && installed.contains(&id("pad_campaign")), "{installed:?}");
+        assert_eq!(state.corp.resources.clicks, Clicks(2), "one click to play it, none to install");
+        assert_eq!(state.corp.hq, vec![id("hedge_fund")]);
+    }
 }

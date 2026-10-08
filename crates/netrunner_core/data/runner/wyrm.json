@@ -1,0 +1,69 @@
+{
+  "id": "wyrm",
+  "title": "Wyrm",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 3[credit]: Break 1 subroutine on a piece of ice with 0 or less strength.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "EncounteredIceStrength",
+                1
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: The ice you are encountering gets -1 strength for the remainder of this encounter.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "ModifyStrength": {
+          "delta": -1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 1013,
+  "is_playable": true
+}
