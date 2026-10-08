@@ -28835,4 +28835,104 @@ mod reprints {
         assert!(exposed(&done, "pad_campaign"), "nothing could prevent it");
         assert!(done.corp.installed.iter().any(|installed| installed.card == id("zaibatsu_loyalty") && !installed.rezzed));
     }
+
+    // ---- Stage 11a: the Core Set's Corp operations ----
+
+    /// The Runner's last turn, holding one run on HQ that succeeded.
+    fn after_a_run_on_hq(state: &mut GameState, registry: &CardRegistry) {
+        let mut runner = runner_turn();
+        runner.corp.installed.clear();
+        let mut ended = run_to_completion(runner, registry, ServerId::Hq).0;
+        crate::rules::turn_log::rotate(&mut ended);
+        state.last_turn = ended.last_turn;
+    }
+
+    /// Beanstalk Royalties gains 3[credit], Anonymous Tip draws 3, and
+    /// Precognition offers the top 5 of R&D to arrange.
+    #[test]
+    fn beanstalk_royalties_anonymous_tip_and_precognition() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("beanstalk_royalties"), id("anonymous_tip"), id("precognition")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        let credits = state.corp.resources.credits;
+        let (royalties, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("beanstalk_royalties") }).expect("play");
+        assert_eq!(royalties.corp.resources.credits, Credits(credits.0 + 3), "gain 3[credit]");
+        let (tip, _) = apply_action(&royalties, &registry, PlayerAction::PlayOperation { card_id: id("anonymous_tip") }).expect("play");
+        assert_eq!(tip.corp.hq.len(), 1 + 3, "Precognition and three drawn");
+        let (arranging, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("precognition") }).expect("play");
+        assert_eq!(corp_toggles(&arranging, &registry).len(), 5, "the top 5 cards of R&D");
+    }
+
+    /// "Play only if the Runner is tagged": the Runner loses every credit.
+    #[test]
+    fn closed_accounts_empties_a_tagged_runners_credit_pool() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("closed_accounts")];
+        state.runner.resources.credits = Credits(7);
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("closed_accounts") }).is_err(), "untagged");
+        state.runner.tags = 1;
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("closed_accounts") }).expect("play");
+        assert_eq!(played.runner.resources.credits, Credits(0));
+    }
+
+    /// "Play only if you scored an agenda this turn": then any card from
+    /// R&D goes to HQ.
+    #[test]
+    fn aggressive_negotiation_searches_rnd_after_a_score() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("aggressive_negotiation")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, ..remote_root("hostile_takeover", 0) }];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("aggressive_negotiation") }).is_err(), "no agenda scored");
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") }).expect("score");
+        let (searching, _) = apply_action(&scored, &registry, PlayerAction::PlayOperation { card_id: id("aggressive_negotiation") }).expect("play");
+        assert_eq!(corp_toggles(&searching, &registry).len(), 2, "any card in R&D");
+        let position = searching.corp.r_and_d.iter().position(|card| *card == id("ice_wall")).expect("in R&D");
+        let (toggled, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (done, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(done.corp.hq.contains(&id("ice_wall")));
+        assert_eq!(done.corp.r_and_d, vec![id("hedge_fund")]);
+    }
+
+    /// Neural EMP after any run last turn, SEA Source after a successful
+    /// one: 1 net damage, and trace[3] for a tag.
+    #[test]
+    fn neural_emp_and_sea_source_follow_the_runners_last_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("neural_emp"), id("sea_source")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("neural_emp") }).is_err(), "no run last turn");
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("sea_source") }).is_err(), "no successful run last turn");
+        after_a_run_on_hq(&mut state, &registry);
+        let (emp, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("neural_emp") }).expect("play");
+        assert_eq!(emp.runner.grip.len(), 2, "1 net damage");
+        let (tracing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("sea_source") }).expect("play");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "trace[3]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (tagged, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        assert_eq!(tagged.runner.tags, 1, "give the Runner 1 tag");
+    }
+
+    /// One advancement token on each of up to 2 different installed cards
+    /// that can be advanced.
+    #[test]
+    fn shipment_from_kaguya_advances_two_different_cards() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("shipment_from_kaguya")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("hostile_takeover", 0) },
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("project_atlas", 1) },
+        ];
+        let (first, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("shipment_from_kaguya") }).expect("play");
+        assert_eq!(corp_toggles(&first, &registry), vec![0, 1]);
+        let first = apply_action(&apply_action(&first, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select").0, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        assert_eq!(corp_toggles(&first, &registry), vec![1], "a different card");
+        let done = apply_action(&apply_action(&first, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("select").0, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        assert!(done.corp.installed.iter().all(|installed| installed.advancement_tokens == 1));
+    }
 }

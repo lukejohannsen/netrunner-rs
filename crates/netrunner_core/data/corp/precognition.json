@@ -1,0 +1,31 @@
+{
+  "id": "precognition",
+  "title": "Precognition",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 5
+            },
+            "min": 0,
+            "max": 5,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnRAndD"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1073,
+  "is_playable": true
+}

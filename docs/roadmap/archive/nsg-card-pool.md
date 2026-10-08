@@ -9548,3 +9548,39 @@ of 82.
   declined rez lets the expose through.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 726 card files.
+
+#### Stage 11a — the Core Set's Corp operations that compose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: eight Corp operations, no new vocabulary
+and no change to the engine.
+- **Cards from the Core Set:** Beanstalk Royalties, Anonymous Tip, Closed
+  Accounts, Aggressive Negotiation, Neural EMP, SEA Source, Precognition,
+  Shipment from Kaguya.
+
+- **Play requirements are the turn log's.** "Play only if you scored an
+  agenda this turn" is `TimesThisTurn(OnAgendaScored)`; "the Runner made
+  a run during their last turn" is `TimesLastTurn(OnRunStart)`, and "a
+  successful run" `TimesLastTurn(OnSuccessfulRun)`, as Public Trail's;
+  "the Runner is tagged" is `IsTagged`.
+- **Closed Accounts**: "loses all credits in their credit pool" is
+  `LoseCreditsAmount` of the Runner's `Credits`.
+- **SEA Source**: `Trace` at base 3 with a tag on success, as Scapenet's.
+- **Precognition**: Federal Fundraising's arranging of the top of R&D,
+  five deep.
+- **Shipment from Kaguya**: Business as Usual's two picks, the second
+  refusing the first (`NotSourceCard`), so the two cards are different.
+- **Decks.** Supply Chain (OBSH) takes two Beanstalk Royalties and an
+  Aggressive Negotiation for its three Hedge Fund; Hostile Bid two
+  Shipment from Kaguya for its two Pivot (Supply Chain keeps Pivot); Tag,
+  You're It two SEA Source for two of its Public Trail and a Closed
+  Accounts for its Hedge Fund (Ad Nihilum keeps Public Trail); Honor Roll
+  two Anonymous Tip for two Hedge Fund; Open Book a Precognition for its
+  Hedge Fund; A Thousand Cuts a Neural EMP for its Retribution (Permafrost
+  keeps it). Each is pinned to Eternal, where the Core Set is legal.
+- **Tests.** Five new tests: the three plain operations; Closed Accounts
+  refused untagged and then emptying the pool; Aggressive Negotiation
+  refused before a score and searching after one; Neural EMP and SEA
+  Source refused without the Runner's run and resolving after one;
+  Shipment from Kaguya's second pick offering only a different card.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 734 card files.

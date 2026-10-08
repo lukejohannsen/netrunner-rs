@@ -3,7 +3,7 @@
   "name": "Honor Roll",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps play Méliès U: Only the Brightest (Vantage Point Stage 8), a secret identity of three reverse sides that flips when the Runner makes a successful run on a central server. Jinteki and neutral cards the other Jinteki deck leaves out — Diviner, Mycoweb, Empiricist, Semak-samun, Peer Review, Mitra Aman, Anoetic Void — with Hansei Review and Longevity Serum to fill Archives for the back sides to draw on. Eternal-legal only. Rebellion Without Rehearsal Stage 1: two Boto for two Enigma. Rebellion Without Rehearsal Stage 4a: two Cohort Guidance Program and a Charlotte Caçador for two Regolith Mining License and an Unleash. Rebellion Without Rehearsal Stage 7d: two Sisyphus Protocol for two Proprionegation, an agenda for an agenda. The Automata Initiative Stage 8b: two Adrian Seis for its two Mahkota Langit Grid, and two Daniela Jorge Inácio for its two Empiricist, which other decks still carry. Parhelion Stage 5b: two Hybrid Release for its two Superconducting Hub, a point each, and two Nanisivik Grid for its two Mitra Aman: the discards and trashes of a Jinteki deck fill Archives with facedown cards for both. Reprints Stage 3: two House of Knives for its two Hybrid Release, a 1-point agenda for a 1-point agenda; Hybrid Release is still in Au Co.'s tournament list.",
+  "description": "Not a published list: built so the sweeps play Méliès U: Only the Brightest (Vantage Point Stage 8), a secret identity of three reverse sides that flips when the Runner makes a successful run on a central server. Jinteki and neutral cards the other Jinteki deck leaves out — Diviner, Mycoweb, Empiricist, Semak-samun, Peer Review, Mitra Aman, Anoetic Void — with Hansei Review and Longevity Serum to fill Archives for the back sides to draw on. Eternal-legal only. Rebellion Without Rehearsal Stage 1: two Boto for two Enigma. Rebellion Without Rehearsal Stage 4a: two Cohort Guidance Program and a Charlotte Caçador for two Regolith Mining License and an Unleash. Rebellion Without Rehearsal Stage 7d: two Sisyphus Protocol for two Proprionegation, an agenda for an agenda. The Automata Initiative Stage 8b: two Adrian Seis for its two Mahkota Langit Grid, and two Daniela Jorge Inácio for its two Empiricist, which other decks still carry. Parhelion Stage 5b: two Hybrid Release for its two Superconducting Hub, a point each, and two Nanisivik Grid for its two Mitra Aman: the discards and trashes of a Jinteki deck fill Archives with facedown cards for both. Reprints Stage 3: two House of Knives for its two Hybrid Release, a 1-point agenda for a 1-point agenda; Hybrid Release is still in Au Co.'s tournament list. Tranche 8 Stage 11a: two Anonymous Tip for two of its Hedge Fund.",
   "style": [
     "glacier"
   ],
@@ -51,7 +51,7 @@
     },
     {
       "card": "hedge_fund",
-      "count": 3
+      "count": 1
     },
     {
       "card": "hansei_review",
@@ -103,6 +103,10 @@
     },
     {
       "card": "daniela_jorge_inacio",
+      "count": 2
+    },
+    {
+      "card": "anonymous_tip",
       "count": 2
     }
   ]

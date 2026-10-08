@@ -1,0 +1,78 @@
+{
+  "id": "shipment_from_kaguya",
+  "title": "Shipment from Kaguya",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "PlaceAdvancementCounters": {
+                        "Fixed": 1
+                      }
+                    },
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OwnInstalled",
+                        "filter": {
+                          "All": [
+                            "Advanceable",
+                            "NotSourceCard"
+                          ]
+                        },
+                        "min": 0,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "then": {
+                          "EffectIf": {
+                            "condition": {
+                              "AmountAtLeast": [
+                                "CardsSelected",
+                                1
+                              ]
+                            },
+                            "effect": {
+                              "PlaceAdvancementCounters": {
+                                "Fixed": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1100,
+  "is_playable": true
+}

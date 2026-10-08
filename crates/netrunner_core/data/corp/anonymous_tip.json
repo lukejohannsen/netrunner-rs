@@ -1,0 +1,23 @@
+{
+  "id": "anonymous_tip",
+  "title": "Anonymous Tip",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 1083,
+  "is_playable": true
+}

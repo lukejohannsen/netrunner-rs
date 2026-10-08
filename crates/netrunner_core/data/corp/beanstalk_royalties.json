@@ -1,0 +1,23 @@
+{
+  "id": "beanstalk_royalties",
+  "title": "Beanstalk Royalties",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 1098,
+  "is_playable": true
+}
