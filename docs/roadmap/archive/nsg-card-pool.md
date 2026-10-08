@@ -9298,3 +9298,35 @@ the Core Set at 43 of 113.
   it still has one.
 - **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
   single-use, none unused, over 719 card files.
+
+#### Stage 9e — a resource that comes back from the heap (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Runner card, composed, with no new
+`Effect` and no change to the engine. Magnum Opus Reprint is at 5 of 6.
+- **Card from Magnum Opus Reprint:** Crowdfunding.
+
+- **"Load 3[credit]… take 1[credit]… When it is empty, trash it and draw
+  1 card"** is Daily Casts' shape, with the draw after the trash in the
+  same `EffectIf`.
+- **"When your turn ends, if you made at least 3 successful runs this turn
+  and this card is in your heap, you may install it, ignoring all
+  costs":**
+  - It listens from the heap, as Jeitinho's install does (`from_heap`,
+    CR 9.1.8b).
+  - "Your turn ends" is `OnDiscardPhaseEnd`, Jeitinho's other trigger.
+  - "3 successful runs" is the turn log's count of `OnSuccessfulRun`.
+  - The install is `InstallRunnerCardFromZone` from the heap with
+    `Discount::AllCosts`. The card's own install trigger loads it again.
+- **Decks.** Encore takes two Crowdfunding for its two Earthrise Hotel.
+  Express Delivery keeps Earthrise Hotel. Encore is pinned
+  Eternal-only, which Crowdfunding needs. Picket Line, the first choice,
+  is pinned Standard as well.
+- **Client.** Nothing new reaches the view.
+- **Tests.** Two new tests.
+  - After 3 successful runs, the turn's end offers the install from the
+    heap. It costs nothing, and the card comes in loaded with 3. After 2
+    runs, nothing is asked.
+  - With 1[credit] left, the turn's beginning takes it, trashes the card
+    and draws 1.
+- **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
+  single-use, none unused, over 720 card files.
