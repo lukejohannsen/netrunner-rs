@@ -6,14 +6,18 @@ yourself. Under **Who can join** pick:
 - **this machine only**: for trying it out;
 - **anyone on your network**: someone on your wifi joins by the first
   address shown (`ws://192.168.…`);
-- **anyone on the internet**: as above, and the waiting screen shows a
-  **ticket**: a long line starting `endpoint`. Give your friend that. It
-  works from anywhere, whatever your router is like. The client also asks
-  your router to forward the port (UPnP, NAT-PMP or PCP), and if the router
-  agrees, an address that works from anywhere is listed too.
+- **anyone on the internet**: as above, and the page shows a **ticket**:
+  a long line starting `endpoint`. Give your friend that. It works from
+  anywhere, whatever your router is like. The client also asks your router
+  to forward the port (UPnP, NAT-PMP or PCP), and if the router agrees, an
+  address that works from anywhere is listed too.
 
-Your friend chooses **Join a game** and pastes the ticket, or types the
-address, into the same field.
+Start hosting and you are on the server page, in your game's one lobby:
+pick a chair and a deck and press **Find a game**. Your friend chooses
+**Join a server**, pastes the ticket or types the address, and is on the
+same page: they join your lobby, pick their chair and deck, and the game
+starts when you are both looking. When it ends you are both back on that
+page, still connected, and the next game is a chair and a deck away.
 
 ## How a ticket gets through
 
