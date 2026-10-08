@@ -1,0 +1,24 @@
+{
+  "id": "experiential_data",
+  "title": "Experiential Data",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "All ice protecting this server has +1 strength."
+    }
+  ],
+  "triggers": [],
+  "built_from": 1066,
+  "is_playable": true
+}

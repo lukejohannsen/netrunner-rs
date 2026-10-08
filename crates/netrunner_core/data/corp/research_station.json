@@ -1,0 +1,25 @@
+{
+  "id": "research_station",
+  "title": "Research Station",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "install_only_in": [
+    "Hq"
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is +2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 1105,
+  "is_playable": true
+}

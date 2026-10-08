@@ -1,0 +1,47 @@
+{
+  "id": "adonis_campaign",
+  "title": "Adonis Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 12
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 3
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 3,
+  "built_from": 1056,
+  "is_playable": true
+}

@@ -9686,3 +9686,42 @@ no change to the engine.
   a virus and not on a breaker.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 758 card files.
+
+#### Stage 11e — the Core Set's Corp assets and upgrades that compose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: eight Corp cards, no new vocabulary and
+no change to the engine.
+- **Cards from the Core Set:** Melange Mining Corp., Adonis Campaign,
+  Research Station, Experiential Data, Akitaro Watanabe, Ghost Branch,
+  Project Junebug, Security Subcontract.
+
+- **The economy.** Melange Mining Corp. is a three-[click] ability for
+  7[credit]; Adonis Campaign is NICO Campaign's shape with 12[credit]
+  loaded and nothing drawn when it empties.
+- **The upgrades** are declarations: Research Station's
+  `install_only_in` HQ and +2 `HandSize`, Experiential Data's `Strength`
+  and Akitaro Watanabe's `RezCost` over `IceProtectingThisServer`, as
+  Rime's and Vovô Ozetti's are.
+- **The ambushes** are heard on access, installed, as Cerebral
+  Overwriter is: Ghost Branch's "may" gives a tag per advancement token,
+  and Project Junebug's paid choice does twice that in net damage
+  (`Amount::Times`).
+- **Security Subcontract**'s rezzed piece of ice is a `Cost::Trash` from
+  the Corp's installs, filtered `All([Ice, Rezzed])`.
+- **Decks.** Hostile Bid takes two Security Subcontract for its two
+  Svyatogor Excavator and a Research Station for its Isaac Liberdade;
+  Retirement Package two Adonis Campaign for its two Trieste Model
+  Bioroids and two Experiential Data for its two Tranquility Home Grid; A
+  Thousand Cuts two Project Junebug for its two Moon Pool and an Akitaro
+  Watanabe for one of its two Mavirus; Paid Content two Ghost Branch for
+  its two Drago Ivanov and a Melange Mining Corp. for one of its two The
+  Powers That Be. Each is in faction or neutral for neutral, and every
+  card given up stays in another deck.
+- **Tests.** Five new tests: Melange's 7[credit] and Adonis Campaign's
+  3[credit] a turn until it is trashed empty; Research Station refused
+  outside HQ and its hand size; Experiential Data's strength and
+  Akitaro's rez discount, on their server only; Ghost Branch's tags and
+  Junebug's damage on access; Security Subcontract refused with no
+  rezzed ice and paid with one.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 766 card files.

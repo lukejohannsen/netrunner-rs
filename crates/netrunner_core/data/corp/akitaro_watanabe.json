@@ -1,0 +1,25 @@
+{
+  "id": "akitaro_watanabe",
+  "title": "Akitaro Watanabe",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -2
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "The rez cost of ice protecting this server is lowered by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 1079,
+  "is_playable": true
+}

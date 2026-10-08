@@ -1,0 +1,43 @@
+{
+  "id": "project_junebug",
+  "title": "Project Junebug",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "DealDamageAmount": [
+                "Net",
+                {
+                  "Times": {
+                    "amount": "HostedAdvancementTokens",
+                    "times": 2
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "If you pay 1[credit] when the Runner accesses Project Junebug, do 2 net damage for each advancement token on Project Junebug"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1069,
+  "is_playable": true
+}
