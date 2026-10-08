@@ -438,8 +438,9 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
 }
 
 /// Why the install `id` has no abilities, when it has none (CR 9.1.9a): a
-/// card hosted on it says so (Hush, `ContinuousKind::LosesAbilities`), or
-/// a lingering effect does (Klevetnik's, `Lingering::LosesAbilities`) —
+/// card hosted on it says so (Hush, `ContinuousKind::LosesAbilities`), the
+/// rezzed ice it is hosted on does (Magnet, `Scope::Hosted`), or a
+/// lingering effect does (Klevetnik's, `Lingering::LosesAbilities`) —
 /// the line its sheet carries, since nothing on its face says it. Both are
 /// public: the view carries the rig and the lingering list whole.
 pub fn lost_abilities_words(view: &ClientView, id: InstallId, registry: &CardRegistry) -> Option<String> {
@@ -450,6 +451,21 @@ pub fn lost_abilities_words(view: &ClientView, id: InstallId, registry: &CardReg
     });
     if let Some(card) = hosted_loss {
         return Some(format!("Has lost all its abilities but its printed subroutines ({})", card_title(&card.card, registry)));
+    }
+    // A program on ice that blanks what it hosts (Magnet), while the ice
+    // is rezzed — and has not lost that to a Hush it hosts, whose effect
+    // comes first (CR 9.12.1e).
+    let blanks_its_host = |host: InstallId| {
+        view.runner.rig.iter().filter(|card| card.hosted_on_ice == Some(host)).any(|card| {
+            registry.get(&card.card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == ContinuousKind::LosesAbilities && effect.applies_to == Scope::Host))
+        })
+    };
+    let host = view.runner.rig.iter().find(|card| card.install_id == id).and_then(|card| card.hosted_on_ice).filter(|host| !blanks_its_host(*host));
+    let blanking_host = host.and_then(|host| view.corp.servers.iter().flat_map(|server| server.ice.iter()).find(|ice| ice.install_id == host)).and_then(|ice| ice.card.clone().filter(|_| ice.rezzed)).filter(|card| {
+        registry.get(card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == ContinuousKind::LosesAbilities && effect.applies_to == Scope::Hosted))
+    });
+    if let Some(card) = blanking_host {
+        return Some(format!("Has lost all its abilities ({})", card_title(&card, registry)));
     }
     view.lingering
         .iter()

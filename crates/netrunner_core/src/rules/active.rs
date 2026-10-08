@@ -128,7 +128,8 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
 
 /// Whether the install `install` has lost all its abilities (CR 9.1.9a):
 /// a card hosted on it says so for as long as it stays there (Hush's
-/// `ContinuousKind::LosesAbilities`, about its `Host`), or a lingering
+/// `ContinuousKind::LosesAbilities`, about its `Host`), the ice it is
+/// hosted on says so of what it hosts (Magnet's, `Scope::Hosted`), or a lingering
 /// effect does (Klevetnik's, `lingering::loses_abilities`). **The one
 /// question**, put by everything that reads what a card can do: who hears
 /// an event (`listeners`), whose standing effects apply (`continuous`), who
@@ -144,7 +145,9 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
 /// continuous scan, which asks this of every source: a hosted card's effect
 /// does not depend on its host's (CR 9.12.1e), so nothing here can loop.
 pub(crate) fn lost_abilities(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
-    crate::rules::lingering::loses_abilities(state, install) || hosted_says(state, registry, install, ContinuousKind::LosesAbilities)
+    crate::rules::lingering::loses_abilities(state, install)
+        || hosted_says(state, registry, install, ContinuousKind::LosesAbilities)
+        || host_takes(state, registry, install, ContinuousKind::LosesAbilities)
 }
 
 /// Whether the install `install` may have an ability another card gives it
@@ -152,7 +155,9 @@ pub(crate) fn lost_abilities(state: &GameState, registry: &CardRegistry, install
 /// it says it cannot gain abilities (Hush's `CannotGainAbilities`), and not
 /// if it has lost them — a granted ability is lost with the rest.
 pub(crate) fn may_have_granted(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
-    !hosted_says(state, registry, install, ContinuousKind::CannotGainAbilities) && !lost_abilities(state, registry, install)
+    !hosted_says(state, registry, install, ContinuousKind::CannotGainAbilities)
+        && !host_takes(state, registry, install, ContinuousKind::CannotGainAbilities)
+        && !lost_abilities(state, registry, install)
 }
 
 /// Every install that has lost its abilities right now — what a scan that
@@ -170,6 +175,10 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
         })
         .collect();
     for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {
+        if host_takes(state, registry, card.install_id, ContinuousKind::LosesAbilities) {
+            lost.push(card.install_id);
+            continue;
+        }
         if host_says(registry, &card.card, ContinuousKind::LosesAbilities)
             && let Some(host) = card.hosted_on_ice.or(card.hosted_on_rig_card)
         {
@@ -187,6 +196,28 @@ fn hosted_says(state: &GameState, registry: &CardRegistry, install: InstallId, k
         .iter()
         .filter(|card| card.hosted_on_ice == Some(install) || card.hosted_on_rig_card == Some(install))
         .any(|card| host_says(registry, &card.card, kind.clone()))
+}
+
+/// Whether the rig card `install` is hosted on a rezzed piece of ice that
+/// declares `kind` about what it hosts (`Scope::Hosted`, Magnet's "Each
+/// hosted program loses all abilities and cannot gain abilities"). **The
+/// hosted card's word wins** (CR 9.12.1e: in a loop, "treat effects from
+/// hosted objects as if they did not depend on effects from the objects
+/// they are hosted on"): a Hush moved onto a Magnet takes Magnet's
+/// abilities, this one among them, and keeps its own — so the ice's
+/// standing is asked of what it hosts and of the lingering list, and the
+/// hosted card's never of its host. An unrezzed Magnet is not active and
+/// takes nothing (CR 9.1).
+fn host_takes(state: &GameState, registry: &CardRegistry, install: InstallId, kind: ContinuousKind) -> bool {
+    let Some(host) = state.runner.rig.iter().find(|card| card.install_id == install).and_then(|card| card.hosted_on_ice) else {
+        return false;
+    };
+    state.corp.installed.iter().find(|ice| ice.install_id == host).is_some_and(|ice| {
+        ice.rezzed
+            && !crate::rules::lingering::loses_abilities(state, host)
+            && !hosted_says(state, registry, host, ContinuousKind::LosesAbilities)
+            && registry.get(&ice.card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == kind && effect.applies_to == crate::dsl::Scope::Hosted))
+    })
 }
 
 fn host_says(registry: &CardRegistry, card: &CardId, kind: ContinuousKind) -> bool {

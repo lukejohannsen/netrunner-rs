@@ -28662,4 +28662,57 @@ mod reprints {
         let (before, none) = slot_machine_fires_over(&registry, ["prepaid_voicepad", "corroder", "sure_gamble"]);
         assert_eq!(none.corp.resources.credits, before.corp.resources.credits, "no two share a type");
     }
+
+    // ---- Stage 9h: ice that blanks what it hosts ----
+
+    /// Rezzed, Magnet takes a trojan off the ice it was on and blanks it:
+    /// Egret no longer gives Ice Wall a sentry's type, nor Magnet. With no
+    /// trojan installed there is nothing to choose. And a Hush on a rezzed
+    /// Magnet takes Magnet's abilities first (CR 9.12.1e: a hosted object's
+    /// effect is the independent one), so it keeps its own, and its
+    /// "[click]: Host this program on another installed piece of ice" stays.
+    #[test]
+    fn magnet_hosts_a_trojan_from_another_ice_and_takes_its_abilities() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") }, crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("magnet") }];
+        // A run on HQ, to the Corp's rez of Magnet as it is approached.
+        let rez = |state: &GameState| {
+            let (running, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+            let (at_ice, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the ice");
+            let (corps, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+            apply_action(&corps, &registry, PlayerAction::RezIce { ice: fixture_install_id("magnet") }).expect("rez")
+        };
+        let (bare, _) = rez(&state);
+        assert!(corp_toggles(&bare, &registry).is_empty(), "no program hosted on a piece of ice");
+
+        let (wall, magnet) = (fixture_install_id("ice_wall"), fixture_install_id("magnet"));
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_on_ice: Some(wall), ..rig("egret", 0) }];
+        assert!(crate::rules::continuous::ice_gains_subtype(&state, &registry, wall, crate::dsl::IceType::Sentry), "Egret on Ice Wall");
+        let (asked, _) = rez(&state);
+        assert_eq!(corp_toggles(&asked, &registry), vec![0], "choose 1 installed program hosted on a piece of ice");
+        let moved = pick(&asked, &registry, &[0]);
+        let egret = fixture_install_id("egret");
+        assert_eq!(moved.runner.rig[0].hosted_on_ice, Some(magnet), "host that program on this ice");
+        assert!(crate::rules::active::lost_abilities(&moved, &registry, egret), "each hosted program loses all abilities");
+        assert!(!crate::rules::active::may_have_granted(&moved, &registry, egret), "and cannot gain abilities");
+        assert!(!crate::rules::continuous::ice_gains_subtype(&moved, &registry, wall, crate::dsl::IceType::Sentry), "Ice Wall is free of it");
+        assert!(!crate::rules::continuous::ice_gains_subtype(&moved, &registry, magnet, crate::dsl::IceType::Sentry), "and Magnet gains nothing from it");
+        assert_eq!(crate::rules::active::installs_without_abilities(&moved, &registry), vec![egret]);
+
+        let mut hushed = moved;
+        hushed.active_run = None;
+        hushed.paid_ability_window = None;
+        hushed.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_on_ice: Some(magnet), ..rig("hush", 0) }];
+        let hush = fixture_install_id("hush");
+        assert!(crate::rules::active::lost_abilities(&hushed, &registry, magnet), "Hush takes Magnet's abilities");
+        assert!(!crate::rules::active::lost_abilities(&hushed, &registry, hush), "so Magnet blanks nothing it hosts");
+        assert!(
+            crate::rules::legal_actions_for(&hushed, &registry, Side::Runner)
+                .iter()
+                .any(|action| matches!(action, PlayerAction::ActivateAbility { target, .. } if *target == hush)),
+            "Hush's [click] ability stays"
+        );
+    }
 }

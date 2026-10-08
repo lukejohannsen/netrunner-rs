@@ -325,7 +325,8 @@ pub enum ContinuousKind {
     Cannot(crate::dsl::Prohibition),
     /// The card loses all its abilities but its printed subroutines (CR
     /// 9.1.9a) — Hush's "Host ice … loses all abilities except its printed
-    /// subroutines" (`Scope::Host`). A lost ability "is completely
+    /// subroutines" (`Scope::Host`), and Magnet's "Each hosted program
+    /// loses all abilities" (`Scope::Hosted`). A lost ability "is completely
     /// ignored": no trigger of the card's is heard (`listeners`), none of
     /// its standing effects applies (this scan), none of its paid abilities
     /// is used and no credits it hosts are spent; `rules::active::
@@ -383,6 +384,12 @@ pub enum Scope {
     This,
     /// The card this one is hosted on, program or ice.
     Host,
+    /// Each card hosted on this one — Magnet's "Each hosted program loses
+    /// all abilities and cannot gain abilities". `Host` read from the other
+    /// end: the ice says it of what it hosts, where Hush says it of its
+    /// host. Composition didn't work: `Host` is read from the hosted card,
+    /// and `Rig(_)` reaches every program, hosted here or not.
+    Hosted,
     /// The player who controls this card.
     Controller,
     /// A card its controller is installing, matching the filter.

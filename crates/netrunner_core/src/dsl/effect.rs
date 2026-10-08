@@ -1369,7 +1369,9 @@ pub enum Effect {
     /// already-hosted card simply moves it. The host may be a piece of ice
     /// (`hosted_on_ice`): Spree's "host 1 installed trojan program on a
     /// piece of ice protecting the attacked server", the trojan chosen
-    /// first and the ice second, so the parking card is the trojan.
+    /// first and the ice second, so the parking card is the trojan. And
+    /// the parking card may be the ice: Magnet's "Host that program on this
+    /// ice", where the chosen program is `card` and the ice is `host`.
     HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder

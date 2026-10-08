@@ -1626,9 +1626,16 @@ pub(crate) fn resolve_confirm_card_selection(
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
             // substituted here, since only this site knows both installs.
-            (Effect::HostRigCardOnInstall { .. }, _, [chosen, ..]) => {
-                source_install.map(|card| Effect::HostRigCardOnInstall { card, host: *chosen })
-            }
+            // A piece of ice is never hosted: one that parks the choice
+            // hosts the program it chose (Magnet's "Host that program on
+            // this ice").
+            (Effect::HostRigCardOnInstall { .. }, _, [chosen, ..]) => source_install.map(|this| {
+                if state.find_corp_install(this).is_some() {
+                    Effect::HostRigCardOnInstall { card: *chosen, host: this }
+                } else {
+                    Effect::HostRigCardOnInstall { card: this, host: *chosen }
+                }
+            }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),

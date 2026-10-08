@@ -833,6 +833,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
     let whom = match &effect.applies_to {
         Scope::This => "this card".to_string(),
         Scope::Host => "the card this is hosted on".to_string(),
+        Scope::Hosted => "each card hosted on this".to_string(),
         Scope::Controller => "its controller".to_string(),
         Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
