@@ -807,7 +807,7 @@ fn a_netrunnerdb_decklist_is_fetched_by_its_link_and_saved() {
     let mut cards: Vec<(String, u32)> = original.cards.iter().map(|entry| (entry.card.0.clone(), entry.count)).collect();
     cards.push((original.identity.0.clone(), 1));
     cards.push(("no_such_card".to_string(), 2));
-    let list = Decklist { reference: DecklistRef::parse(uuid).unwrap(), name: "Someone's Zahya".to_string(), author: "someone".to_string(), notes: "<p>Run.</p>".to_string(), identity: original.identity.0.clone(), cards };
+    let list = Decklist { reference: DecklistRef::parse(uuid).unwrap(), name: "Someone's Zahya".to_string(), author: "someone".to_string(), notes: "<p>Run.</p>".to_string(), identity: original.identity.0.clone(), cards, created_at: "2026-09-26T15:00:15+00:00".to_string() };
     let (mut app, dir) = headless_client();
     app.insert_resource(Decklists::scripted(Ok(list)));
     open_decks(&mut app);
@@ -1036,4 +1036,86 @@ fn the_strategy_guide_turns_its_pages_reads_its_cards_and_leads_back_to_learn() 
     app.update();
     app.update();
     assert_eq!(screen(&app), AppScreen::Learn, "and then leads back to Learn to Play");
+}
+
+/// Search NetrunnerDB… (Phase 7 §9): the pop-up takes a card's or an
+/// identity's name, a name the catalog does not know is refused in the
+/// pop-up, a known one searches (here a scripted answer, so nothing goes
+/// out under CI) and the newest lists come back as rows under the title
+/// searched, and picking a row saves it as the person's own and opens it
+/// in the editor as a fetched list does.
+#[test]
+fn a_netrunnerdb_search_names_a_card_lists_the_newest_decklists_and_a_pick_opens_one() {
+    use netrunner_card_sync::{Decklist, DecklistRef};
+    use netrunner_desktop::netrunnerdb::Decklists;
+    use netrunner_desktop::screens::decks::{Control, Popup, PopupButton};
+    use netrunner_desktop::screens::deck_editor::Model as EditorModel;
+    use netrunner_desktop::widgets::text_field::TextField;
+    let original = netrunner_core::decks::by_id("stolen_goods").unwrap();
+    let mut cards: Vec<(String, u32)> = original.cards.iter().map(|entry| (entry.card.0.clone(), entry.count)).collect();
+    cards.push((original.identity.0.clone(), 1));
+    let row = Decklist { reference: DecklistRef::parse("99ba7131-6cf1-474e-b73f-8b1aefc93d56").unwrap(), name: "Wasteland Dealing".to_string(), author: "someone".to_string(), notes: String::new(), identity: original.identity.0.clone(), cards, created_at: "2026-10-01T12:00:00+00:00".to_string() };
+    let (mut app, dir) = headless_client();
+    app.insert_resource(Decklists::scripted_search(Ok(vec![row])));
+    open_decks(&mut app);
+    let type_into = |app: &mut App, text: &str| {
+        let mut fields = app.world_mut().query::<&mut TextField>();
+        fields.single_mut(app.world_mut()).unwrap().text = text.to_string();
+    };
+    let open = find::<Control>(&mut app, |control| *control == Control::Search).expect("a Search NetrunnerDB… button");
+    tap(&mut app, open);
+    assert!(matches!(app.world().resource::<Popup>(), Popup::Search { found: None, .. }));
+
+    // A name the catalog does not know is refused, the field keeping it.
+    type_into(&mut app, "xyzzy");
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    app.update();
+    assert!(matches!(app.world().resource::<Popup>(), Popup::Search { typed, problem: Some(problem), found: None } if typed == "xyzzy" && problem == "No card called \"xyzzy\" in the catalog"), "{:?}", app.world().resource::<Popup>());
+
+    // The identity by a word of its title: the rows come back under it.
+    type_into(&mut app, "zahya");
+    let search = find::<PopupButton>(&mut app, |button| *button == PopupButton::Search).expect("a Search button");
+    tap(&mut app, search);
+    app.update();
+    app.update();
+    match app.world().resource::<Popup>() {
+        Popup::Search { problem: None, found: Some((title, rows)), .. } => {
+            assert!(title.starts_with("Zahya Sadeghi"), "{title}");
+            assert_eq!(rows.len(), 1);
+        }
+        other => panic!("the answer goes on the pop-up: {other:?}"),
+    }
+    let texts: Vec<String> = app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect();
+    assert!(texts.iter().any(|t| t.starts_with("Wasteland Dealing · by someone · Zahya Sadeghi") && t.ends_with("2026-10-01")), "{texts:?}");
+
+    // Picking the row saves it and opens it in the editor.
+    let pick = find::<PopupButton>(&mut app, |button| *button == PopupButton::Pick(0)).expect("a row to pick");
+    tap(&mut app, pick);
+    assert_eq!(screen(&app), AppScreen::DeckEditor, "a picked list opens in the editor");
+    let (id, deck) = {
+        let editor = &app.world().resource::<EditorModel>().0;
+        (editor.deck().id.clone(), editor.deck().clone())
+    };
+    assert_eq!(deck.name, "Wasteland Dealing");
+    assert_eq!(deck.identity, original.identity);
+    assert!(dir.join("decks").join(format!("{id}.json")).exists(), "the picked deck was saved");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Decks);
+    assert_eq!(app.world().resource::<Popup>(), &Popup::None, "the pop-up closed with the pick");
+
+    // NetrunnerDB's refusal is the pop-up's to show.
+    app.insert_resource(Decklists::scripted_search(Err("NetrunnerDB answered 500 to the search".to_string())));
+    let open = find::<Control>(&mut app, |control| *control == Control::Search).unwrap();
+    tap(&mut app, open);
+    type_into(&mut app, "sure gamble");
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    app.update();
+    assert!(matches!(app.world().resource::<Popup>(), Popup::Search { problem: Some(problem), .. } if problem == "NetrunnerDB answered 500 to the search"), "{:?}", app.world().resource::<Popup>());
+    let _ = std::fs::remove_dir_all(dir);
 }

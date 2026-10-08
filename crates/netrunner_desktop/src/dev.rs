@@ -82,6 +82,10 @@
 //! - `NETRUNNER_FETCH=<text>` — with `NETRUNNER_SCREEN=decks`, the Import
 //!   from NetrunnerDB… pop-up is opened with `text` in its field, so the
 //!   pop-up can be looked at; nothing is fetched.
+//! - `NETRUNNER_SEARCH=<name>` — with `NETRUNNER_SCREEN=decks`, the Search
+//!   NetrunnerDB… pop-up is opened with `name` in its field and the
+//!   search is sent, and the screenshot waits for the answer, so the
+//!   rows can be looked at. The one hook that goes out to the network.
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
@@ -288,6 +292,11 @@ pub struct Dev {
     /// Open the Decks screen's Import from NetrunnerDB… pop-up with this
     /// in its field.
     pub fetch: Option<String>,
+    /// `NETRUNNER_SEARCH`: the name to search NetrunnerDB for.
+    pub search: Option<String>,
+    /// Whether the search has been answered, which the screenshot waits
+    /// for.
+    pub searched: bool,
     /// `NETRUNNER_ONLINE`: the Play Online page to open.
     pub online: Option<String>,
     /// Hold a run at its first encounter for the screenshot.
@@ -371,6 +380,8 @@ impl Dev {
             read: std::env::var("NETRUNNER_READ").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             identities: std::env::var_os("NETRUNNER_IDENTITIES").is_some_and(|v| !v.is_empty()),
             fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
+            search: std::env::var("NETRUNNER_SEARCH").ok().filter(|text| !text.trim().is_empty()),
+            searched: false,
             online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_flight: std::env::var_os("NETRUNNER_HOLD_FLIGHT").is_some_and(|v| !v.is_empty()),
@@ -542,7 +553,7 @@ fn screenshot_then_exit(
     // frames do not start counting until it is in hand.
     // A flight held for the shot (`NETRUNNER_HOLD_FLIGHT`) likewise waits
     // for a card to be in the air.
-    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag || (dev.hold_flight && !dev.flight_held) {
+    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag || (dev.hold_flight && !dev.flight_held) || (dev.search.is_some() && !dev.searched) {
         // The frames are counted from when the screen has nothing left
         // to do by itself, so an autoplayed board is shot after its last
         // decision, not during it.

@@ -70,8 +70,8 @@ keep their addresses however long §4's alphabet runs.*
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
 settled are AGENTS.md §5, which is where to read them. **§4's movement, owed since §3, is
-done (§4bm, 8 October 2026), and so are §8's replay notes (§4bn). Open: §8 item 4; §9's search
-half, not started; and the owed list.**
+done (§4bm, 8 October 2026), and so are §8's replay notes (§4bn) and §9's search half in the desktop.
+Open: §8 item 4; §9's and §10's terminal share; and the owed list.**
 
 ## Owed
 
@@ -84,7 +84,7 @@ half, not started; and the owed list.**
 - **§6c**: a lesson hint still echoes its prose. **§6d**: Cleaver's menu entries printed raw symbols ("1[credit]") — check against §4bg before fixing.
 - **§7**: a resume over an iroh ticket is tested only over TCP.
 - **§8 item 4**: the take-back's server half ("the server can take (b) later"). ~~**§8 item 5**: replay notes — a file beside the record, and an editor.~~ Done in §4bn (8 October 2026).
-- **§9**: decklists searched from NetrunnerDB, not started. The download half — a published decklist by its link — is done (§10 Stage 6, 1 October 2026); the search half stays here.
+- **§9**: decklists searched from NetrunnerDB — done in the desktop (8 October 2026), by a card's or an identity's name, newest first; the download half was §10 Stage 6 (1 October 2026). The terminal client's share of both stays here.
 - **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–6 are done (1 October 2026). What the plan left for later: the person's own art (`Art::Custom`, room made in Stage 3), and the terminal client's share of Stages 5–6 (its builder still imports from a pasted list).
 
 ## Closed — one line each
@@ -286,7 +286,22 @@ the same kind of work, so they go on this list:
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
 
-## 9. Decklists searched and downloaded from NetrunnerDB — the download half DONE (1 October 2026), the search half not started
+## 9. Decklists searched and downloaded from NetrunnerDB — the download half DONE (1 October 2026), the search half DONE in the desktop (8 October 2026)
+
+**The search half is built in the desktop (`feat/decklist-search`, 8
+October 2026)**: Search NetrunnerDB… on the Decks screen takes a card's or
+an identity's name, resolves it against the catalog
+(`models::decks::search_for`: exact title, else the one it begins, else
+the one it is in), asks `netrunner_card_sync::fetch_decklists` for the
+newest lists that play it — `filter[card_id]`, or
+`filter[identity_card_id]` for an identity, `sort=-created_at`, one page
+of twenty, since `filter[search]` and `filter[format_id]` still answered
+500 on 8 October — and lists the rows under the title searched, each a
+button that saves and opens the list as a fetched one does
+(`Intent::Fetched`), because a row carries its `card_slots`. The record
+is in [the archive](archive/phase-7-desktop-client.md) under this
+heading. **The terminal client's share of §9 and §10 stays here**, as
+the §10 plan left it. What was recorded before it was built:
 
 The person's idea, recorded rather than built. A person should be able to
 search NetrunnerDB's published decklists (by identity, card, format or

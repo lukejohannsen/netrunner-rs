@@ -20,6 +20,7 @@ use netrunner_client::cards::faction_order;
 use netrunner_client::deck_builder::{self, CardBook, DeckStatus};
 use netrunner_client::settings::FORMATS;
 use netrunner_core::card::Faction;
+use netrunner_core::dsl::{CardDefinition, CardType};
 use netrunner_client::deck_store::{self, Origin};
 use netrunner_core::decks::{DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -355,6 +356,34 @@ fn category_words(category: DeckCategory) -> (&'static str, &'static str) {
     }
 }
 
+/// What Search NetrunnerDB… asks for, read off the name the person typed
+/// (Phase 7 §9): the card whose title it is — exactly, else the one it
+/// begins, else the one it is in, case ignored, the first by title among
+/// equals — as the identity filter when that card is an identity and the
+/// card filter otherwise, with the title found, for the pop-up to say
+/// what it searched. The name is resolved here, against the catalog,
+/// because the API takes an id and a person types a title; and a title
+/// that matches nothing is refused in words rather than searched for
+/// nothing.
+pub fn search_for(typed: &str, book: CardBook) -> Result<(netrunner_card_sync::Search, String), String> {
+    let wanted = typed.trim().to_lowercase();
+    if wanted.is_empty() {
+        return Err("Name a card or an identity to search for".to_string());
+    }
+    let mut cards: Vec<&CardDefinition> = book.registry.iter().chain(book.catalog.iter()).collect();
+    cards.sort_by(|a, b| a.title.cmp(&b.title));
+    cards.dedup_by(|a, b| a.id == b.id);
+    let found = cards
+        .iter()
+        .find(|card| card.title.to_lowercase() == wanted)
+        .or_else(|| cards.iter().find(|card| card.title.to_lowercase().starts_with(&wanted)))
+        .or_else(|| cards.iter().find(|card| card.title.to_lowercase().contains(&wanted)));
+    let Some(card) = found else { return Err(format!("No card called {:?} in the catalog", typed.trim())) };
+    let id = card.id.0.clone();
+    let search = if card.card_type == CardType::Identity { netrunner_card_sync::Search::Identity(id) } else { netrunner_card_sync::Search::Card(id) };
+    Ok((search, card.title.clone()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,6 +548,7 @@ mod tests {
         let identity = netrunner_core::decks::by_id("stolen_goods").unwrap().identity.0.clone();
         let reference = DecklistRef::parse("99ba7131-6cf1-474e-b73f-8b1aefc93d56").unwrap();
         let list = Decklist {
+            created_at: String::new(),
             reference: reference.clone(),
             name: "Tiny".to_string(),
             author: "someone".to_string(),
@@ -556,5 +586,21 @@ mod tests {
         assert!(!shelf.rows.is_empty());
         assert_eq!(shelf.apply(Intent::Copy(0), book), Outcome::Changed);
         assert!(shelf.notice.as_deref().unwrap().contains("data directory"));
+    }
+
+    #[test]
+    fn a_search_is_resolved_from_a_title_to_an_id_and_an_identity_to_its_own_filter() {
+        use netrunner_card_sync::Search;
+        let registry = netrunner_client::decks::sample_deck_registry();
+        let catalog: Vec<CardDefinition> = Vec::new();
+        let book = CardBook::new(&registry, &catalog);
+        let (search, title) = search_for("sure gamble", book).unwrap();
+        assert_eq!((search, title.as_str()), (Search::Card("sure_gamble".to_string()), "Sure Gamble"));
+        let (search, title) = search_for("  Zahya", book).unwrap();
+        assert!(matches!(search, Search::Identity(id) if id.starts_with("zahya_sadeghi")), "an identity by prefix, the first by title of the two Zahyas: {title}");
+        let (search, _) = search_for("gamble", book).unwrap();
+        assert_eq!(search, Search::Card("sure_gamble".to_string()), "a word inside the title");
+        assert!(search_for("", book).unwrap_err().starts_with("Name a card"));
+        assert_eq!(search_for("xyzzy", book).unwrap_err(), "No card called \"xyzzy\" in the catalog");
     }
 }
