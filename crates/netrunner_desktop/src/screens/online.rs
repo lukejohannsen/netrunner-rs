@@ -31,7 +31,6 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 
-use netrunner_client::connection::Goal;
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::online;
 use netrunner_core::decks::DeckFile;
@@ -370,12 +369,12 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                 }
             };
             let hello = remote::seat(&player, lobby, password, *deck).with_credentials(credentials);
-            net.connecting = Some(remote::spawn(url.clone(), Goal::Play(hello)));
+            net.connecting = Some(remote::seek(url.clone(), hello));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
         Outcome::Watch { url, match_id } => {
             net.brought = None;
-            net.connecting = Some(remote::spawn(url.clone(), Goal::Watch { match_id }));
+            net.connecting = Some(remote::watch(url.clone(), match_id));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
         Outcome::List { url } => {
@@ -402,7 +401,7 @@ fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &Tokio
         Ok((hosting, url)) => {
             net.brought = Some(deck.id.clone());
             let hello = remote::seat_in_format(&core.player_name(), format, deck);
-            net.connecting = Some(remote::spawn(url, Goal::Play(hello)));
+            net.connecting = Some(remote::seek(url, hello));
             net.hosting = Some(hosting);
             net.shown.clear();
             form.apply(Intent::Waiting("Hosting — waiting for your opponent to join".to_string()));
@@ -509,7 +508,7 @@ async fn bots_play(url: String, format: NsgFormat, decisions: u32) -> Result<(St
 
     // Each brings a built-in deck: a server deals nobody one.
     let deck = |id: &str| netrunner_core::decks::by_id(id).expect("a built-in deck");
-    let seat = |name: &str, id: &str| remote::connect(&url, Goal::Play(remote::seat_in_format(name, format, deck(id))), |_| {});
+    let seat = |name: &str, id: &str| remote::connect(remote::seek(url.clone(), remote::seat_in_format(name, format, deck(id))), |_| {});
     let (one, two) = tokio::join!(seat("Bot one", "brick_stack"), seat("Bot two", "stolen_goods"));
     let (one, two) = (one.map_err(|error| error.to_string())?, two.map_err(|error| error.to_string())?);
     let made = Arc::new(AtomicU32::new(0));
