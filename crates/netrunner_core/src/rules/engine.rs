@@ -2509,6 +2509,18 @@ fn activate_ability(
         .abilities
         .get(ability_index)
         .ok_or(RulesError::InvalidAbilityIndex(ability_index))?;
+    // An agenda the Runner stole is inactive in their score area unless
+    // its text says otherwise (CR 3.2.3, 4.5.4) — Oracle Thinktank's
+    // requirement is that text. Found there for that one card, every
+    // other stolen agenda's ability was offered to the Corp: a stolen
+    // Private Security Force's meat damage, and the Corp could not even
+    // be named as its owner by the action list.
+    if scored.is_some()
+        && state.corp.find_scored(target).is_none()
+        && !ability.requirement.as_ref().is_some_and(crate::dsl::EffectRequirement::works_from_runners_score_area)
+    {
+        return Err(RulesError::CardNotActive { side, card: card_id });
+    }
     // An ability used from the hand is not there to use on the table (CR
     // 9.1.8b): `ActivateHandAbility` is its door.
     if ability.trigger != Trigger::Paid || ability.from_hand {

@@ -1,0 +1,37 @@
+{
+  "id": "breaking_news",
+  "title": "Breaking News",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 2
+          }
+        }
+      ],
+      "text": "When you score this agenda, give the Runner 2 tags."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": "ThisAgendaScoredThisTurn",
+      "effects": [
+        {
+          "RemoveTags": {
+            "Fixed": 2
+          }
+        }
+      ],
+      "text": "When a discard phase ends, if you scored this agenda this turn, the Runner removes 2 tags."
+    }
+  ],
+  "built_from": 1082,
+  "is_playable": true
+}

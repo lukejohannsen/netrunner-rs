@@ -9725,3 +9725,55 @@ no change to the engine.
   rezzed ice and paid with one.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 766 card files.
+
+#### Stage 11f — the Core Set's agendas and tracer ice that compose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: seven Corp cards, no new vocabulary, and
+one engine fix the sweep found.
+- **Cards from the Core Set:** Priority Requisition, Private Security
+  Force, Posted Bounty, AstroScript Pilot Program, Breaking News, Matrix
+  Analyzer, Data Raven.
+
+- **Priority Requisition** is Send a Message's scored "may": a piece of
+  unrezzed ice rezzed ignoring all costs.
+- **Private Security Force** is a scored agenda's [click] ability for a
+  meat damage, `IsTagged` its requirement, as False Lead's forfeit is
+  used from the score area.
+- **Posted Bounty**'s "you may forfeit it. If you do" is Divested Trust's
+  paid choice with `ForfeitSelf`, a tag and a bad publicity behind it.
+- **AstroScript Pilot Program** is Project Atlas's counter and Hype
+  Machine's placement: a hosted agenda counter for an advancement counter
+  on any card that can be advanced.
+- **Breaking News** tags twice as it is scored and removes them when the
+  discard phase ends, if it was scored this turn
+  (`ThisAgendaScoredThisTurn`, Witch Hunt's requirement). The trigger
+  hears the Corp's own discard phase, which is the first to end after a
+  score in the Corp's turn; no card in the pool scores in the Runner's.
+- **A stolen agenda is inactive** unless its text says otherwise (CR
+  3.2.3, 4.5.4). `engine::activate_ability` found an ability on an agenda
+  in the Runner's score area for Oracle Thinktank, whose text does say so,
+  and so offered the Corp every stolen agenda's ability; the 32-seed
+  sweep stopped on a stolen Private Security Force, whose owner the action
+  list could not name. The ability is now refused there unless its
+  requirement holds `InRunnersScoreArea`
+  (`EffectRequirement::works_from_runners_score_area`), and the test of
+  Private Security Force asks it stolen.
+- **Matrix Analyzer** offers its 1[credit] advancement as it is
+  encountered and traces at 2 for a tag; **Data Raven** puts "take 1 tag
+  or end the run" to the Runner as it is encountered, traces at 3 for a
+  power counter, and spends one on a tag.
+- **Decks.** Paid Content takes two Breaking News for its two Post-Truth
+  Dividend, two AstroScript Pilot Program for two of its three Kingmaking
+  and two Matrix Analyzer for its two Unsmiling Tsarevna; Pay to Win two
+  Data Raven for its two Lethe; Tag, You're It a Posted Bounty for one of
+  its three Hostile Takeover, a Private Security Force for its Above the
+  Law and a Priority Requisition for its The Basalt Spire. Points are
+  kept point for point, ice sentry for sentry, and every card given up
+  stays in another deck.
+- **Tests.** Four new tests: Priority Requisition's free rez and Posted
+  Bounty forfeited or kept; AstroScript's advancement and Breaking News's
+  tags gone as the turn's discard phase ends; Private Security Force
+  refused untagged and used tagged; Matrix Analyzer's paid advancement and
+  trace, and Data Raven's two answers and its counter.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 773 card files.
