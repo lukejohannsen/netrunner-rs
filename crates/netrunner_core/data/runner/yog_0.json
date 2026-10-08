@@ -1,0 +1,30 @@
+{
+  "id": "yog_0",
+  "title": "Yog.0",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 3,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 0[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 0
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 1014,
+  "is_playable": true
+}

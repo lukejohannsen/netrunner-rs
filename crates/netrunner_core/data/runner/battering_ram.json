@@ -1,0 +1,44 @@
+{
+  "id": "battering_ram",
+  "title": "Battering Ram",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 3,
+  "memory_cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 barrier subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength for the remainder of this run.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Run"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 1042,
+  "is_playable": true
+}

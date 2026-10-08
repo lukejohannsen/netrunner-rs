@@ -58,12 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 71 | 6, 0, 0, — | in progress: Stages 1a–11c; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 78 | 6, 0, 0, — | in progress: Stages 1a–11d; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 109
-`Effect` variants single-use, none unused, over 751 card files** (8 October
-2026, with tranche 8 Stage 11c, which added none and changed nothing in the
-engine; Stage 11b, at 16 of 109 over 742, the same; Stage 11a, at 16 of 109 over 734, the same; Stage 10b, at 16 of 109 over 726, which added none and one `Preventable`,
+`Effect` variants single-use, none unused, over 758 card files** (8 October
+2026, with tranche 8 Stage 11d, which added none and changed nothing in the
+engine; Stage 11c, at 16 of 109 over 751, the same; Stage 11b, at 16 of 109 over 742, the same; Stage 11a, at 16 of 109 over 734, the same; Stage 10b, at 16 of 109 over 726, which added none and one `Preventable`,
 `Expose`, used by Zaibatsu Loyalty alone; Stage 10a, at 16 of 109 over
 725, added one, `Expose`, used by both its cards; Stage 9h, at 16 of 108 over 723, added none and one `Scope`,
 `Hosted`, used by Magnet alone; Stage 9g, at 16 of 108 over 722, added one,
@@ -1170,6 +1170,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11a** — eight Core Set Corp operations, composed with no change to the engine (Beanstalk Royalties, Anonymous Tip, Closed Accounts, Aggressive Negotiation, Neural EMP, SEA Source, Precognition, Shipment from Kaguya) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11b** — eight Core Set Runner cards, composed with no change to the engine (Easy Mark, Special Order, Wyldside, Access to Globalsec, Akamatsu Mem Chip, Desperado, Armitage Codebusting, Magnum Opus) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11c** — nine Core Set ice, composed with no change to the engine (Heimdall 1.0, Ichi 1.0, Viktor 1.0, Neural Katana, Wall of Thorns, Data Mine, Hunter, Hadrian's Wall, Shadow) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 11d** — seven Core Set breakers, viruses and rig, composed with no change to the engine (Aurora, Ninja, Battering Ram, Pipeline, Yog.0, Datasucker, Grimoire) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1246,6 +1247,12 @@ nine by kind):
     **11c closed**, nine ice that compose (Heimdall 1.0, Ichi 1.0, Viktor
     1.0, Neural Katana, Wall of Thorns, Data Mine, Hunter, Hadrian's Wall,
     Shadow); Matrix Analyzer, Data Raven, Cell Portal and Chum are next.
+    **11d closed**, seven Runner cards that compose (Aurora, Ninja,
+    Battering Ram, Pipeline, Yog.0, Datasucker, Grimoire). Déjà Vu waits
+    for a played event's place in the play area: the engine files an
+    event in the heap once its `OnPlay` has parked, so its own search of
+    the heap would offer the Déjà Vu resolving it, and Networking's "add
+    this event to your grip" depends on that filing.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and
