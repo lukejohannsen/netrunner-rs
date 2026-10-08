@@ -1,0 +1,46 @@
+{
+  "id": "viktor_1_0",
+  "title": "Viktor 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 1063,
+  "is_playable": true
+}

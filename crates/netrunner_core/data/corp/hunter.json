@@ -1,0 +1,28 @@
+{
+  "id": "hunter",
+  "title": "Hunter",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 1112,
+  "is_playable": true
+}

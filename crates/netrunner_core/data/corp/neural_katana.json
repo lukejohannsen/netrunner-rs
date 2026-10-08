@@ -1,0 +1,24 @@
+{
+  "id": "neural_katana",
+  "title": "Neural Katana",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 3 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          3
+        ]
+      }
+    }
+  ],
+  "built_from": 1077,
+  "is_playable": true
+}

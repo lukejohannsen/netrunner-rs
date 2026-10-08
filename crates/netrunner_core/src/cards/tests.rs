@@ -29009,4 +29009,77 @@ mod reprints {
         let (paid, _) = use_ability(&state, &registry, "magnum_opus", 0).expect("[click]: gain 2[credit]");
         assert_eq!(paid.runner.resources.credits, Credits(credits.0 + 2));
     }
+
+    // ---- Stage 11c: the Core Set's ice that composes ----
+
+    /// Neural Katana's 3 net damage, Wall of Thorns' 2 and the end of the
+    /// run, and Data Mine's 1 before it trashes itself.
+    #[test]
+    fn neural_katana_wall_of_thorns_and_data_mine_do_net_damage() {
+        let registry = registry();
+        for (ice, damage, ends) in [("neural_katana", 3, false), ("wall_of_thorns", 2, true), ("data_mine", 1, false)] {
+            let mut state = runner_turn();
+            state.runner.grip = vec![id("sure_gamble"); 5];
+            state.corp.installed = vec![ice_at_hq(ice)];
+            let (done, _) = pass_until_settled(fire(&state, &registry), &registry);
+            assert_eq!(done.runner.grip.len(), 5 - damage, "{ice}");
+            if ends {
+                assert!(done.active_run.is_none(), "{ice} ends the run");
+            }
+            if ice == "data_mine" {
+                assert!(done.corp.installed.is_empty() && done.corp.archives.iter().any(|card| card.card == id("data_mine")), "Trash Data Mine.");
+            }
+        }
+    }
+
+    /// Viktor 1.0 does 1 core damage and ends the run; Heimdall 1.0 is
+    /// broken a subroutine at a time for a lost [click], as Eli 1.0 is.
+    #[test]
+    fn viktor_does_core_damage_and_heimdall_is_broken_for_a_click() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![ice_at_hq("viktor_1_0")];
+        let (done, _) = pass_until_settled(fire(&state, &registry), &registry);
+        assert_eq!(done.runner.brain_damage, 1, "do 1 core damage");
+        assert!(done.active_run.is_none(), "end the run");
+
+        state.corp.installed = vec![ice_at_hq("heimdall_1_0")];
+        let at_ice = encounter(&state, &registry);
+        let clicks = at_ice.runner.resources.clicks;
+        let (broken, _) = use_ability(&at_ice, &registry, "heimdall_1_0", 0).expect("lose [click]: break 1 subroutine");
+        assert_eq!(broken.runner.resources.clicks, Clicks(clicks.0 - 1));
+    }
+
+    /// Hunter and Ichi 1.0 trace; Ichi's success does core damage and tags.
+    #[test]
+    fn hunter_and_ichi_trace() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("hunter")];
+        let tracing = fire(&state, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "trace[3]");
+
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![ice_at_hq("ichi_1_0")];
+        // No program installed, so the two trashes find nothing and the
+        // trace is what is asked.
+        let tracing = fire(&state, &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(1), "trace[1]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 5 }).expect("the Corp bids");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids nothing");
+        assert_eq!((traced.runner.brain_damage, traced.runner.tags), (1, 1), "1 core damage and 1 tag");
+    }
+
+    /// Hadrian's Wall and Shadow can be advanced, each token +1 strength.
+    #[test]
+    fn hadrians_wall_and_shadow_gain_strength_from_advancement() {
+        let registry = registry();
+        for (ice, printed) in [("hadrians_wall", 7), ("shadow", 1)] {
+            let mut state = base_state();
+            state.corp.installed = vec![ice_at_hq(ice)];
+            let (advanced, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, ice) }).expect("can be advanced");
+            assert_eq!(crate::rules::continuous::installed_ice_strength(&advanced, &registry, &id(ice), install_of(&advanced, ice)), printed + 1, "{ice}");
+        }
+    }
 }

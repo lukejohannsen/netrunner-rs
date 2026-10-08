@@ -1,0 +1,36 @@
+{
+  "id": "hadrians_wall",
+  "title": "Hadrian's Wall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 10,
+  "strength": 7,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 1102,
+  "is_playable": true,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "Hadrian's Wall can be advanced and has +1 strength for each advancement token on it."
+    }
+  ]
+}
