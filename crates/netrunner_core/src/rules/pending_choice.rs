@@ -585,6 +585,10 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // Isaac Liberdade's "each advanced piece of ice", asked of the ice
         // whose strength is read (`Scope::IceProtectingThisServer`).
         CardFilter::Advanced => installed.is_some_and(|c| c.advancement_tokens > 0),
+        // Forged Activation Orders' "If they do not [rez that ice], they
+        // trash it", asked of the ice the Runner chose after the Corp's
+        // answer (`ActingCardMatches(Unrezzed)`).
+        CardFilter::Unrezzed => installed.is_some_and(|c| !c.rezzed),
         CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
         // ZATO City Grid's "each piece of ice protecting this server" and
         // Tsakhia's "protecting the chosen server", in a `when`: the place
