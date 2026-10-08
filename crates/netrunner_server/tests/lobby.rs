@@ -299,7 +299,7 @@ async fn a_format_the_daemon_does_not_offer_is_no_lobby() {
     assert_eq!(lobbies.iter().map(|lobby| lobby.id.as_str()).collect::<Vec<_>>(), ["standard"]);
     send(&mut socket, ClientMessage::JoinLobby { lobby: "eternal".into(), password: None }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyRefused { .. }));
-    send(&mut socket, ClientMessage::CreateLobby { name: "old cards".into(), format: NsgFormat::Eternal, closed: false, password: None }).await;
+    send(&mut socket, ClientMessage::CreateLobby { name: "old cards".into(), format: NsgFormat::Eternal, closed: false, password: None, casual: false }).await;
     let ServerMessage::LobbyRefused { reason } = next(&mut socket).await else { panic!() };
     assert!(reason.contains("no Eternal lobby"), "{reason}");
     assert!(Server::bind("127.0.0.1:0", ServeOptions { formats: Vec::new(), ..ServeOptions::default() }).await.is_err(), "a daemon with no lobby does not start");

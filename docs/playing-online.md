@@ -19,6 +19,12 @@ same page: they join your lobby, pick their chair and deck, and the game
 starts when you are both looking. When it ends you are both back on that
 page, still connected, and the next game is a chair and a deck away.
 
+A game hosted this way is never rated, and the page says so. On a public
+server that keeps ratings, each lobby says whether its games count: the
+server's own do, and the line over **Find a game** shows your standing there
+once you have played. Make a lobby of your own and mark it **Unrated** for a
+game nobody wants on their record.
+
 ## How a ticket gets through
 
 A ticket names your machine by a key, not by an address. Both machines

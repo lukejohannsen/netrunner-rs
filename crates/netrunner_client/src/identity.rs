@@ -148,6 +148,55 @@ pub fn rated_line(side: netrunner_core::rules::Side, before: &netrunner_protocol
     format!("Rated as the {side:?} at this server: {:.0} → {:.0} ± {:.0}", before.rating, after.rating, after.deviation)
 }
 
+/// What a server has said about this connection's standing, as the
+/// Server page keeps it between the answer and the next game (Phase 4 §7
+/// stage 5). The server's `Standing` reply folds "no key" and "no rated
+/// game yet" into one `None`; the key it echoes tells them apart, and the
+/// page wants a third state for the moment before any answer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum StandingHere {
+    /// Not answered yet.
+    #[default]
+    Unasked,
+    /// This connection proved no key, so nothing here counts for it.
+    NoKey,
+    /// A key, and no rated game at this server yet.
+    Unrated,
+    Rated(netrunner_protocol::Standing),
+}
+
+impl StandingHere {
+    /// The server's `Standing { key, standing }`, read.
+    pub fn from_reply(key: Option<PublicKey>, standing: Option<netrunner_protocol::Standing>) -> Self {
+        match (key, standing) {
+            (None, _) => StandingHere::NoKey,
+            (Some(_), None) => StandingHere::Unrated,
+            (Some(_), Some(standing)) => StandingHere::Rated(standing),
+        }
+    }
+}
+
+/// The line over Find a game, for a lobby whose games are `rated` or not
+/// (`LobbyInfo::rated`) at a server this connection stands at as
+/// `standing`; `hosting` names the case where the server is the person's
+/// own, which never rates. One sentence, because the page is read before
+/// a game, not after one. The word is "unrated", never "casual": a format
+/// is named Casual, and "Casual · casual" on its lobby's row said nothing.
+pub fn lobby_rating_line(rated: bool, hosting: bool, standing: &StandingHere) -> String {
+    if hosting {
+        return "Unrated: a game hosted from this machine is never rated.".to_string();
+    }
+    if !rated {
+        return "Unrated: nothing in this lobby is rated.".to_string();
+    }
+    match standing {
+        StandingHere::Unasked => "Rated here.".to_string(),
+        StandingHere::NoKey => "Unrated for you: this client has no key, so nothing here counts.".to_string(),
+        StandingHere::Unrated => "Rated here. No rated games here yet.".to_string(),
+        StandingHere::Rated(standing) => format!("Rated here. {}", standing_lines(Some(standing)).join(" · ")),
+    }
+}
+
 /// A standing a server reported, one line per side it has played:
 /// `As Corp: 1612 ± 120 (3–1–0)`. Empty for a key with no rated game.
 pub fn standing_lines(standing: Option<&netrunner_protocol::Standing>) -> Vec<String> {
@@ -262,6 +311,15 @@ mod tests {
         standing.runner.rating = rating(1580.0, 200.0);
         assert_eq!(standing_lines(Some(&standing)), vec!["As Runner: 1580 ± 200 (2–0–1)"], "a side never played is left out");
         assert_eq!(standing_lines(None), vec!["No rated games there yet"]);
+        // The lobby's line: what the lobby offers first, then what this
+        // connection stands to gain there.
+        assert_eq!(lobby_rating_line(true, true, &StandingHere::Unasked), "Unrated: a game hosted from this machine is never rated.");
+        assert_eq!(lobby_rating_line(false, false, &StandingHere::Rated(standing)), "Unrated: nothing in this lobby is rated.");
+        assert_eq!(lobby_rating_line(true, false, &StandingHere::NoKey), "Unrated for you: this client has no key, so nothing here counts.");
+        assert_eq!(lobby_rating_line(true, false, &StandingHere::Unrated), "Rated here. No rated games here yet.");
+        assert_eq!(lobby_rating_line(true, false, &StandingHere::Rated(standing)), "Rated here. As Runner: 1580 ± 200 (2–0–1)");
+        assert_eq!(StandingHere::from_reply(None, None), StandingHere::NoKey);
+        assert_eq!(StandingHere::from_reply(Some(Identity::from_secret([7; 32]).public_key()), None), StandingHere::Unrated);
     }
 
     #[test]

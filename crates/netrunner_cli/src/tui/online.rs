@@ -51,6 +51,7 @@ use netrunner_server::MatchSummary;
 
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
+use netrunner_client::identity::StandingHere;
 use netrunner_client::online;
 use netrunner_client::remote::{Attached, AttachedEvent};
 use netrunner_client::settings::format_name;
@@ -198,11 +199,29 @@ struct ServerPage {
     editing: Option<ServerField>,
     /// The link's status line while it is down.
     link: Option<String>,
+    /// This person's standing at the server, as it last answered: asked
+    /// on attaching and after every game.
+    standing: StandingHere,
 }
 
 impl ServerPage {
     fn new(hosting: bool, lobbies: Vec<LobbyInfo>) -> Self {
-        ServerPage { hosting, lobbies, lobby: None, seeking: None, decks: Vec::new(), chair: ChairChoice::Corp, corp_deck: 0, runner_deck: 0, cursor: 0, code: String::new(), code_password: String::new(), editing: None, link: None }
+        ServerPage {
+            hosting,
+            lobbies,
+            lobby: None,
+            seeking: None,
+            decks: Vec::new(),
+            chair: ChairChoice::Corp,
+            corp_deck: 0,
+            runner_deck: 0,
+            cursor: 0,
+            code: String::new(),
+            code_password: String::new(),
+            editing: None,
+            link: None,
+            standing: StandingHere::Unasked,
+        }
     }
 
     fn rows(&self) -> Vec<Row> {
@@ -273,13 +292,18 @@ struct MakeForm {
     name: String,
     format: NsgFormat,
     closed: bool,
+    /// Games here count for nothing, on a server that would rate them.
+    casual: bool,
     password: String,
     cursor: usize,
     editing: Option<usize>,
 }
 
 impl MakeForm {
-    const ROWS: usize = 5;
+    /// Name, format, who can find it, whether its games count, password,
+    /// Make.
+    const ROWS: usize = 6;
+    const PASSWORD: usize = 4;
 }
 
 /// The in-process server while this player hosts, and what it gives out.
@@ -461,6 +485,9 @@ impl OnlineScreen {
             let event = self.attached.as_mut()?.poll()?;
             match event {
                 AttachedEvent::Attached(lobbies) => {
+                    // The standing is asked on attaching and after every
+                    // game, so the page shows the number the game moved.
+                    self.attached.as_ref()?.standing();
                     match &mut self.mode {
                         // A reattach: the list is fresh, the rest stands.
                         Mode::Server(page) | Mode::MakeLobby { page, .. } | Mode::PickDeck { page, .. } => page.lobbies = lobbies,
@@ -519,11 +546,17 @@ impl OnlineScreen {
                     }
                 }
                 AttachedEvent::BackInLobby(lobby) => {
+                    self.attached.as_ref()?.standing();
                     if let Some(page) = self.page_mut() {
                         page.seeking = None;
                         if lobby.is_some() {
                             page.lobby = lobby;
                         }
+                    }
+                }
+                AttachedEvent::Standing { key, standing } => {
+                    if let Some(page) = self.page_mut() {
+                        page.standing = StandingHere::from_reply(key, standing);
                     }
                 }
                 AttachedEvent::Link(Link::Down(error)) => {
@@ -802,7 +835,7 @@ impl OnlineScreen {
                 Row::Refresh => attached.list_lobbies(),
                 Row::Make => {
                     let format = page.lobby.as_ref().or(page.lobbies.first()).map_or(self.format, |lobby| lobby.format);
-                    let form = MakeForm { name: String::new(), format, closed: false, password: String::new(), cursor: 0, editing: None };
+                    let form = MakeForm { name: String::new(), format, closed: false, casual: false, password: String::new(), cursor: 0, editing: None };
                     self.mode = Mode::MakeLobby { page, form };
                     return;
                 }
@@ -889,17 +922,19 @@ impl OnlineScreen {
             KeyCode::Left if form.cursor == 1 => form.format = step_format(form.format, true),
             KeyCode::Right | KeyCode::Char(' ') if form.cursor == 1 => form.format = step_format(form.format, false),
             KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.cursor == 2 => form.closed = !form.closed,
+            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.cursor == 3 => form.casual = !form.casual,
             KeyCode::Enter => match form.cursor {
                 0 => form.editing = Some(0),
                 1 => form.format = step_format(form.format, false),
                 2 => form.closed = !form.closed,
-                3 => form.editing = Some(3),
+                3 => form.casual = !form.casual,
+                MakeForm::PASSWORD => form.editing = Some(MakeForm::PASSWORD),
                 _ => {
                     if form.name.trim().is_empty() {
                         self.notice = Some("Give the lobby a name".to_string());
                     } else if let Some(attached) = &self.attached {
                         let password = Some(form.password.trim().to_string()).filter(|password| !password.is_empty());
-                        attached.create_lobby(form.name.trim().to_string(), form.format, form.closed, password);
+                        attached.create_lobby(form.name.trim().to_string(), form.format, form.closed, password, form.casual);
                     }
                 }
             },
@@ -978,7 +1013,8 @@ impl OnlineScreen {
                     format!("Name             {}", text(form.editing == Some(0), &form.name)),
                     format!("Format           ‹ {} ›", capitalised(format_name(form.format))),
                     format!("Who can find it  ‹ {} ›", if form.closed { "closed — joined by the code the server gives it" } else { "listed — anyone on the server" }),
-                    format!("Password         {}", if form.password.is_empty() && form.editing != Some(3) { "(none)".to_string() } else { text(form.editing == Some(3), &form.password) }),
+                    format!("Do games count   ‹ {} ›", if form.casual { "unrated — nothing here is rated" } else { "rated — as the server's own lobbies are" }),
+                    format!("Password         {}", if form.password.is_empty() && form.editing != Some(MakeForm::PASSWORD) { "(none)".to_string() } else { text(form.editing == Some(MakeForm::PASSWORD), &form.password) }),
                     "[ Make ]".to_string(),
                 ];
                 let items = rows.into_iter().map(ListItem::new).collect();
@@ -1039,7 +1075,9 @@ impl OnlineScreen {
         draw_list(frame, area, &title, items, Some(form.cursor));
     }
 
-    /// The Server page: the host's lines above the rows, when hosting.
+    /// The Server page: the host's lines above the rows, when hosting,
+    /// and in a lobby whether a game there counts and what this person
+    /// stands at.
     fn draw_server(&self, frame: &mut Frame, area: Rect, page: &ServerPage) {
         let mut head: Vec<Line> = Vec::new();
         if let Some(link) = &page.link {
@@ -1048,12 +1086,15 @@ impl OnlineScreen {
         if page.hosting {
             head.extend(self.hosting_lines.lines().map(|line| Line::from(line.to_string())));
         }
+        if let Some(lobby) = &page.lobby {
+            head.push(Line::from(netrunner_client::identity::lobby_rating_line(lobby.rated, page.hosting, &page.standing)));
+        }
         let [top, list] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(if head.is_empty() { 0 } else { head.len() as u16 + 2 }), Constraint::Min(0)])
             .areas(area);
         if !head.is_empty() {
-            frame.render_widget(Paragraph::new(head).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Hosting")), top);
+            frame.render_widget(Paragraph::new(head).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(if page.hosting { "Hosting" } else { "Server" })), top);
         }
         let text = |field: ServerField, value: &str, blank: &str| {
             if page.editing == Some(field) {
@@ -1075,6 +1116,7 @@ impl OnlineScreen {
                     if lobby.password {
                         line.push_str(" · password");
                     }
+                    line.push_str(if lobby.rated { " · rated" } else { " · unrated" });
                     line
                 }
                 Row::Refresh => "List the lobbies again".to_string(),
@@ -1377,19 +1419,20 @@ mod tests {
         let address = host_up(&mut host).await;
         let (mut joiner, _) = screen("maker");
         join(&mut joiner, &address).await;
-        // Make a lobby…: name, closed, password, Make.
+        // Make a lobby…: name, closed, unrated, password, Make.
         let Mode::Server(page) = &mut joiner.mode else { panic!() };
         page.rest_on(Row::Make);
         joiner.key(KeyCode::Enter);
         assert!(matches!(joiner.mode, Mode::MakeLobby { .. }));
         joiner.key(KeyCode::Enter);
         type_text(&mut joiner, "Friday");
-        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Enter]);
+        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(&joiner.mode, Mode::MakeLobby { form, .. } if form.closed && form.casual && form.editing == Some(MakeForm::PASSWORD)), "{:?}", joiner.notice);
         type_text(&mut joiner, "swordfish");
         press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
         until_in_lobby(&mut joiner).await;
         let made = server_page(&joiner).unwrap().lobby.clone().unwrap();
-        assert!(made.closed && made.password && made.name == "Friday" && made.id.len() == 6, "{made:?}");
+        assert!(made.closed && made.password && !made.rated && made.name == "Friday" && made.id.len() == 6, "{made:?}");
 
         // The host joins the closed lobby by its code and password, typed
         // in lower case.
@@ -1501,7 +1544,19 @@ mod tests {
             (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n")
         };
         let text = drawn(&host);
-        for wanted in [&address[..], "Give your opponent an address", "Here  Startup — 1 here, 0 looking", "Chair            ‹ Corp ›", "Corp deck        Corp ·", "[ Find a game ]", "[ Leave lobby ]", "[ Disconnect ]", "Make a lobby…", "[ Join by code ]"] {
+        for wanted in [
+            &address[..],
+            "Give your opponent an address",
+            "Here  Startup — 1 here, 0 looking · unrated",
+            "Unrated: a game hosted from this machine is never rated.",
+            "Chair            ‹ Corp ›",
+            "Corp deck        Corp ·",
+            "[ Find a game ]",
+            "[ Leave lobby ]",
+            "[ Disconnect ]",
+            "Make a lobby…",
+            "[ Join by code ]",
+        ] {
             assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
         }
         seek_as(&mut host, ChairChoice::Either, "brick_stack");
