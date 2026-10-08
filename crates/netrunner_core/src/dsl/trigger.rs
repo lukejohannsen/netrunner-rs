@@ -680,10 +680,16 @@ pub enum EventFilter {
     /// not about.
     Card(crate::dsl::CardFilter),
     /// The server the moment is about is one of these. "A central server"
-    /// is the three of them by name; nothing in the pool is printed about
-    /// "a remote server", which a list of ids could not say and a variant
-    /// here would.
+    /// is the three of them by name; "a remote server", which a list of
+    /// ids cannot say, is `ServerKind`.
     Server(Vec<crate::rules::ServerId>),
+    /// The server the moment is about is of this kind — Bank Job's
+    /// "whenever you make a successful run on **a remote server**".
+    /// Composition didn't work: `Server` names servers, and a remote's
+    /// number is not known to the card (`InstalledIn` is the same word
+    /// about where an install went, read off a different half of the
+    /// moment).
+    ServerKind(crate::dsl::ServerKind),
     /// The server the moment is about is the Runner's mark (CR 10.11) —
     /// Info Bounty's "the first time each turn a run **on your mark**
     /// ends". Read off the state as the scan runs (`lingering::mark`), and

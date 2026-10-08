@@ -29553,4 +29553,68 @@ mod reprints {
         assert_eq!(installed.runner.stack, vec![id("sure_gamble")]);
         assert_eq!(crate::rules::continuous::link(&installed, &registry), link + 2);
     }
+
+    // ---- Stage 11i: a remote server, and the chosen ice for the turn ----
+
+    /// Bank Job loads 8[credit], and a successful run on a remote may take
+    /// any number of them instead of the breach; empty, it is trashed. A
+    /// run on a central is breached as usual.
+    #[test]
+    fn bank_job_takes_credits_instead_of_breaching_a_remote_and_is_trashed_empty() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("bank_job")];
+        let state = install_resource(&state, &registry, "bank_job");
+        assert_eq!(counters_on(&state, "bank_job"), 8, "load 8[credit] on it");
+        let credits = state.runner.resources.credits;
+
+        let (central, _) = run_to_completion(state.clone(), &registry, ServerId::Archives);
+        let (central, _) = pass_until_settled(central, &registry);
+        assert!(!matches!(central.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "not a remote server");
+
+        let mut state = state;
+        state.corp.installed = vec![remote_root("pad_campaign", 0)];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (asked, _) = pass_until_settled(asked, &registry);
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may");
+        let (taking, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take credits");
+        let (took, events) = apply_action(&taking, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("3 of them");
+        assert_eq!(took.runner.resources.credits, Credits(credits.0 + 3));
+        assert_eq!(counters_on(&took, "bank_job"), 5);
+        assert!(took.active_run.is_none(), "instead of breaching");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })));
+
+        let mut again = took;
+        again.runner.resources.clicks = Clicks(4);
+        let (asked, _) = run_to_completion(again, &registry, ServerId::Remote(0));
+        let (asked, _) = pass_until_settled(asked, &registry);
+        let (taking, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take credits");
+        let (emptied, _) = apply_action(&taking, &registry, PlayerAction::ChooseNumber { amount: 5 }).expect("the rest");
+        assert_eq!(emptied.runner.resources.credits, Credits(credits.0 + 8));
+        assert!(!emptied.runner.rig.iter().any(|card| card.card == id("bank_job")), "when it is empty, trash it");
+        assert!(emptied.runner.heap.contains(&id("bank_job")));
+    }
+
+    /// Tinkering gives the chosen ice, rezzed or not, all three subtypes
+    /// until the end of the turn.
+    #[test]
+    fn tinkering_makes_the_chosen_ice_every_type_until_the_end_of_the_turn() {
+        use crate::dsl::IceType;
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("tinkering")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") }];
+        let wall = state.corp.installed[0].install_id;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("tinkering") }).expect("play");
+        let offered = runner_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "a piece of ice");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("choose it");
+        let (tinkered, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        for subtype in [IceType::Sentry, IceType::CodeGate, IceType::Barrier] {
+            assert!(crate::rules::lingering::gains_subtype(&tinkered, wall, subtype), "{subtype:?}, facedown too");
+        }
+        let mut later = tinkered;
+        later.turn += 1;
+        assert!(!crate::rules::lingering::gains_subtype(&later, wall, IceType::Sentry), "until the end of the turn");
+    }
 }

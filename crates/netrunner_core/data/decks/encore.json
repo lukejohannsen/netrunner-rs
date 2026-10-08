@@ -3,7 +3,7 @@
   "name": "Encore",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both. Uprising Stage 5: two Makler for its two Marjanah, a fracter that pays a credit the first time each turn it fully breaks a piece of ice; Picket Line keeps Marjanah. Downfall Stage 3: two Bukhgalter for two Carmen, a killer that pays 2[credit] the first time each turn it fully breaks a piece of ice (banned in Standard, as Nyusha is). Downfall Stage 8: two Whistleblower for its two Verbal Plasticity, a connection that trashes itself on a successful run to name an agenda and steals it free the next time the run accesses it; and two Reprise for its two Overclock, because a new Corp deck re-paired the sweep's seeds and the 256-seed card gate then saw no Reprise in Hit List, where it was alone: here it follows the steal Whistleblower makes. Overclock is in other decks. Reprints Stage 1 (System Update 2021): two Legwork for the two Tread Lightly, two Dirty Laundry for the two Docklands Pass, and two Abagnale, decoder for decoder, for the two Buzzsaw; and two Career Fair for its Red Team and two Earthrise Hotel for its Mutual Favor, both in many decks; each card given up is still in Moonlighting. Reprints Stage 1b: two Cache for its two Leech, and two Emergency Shutdown, a derez after a successful run on HQ, for two of its three Sure Gamble; both are in many decks. Tranche 8 Stage 6a: two e3 Feedback Implants for two Capybara, which pay 1[credit] to break one more subroutine on the same ice. Three other decks keep Capybara. Tranche 8 Stage 8b: two Security Testing for its two Debbie \"Downtown\" Moreira, a resource for a resource, which gains 2[credit] instead of the first breach each turn of the server it chose as the turn began; three other decks keep Debbie. Tranche 8 Stage 9e: two Crowdfunding for its two Earthrise Hotel, a resource that pays out over turns and draws a card when spent; Express Delivery keeps Earthrise Hotel.",
+  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard. Midnight Sun Stage 6b: three Pinhole Threading for its two Strike Fund and a Chrysopoeian Skimming, a run that accesses a root card elsewhere; Picket Line keeps both. Uprising Stage 5: two Makler for its two Marjanah, a fracter that pays a credit the first time each turn it fully breaks a piece of ice; Picket Line keeps Marjanah. Downfall Stage 3: two Bukhgalter for two Carmen, a killer that pays 2[credit] the first time each turn it fully breaks a piece of ice (banned in Standard, as Nyusha is). Downfall Stage 8: two Whistleblower for its two Verbal Plasticity, a connection that trashes itself on a successful run to name an agenda and steals it free the next time the run accesses it; and two Reprise for its two Overclock, because a new Corp deck re-paired the sweep's seeds and the 256-seed card gate then saw no Reprise in Hit List, where it was alone: here it follows the steal Whistleblower makes. Overclock is in other decks. Reprints Stage 1 (System Update 2021): two Legwork for the two Tread Lightly, two Dirty Laundry for the two Docklands Pass, and two Abagnale, decoder for decoder, for the two Buzzsaw; and two Career Fair for its Red Team and two Earthrise Hotel for its Mutual Favor, both in many decks; each card given up is still in Moonlighting. Reprints Stage 1b: two Cache for its two Leech, and two Emergency Shutdown, a derez after a successful run on HQ, for two of its three Sure Gamble; both are in many decks. Tranche 8 Stage 6a: two e3 Feedback Implants for two Capybara, which pay 1[credit] to break one more subroutine on the same ice. Three other decks keep Capybara. Tranche 8 Stage 8b: two Security Testing for its two Debbie \"Downtown\" Moreira, a resource for a resource, which gains 2[credit] instead of the first breach each turn of the server it chose as the turn began; three other decks keep Debbie. Tranche 8 Stage 9e: two Crowdfunding for its two Earthrise Hotel, a resource that pays out over turns and draws a card when spent; Express Delivery keeps Earthrise Hotel. Tranche 8 Stage 11i: two Bank Job for the Info Bounty, so a Core Set job is played.",
   "style": [
     "pressure"
   ],
@@ -23,10 +23,6 @@
     },
     {
       "card": "tunnel_vision",
-      "count": 2
-    },
-    {
-      "card": "info_bounty",
       "count": 2
     },
     {
@@ -95,6 +91,10 @@
     },
     {
       "card": "emergency_shutdown",
+      "count": 2
+    },
+    {
+      "card": "bank_job",
       "count": 2
     }
   ]

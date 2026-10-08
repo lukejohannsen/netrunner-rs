@@ -481,6 +481,13 @@ impl Occurrences {
                     })
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::ServerKind(kind)) => Some(
+                [(ServerId::Archives, ServerClass::Archives), (ServerId::RnD, ServerClass::RnD), (ServerId::Hq, ServerClass::Hq), (ServerId::Remote(0), ServerClass::Remote)]
+                    .into_iter()
+                    .filter(|(server, _)| kind.admits(*server))
+                    .map(|(_, class)| bit(Class::Server(class)))
+                    .fold(0, |mask, column| mask | column),
+            ),
             // Always a central server (CR 10.11.2), and which one is the
             // state's: `first_time_on` writes the turn's mark in before a
             // count is read, so this is only what `validate` checks.

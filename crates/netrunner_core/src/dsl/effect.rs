@@ -1342,12 +1342,22 @@ pub enum Effect {
     /// encounter to the run — Rielle "Kit" Peddler's "it gains **code
     /// gate** for the remainder of this run" (`Until::Run`). A word on the
     /// encountered ice's sentence, refused on the others by `validate`.
+    ///
+    /// `for_the_turn` is the chosen ice's sentence — Tinkering's "Choose a
+    /// piece of ice. That ice gains **sentry**, **code gate**, and
+    /// **barrier** until the end of the turn": `This` inside a selection's
+    /// `then` is the ice chosen, rezzed or not, and the gain lasts the turn
+    /// (`Until::Turn`) rather than while it remains rezzed. A word on
+    /// `This`, refused on the others by `validate`, for the reason
+    /// `for_the_run` is one.
     GainIceSubtype {
         subtype: crate::dsl::IceType,
         #[serde(default = "StrengthOf::this", skip_serializing_if = "StrengthOf::is_this")]
         ice: StrengthOf,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         for_the_run: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        for_the_turn: bool,
     },
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked

@@ -1312,7 +1312,7 @@ pub fn evaluate_effect(
 
         // "The ice you are encountering gains that subtype for the
         // remainder of this encounter" (Pelangi).
-        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::Encountered, for_the_run } => {
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::Encountered, for_the_run, .. } => {
             let run = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
             let install = run.ice.get(run.position).map(|ice| ice.install_id).ok_or(RulesError::NotInEncounter)?;
             let source = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
@@ -1322,6 +1322,18 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce, .. } => Err(RulesError::UnresolvedCardTarget),
+        // "That ice gains … until the end of the turn" (Tinkering): the ice
+        // chosen, faceup or not, credited to the card whose text it is.
+        Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn: true, .. } => {
+            let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+            if !state.corp.installed.iter().any(|card| card.install_id == install && card.slot == InstallSlot::Ice) {
+                return Ok(Vec::new());
+            }
+            let source = ctx.prompting_card.or(acting_card).cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let until = lingering::until(state, crate::dsl::EffectDuration::Turn, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
+            Ok(Vec::new())
+        }
         Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, .. } => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
             let rezzed_ice = state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed && card.slot == InstallSlot::Ice);
