@@ -1,19 +1,31 @@
-//! Play Online: host a game, join one by address or ticket, or watch one
-//! (Phase 7 §7). The terminal's screen of the same name
+//! Play Online: host a game, connect to a server by address or ticket, or
+//! watch a game (Phase 7 §7). The terminal's screen of the same name
 //! (`netrunner_cli::tui::online`) drawn as the desktop's forms are, over
-//! the same pieces: `netrunner_client::online` for the deck brought,
+//! the same pieces: `netrunner_client::online` for the decks brought,
 //! `hosting::Invitation` for what a host gives out, `remote` for the
 //! connection, and `MatchHandle::start_remote` for the match — so the
 //! board plays a game online exactly as it plays one at home.
 //!
-//! **Host runs a server inside this process and joins it like anyone
-//! else**, over loopback: the host plays through a masked `ClientView` as
-//! their opponent does, and what holds the real `GameState` is the server
-//! task, not the screen. Unrated, as the terminal's is: a rating is a
-//! claim by a server somebody else runs (`docs/identity-and-rating.md`).
-//! The server outlives the screen for as long as the match does — it rides
-//! in `ActiveMatch` — and a host who leaves the board concedes before it
-//! stops (`HostedServer`).
+//! **The connection outlives the game** (Phase 4 §7 stage 4c). Hosting
+//! and connecting both end on the Server page, attached: the lobbies
+//! listed, one joined, a lobby made or a closed one joined by its code,
+//! and in a lobby a game looked for in a chair with that chair's deck or
+//! decks. The [`Connected`] resource holds the connection, and it is not a
+//! part of this screen's tree: it stays while the board plays the game
+//! and is polled again when the board leads back here, where the
+//! `BackInLobby` is waiting and the next game is a chair and a deck away.
+//! It goes when the person disconnects — Escape or the button on the
+//! Server page — or leaves the screen for anywhere but the board.
+//!
+//! **Host runs a server inside this process and attaches to it like
+//! anyone else**, over loopback: the host plays through a masked
+//! `ClientView` as their opponent does, and what holds the real
+//! `GameState` is the server task, not the screen. Unrated, as the
+//! terminal's is: a rating is a claim by a server somebody else runs
+//! (`docs/identity-and-rating.md`). The server rides in `Connected` with
+//! the connection, and once a game has been played on it it lingers a few
+//! seconds after it is let go, so a concession made by leaving the board
+//! reaches the opponent before the server stops (`HostedServer`).
 //!
 //! **Nothing here blocks the frame.** Hosting, dialling and listing a
 //! server's matches all run on the client's tokio runtime
@@ -31,22 +43,23 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 
+use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::online;
 use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
-use netrunner_client::remote::{self, ConnectEvent, Connecting};
+use netrunner_client::remote::{self, Attached, AttachedEvent, ConnectEvent, Connecting};
 use netrunner_client::settings::{format_name, FORMATS};
-use netrunner_server::protocol::format_lobby_id;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
+use netrunner_server::protocol::LobbyInfo;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, TokioRuntime};
-use crate::models::online::{reach_pill, Field, Intent, OnlineForm, Outcome, Page};
+use crate::models::online::{lobby_title, reach_pill, ChairChoice, Field, Intent, OnlineForm, Outcome, Page, ServerState};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
@@ -60,14 +73,14 @@ pub struct OnlinePlugin;
 impl Plugin for OnlinePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::Online), spawn)
-            .add_systems(OnExit(AppScreen::Online), |mut commands: Commands| commands.remove_resource::<Net>())
+            .add_systems(OnExit(AppScreen::Online), leave)
             .add_systems(Update, escape.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::Online)))
             .add_systems(Update, (dev_page, controls, fields, net, refresh).chain().run_if(in_state(AppScreen::Online)));
     }
 }
 
-/// How long a host's server outlives the board it was left from: long
-/// enough for the concession to reach the opponent, over a relay too.
+/// How long a host's server outlives the connection it was let go with:
+/// long enough for a concession to reach the opponent, over a relay too.
 const HOST_LINGER: Duration = Duration::from_secs(3);
 
 /// How long a server has to list its matches.
@@ -77,12 +90,12 @@ const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 /// stops the server — a match on it ends — releases the router's port and
 /// closes the ticket's endpoint.
 ///
-/// **Once it carries a match it lingers**: the board it rides on is left
-/// by conceding (`MatchHandle::quit`), and a server stopped at once would
+/// **Once it has carried a match it lingers**: the board is left by
+/// conceding (`MatchHandle::quit`), and a server stopped at once would
 /// take the concession down with it, leaving the opponent to wait out the
-/// reconnect before learning the game is over. So a server handed to a
-/// match (`linger`) is stopped a few seconds after it is let go, on the
-/// runtime, and one given up while still waiting is stopped at once, so
+/// reconnect before learning the game is over. So a server a game was
+/// played on (`linger`) is stopped a few seconds after it is let go, on
+/// the runtime, and one given up before any game is stopped at once, so
 /// its port is free to host on again.
 ///
 /// The invitation sits behind a mutex only because the router request in
@@ -120,11 +133,12 @@ impl Drop for HostedServer {
 
 /// What a game online adds to the match the board plays.
 pub struct OnlineMatch {
-    /// The server, when this person is the host.
+    /// A server that rides with the match alone — the one the `spectate`
+    /// dev hook has two bots play on. A person's own server rides in
+    /// [`Connected`], with the connection.
     pub hosting: Option<HostedServer>,
     pub watching: bool,
-    /// Said once, in the log: a host that dealt a deck other than the one
-    /// brought, because it predates bringing one.
+    /// Said once, in the log.
     pub notice: Option<String>,
 }
 
@@ -133,19 +147,38 @@ pub struct OnlineMatch {
 #[derive(Resource)]
 pub struct Model(pub OnlineForm);
 
-/// What is running on the network for this screen. Removed on leaving it,
-/// which drops a connection still waiting — closing its socket, so a host
-/// or a daemon drops the waiter from its lobby rather than pairing someone
-/// with a person who has gone — and a server nobody has joined.
+/// The attached connection, and the server it is to when this person
+/// hosts. Not removed with the screen's tree: it stays while the board
+/// plays a game found on it, and goes when the person disconnects or
+/// leaves the screen for anywhere else (`leave`). Dropping it closes the
+/// socket — once the game's own channel has gone too — so a player looking
+/// for a game leaves the lobby rather than being paired after they have
+/// gone, and stops the hosted server.
+#[derive(Resource)]
+pub struct Connected {
+    attached: Attached,
+    hosting: Option<HostedServer>,
+}
+
+impl Connected {
+    /// Whether this person hosts the server they are attached to.
+    pub fn is_hosting(&self) -> bool {
+        self.hosting.is_some()
+    }
+}
+
+/// What else is running on the network for this screen. Removed on
+/// leaving it, which drops a spectator's connection still waiting and a
+/// dev hook's server nobody has joined.
 #[derive(Resource, Default)]
 struct Net {
+    /// A spectator's connection, until it has its place.
     connecting: Option<Connecting>,
+    /// The `spectate` dev hook's server, for the bots.
     hosting: Option<HostedServer>,
     /// A server's list on its way; behind a mutex for `HostedServer`'s
     /// reason.
     listing: Option<Mutex<mpsc::Receiver<Result<Vec<MatchSummary>, String>>>>,
-    /// The id of the deck sent, to check against the one dealt.
-    brought: Option<String>,
     /// The invitation's lines as last drawn, so the page is redrawn only
     /// when the router or the relay has answered.
     shown: Vec<Way>,
@@ -164,15 +197,29 @@ pub enum Control {
     Paste(Field),
     Reach(Reach),
     Format(NsgFormat),
+    /// Make a lobby's: listed, or joined by its code.
+    Closed(bool),
     WatchFrom(Side),
     Watch(usize),
     /// The `n`th thing the host gives out.
     Copy(usize),
+    /// The Server page's.
+    JoinLobby(usize),
+    JoinById,
+    LeaveLobby,
+    Refresh,
+    Chair(ChairChoice),
+    Seek,
+    CancelSeek,
+    Disconnect,
 }
 
-/// The deck drop-down.
+/// The deck drop-downs, one per side.
 #[derive(Component)]
-struct DeckDropdown;
+struct CorpDeckDropdown;
+
+#[derive(Component)]
+struct RunnerDeckDropdown;
 
 /// Where a field's box sits, so a press on it can put the editor there.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,17 +228,14 @@ struct FieldSlot(Field);
 #[derive(Component)]
 struct FormRoot;
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>, connected: Option<Res<Connected>>) {
     commands.init_resource::<Dirty>();
     commands.insert_resource(Net::default());
     match model {
-        Some(mut model) => {
-            let decks = deck_choices(&core, model.0.format);
-            model.0.reopen(decks);
-        }
+        Some(mut model) => model.0.reopen(connected.is_some()),
         None => {
             let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-            commands.insert_resource(Model(OnlineForm::new(deck_choices(&core, format), hosting::normalize_address("127.0.0.1"), format)));
+            commands.insert_resource(Model(OnlineForm::new(hosting::normalize_address("127.0.0.1"), format)));
         }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
@@ -208,8 +252,18 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
     commands.insert_resource(Dirty(true));
 }
 
-/// The decks offered: every deck legal in `format`, the lobby chosen,
-/// built-in and saved. There is no deal to ask a host for.
+/// Leaving the screen: the connection stays only for the board, which
+/// plays a game found on it and leads back here.
+fn leave(world: &mut World) {
+    world.remove_resource::<Net>();
+    let to_the_board = world.get_resource::<ActiveMatch>().is_some_and(|active| active.online.is_some());
+    if !to_the_board {
+        world.remove_resource::<Connected>();
+    }
+}
+
+/// The decks offered: every deck legal in `format`, the lobby's, built-in
+/// and saved. There is no deal to ask a host for.
 fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckFile> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     online::deck_choices(&decks_dir, &core.registry, format)
@@ -218,16 +272,26 @@ fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckFile> {
 /// Escape steps back a page; from Home the navigation rule takes it off
 /// the screen. After the text field's system, so an Escape that cancels
 /// an edit does nothing more.
-fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, model: Option<ResMut<Model>>, mut net: Option<ResMut<Net>>, mut dirty: ResMut<Dirty>) {
+#[allow(clippy::too_many_arguments)]
+fn escape(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut captured: ResMut<InputCaptured>,
+    model: Option<ResMut<Model>>,
+    mut net: Option<ResMut<Net>>,
+    mut dirty: ResMut<Dirty>,
+    core: Res<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
+    mut navigate: MessageWriter<Navigate>,
+) {
     let Some(mut model) = model else { return };
     if captured.0 || !keys.just_pressed(KeyCode::Escape) || model.0.page == Page::Home {
         return;
     }
     captured.0 = true;
-    if model.0.apply(Intent::Back) == Outcome::Stop
-        && let Some(net) = net.as_mut()
-    {
-        stop(net);
+    let outcome = model.0.apply(Intent::Back);
+    if let Some(net) = net.as_mut() {
+        carry_out(outcome, &mut model.0, net, &mut commands, &core, runtime.as_deref(), &mut navigate);
     }
     dirty.0 = true;
 }
@@ -244,7 +308,8 @@ fn controls(
     mut pressed: MessageReader<Pressed>,
     mut chosen: MessageReader<DropdownChanged>,
     marks: Query<&Control>,
-    dropdowns: Query<(), With<DeckDropdown>>,
+    corp_dropdowns: Query<(), With<CorpDeckDropdown>>,
+    runner_dropdowns: Query<(), With<RunnerDeckDropdown>>,
     slots: Query<(Entity, &FieldSlot)>,
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
@@ -256,8 +321,11 @@ fn controls(
     mut navigate: MessageWriter<Navigate>,
 ) {
     for DropdownChanged { dropdown, index } in chosen.read() {
-        if dropdowns.contains(*dropdown) {
-            model.0.apply(Intent::SetDeck(*index));
+        if corp_dropdowns.contains(*dropdown) {
+            model.0.apply(Intent::SetCorpDeck(*index));
+            dirty.0 = true;
+        } else if runner_dropdowns.contains(*dropdown) {
+            model.0.apply(Intent::SetRunnerDeck(*index));
             dirty.0 = true;
         }
     }
@@ -270,8 +338,17 @@ fn controls(
             Control::List => Intent::List,
             Control::Reach(reach) => Intent::SetReach(reach),
             Control::Format(format) => Intent::SetFormat(format),
+            Control::Closed(closed) => Intent::SetClosed(closed),
             Control::WatchFrom(side) => Intent::SetWatchFrom(side),
             Control::Watch(index) => Intent::Watch(index),
+            Control::JoinLobby(index) => Intent::JoinLobby(index),
+            Control::JoinById => Intent::JoinById,
+            Control::LeaveLobby => Intent::LeaveLobby,
+            Control::Refresh => Intent::Refresh,
+            Control::Chair(chair) => Intent::SetChair(chair),
+            Control::Seek => Intent::Seek,
+            Control::CancelSeek => Intent::CancelSeek,
+            Control::Disconnect => Intent::Disconnect,
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
                 // redrawn until it is committed or let go.
@@ -296,7 +373,7 @@ fn controls(
         };
         let outcome = model.0.apply(intent);
         dirty.0 = true;
-        carry_out(outcome, &mut model.0, &mut net, &core, runtime.as_deref(), &mut navigate);
+        carry_out(outcome, &mut model.0, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate);
     }
 }
 
@@ -323,16 +400,31 @@ fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text
 }
 
 /// What a press asked of the network, started. Every failure is the
-/// form's notice.
-fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: Option<&TokioRuntime>, navigate: &mut MessageWriter<Navigate>) {
-    let needs_runtime = matches!(outcome, Outcome::Host { .. } | Outcome::Join { .. } | Outcome::List { .. } | Outcome::Watch { .. });
+/// form's notice. A request on the attached connection goes through
+/// `Connected`, inserted here when hosting or connecting and removed when
+/// the person disconnects; the machine and the server answer it, and the
+/// answers come back through `net`.
+#[allow(clippy::too_many_arguments)]
+fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &ClientCore, runtime: Option<&TokioRuntime>, navigate: &mut MessageWriter<Navigate>) {
+    let needs_runtime = matches!(outcome, Outcome::Host { .. } | Outcome::Connect { .. } | Outcome::List { .. } | Outcome::Watch { .. });
     let Some(runtime) = runtime.filter(|_| needs_runtime) else {
         match outcome {
             Outcome::Leave => {
                 navigate.write(Navigate(AppScreen::MainMenu));
             }
-            Outcome::Stop => stop(net),
+            Outcome::Stop => {
+                stop(net);
+                // A dial still under way is let go with the connection.
+                commands.remove_resource::<Connected>();
+            }
+            Outcome::Disconnect => {
+                net.shown.clear();
+                commands.remove_resource::<Connected>();
+            }
             Outcome::Decks(format) => form.set_decks(deck_choices(core, format)),
+            Outcome::ListLobbies | Outcome::JoinLobby { .. } | Outcome::LeaveLobby | Outcome::CreateLobby { .. } | Outcome::Seek(_) | Outcome::CancelSeek => {
+                commands.queue(move |world: &mut World| ask(world, outcome));
+            }
             Outcome::Nothing | Outcome::Redraw => {}
             _ => {
                 form.apply(Intent::Failed("The network runtime did not start, so nothing can be hosted or joined".to_string()));
@@ -343,9 +435,8 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
     // `remote`, the server and the ticket's endpoint each spawn onto the
     // runtime they are started in.
     let _guard = runtime.0.enter();
-    let player = core.player_name();
     match outcome {
-        Outcome::Host { port, reach, format, deck } => {
+        Outcome::Host { port, reach, format } => {
             let relay = match reach {
                 Reach::Internet => match Relay::from_setting(core.settings.relay.as_deref()) {
                     Ok(relay) => Some(relay),
@@ -356,11 +447,9 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                 },
                 _ => None,
             };
-            host(form, net, core, runtime, port, reach, format, *deck, relay);
+            host(form, net, commands, core, runtime, port, reach, format, relay);
         }
-        Outcome::Join { url, lobby, password, format, deck } => {
-            net.brought = Some(deck.id.clone());
-            let lobby = lobby.unwrap_or_else(|| format_lobby_id(format));
+        Outcome::Connect { url } => {
             let credentials = match core.credentials() {
                 Ok(credentials) => credentials,
                 Err(error) => {
@@ -368,12 +457,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                     return;
                 }
             };
-            let hello = remote::seat(&player, lobby, password, *deck).with_credentials(credentials);
-            net.connecting = Some(remote::seek(url.clone(), hello));
+            let who = Who { player_name: core.player_name(), credentials: credentials.map(Box::new) };
+            commands.insert_resource(Connected { attached: remote::spawn(url.clone(), Goal::Attach(who)), hosting: None });
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
         Outcome::Watch { url, match_id } => {
-            net.brought = None;
             net.connecting = Some(remote::watch(url.clone(), match_id));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
@@ -389,22 +477,38 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
             });
             net.listing = Some(Mutex::new(rx));
         }
-        Outcome::Leave | Outcome::Stop | Outcome::Decks(_) | Outcome::Nothing | Outcome::Redraw => unreachable!("needs no runtime"),
+        _ => unreachable!("needs no runtime"),
     }
 }
 
-/// Starts hosting and joins the server as its first seat. Inside the
-/// runtime's context (`carry_out`'s guard).
+/// A request for the attached connection, sent when the frame's commands
+/// run — so one inserted in the same frame is there to take it. The
+/// machine refuses what makes no sense where it is, and the server's
+/// refusals come back as events.
+fn ask(world: &mut World, outcome: Outcome) {
+    let Some(connected) = world.get_resource::<Connected>() else { return };
+    match outcome {
+        Outcome::ListLobbies => connected.attached.list_lobbies(),
+        Outcome::JoinLobby { id, password } => connected.attached.join_lobby(id, password),
+        Outcome::LeaveLobby => connected.attached.leave_lobby(),
+        Outcome::CreateLobby { name, format, closed, password } => connected.attached.create_lobby(name, format, closed, password),
+        Outcome::Seek(chair) => connected.attached.seek(chair),
+        Outcome::CancelSeek => connected.attached.cancel_seek(),
+        _ => {}
+    }
+}
+
+/// Starts hosting and attaches to the server as its first player. Inside
+/// the runtime's context (`carry_out`'s guard). A host proves no key: a
+/// game on their own machine is never rated.
 #[allow(clippy::too_many_arguments)]
-fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, deck: DeckFile, relay: Option<Relay>) {
+fn host(form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>) {
     match start_hosting(port, reach, format, relay, runtime.handle()) {
         Ok((hosting, url)) => {
-            net.brought = Some(deck.id.clone());
-            let hello = remote::seat_in_format(&core.player_name(), format, deck);
-            net.connecting = Some(remote::seek(url, hello));
-            net.hosting = Some(hosting);
+            let who = Who { player_name: core.player_name(), credentials: None };
+            commands.insert_resource(Connected { attached: remote::spawn(url, Goal::Attach(who)), hosting: Some(hosting) });
             net.shown.clear();
-            form.apply(Intent::Waiting("Hosting — waiting for your opponent to join".to_string()));
+            form.apply(Intent::Waiting("Hosting — connecting to your own server…".to_string()));
         }
         Err(error) => {
             form.apply(Intent::Failed(format!("Could not host on port {port}: {error}")));
@@ -421,6 +525,7 @@ fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &Tokio
 /// puts one on this machine's screen without a second and a third client.
 #[allow(clippy::too_many_arguments)]
 fn dev_page(
+    mut commands: Commands,
     mut dev: Option<ResMut<crate::dev::Dev>>,
     mut done: Local<bool>,
     mut spectate: Local<Option<Mutex<mpsc::Receiver<Result<(String, uuid::Uuid), String>>>>>,
@@ -444,7 +549,7 @@ fn dev_page(
             dev.autoplayed = dev.autoplay;
         }
         match ready {
-            Ok((url, match_id)) => carry_out(Outcome::Watch { url, match_id }, form, &mut net, &core, runtime.as_deref(), &mut navigate),
+            Ok((url, match_id)) => carry_out(Outcome::Watch { url, match_id }, form, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate),
             Err(reason) => {
                 form.apply(Intent::Failed(reason));
             }
@@ -465,8 +570,7 @@ fn dev_page(
             form.apply(Intent::Open(Page::Host));
             let relay = (page == "ticket").then_some(Relay::Off);
             let format = form.format;
-            let Some(deck) = form.chosen_deck().cloned() else { return };
-            host(form, &mut net, &core, &runtime, 0, Reach::Network, format, deck, relay);
+            host(form, &mut net, &mut commands, &core, &runtime, 0, Reach::Network, format, relay);
             Outcome::Nothing
         }
         "spectate" | "spectate-corp" => {
@@ -476,8 +580,7 @@ fn dev_page(
             form.apply(Intent::SetWatchFrom(if page == "spectate" { Side::Runner } else { Side::Corp }));
             match start_hosting(0, Reach::ThisMachine, form.format, None, runtime.handle()) {
                 Ok((hosting, url)) => {
-                    // The server rides with the spectator's match, as a
-                    // host's does with their own.
+                    // The server rides with the spectator's match.
                     net.hosting = Some(hosting);
                     let decisions = dev.as_ref().map_or(0, |dev| dev.autoplay).max(1);
                     let format = form.format;
@@ -555,7 +658,7 @@ fn shortened(address: &str) -> String {
 }
 
 /// Binds a human-vs-human server on `port` and starts it, returning it
-/// and the loopback address the host joins by — the terminal's
+/// and the loopback address the host attaches by — the terminal's
 /// `start_hosting`, whose server is named here because `netrunner_client`
 /// may not name it. Port 0 takes any free port.
 fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>, runtime: tokio::runtime::Handle) -> Result<(HostedServer, String), String> {
@@ -585,14 +688,26 @@ fn fields(mut commands: Commands, edited: Query<(Entity, &TextField, &TextFieldE
 }
 
 /// Once a frame: the router's and the relay's answers, a server's list,
-/// and the connection — which ends on the board, or back at the form with
-/// the reason.
+/// the attached connection's answers — a game found on it ends on the
+/// board — and a spectator's connection, which ends on the board too, or
+/// back at the form with the reason.
 #[allow(clippy::too_many_arguments)]
-fn net(mut commands: Commands, mut net: ResMut<Net>, mut model: ResMut<Model>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, mut navigate: MessageWriter<Navigate>) {
-    let invited = net.hosting.as_ref().and_then(|hosting| hosting.invitation.as_ref()).and_then(|invitation| invitation.lock().ok().map(|mut invitation| {
-        invitation.poll();
-        invitation.ways()
-    }));
+fn net(
+    mut commands: Commands,
+    mut net: ResMut<Net>,
+    mut connected: Option<ResMut<Connected>>,
+    mut model: ResMut<Model>,
+    mut dirty: ResMut<Dirty>,
+    core: Res<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
+    mut navigate: MessageWriter<Navigate>,
+) {
+    let invited = connected.as_ref().and_then(|connected| connected.hosting.as_ref()).and_then(|hosting| hosting.invitation.as_ref()).and_then(|invitation| {
+        invitation.lock().ok().map(|mut invitation| {
+            invitation.poll();
+            invitation.ways()
+        })
+    });
     if let Some(ways) = invited
         && ways != net.shown
     {
@@ -614,17 +729,57 @@ fn net(mut commands: Commands, mut net: ResMut<Net>, mut model: ResMut<Model>, m
             Err(mpsc::TryRecvError::Disconnected) => net.listing = None,
         }
     }
+
+    // The attached connection: every answer is an intent, and a game is
+    // the board.
+    if let Some(connected) = connected.as_mut() {
+        let hosting = connected.hosting.is_some();
+        while let Some(event) = connected.attached.poll() {
+            dirty.0 = true;
+            let intent = match event {
+                AttachedEvent::Attached(lobbies) => Intent::Attached { lobbies, hosting },
+                AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
+                AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
+                AttachedEvent::LobbyLeft => Intent::LobbyLeft,
+                AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::Queued(position) => Intent::Queued(position),
+                AttachedEvent::SeekCancelled => Intent::SeekCancelled,
+                AttachedEvent::BackInLobby(lobby) => Intent::BackInLobby(lobby),
+                AttachedEvent::Link(Link::Down(error)) => {
+                    commands.remove_resource::<Connected>();
+                    net.shown.clear();
+                    Intent::Failed(error.to_string())
+                }
+                AttachedEvent::Link(link) => Intent::Link(link.status_line(Instant::now())),
+                AttachedEvent::Joined(joined) => {
+                    match MatchHandle::start_remote(core.registry.clone(), *joined, model.0.watch_from) {
+                        Ok(handle) => {
+                            // A game has been played on this server: a
+                            // concession made by leaving the board must
+                            // reach the opponent before it stops.
+                            if let Some(hosting) = connected.hosting.as_mut() {
+                                hosting.linger = true;
+                            }
+                            commands.insert_resource(ActiveMatch { handle, choice: None, lesson: None, starter: None, online: Some(OnlineMatch { hosting: None, watching: false, notice: None }) });
+                            navigate.write(Navigate(AppScreen::Game));
+                        }
+                        Err(error) => {
+                            model.0.apply(Intent::Failed(error));
+                        }
+                    }
+                    break;
+                }
+            };
+            let outcome = model.0.apply(intent);
+            carry_out(outcome, &mut model.0, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate);
+        }
+    }
+
+    // A spectator's connection.
     let mut outcome = None;
-    let hosting = net.hosting.is_some();
     if let Some(connecting) = &mut net.connecting {
         while let Some(event) = connecting.poll() {
             match event {
-                // A host's page reads its invitation; the lobby line is a
-                // joiner's.
-                ConnectEvent::Queued(position) if !hosting => {
-                    model.0.apply(Intent::Status(format!("In the lobby, waiting for an opponent ({position} waiting)…")));
-                    dirty.0 = true;
-                }
                 ConnectEvent::Queued(_) => {}
                 ConnectEvent::Link(link) => {
                     if let Some(line) = link.status_line(Instant::now()) {
@@ -652,22 +807,13 @@ fn net(mut commands: Commands, mut net: ResMut<Net>, mut model: ResMut<Model>, m
         ConnectEvent::Queued(_) | ConnectEvent::Link(_) => unreachable!("handled in the loop"),
     };
     let watching = joined.viewer == Viewer::Spectator;
-    let dealt = match joined.viewer {
-        Viewer::Player(Side::Corp) => Some(joined.decks.0.clone()),
-        Viewer::Player(Side::Runner) => Some(joined.decks.1.clone()),
-        Viewer::Spectator => None,
-    };
-    let notice = match (net.brought.take(), dealt) {
-        (Some(brought), Some(dealt)) if brought != dealt => Some(format!("This host dealt you {dealt:?} instead of your deck: it predates bringing your own")),
-        _ => None,
-    };
     match MatchHandle::start_remote(core.registry.clone(), *joined, model.0.watch_from) {
         Ok(handle) => {
             let hosting = net.hosting.take().map(|mut hosting| {
                 hosting.linger = true;
                 hosting
             });
-            commands.insert_resource(ActiveMatch { handle, choice: None, lesson: None, starter: None, online: Some(OnlineMatch { hosting, watching, notice }) });
+            commands.insert_resource(ActiveMatch { handle, choice: None, lesson: None, starter: None, online: Some(OnlineMatch { hosting, watching, notice: None }) });
             navigate.write(Navigate(AppScreen::Game));
         }
         Err(error) => {
@@ -683,6 +829,8 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::Lobby => &form.lobby,
         Field::Password => &form.password,
         Field::Port => &form.port,
+        Field::LobbyName => &form.make.name,
+        Field::LobbyPassword => &form.make.password,
     }
 }
 
@@ -700,7 +848,12 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
         Page::Host => spawn_host(parent, theme, form),
         Page::Join => spawn_join(parent, theme, form),
         Page::Watch => spawn_watch(parent, theme, form, net.listing.is_some()),
-        Page::Waiting => spawn_waiting(parent, theme, form, net),
+        Page::Waiting => spawn_waiting(parent, theme, form),
+        Page::Server => match &form.server {
+            Some(server) => spawn_server(parent, theme, form, server, net),
+            None => spawn_waiting(parent, theme, form),
+        },
+        Page::MakeLobby => spawn_make_lobby(parent, theme, form),
     }
     if let Some(notice) = &form.notice {
         parent.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -712,7 +865,7 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
 fn spawn_home(parent: &mut ChildSpawnerCommands, theme: &Theme) {
     let ways = [
         (Page::Host, "Host a game", "Play on this machine and give your opponent an address, or a ticket that works from anywhere"),
-        (Page::Join, "Join a game", "Connect to a host by the address or the ticket it gave you, or to a public server"),
+        (Page::Join, "Join a server", "Connect to a public server or a host by its address or ticket, browse its lobbies and find a game"),
         (Page::Watch, "Watch a game", "List a server's matches and watch one, seeing what both players can see"),
     ];
     for (index, (page, label, blurb)) in ways.into_iter().enumerate() {
@@ -739,8 +892,7 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
         section.spawn(widgets::dim(theme, capitalised(form.reach.label())));
     });
     section(parent, theme, "Port", |section| field_box(section, theme, Field::Port, &form.port, "", false));
-    format_section(parent, theme, form, "The format this game is played in: your opponent joins with a deck legal in it.");
-    deck_section(parent, theme, form);
+    format_section(parent, theme, form.format, "The format this game is played in: your server has one lobby, and your opponent brings a deck legal in it. You choose your own deck when you look for the game.");
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Start hosting", px(220), Control::Go));
@@ -748,14 +900,11 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
 }
 
 fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    parent.spawn(widgets::heading(theme, "Join a game"));
-    section(parent, theme, "Address or ticket", |section| field_box(section, theme, Field::Address, &form.address, "the host's address, or paste its ticket", true));
-    format_section(parent, theme, form, "You are paired with whoever is waiting in this format's lobby, or in the lobby named below.");
-    section(parent, theme, "Lobby", |section| {
-        field_box(section, theme, Field::Lobby, &form.lobby, "none — the format's own lobby", false);
-        field_box(section, theme, Field::Password, &form.password, "no password", false);
+    parent.spawn(widgets::heading(theme, "Join a server"));
+    section(parent, theme, "Address or ticket", |section| {
+        field_box(section, theme, Field::Address, &form.address, "a server's address, or paste a host's ticket", true);
+        section.spawn(widgets::dim(theme, "Its lobbies are listed once you are connected; you pick one, and a chair and a deck, there."));
     });
-    deck_section(parent, theme, form);
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Connect", px(220), Control::Go));
@@ -795,13 +944,25 @@ fn spawn_watch(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
     });
 }
 
-/// Hosting: everything to give out, each with a Copy; joining: where the
-/// connection is. Either way, Stop.
-fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net) {
-    let hosting = net.hosting.is_some();
-    parent.spawn(widgets::heading(theme, if hosting { "Hosting — waiting for your opponent" } else { "Waiting" }));
-    if hosting {
-        parent.spawn(widgets::dim(theme, "Give your opponent one of these. The game starts when they join."));
+/// Dialling, or hosting until attached, or a spectator waiting for a
+/// place: where the connection is, and Stop.
+fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Waiting"));
+    parent.spawn((widgets::dim(theme, form.status.clone()), TextLayout::new(Justify::Left, LineBreak::AnyCharacter)));
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop", Val::Auto, Control::Back));
+    });
+}
+
+/// Attached: what a host gives out, the lobbies, a closed one's code, and
+/// in a lobby the game to look for.
+fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net) {
+    parent.spawn(widgets::heading(theme, if server.hosting { "Hosting on this machine".to_string() } else { format!("At {}", shortened(&server.address)) }));
+    if let Some(line) = &server.link {
+        parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+    if server.hosting {
+        parent.spawn(widgets::dim(theme, "Give your opponent one of these. They connect, join your lobby and look for a game, as you do below."));
         for (index, way) in net.shown.iter().enumerate() {
             match way {
                 Way::Give { what, who, ticket } => {
@@ -825,31 +986,123 @@ fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
                 }
             }
         }
-    } else {
-        parent.spawn((widgets::dim(theme, form.status.clone()), TextLayout::new(Justify::Left, LineBreak::AnyCharacter)));
+    }
+    section(parent, theme, "Lobbies", |section| {
+        if server.lobbies.is_empty() {
+            section.spawn(widgets::dim(theme, "This server lists no lobby."));
+        }
+        for (index, lobby) in server.lobbies.iter().enumerate() {
+            let here = server.lobby.as_ref().is_some_and(|current| current.id == lobby.id);
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                let (kind, label) = if here { (ButtonKind::Primary, "Here") } else { (ButtonKind::Secondary, "Join") };
+                row.spawn(widgets::styled_button(theme, kind, label, px(110), Control::JoinLobby(index)));
+                row.spawn((widgets::label(theme, lobby_line(lobby)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+            });
+        }
+        section.spawn(widgets::row(12.0)).with_children(|row| {
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a lobby…", Control::Open(Page::MakeLobby)));
+        });
+    });
+    section(parent, theme, "A closed lobby", |section| {
+        section.spawn(widgets::row(12.0)).with_children(|row| {
+            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Lobby, &form.lobby, "its code", false));
+            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Password, &form.password, "password, if it asks for one", false));
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Join", Control::JoinById));
+        });
+    });
+    if let Some(lobby) = &server.lobby {
+        section(parent, theme, format!("Find a game in {}", lobby_title(lobby)), |section| {
+            section.spawn(widgets::row(10.0)).with_children(|row| {
+                for chair in ChairChoice::ALL {
+                    let kind = if chair == server.chair { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    row.spawn(widgets::styled_button(theme, kind, chair.label(), Val::Auto, Control::Chair(chair)));
+                }
+            });
+            if server.chair != ChairChoice::Runner {
+                deck_dropdown(section, theme, server, Side::Corp, lobby.format);
+            }
+            if server.chair != ChairChoice::Corp {
+                deck_dropdown(section, theme, server, Side::Runner, lobby.format);
+            }
+            match server.seeking {
+                Some(position) => {
+                    section.spawn(widgets::dim(theme, format!("Looking for a game — {position} waiting in this lobby…")));
+                    section.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop looking", Val::Auto, Control::CancelSeek));
+                    });
+                }
+                None => {
+                    section.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Find a game", px(220), Control::Seek));
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Leave lobby", Val::Auto, Control::LeaveLobby));
+                    });
+                }
+            }
+        });
     }
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop", Val::Auto, Control::Back));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Disconnect", Val::Auto, (Control::Disconnect, ButtonSound(Sfx::Back))));
     });
 }
 
-/// The format, as pills: four choices are a row, not a drop-down.
-fn format_section(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, blurb: &str) {
+/// One lobby's line: its name, its format, who is in it and how many of
+/// them are looking.
+fn lobby_line(lobby: &LobbyInfo) -> String {
+    let mut line = format!("{} · {} here, {} looking", lobby_title(lobby), lobby.players, lobby.seeking);
+    if lobby.password {
+        line.push_str(" · password");
+    }
+    line
+}
+
+/// The deck brought for `side`, from those legal in the lobby's format.
+fn deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState, side: Side, format: NsgFormat) {
+    let (decks, chosen) = match side {
+        Side::Corp => (server.corp_decks(), server.corp_deck),
+        Side::Runner => (server.runner_decks(), server.runner_deck),
+    };
+    if decks.is_empty() {
+        parent.spawn(widgets::dim(theme, format!("No {side:?} deck is legal in {}: build one under Decks.", capitalised(format_name(format)))));
+        return;
+    }
+    let choices = decks.iter().map(|deck| Choice::plain(online::label(deck))).collect();
+    match side {
+        Side::Corp => spawn_dropdown(parent, theme, "Corp deck", choices, chosen, CorpDeckDropdown),
+        Side::Runner => spawn_dropdown(parent, theme, "Runner deck", choices, chosen, RunnerDeckDropdown),
+    };
+}
+
+fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Make a lobby"));
+    section(parent, theme, "Name", |section| field_box(section, theme, Field::LobbyName, &form.make.name, "what the others see", false));
+    format_section(parent, theme, form.make.format, "The format games in this lobby are played in.");
+    section(parent, theme, "Who can find it", |section| {
+        section.spawn(widgets::row(10.0)).with_children(|row| {
+            for (closed, label) in [(false, "Listed"), (true, "Closed")] {
+                let kind = if closed == form.make.closed { ButtonKind::Primary } else { ButtonKind::Secondary };
+                row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Closed(closed)));
+            }
+        });
+        section.spawn(widgets::dim(theme, if form.make.closed { "Not listed: joined by the code the server gives it, which you pass on." } else { "Listed for anyone on the server to join." }));
+    });
+    section(parent, theme, "Password", |section| field_box(section, theme, Field::LobbyPassword, &form.make.password, "none", false));
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Make", px(220), Control::Go));
+    });
+}
+
+/// The format, as pills: a handful of choices is a row, not a drop-down.
+fn format_section(parent: &mut ChildSpawnerCommands, theme: &Theme, chosen: NsgFormat, blurb: &str) {
     section(parent, theme, "Format", |section| {
         section.spawn(widgets::row(10.0)).with_children(|row| {
             for format in FORMATS {
-                let kind = if format == form.format { ButtonKind::Primary } else { ButtonKind::Secondary };
+                let kind = if format == chosen { ButtonKind::Primary } else { ButtonKind::Secondary };
                 row.spawn(widgets::styled_button(theme, kind, capitalised(format_name(format)), Val::Auto, Control::Format(format)));
             }
         });
         section.spawn(widgets::dim(theme, blurb));
-    });
-}
-
-fn deck_section(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    section(parent, theme, "Your deck — its side is your seat", |section| {
-        let choices = form.decks.iter().map(|deck| Choice::plain(online::label(deck))).collect();
-        spawn_dropdown(section, theme, "", choices, form.deck, DeckDropdown);
     });
 }
 
