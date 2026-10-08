@@ -9822,3 +9822,37 @@ to the engine.
   offering an operation.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 778 card files.
+
+#### Stage 11h — "that many" is as many as there are (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: three cards, no new vocabulary, and one
+change to how a selection counts.
+- **Cards from the Core Set:** Aggressive Secretary, Demolition Run,
+  Rabbit Hole.
+
+- **"That many" when fewer qualify.** A selection whose number is an
+  amount (`PromptChooseCards::count`) did nothing at all when fewer cards
+  qualified than the amount. CR 1.2.4 says as much of an instruction as
+  possible is carried out, so it now chooses every card there is. Simulation
+  Reset, the one card that used it before, is unchanged: it shuffles back
+  the cards it has just trashed, which are always there.
+- **Aggressive Secretary** is Project Junebug's paid access with a trash
+  of one program for each advancement token, deferred in Stage 11g on
+  exactly the case above: three tokens against two programs trash both.
+  It works facedown, so the client's list of traps whose rez gains
+  nothing (`board::rez`) names it beside Project Junebug.
+- **Demolition Run** is Jailbreak's choice of HQ or R&D and Eye for an
+  Eye's access ability, at 0[credit].
+- **Rabbit Hole** is Access to Globalsec's +1[link] and Self-modifying
+  Code's search of the stack, narrowed to another copy of Rabbit Hole and
+  paid for. The copy installed hears its own install and may fetch a third.
+- **Decks.** Retirement Package takes two Aggressive Secretary for its two
+  Cerebral Overwriter; Pay as You Go two Demolition Run for its two
+  Chastushka; Safety Net two Rabbit Hole for its two Simulchip. Every card
+  given up stays in another deck.
+- **Tests.** Three new tests: Aggressive Secretary with one token against
+  two programs and three against two; Demolition Run refused on Archives
+  and trashing an operation for nothing; Rabbit Hole fetching the one copy
+  in the stack, paying for it, for +2[link].
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 781 card files.

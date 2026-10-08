@@ -1,0 +1,39 @@
+{
+  "id": "demolition_run",
+  "title": "Demolition Run",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Hq",
+              "RnD"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "Credits": 0
+      },
+      "effect": "TrashCurrentlyAccessedCard",
+      "text": "Access → 0[credit]: Trash the card you are accessing."
+    }
+  ],
+  "built_from": 1003,
+  "is_playable": true
+}

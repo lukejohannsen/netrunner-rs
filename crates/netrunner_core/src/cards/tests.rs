@@ -29482,4 +29482,75 @@ mod reprints {
         assert_eq!(state.corp.resources.clicks, Clicks(2), "one click to play it, none to install");
         assert_eq!(state.corp.hq, vec![id("hedge_fund")]);
     }
+
+    // ---- Stage 11h: "that many" is as many as there are ----
+
+    /// Aggressive Secretary trashes one program for each advancement token
+    /// for 2[credit], and every program when there are fewer (CR 1.2.4).
+    #[test]
+    fn aggressive_secretary_trashes_a_program_per_token_and_every_program_when_there_are_fewer() {
+        let registry = registry();
+        for (tokens, trashed) in [(1, 1), (3, 2)] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig("corroder", 2), rig("gordian_blade", 2)];
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, advancement_tokens: tokens, ..remote_root("aggressive_secretary", 0) }];
+            let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+            assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "if you pay 2[credit]");
+            let (mut choosing, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 2");
+            assert_eq!(choosing.corp.resources.credits, Credits(8));
+            assert!(apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).is_err(), "{tokens} tokens: not fewer than {trashed}");
+            for position in corp_toggles(&choosing, &registry).into_iter().take(trashed) {
+                choosing = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position }).expect("a program").0;
+            }
+            let (done, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("trash them");
+            assert_eq!(done.runner.heap.len(), trashed, "{tokens} tokens");
+        }
+    }
+
+    /// Demolition Run runs HQ or R&D, and trashes an accessed card for
+    /// nothing.
+    #[test]
+    fn demolition_run_trashes_an_accessed_card_for_nothing() {
+        let registry = registry();
+        let demolish = PlayerAction::ActivateAbility { target: crate::rules::InstallId::RUN_EVENT, ability_index: 0 };
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("demolition_run")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("demolition_run") }).expect("play");
+        assert!(apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).is_err(), "HQ or R&D");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to HQ");
+        let (breaching, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("successful");
+        let mut accessing = breaching;
+        while let Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) =
+            accessing.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone())
+        {
+            accessing = apply_action(&accessing, &registry, PlayerAction::SelectCardToAccess { candidate: selectable_cards[0].clone() }).expect("access").0;
+        }
+        let credits = accessing.runner.resources.credits;
+        let (trashed, _) = apply_action(&accessing, &registry, demolish).expect("0[credit]: trash it");
+        assert!(trashed.corp.archives.iter().any(|card| card.card == id("hedge_fund")), "an operation, which has no trash cost");
+        assert_eq!(trashed.runner.resources.credits, credits);
+    }
+
+    /// Rabbit Hole gives +1[link] and may fetch and install another copy
+    /// from the stack, paying for it.
+    #[test]
+    fn rabbit_hole_installs_another_copy_from_the_stack() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let link = crate::rules::continuous::link(&state, &registry);
+        state.runner.grip = vec![id("rabbit_hole")];
+        state.runner.stack = vec![id("sure_gamble"), id("rabbit_hole")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("rabbit_hole") }).expect("install");
+        let offered = runner_toggles(&asked, &registry);
+        assert_eq!(offered.len(), 1, "another copy of Rabbit Hole, and nothing else");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        let (installed, _) = close_all_windows(installed, &registry);
+        assert_eq!(installed.runner.rig.iter().filter(|card| card.card == id("rabbit_hole")).count(), 2);
+        assert_eq!(installed.runner.resources.credits, Credits(10 - 2 - 2), "paying its install cost");
+        assert_eq!(installed.runner.stack, vec![id("sure_gamble")]);
+        assert_eq!(crate::rules::continuous::link(&installed, &registry), link + 2);
+    }
 }
