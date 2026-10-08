@@ -29643,4 +29643,35 @@ mod reprints {
         assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { card, server: ServerId::Hq, .. } if *card == id("hedge_fund"))), "{events:?}");
         let _ = done;
     }
+
+    // ---- Stage 11k: the Corp rezzes the chosen ice, or trashes it ----
+
+    /// Forged Activation Orders: the Runner chooses an unrezzed piece of
+    /// ice, and the Corp rezzes it, paying, or trashes it — and trashes it
+    /// too when the rez it chose cannot be paid.
+    #[test]
+    fn forged_activation_orders_makes_the_corp_rez_the_ice_or_trash_it() {
+        let registry = registry();
+        for (corp_credits, answer, rezzed) in [(10, 0, true), (10, 1, false), (0, 0, false)] {
+            let mut state = runner_turn();
+            state.runner.grip = vec![id("forged_activation_orders")];
+            state.corp.resources.credits = Credits(corp_credits);
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") }];
+            let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("forged_activation_orders") }).expect("play");
+            let offered = runner_toggles(&asked, &registry);
+            assert_eq!(offered.len(), 1, "an unrezzed piece of ice");
+            let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("choose it");
+            let (asked, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+            assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "the Corp may");
+            let (done, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: answer }).expect("answer");
+            let (done, _) = close_all_windows(done, &registry);
+            let wall = done.corp.installed.iter().find(|card| card.card == id("ice_wall"));
+            assert_eq!(wall.map(|card| card.rezzed), rezzed.then_some(true), "{corp_credits} credits, option {answer}");
+            if !rezzed {
+                assert!(done.corp.archives.iter().any(|card| card.card == id("ice_wall")), "if they do not, they trash it");
+            } else {
+                assert_eq!(done.corp.resources.credits, Credits(corp_credits - 1), "paying its rez cost");
+            }
+        }
+    }
 }

@@ -9916,3 +9916,29 @@ Update 2021, and one new `Effect`.
   successful on HQ, breaching it past HQ's ice without encountering it.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 784 card files.
+
+#### Stage 11k — rez the chosen ice, or trash it (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, in the Core Set and System
+Update 2021, with no new `Effect`.
+- **Card:** Forged Activation Orders, which leaves System Update 2021's
+  list of unbuilt cards (4 remain).
+
+- **"The Corp may rez that ice. If they do not, they trash it."** The
+  Runner chooses an unrezzed piece of ice, and the selection's `then` is
+  the Corp's choice: rez it, paying, or trash it. A rez the Corp cannot
+  pay resolves to nothing (`Effect::RezInstalled`), so the rez option is
+  followed by "if it is still unrezzed, trash it", which is the printed
+  sentence and keeps an unaffordable rez from saving the ice.
+- **An install's copy can be asked whether it is unrezzed**
+  (`pending_choice::copy_matches`, `CardFilter::Unrezzed`). The
+  definition's half of `ActingCardMatches` passes an instance filter, and
+  the copy's half did not know this word; no card used it there before,
+  so nothing else changes.
+- **Decks.** Encore takes two Forged Activation Orders for its two
+  Emergency Shutdown, which stay in Express Delivery.
+- **Tests.** Forged Activation Orders rezzing the Ice Wall for 1[credit],
+  trashing it when the Corp declines, and trashing it when the Corp
+  chooses a rez it cannot pay.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 785 card files.
