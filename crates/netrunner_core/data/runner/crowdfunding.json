@@ -1,0 +1,94 @@
+{
+  "id": "crowdfunding",
+  "title": "Crowdfunding",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this resource, load 3[credit] onto it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, take 1[credit] from this resource."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "from_heap": true,
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurn": "OnSuccessfulRun"
+          },
+          3
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnHeap",
+                  "discount": "AllCosts"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install it, ignoring all costs",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, if you made at least 3 successful runs this turn and this card is in your heap, you may install it, ignoring all costs."
+    }
+  ],
+  "built_from": 28002,
+  "is_playable": true
+}

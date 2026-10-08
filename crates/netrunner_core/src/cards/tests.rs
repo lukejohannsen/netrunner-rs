@@ -28540,4 +28540,49 @@ mod reprints {
         elsewhere.corp.installed[0] = crate::rules::InstalledCard { server: ServerId::Remote(1), ..grid };
         assert!(apply_action(&elsewhere, &registry, score).is_err(), "only the agendas in the root of its own server");
     }
+
+    // ---- Stage 9e: a card that listens from the heap ----
+
+    fn crowdfunding_turn_ends_after(registry: &CardRegistry, runs: usize) -> GameState {
+        let mut state = runner_turn();
+        state.runner.heap = vec![id("crowdfunding")];
+        for _ in 0..runs {
+            let (ran, _) = run_to_completion(state, registry, ServerId::Archives);
+            state = pass_until_settled(ran, registry).0;
+            assert!(state.active_run.is_none(), "the run is over");
+        }
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end the turn");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn crowdfunding_installs_itself_from_the_heap_free_after_three_successful_runs() {
+        let registry = registry();
+        let state = crowdfunding_turn_ends_after(&registry, 3);
+        assert!(state.pending_decision.is_some(), "you may install it, ignoring all costs");
+        let credits = state.runner.resources.credits;
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install it");
+        assert!(installed.runner.heap.is_empty());
+        assert_eq!(installed.runner.rig.iter().map(|card| (card.card.clone(), card.counters)).collect::<Vec<_>>(), vec![(id("crowdfunding"), 3)], "loaded as it is installed");
+        assert_eq!(installed.runner.resources.credits, credits, "ignoring all costs");
+
+        let two = crowdfunding_turn_ends_after(&registry, 2);
+        assert!(two.pending_decision.is_none(), "2 successful runs are not 3");
+        assert_eq!(two.runner.heap, vec![id("crowdfunding")]);
+    }
+
+    #[test]
+    fn crowdfunding_pays_a_credit_a_turn_and_draws_a_card_when_it_empties() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(77), card: id("crowdfunding"), counters: 1, ..Default::default() }];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the Corp's turn");
+        let credits = state.runner.resources.credits.0;
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.credits.0, credits + 1, "take 1[credit] from this resource");
+        assert!(state.runner.rig.is_empty() && state.runner.heap == vec![id("crowdfunding")], "when it is empty, trash it");
+        assert_eq!(state.runner.grip.len(), 1, "and draw 1 card");
+    }
 }

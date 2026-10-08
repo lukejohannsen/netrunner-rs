@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 74, 17, 4, 43 | 8, 1, 2, — | in progress: Stages 1a–9d (6 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 74, 17, 5, 43 | 8, 1, 1, — | in progress: Stages 1a–9e (6 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 107
-`Effect` variants single-use, none unused, over 719 card files** (8 October
-2026, with tranche 8 Stage 9d, which added none; Stage 9c, at 15 of 107
+`Effect` variants single-use, none unused, over 720 card files** (8 October
+2026, with tranche 8 Stage 9e, which added none; Stage 9d, at 15 of 107
+over 719, added none; Stage 9c, at 15 of 107
 over 718, added none, and one `Amount`, `Every`;
 Stage 9b, at 15 of 107 over 716, added one, `IncreaseAboutToResolve`,
 used by Daily Business Show alone; Stage 9a, at 14 of 106 over 715, added
@@ -1153,6 +1154,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 9b** — one Corp card and one new `Effect`: every Corp draw, the mandatory one included, is announced and parked as the Runner's are, and a parked draw can grow, with what follows it resolved once the cards are drawn (`IncreaseAboutToResolve`) (Daily Business Show) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 9c** — two Corp cards with no new `Effect`: an amount can be counted "for every 2" (`Amount::Every`), and an upgrade can lower the advancement requirement of the agendas in its root (Project Beale, SanSan City Grid) (`claude/nsg-tranche-8-qmn4v7`, 7 October 2026).
 - **Stage 9d** — one Corp card, composed, with no new `Effect` and no change to the engine: Echo's granted subroutines at a rate of the rezzed NEXT ice (NEXT Silver) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 9e** — one Runner card, composed, with no new `Effect` and no change to the engine: a resource that installs itself from the heap, free, as the turn ends after three successful runs (Crowdfunding) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1209,7 +1211,8 @@ nine by kind):
    - NEXT Silver: added subroutines. **9d closed**, composed.
    - Magnet: a program re-hosted and blanked.
    - Subliminal Messaging and Crowdfunding: abilities from Archives and
-     the heap.
+     the heap. **9e closed**, Crowdfunding, composed on Jeitinho's
+     `from_heap`; Subliminal Messaging's Archives is 9f.
    - Slot Machine.
 10. **Expose** (CR 1.21.4): Infiltration, Lemuria Codecracker and Zaibatsu
     Loyalty, from the Core Set.
