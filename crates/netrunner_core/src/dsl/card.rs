@@ -359,16 +359,22 @@ pub struct TriggeredEffect {
     /// a host that cannot gain abilities does not stop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub granted: bool,
-    /// Active while the card is in its owner's heap, and only there (CR
-    /// 9.1.8b: "abilities that can only affect the game state from a
-    /// particular zone are active in that zone") — Jeitinho's "whenever
-    /// you bypass a piece of ice, you may spend [click] to install this
-    /// hardware from your heap". A card in the Runner's heap listens for
-    /// these triggers and no others (`listeners`, `Heard::FromHeap`), and
-    /// the same card on the table does not hear them. The Runner's heap
-    /// only: no pool card prints one for Archives.
+    /// Active while the card is in its owner's discard pile — the heap, or
+    /// Archives — and only there (CR 9.1.8b: "abilities that can only
+    /// affect the game state from a particular zone are active in that
+    /// zone"): Jeitinho's "whenever you bypass a piece of ice, you may
+    /// spend [click] to install this hardware from your heap", Subliminal
+    /// Messaging's "if this card is in Archives … add it to HQ". A card in
+    /// a discard pile listens for these triggers and no others
+    /// (`listeners`, `Heard::FromDiscard`), and the same card on the table
+    /// does not hear them. It was `from_heap`, refused on a Corp card,
+    /// until Subliminal Messaging: one word for both piles rather than a
+    /// second beside it, since the rule is one rule. **A facedown card in
+    /// Archives does not listen**: the Runner may not know it is there
+    /// (CR 4.4.6c), and a trigger heard, asked about or declined would say
+    /// so — no pool card needs one heard facedown more than played ones.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub from_heap: bool,
+    pub from_discard: bool,
     /// Active while this agenda is in the Runner's score area, and only
     /// there — CR 4.5.4: "Agendas in the Runner's score area are inactive
     /// unless stated otherwise", and Project Vacheron states it: "While
@@ -376,7 +382,7 @@ pub struct TriggeredEffect {
     /// agenda counters, it … gains “When the Runner's turn begins, remove 1
     /// hosted agenda counter.”" The Corp's ability (CR 1.14.4a), heard by
     /// the copy there (`listeners`, `Heard::FromRunnerScoreArea`), and by
-    /// nothing else. `from_heap`'s shape: a zone a card listens from that
+    /// nothing else. `from_discard`'s shape: a zone a card listens from that
     /// is not the table. Composition didn't work: no listener reached the
     /// Runner's score area, which is right for every other agenda.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1088,8 +1094,6 @@ pub enum CardValidationError {
     CountBesideBounds(CardId),
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
     OtherIsNotAnIceType(CardId, &'static str),
-    #[error("card {0:?}: a trigger active in the heap (`from_heap`) is the Runner's — the heap is the only zone listened to")]
-    HeapTriggerOnCorpCard(CardId),
     #[error("card {0:?}: a trigger active in the Runner's score area (`from_runner_score_area`) is an agenda's")]
     ScoreAreaTriggerOffAnAgenda(CardId),
     #[error("card {0:?}: `GainIceSubtype` about `This` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on, and no card says \"each piece of ice gains\"")]
@@ -1730,9 +1734,6 @@ impl CardDefinition {
         if restricted_to_no_type {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
         }
-        if self.side == Side::Corp && self.triggers.iter().any(|triggered| triggered.from_heap) {
-            return Err(CardValidationError::HeapTriggerOnCorpCard(self.id.clone()));
-        }
         if self.card_type != CardType::Agenda && self.triggers.iter().any(|triggered| triggered.from_runner_score_area) {
             return Err(CardValidationError::ScoreAreaTriggerOffAnAgenda(self.id.clone()));
         }
@@ -1983,7 +1984,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -2005,7 +2006,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -2171,7 +2172,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -2236,7 +2237,7 @@ mod tests {
             when,
             acts_on_subject: false,
             first_each_turn: true, first_each_encounter: false, granted: false,
-            from_heap: false, from_runner_score_area: false,
+            from_discard: false, from_runner_score_area: false,
             text: None,
             effects: vec![],
             requirement,
@@ -2286,7 +2287,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -2508,7 +2509,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false }],
                 requirement: None,
@@ -2533,7 +2534,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -2590,7 +2591,7 @@ mod tests {
                 when: None,
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_heap: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2617,7 +2618,7 @@ mod tests {
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_heap: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2643,7 +2644,7 @@ mod tests {
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_heap: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2670,7 +2671,7 @@ mod tests {
                 when: Some(EventFilter::InRootOfThisServer),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_heap: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false,
                 text: None,
             }],
             ..CardDefinition::default()

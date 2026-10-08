@@ -64,12 +64,10 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sneakdoor_beta", "Sneakdoor Beta"),
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
     ("magnet", "Magnet"),
-    ("subliminal_messaging", "Subliminal Messaging"),
 ];
 
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.
 pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("subliminal_messaging", "Subliminal Messaging"),
 ];
 
 /// *Magnum Opus Reprint* (`magnum_opus_reprint`): tranche 8 of the NSG plan.

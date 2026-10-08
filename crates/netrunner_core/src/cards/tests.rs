@@ -28585,4 +28585,50 @@ mod reprints {
         assert!(state.runner.rig.is_empty() && state.runner.heap == vec![id("crowdfunding")], "when it is empty, trash it");
         assert_eq!(state.runner.grip.len(), 1, "and draw 1 card");
     }
+
+    // ---- Stage 9f: a card that listens from Archives ----
+
+    #[test]
+    fn subliminal_messaging_gains_a_click_for_the_first_copy_played_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("subliminal_messaging"); 2];
+        let (first, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("subliminal_messaging") }).expect("play one");
+        let (first, _) = close_all_windows(first, &registry);
+        assert_eq!((first.corp.resources.credits, first.corp.resources.clicks), (Credits(11), Clicks(3)), "gain 1[credit], and [click] for the first copy");
+        let (second, _) = apply_action(&first, &registry, PlayerAction::PlayOperation { card_id: id("subliminal_messaging") }).expect("play another");
+        let (second, _) = close_all_windows(second, &registry);
+        assert_eq!((second.corp.resources.credits, second.corp.resources.clicks), (Credits(12), Clicks(2)), "a second copy gains no [click]");
+    }
+
+    /// The Runner's turn ends after `run` (a run on an empty HQ, or none),
+    /// with Subliminal Messaging in Archives as `facedown` says, and the
+    /// Corp's turn begins.
+    fn subliminal_messaging_corp_turn_after(registry: &CardRegistry, run: bool, facedown: bool) -> GameState {
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("subliminal_messaging"), facedown }];
+        if run {
+            state = pass_until_settled(run_to_completion(state, registry, ServerId::Hq).0, registry).0;
+        }
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn subliminal_messaging_may_return_to_hq_from_archives_when_the_runner_did_not_run() {
+        let registry = registry();
+        let state = subliminal_messaging_corp_turn_after(&registry, false, false);
+        assert!(state.pending_decision.is_some(), "you may reveal this card and add it to HQ");
+        let (answered, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("add it");
+        assert!(answered.corp.archives.is_empty());
+        assert!(answered.corp.hq.contains(&id("subliminal_messaging")));
+
+        let ran = subliminal_messaging_corp_turn_after(&registry, true, false);
+        assert!(ran.pending_decision.is_none(), "the Runner initiated a run during their last turn");
+        assert_eq!(ran.corp.archives.len(), 1);
+
+        let facedown = subliminal_messaging_corp_turn_after(&registry, false, true);
+        assert!(facedown.pending_decision.is_none(), "a facedown copy is not heard");
+    }
 }

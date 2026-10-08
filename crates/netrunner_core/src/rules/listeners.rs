@@ -120,9 +120,10 @@ struct Listener {
     /// itself when it is not active, a persistent upgrade trashed during
     /// the run — hear only what is about *them*.
     active: bool,
-    /// A card in the Runner's heap, which hears its `from_heap` triggers
-    /// and nothing else (CR 9.1.8b, Jeitinho).
-    in_heap: bool,
+    /// A card in its owner's discard pile, which hears its `from_discard`
+    /// triggers and nothing else (CR 9.1.8b, Jeitinho, Subliminal
+    /// Messaging).
+    in_discard: bool,
     /// An agenda in the Runner's score area, which hears its
     /// `from_runner_score_area` triggers and nothing else (CR 4.5.4,
     /// Project Vacheron).
@@ -511,7 +512,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     // triggers are among what is lost.
     let lost = active::installs_without_abilities(state, registry);
     for listener in listeners(state, registry, &moments) {
-        if !listener.in_heap && listener.install.is_some_and(|install| lost.contains(&install)) {
+        if !listener.in_discard && listener.install.is_some_and(|install| lost.contains(&install)) {
             continue;
         }
         let Some(definition) = registry.get(&listener.card) else { continue };
@@ -535,7 +536,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
                 _ => (None, None),
             };
             let heard = match (listener.active, is_this(&listener, moment)) {
-                _ if listener.in_heap => Heard::FromHeap,
+                _ if listener.in_discard => Heard::FromDiscard,
                 _ if listener.in_runner_score_area => Heard::FromRunnerScoreArea,
                 (true, true) => Heard::AsBoth,
                 (true, false) => Heard::AsBystander,
@@ -611,7 +612,7 @@ pub(crate) fn delayed_admits(state: &GameState, registry: &CardRegistry, delayed
         first_each_turn: false,
         first_each_encounter: false,
         granted: false,
-        from_heap: false,
+        from_discard: false,
         from_runner_score_area: false,
         text: None,
         effects: Vec::new(),
@@ -852,8 +853,9 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if !whose_admits(triggered, listener.side, moment) {
         return false;
     }
-    // A heap listener hears its heap triggers, and nothing else does.
-    if triggered.from_heap != listener.in_heap {
+    // A discard-pile listener hears its discard-pile triggers, and nothing
+    // else does.
+    if triggered.from_discard != listener.in_discard {
         return false;
     }
     // And a stolen agenda's, which nothing else hears.
@@ -866,7 +868,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if triggered.granted && !matches!(moment.about, About::Card { install: Some(install), .. } if active::may_have_granted(state, registry, install)) {
         return false;
     }
-    if listener.in_heap || listener.in_runner_score_area {
+    if listener.in_discard || listener.in_runner_score_area {
         return true;
     }
     let is_this = is_this(listener, moment);
@@ -888,7 +890,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // always asked them: the score area before the table — the order
     // `DiscardPhaseEnded` always asked in, and the only one the old
     // audiences agreed on.
-    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true, in_heap: false, in_runner_score_area: false };
+    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true, in_discard: false, in_runner_score_area: false };
     corp.extend(active::corp(state, registry).map(listening));
     runner.extend(active::runner(state, registry).map(listening));
 
@@ -919,7 +921,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
                     .and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install))
                     .map(|c| c.server)
                     .or(moment.trashed_install.map(|trashed| trashed.server));
-                Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_heap: false, in_runner_score_area: false }
+                Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_discard: false, in_runner_score_area: false }
             }
         };
         group.insert(0, subject);
@@ -937,7 +939,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             install: None,
             server: Some(completed.server),
             active: false,
-            in_heap: false,
+            in_discard: false,
             in_runner_score_area: false,
         }));
     }
@@ -956,7 +958,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             install: None,
             server: Some(run.server),
             active: true,
-            in_heap: false,
+            in_discard: false,
             in_runner_score_area: false,
         }));
     }
@@ -965,13 +967,25 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // Jeitinho's "install this hardware from your heap"). One listener a
     // card, since copies in a heap are the same card to both players;
     // after the table, as the heap is no part of it.
-    let mut in_heap: Vec<&CardId> = Vec::new();
+    let mut in_discard: Vec<&CardId> = Vec::new();
     for card in &state.runner.heap {
-        if !in_heap.contains(&card) && registry.get(card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_heap)) {
-            in_heap.push(card);
+        if !in_discard.contains(&card) && registry.get(card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_discard)) {
+            in_discard.push(card);
         }
     }
-    runner.extend(in_heap.into_iter().map(|card| Listener { side: Side::Runner, card: card.clone(), install: None, server: None, active: false, in_heap: true, in_runner_score_area: false }));
+    runner.extend(in_discard.into_iter().map(|card| Listener { side: Side::Runner, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false }));
+
+    // And a faceup card in Archives (Subliminal Messaging's "if this card
+    // is in Archives"), the same way: one listener a card. A facedown one
+    // does not listen, since the Runner may not know it is there (CR
+    // 4.4.6c) and hearing it would say so (`TriggeredEffect::from_discard`).
+    let mut in_archives: Vec<&CardId> = Vec::new();
+    for archived in state.corp.archives.iter().filter(|archived| !archived.facedown) {
+        if !in_archives.contains(&&archived.card) && registry.get(&archived.card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_discard)) {
+            in_archives.push(&archived.card);
+        }
+    }
+    corp.extend(in_archives.into_iter().map(|card| Listener { side: Side::Corp, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false }));
 
     // An agenda in the Runner's score area whose text says it is active
     // there (CR 4.5.4: Project Vacheron). The Corp's ability (CR 1.14.4a),
@@ -984,7 +998,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             .iter()
             .filter(|scored| scored.as_agenda.is_none())
             .filter(|scored| registry.get(&scored.card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_runner_score_area)))
-            .map(|scored| Listener { side: Side::Corp, card: scored.card.clone(), install: Some(scored.install_id), server: None, active: false, in_heap: false, in_runner_score_area: true }),
+            .map(|scored| Listener { side: Side::Corp, card: scored.card.clone(), install: Some(scored.install_id), server: None, active: false, in_discard: false, in_runner_score_area: true }),
     );
 
     match active_side(state) {
@@ -1044,7 +1058,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, from_runner_score_area: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }

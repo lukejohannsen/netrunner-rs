@@ -55,7 +55,7 @@
     },
     {
       "trigger": "OnDiscardPhaseEnd",
-      "from_heap": true,
+      "from_discard": true,
       "requirement": {
         "AmountAtLeast": [
           {
