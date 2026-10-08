@@ -2592,6 +2592,79 @@ mod positions {
         assert!(hosted * 2 > SEEDS, "Tranquilizer is hosted on Brân 1.0: {hosted} of {SEEDS}");
     }
 
+    /// A run event whose success resolves some of its options is played
+    /// for the best of them (Phase 5 §56): with 5[c], a Cleaver, a
+    /// Bahia Bands and a Pennyshaver in hand, and the centrals behind a
+    /// barrier the rig breaks, the Runner installs Pennyshaver, which
+    /// pays on the run, then plays Bahia Bands and runs on it — two
+    /// cards and an install without its click for a credit less — where
+    /// the same Runner ran bare. Before, the leaf read a
+    /// "resolve 2 of the following" rider as nothing, and the planner
+    /// had Bahia Bands legal on 172 Runner turns of 48 games of its
+    /// decks and played it 0 times.
+    #[test]
+    fn plays_bahia_bands_for_the_best_two_of_its_options() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(3);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        registry.insert(wall);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(3);
+        state.runner.grip = vec![CardId("bahia_bands".to_string()), CardId("pennyshaver".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("cleaver".to_string()), install_id: InstallId(10), base_strength: 3, ..Default::default() }];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("wall".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(index as u32 + 1),
+                server,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            });
+        }
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let play = PlayerAction::PlayEvent { card_id: CardId("bahia_bands".to_string()) };
+        assert!(view.legal_actions.contains(&play), "{:?}", view.legal_actions);
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    actions.push(action);
+                    if state.active_run.is_some() {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        // Pennyshaver first, then the event: it pays on the run.
+        assert!(actions.contains(&play), "should play Bahia Bands this turn: {actions:?}");
+        let run = state.active_run.as_ref().expect("and run on it");
+        assert!(run.on_success_effect.is_some(), "the run carries its rider: {actions:?}");
+    }
+
     /// A run event that pays when the run ends is played for what the end
     /// pays (Phase 5 §53): with 6[c], a Cleaver and the centrals behind a
     /// barrier, the Runner plays Bravado and runs — 6[c] plus one for the

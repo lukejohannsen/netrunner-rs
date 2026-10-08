@@ -676,8 +676,8 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
             // credit a credit, a card a click (Clean Getaway, Red Team's
             // run, Joy Ride).
             *score += f64::from(due.min(run_credits_for_breaking(run))) * w.own_credit_weight;
-            let (credits, cards) = rider_income(run, Side::Runner);
-            *score += f64::from(credits) * w.own_credit_weight + f64::from(cards) * w.click_weight;
+            let (credits, cards, clicks) = rider_income(run, Side::Runner);
+            *score += f64::from(credits) * w.own_credit_weight + f64::from(cards + clicks) * w.click_weight;
             // What both identities print about the run succeeding, at the
             // same rates (§34): Gabriel Santiago's 2[credit] for the turn's
             // first HQ run, Zahya Sadeghi's credit an access, Dewi
@@ -1926,6 +1926,34 @@ mod tests {
         let getaway = with_run(&paid, RunState { on_success_effect: Some(Box::new(Effect::GainCredits(Side::Runner, 6))), ..hq(vec![wall.clone()]) });
         let rider = score(&getaway) - score(&plain);
         assert!((rider - 6.0 * w.own_credit_weight).abs() < 1e-9, "{rider}");
+        // Bahia Bands (Phase 5 §56): "resolve 2 of the following" is the
+        // Runner's best two — two cards drawn and an install from the
+        // grip without its click for a credit less — at a card a click.
+        let bahia = Effect::ResolveSomeOf {
+            chooser: Side::Runner,
+            count: 2,
+            options: vec![
+                Effect::DrawCards(Side::Runner, 2),
+                Effect::PromptChooseCards {
+                    side: Side::Runner,
+                    source: netrunner_core::dsl::CardZoneRef::OwnGrip,
+                    filter: netrunner_core::dsl::CardFilter::Any,
+                    min: 1,
+                    max: 1,
+                    reveal: false,
+                    shuffle_after: false,
+                    then: Some(Box::new(Effect::InstallRunnerCardFromGripWithDiscount(netrunner_core::dsl::Discount::Credits(1)))),
+                    count: None,
+                    up_to: None,
+                    destination: None,
+                },
+                Effect::RemoveTags(Amount::Fixed(1)),
+            ],
+            texts: Vec::new(),
+        };
+        let bands = with_run(&paid, RunState { on_success_effect: Some(Box::new(bahia)), ..hq(vec![wall.clone()]) });
+        let two_of = score(&bands) - score(&plain);
+        assert!((two_of - (3.0 * w.click_weight + w.own_credit_weight)).abs() < 1e-9, "{two_of}");
         // Bravado (Phase 5 §53): a rider that pays when the run ends,
         // succeed or not, 6[c] plus one a piece of ice passed — seven over
         // the wall the rig breaks, six on the run that cannot get in and
