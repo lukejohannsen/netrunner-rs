@@ -183,6 +183,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
         run_credits_pay_for: _,  // drawn: hud::in_effect ("This run: the 4 [credit] on Bahia Bands may be spent only to pay trash costs"), both clients
         redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")
+        redirect_at_success: _,  // engine's: when the redirect above is taken; the HUD's line names where the run goes, and the log's "redirected" line says when it went
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
         ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
         subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not

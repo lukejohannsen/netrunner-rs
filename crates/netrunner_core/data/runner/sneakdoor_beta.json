@@ -1,0 +1,30 @@
+{
+  "id": "sneakdoor_beta",
+  "title": "Sneakdoor Beta",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "memory_cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "Archives"
+          },
+          {
+            "RedirectRunOnSuccess": "Hq"
+          }
+        ]
+      },
+      "text": "[click]: Run Archives. If that run would be declared successful, change the attacked server to HQ for the remainder of that run."
+    }
+  ],
+  "built_from": 1028,
+  "is_playable": true
+}

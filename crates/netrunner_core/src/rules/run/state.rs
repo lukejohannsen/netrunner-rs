@@ -659,6 +659,14 @@ pub struct RunState {
     /// run.
     #[serde(default)]
     pub redirect_on_approach: Option<ServerId>,
+    /// The redirect above is taken when the run would be declared
+    /// successful, not at the approach — Sneakdoor Beta's "If that run
+    /// would be declared successful, change the attacked server to HQ for
+    /// the remainder of that run" (`Effect::RedirectRunOnSuccess`): Archives
+    /// is approached, and its root's cards act there, before the run moves.
+    /// Taken by `engine::complete_run`.
+    #[serde(default)]
+    pub redirect_at_success: bool,
     /// An effect to evaluate if and when this run succeeds — e.g.
     /// Jailbreak's "If successful, draw 1 card and ... access 1 additional
     /// card". Seeded by `pending_choice::resolve_choose_server` (with any
@@ -876,6 +884,7 @@ impl Default for RunState {
             access_replacement_install: None,
             cards_accessed_count: 0,
             redirect_on_approach: None,
+            redirect_at_success: false,
             bonus_run_credits: 0,
             run_credits_pay_for: None,
             begun_as_the_turn_began: false,

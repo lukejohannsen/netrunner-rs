@@ -293,6 +293,7 @@ mod tests {
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,
+            redirect_at_success: false,
             fully_broken: false,
             ice_derezzed: false,
             subroutine_broken: false,

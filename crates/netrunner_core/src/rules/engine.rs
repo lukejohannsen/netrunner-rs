@@ -1405,9 +1405,19 @@ fn complete_run(
     if active_run.declared_successful {
         return Err(RulesError::RunAlreadyConcluded { phase: active_run.phase });
     }
-    let server = active_run.server;
+    let redirect = active_run.redirect_on_approach.filter(|_| active_run.redirect_at_success);
 
     let mut next = state.clone();
+    // "If that run would be declared successful, change the attacked server
+    // to HQ" (Sneakdoor Beta): the run moves before it is declared, so what
+    // is declared, and breached, is the run on HQ — and a card that says
+    // runs on HQ cannot be declared successful withholds it.
+    let mut redirected = Vec::new();
+    if let Some(target) = redirect {
+        let from = run::redirect_to(&mut next, registry, target)?;
+        redirected.push(GameEvent::RunRedirected { from, to: target });
+    }
+    let server = next.active_run.as_ref().map_or(active_run.server, |run| run.server);
     // The success phase is reached, whatever is declared (CR 6.8.4a).
     if let Some(run) = next.active_run.as_mut() {
         run.reached_success_phase = true;
@@ -1435,7 +1445,8 @@ fn complete_run(
             run.access_replacement_card = None;
             run.access_replacement_install = None;
         }
-        let mut events = vec![GameEvent::RunNotDeclaredSuccessful { server }];
+        let mut events = redirected;
+        events.push(GameEvent::RunNotDeclaredSuccessful { server });
         events.extend(run::breach(&mut next, registry)?);
         return Ok((next, events));
     }
@@ -1446,7 +1457,8 @@ fn complete_run(
         next.runner.servers_run_successfully.push(server);
     }
     let succeeded = GameEvent::RunSucceeded { server };
-    let mut events = vec![succeeded.clone()];
+    let mut events = redirected;
+    events.push(succeeded.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);
     // The breach follows (CR 6.9.5b) with no paid ability window between:
     // the one that used to let the Corp rez an upgrade in the root after

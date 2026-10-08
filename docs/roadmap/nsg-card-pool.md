@@ -58,11 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 103 | 6, 0, 0, — | in progress: Stages 1a–11i; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 77, 18, 6, 104 | 5, 0, 0, — | in progress: Stages 1a–11j; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 109
-`Effect` variants single-use, none unused, over 783 card files** (8 October
-2026, with tranche 8 Stage 11i, which added none and two words: an
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 110
+`Effect` variants single-use, none unused, over 784 card files** (8 October
+2026, with tranche 8 Stage 11j, which added one, `RedirectRunOnSuccess`,
+used by Sneakdoor Beta alone, its reason on the variant; Stage 11i, at 16
+of 109 over 783, added none and two words: an
 `EventFilter` for a kind of server and a chosen ice's subtypes for the
 turn; Stage 11h, at 16 of 109 over 781, added none and made a "that many"
 selection take every card when fewer qualify; Stage 11g, at 16 of 109 over
@@ -1180,6 +1182,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11g** — five Core Set cards that compose with no change to the engine (Modded, Wyrm, Red Herrings, Cell Portal, Shipment from MirrorMorph) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11h** — three Core Set cards, and a "that many" selection takes every card when fewer qualify (CR 1.2.4) (Aggressive Secretary, Demolition Run, Rabbit Hole) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11i** — two Core Set cards, a trigger can be about a remote server, and a chosen ice can gain subtypes until the end of the turn (Bank Job, Tinkering) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 11j** — Sneakdoor Beta, from the Core Set and System Update 2021: a run's redirect can be taken as it would be declared successful, after its server was approached (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1278,6 +1281,8 @@ nine by kind):
     **11i closed**, Bank Job and Tinkering, with two words and no new
     `Effect`: a trigger about "a remote server" and a chosen ice's
     subtypes until the end of the turn.
+    **11j closed**, Sneakdoor Beta, with one new `Effect`: the redirect
+    taken as the run would be declared successful.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

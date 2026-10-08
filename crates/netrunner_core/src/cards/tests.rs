@@ -29617,4 +29617,30 @@ mod reprints {
         later.turn += 1;
         assert!(!crate::rules::lingering::gains_subtype(&later, wall, IceType::Sentry), "until the end of the turn");
     }
+
+    // ---- Stage 11j: a redirect taken as the run would be declared successful ----
+
+    /// Sneakdoor Beta runs Archives and approaches it, and the run that is
+    /// declared successful, and breached, is the run on HQ.
+    #[test]
+    fn sneakdoor_beta_approaches_archives_and_succeeds_on_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("sneakdoor_beta", 0)];
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (running, _) = use_ability(&state, &registry, "sneakdoor_beta", 0).expect("[click]: run Archives");
+        let (approached, events) = crate::rules::test_support::through_movement(&running, &registry).expect("approach Archives");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ServerApproached { server: ServerId::Archives })), "{events:?}");
+        assert_eq!(approached.active_run.as_ref().map(|run| run.server), Some(ServerId::Archives), "not yet");
+        let (done, events) = apply_action(&approached, &registry, PlayerAction::CompleteRun).expect("would be declared successful");
+        let (done, more) = pass_until_settled(done, &registry);
+        let events: Vec<_> = events.into_iter().chain(more).collect();
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunRedirected { from: ServerId::Archives, to: ServerId::Hq })), "{events:?}");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunSucceeded { server: ServerId::Hq })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::RunSucceeded { server: ServerId::Archives })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IceEncountered { .. })), "HQ's ice is not encountered");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { card, server: ServerId::Hq, .. } if *card == id("hedge_fund"))), "{events:?}");
+        let _ = done;
+    }
 }

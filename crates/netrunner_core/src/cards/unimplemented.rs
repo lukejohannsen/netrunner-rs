@@ -61,7 +61,6 @@ pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("en_passant", "En Passant"),
     ("steve_cambridge_master_grifter", "Steve Cambridge: Master Grifter"),
     ("forged_activation_orders", "Forged Activation Orders"),
-    ("sneakdoor_beta", "Sneakdoor Beta"),
     ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
 ];
 
