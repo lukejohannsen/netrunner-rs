@@ -9511,3 +9511,40 @@ of 82.
   then costs [click] and 1[credit] and exposes.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 725 card files.
+
+#### Stage 10b — an expose prevented (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp asset and no new `Effect`.
+- **Card from the Core Set:** Zaibatsu Loyalty.
+
+- **An expose is about to happen before it happens.** `Effect::Expose`
+  now parks `WouldHappen::Expose { install }` through `prevention::would`,
+  like damage and a draw, and announces it whether or not anybody can
+  prevent it (`GameEvent::AboutToResolve`, heard as the new
+  `Trigger::OnExposeAboutToResolve`, about nothing a filter narrows). What
+  is left happens through `ability::expose`, the reveal Stage 10a wrote.
+- **"Prevent 1 card from being exposed"** is `Preventable::Expose`, one use
+  preventing the one expose. "1[credit] or [trash]:" is two paid
+  abilities, as Revolver's "[trash] or hosted power counter" is, each
+  quoting the clause with a note.
+- **Heard facedown.** "When a card would be exposed, you may rez this
+  asset" changes when its card can be rezzed, so it is active while the
+  card is not (CR 9.1.8c). A trigger says so with
+  `TriggeredEffect::while_unrezzed`, heard by each unrezzed install of the
+  card (`Heard::WhileUnrezzed`) and by nothing else, `from_discard`'s
+  shape a third time. `validate` refuses it off an installed Corp card.
+  The rez is a `PresentChoice` around `RezInstalled` on the card itself,
+  which costs 0; the window then opens because the rezzed asset could
+  prevent the expose.
+- **What the Runner learns.** The Corp is asked only when a Zaibatsu
+  Loyalty is installed facedown, so the Runner sees that something heard
+  the expose. That is the card's own cost, written on the field.
+- **Decks.** A Thousand Cuts (Personal Evolution, a Sweep deck) takes two
+  Zaibatsu Loyalty for its two Bladderwort, an asset for an asset; the Au
+  Co Clones list keeps Bladderwort.
+- **Tests.** Two new tests. A facedown Zaibatsu Loyalty is asked on an
+  Infiltration expose, rezzes for 0 and pays 1[credit] to prevent it, and
+  the PAD Campaign is never seen; its [trash] half prevents it too, and a
+  declined rez lets the expose through.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 726 card files.

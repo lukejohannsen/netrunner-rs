@@ -348,6 +348,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Prevent(Preventable::Tags(n)) => format!("prevent {n} tag{}", if *n == 1 { "" } else { "s" }),
         Effect::Prevent(Preventable::EncounterAbility) => "prevent a \"when encountered\" ability on a piece of ice".to_string(),
         Effect::Prevent(Preventable::RunEnding) => "prevent a Corp card ability from ending the run".to_string(),
+        Effect::Prevent(Preventable::Expose) => "prevent 1 card from being exposed".to_string(),
         Effect::Prevent(Preventable::TraceBaseStrength) => "reduce the base trace strength of a trace to 0".to_string(),
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::IncreaseAboutToResolve { by, then } => {

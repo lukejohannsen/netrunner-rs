@@ -355,6 +355,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
         | Trigger::OnDrawAboutToResolve
+        | Trigger::OnExposeAboutToResolve
         | Trigger::OnDamageSuffered
         | Trigger::OnCreditsSpentFromInstalledCard
         | Trigger::OnIdentityFlipped

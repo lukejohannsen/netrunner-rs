@@ -2490,6 +2490,11 @@ pub enum Preventable {
     /// the same, at base strength 0 when this was used. Composition didn't
     /// work: nothing could act between a trace's initiation and its bids.
     TraceBaseStrength,
+    /// "Prevent 1 card from being exposed" (Zaibatsu Loyalty): an expose
+    /// about to happen (`WouldHappen::Expose`), which then does not.
+    /// Composition didn't work: an expose is a reveal no card's text did
+    /// to a player, and none of the words above is about one.
+    Expose,
 }
 
 /// Which ice an `Effect::ModifyStrength` changes.

@@ -128,6 +128,9 @@ struct Listener {
     /// `from_runner_score_area` triggers and nothing else (CR 4.5.4,
     /// Project Vacheron).
     in_runner_score_area: bool,
+    /// A Corp card installed facedown, which hears its `while_unrezzed`
+    /// triggers and nothing else (CR 9.1.8c, Zaibatsu Loyalty).
+    while_unrezzed: bool,
 }
 
 /// The card `event` is about as an occurrence of `trigger`, for a
@@ -425,6 +428,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // "You would draw" — either side's, heard by that side
         // (`ability::{runner_would_draw, corp_would_draw}`).
         GameEvent::AboutToResolve { what: WouldHappen::Draw { side, .. } } => vec![moment(Trigger::OnDrawAboutToResolve, &About::Nothing, Some(*side))],
+        // "When a card would be exposed" (Zaibatsu Loyalty): any card, so
+        // the moment is about nothing a filter narrows.
+        GameEvent::AboutToResolve { what: WouldHappen::Expose { .. } } => vec![moment(Trigger::OnExposeAboutToResolve, &About::Nothing, None)],
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
@@ -538,6 +544,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
             let heard = match (listener.active, is_this(&listener, moment)) {
                 _ if listener.in_discard => Heard::FromDiscard,
                 _ if listener.in_runner_score_area => Heard::FromRunnerScoreArea,
+                _ if listener.while_unrezzed => Heard::WhileUnrezzed,
                 (true, true) => Heard::AsBoth,
                 (true, false) => Heard::AsBystander,
                 (false, _) => Heard::AsSubject,
@@ -613,7 +620,7 @@ pub(crate) fn delayed_admits(state: &GameState, registry: &CardRegistry, delayed
         first_each_encounter: false,
         granted: false,
         from_discard: false,
-        from_runner_score_area: false,
+        from_runner_score_area: false, while_unrezzed: false,
         text: None,
         effects: Vec::new(),
         requirement: None,
@@ -862,13 +869,17 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if triggered.from_runner_score_area != listener.in_runner_score_area {
         return false;
     }
+    // And a facedown install's, which nothing else hears.
+    if triggered.while_unrezzed != listener.while_unrezzed {
+        return false;
+    }
     // An ability this card gives the subject is the subject's (ZATO City
     // Grid's): a subject that cannot gain abilities, or has lost them
     // (Hush's host), does not have it.
     if triggered.granted && !matches!(moment.about, About::Card { install: Some(install), .. } if active::may_have_granted(state, registry, install)) {
         return false;
     }
-    if listener.in_discard || listener.in_runner_score_area {
+    if listener.in_discard || listener.in_runner_score_area || listener.while_unrezzed {
         return true;
     }
     let is_this = is_this(listener, moment);
@@ -890,7 +901,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // always asked them: the score area before the table — the order
     // `DiscardPhaseEnded` always asked in, and the only one the old
     // audiences agreed on.
-    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true, in_discard: false, in_runner_score_area: false };
+    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true, in_discard: false, in_runner_score_area: false, while_unrezzed: false };
     corp.extend(active::corp(state, registry).map(listening));
     runner.extend(active::runner(state, registry).map(listening));
 
@@ -921,7 +932,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
                     .and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install))
                     .map(|c| c.server)
                     .or(moment.trashed_install.map(|trashed| trashed.server));
-                Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_discard: false, in_runner_score_area: false }
+                Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_discard: false, in_runner_score_area: false, while_unrezzed: false }
             }
         };
         group.insert(0, subject);
@@ -941,6 +952,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             active: false,
             in_discard: false,
             in_runner_score_area: false,
+            while_unrezzed: false,
         }));
     }
 
@@ -960,6 +972,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             active: true,
             in_discard: false,
             in_runner_score_area: false,
+            while_unrezzed: false,
         }));
     }
 
@@ -973,7 +986,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             in_discard.push(card);
         }
     }
-    runner.extend(in_discard.into_iter().map(|card| Listener { side: Side::Runner, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false }));
+    runner.extend(in_discard.into_iter().map(|card| Listener { side: Side::Runner, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false, while_unrezzed: false }));
 
     // And a faceup card in Archives (Subliminal Messaging's "if this card
     // is in Archives"), the same way: one listener a card. A facedown one
@@ -985,7 +998,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             in_archives.push(&archived.card);
         }
     }
-    corp.extend(in_archives.into_iter().map(|card| Listener { side: Side::Corp, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false }));
+    corp.extend(in_archives.into_iter().map(|card| Listener { side: Side::Corp, card: card.clone(), install: None, server: None, active: false, in_discard: true, in_runner_score_area: false, while_unrezzed: false }));
 
     // An agenda in the Runner's score area whose text says it is active
     // there (CR 4.5.4: Project Vacheron). The Corp's ability (CR 1.14.4a),
@@ -998,7 +1011,30 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             .iter()
             .filter(|scored| scored.as_agenda.is_none())
             .filter(|scored| registry.get(&scored.card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_runner_score_area)))
-            .map(|scored| Listener { side: Side::Corp, card: scored.card.clone(), install: Some(scored.install_id), server: None, active: false, in_discard: false, in_runner_score_area: true }),
+            .map(|scored| Listener { side: Side::Corp, card: scored.card.clone(), install: Some(scored.install_id), server: None, active: false, in_discard: false, in_runner_score_area: true, while_unrezzed: false }),
+    );
+
+    // A Corp card installed facedown whose text says it is heard there
+    // (CR 9.1.8c: Zaibatsu Loyalty's "you may rez this asset"). One
+    // listener an install, since each copy is rezzed on its own; after the
+    // active cards, as a facedown card is none of them.
+    corp.extend(
+        state
+            .corp
+            .installed
+            .iter()
+            .filter(|installed| !installed.rezzed)
+            .filter(|installed| registry.get(&installed.card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.while_unrezzed)))
+            .map(|installed| Listener {
+                side: Side::Corp,
+                card: installed.card.clone(),
+                install: Some(installed.install_id),
+                server: Some(installed.server),
+                active: false,
+                in_discard: false,
+                in_runner_score_area: false,
+                while_unrezzed: true,
+            }),
     );
 
     match active_side(state) {
@@ -1058,7 +1094,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }

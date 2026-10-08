@@ -1,0 +1,59 @@
+{
+  "id": "zaibatsu_loyalty",
+  "title": "Zaibatsu Loyalty",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnExposeAboutToResolve",
+      "while_unrezzed": true,
+      "text": "When a card would be exposed, you may rez this asset.",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "RezInstalled": {
+                  "install": 0,
+                  "pay_cost": true
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may rez this asset",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "1[credit] or [trash]: Prevent 1 card from being exposed. — 1[credit]",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "Prevent": "Expose"
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit] or [trash]: Prevent 1 card from being exposed. — [trash]",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": "Expose"
+      }
+    }
+  ],
+  "built_from": 1071,
+  "is_playable": true
+}

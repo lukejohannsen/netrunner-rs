@@ -614,7 +614,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }
