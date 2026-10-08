@@ -427,6 +427,23 @@ impl Menu {
         self.settings = settings;
     }
 
+    /// A server was connected to: Join starts from it next time, in this
+    /// session (`base.server`, which `OnlineScreen::open` reads) and the
+    /// next (the settings file, which `settings::apply` reads into the
+    /// same flag). Nothing is written while the address is only typed.
+    fn remember_server(&mut self, address: String) {
+        if self.settings.server.as_deref() == Some(address.as_str()) {
+            return;
+        }
+        self.base.server = address.clone();
+        self.settings.server = Some(address);
+        if let Some(path) = &self.settings_path
+            && let Err(error) = self.settings.save(path)
+        {
+            self.notice = Some(format!("Not saved: {error}"));
+        }
+    }
+
     /// One keypress.
     pub fn key(&mut self, key: KeyCode) -> MenuStep {
         self.notice = None;
@@ -522,6 +539,11 @@ impl Menu {
     }
 
     fn online_step(&mut self, step: OnlineStep) -> MenuStep {
+        if let Screen::Online(online) = &mut self.screen
+            && let Some(address) = online.take_used_address()
+        {
+            self.remember_server(address);
+        }
         match step {
             OnlineStep::Continue => MenuStep::Continue,
             OnlineStep::Back => {
@@ -896,6 +918,28 @@ mod tests {
         go_to(&mut menu, Entry::PlayComputer);
         let MenuStep::Launch(Launch::Local { config }) = menu.key(KeyCode::Enter) else { panic!() };
         assert_eq!(record::player_name(&config), "testerqu");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The last server connected to is where Join starts next time, in
+    /// both clients (Phase 6 §3): the address is written when the
+    /// connection is made, never as it is typed, and the flag typed at
+    /// launch still wins over it (`settings::apply`).
+    /// A runtime, because Connect spawns the connection's driver on it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_server_joined_is_where_join_starts_next_time() {
+        let (mut menu, dir) = menu("server");
+        go_to(&mut menu, Entry::Online);
+        // Join, edit the address, type one nobody answers at, Connect.
+        press(&mut menu, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
+        press(&mut menu, &vec![KeyCode::Backspace; 40]);
+        for c in "127.0.0.1:1".chars() {
+            menu.key(KeyCode::Char(c));
+        }
+        assert!(Settings::load(&dir.join("settings.toml")).map(|s| s.server).unwrap_or_default().is_none(), "typing writes nothing");
+        press(&mut menu, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
+        assert_eq!(menu.base.server, "ws://127.0.0.1:1", "this session's next form starts there");
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().server.as_deref(), Some("ws://127.0.0.1:1"), "and so does the next session's");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -36,6 +36,11 @@ pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) ->
     {
         config.format = format.into();
     }
+    if let Some(server) = &settings.server
+        && !flagged("server")
+    {
+        config.server = server.clone();
+    }
 }
 
 /// The answers a person gave a card's "you may" for good
@@ -107,19 +112,21 @@ mod tests {
 
     #[test]
     fn a_setting_fills_an_unset_flag_and_never_beats_a_typed_one() {
-        let settings = Settings { player: Some("case".to_string()), format: Some(NsgFormat::Eternal), ..Default::default() };
+        let settings = Settings { player: Some("case".to_string()), format: Some(NsgFormat::Eternal), server: Some("ws://play.example.net:8080".to_string()), ..Default::default() };
 
         let args = ["netrunner_cli"];
         let mut config = Config::try_parse_from(args).unwrap();
         apply(&settings, &mut config, |id| was_flagged(&matches(&args), id));
         assert_eq!(config.player.as_deref(), Some("case"));
         assert_eq!(config.format, FormatArg::Eternal);
+        assert_eq!(config.server, "ws://play.example.net:8080", "the last server joined is where Join starts");
 
-        let args = ["netrunner_cli", "--player", "molly", "--format", "standard"];
+        let args = ["netrunner_cli", "--player", "molly", "--format", "standard", "--server", "ws://lan:9000"];
         let mut config = Config::try_parse_from(args).unwrap();
         apply(&settings, &mut config, |id| was_flagged(&matches(&args), id));
         assert_eq!(config.player.as_deref(), Some("molly"));
         assert_eq!(config.format, FormatArg::Standard);
+        assert_eq!(config.server, "ws://lan:9000");
     }
 
     #[test]

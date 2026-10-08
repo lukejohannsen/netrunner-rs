@@ -35,7 +35,7 @@ TUI (§2), and network play from the menu (§3).
 
 ## Open
 
-- The last-used server address is not remembered between sessions (§3).
+- ~~The last-used server address is not remembered between sessions (§3).~~ Done (`feat/remember-the-server-address`, 9 October 2026): `Settings::server` is the last server connected to, written by either client as the connection is made — never as the address is typed — and read as `--server`'s default by the terminal client and as the Join form's start by the desktop, which had hard-coded the loopback address and so did not remember it either.
 - Nobody has yet played the menu, the deck builder and online play end to end in a real game, or online across two machines (`ROADMAP.md`, next item 3).
 - Closed as by design: hosted games are unrated (Phase 4 §5); a lobby place is no longer a thing to resume (Phase 4 §7 stage 4a, attach-only).
 
