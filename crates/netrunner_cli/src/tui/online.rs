@@ -509,6 +509,9 @@ impl OnlineScreen {
                         page.lobbies = lobbies;
                     }
                 }
+                // Tournaments have no page yet (Phase 4 §7 stage 6a is the
+                // server and the client core; the pages are a later stage).
+                AttachedEvent::Tournaments(_) | AttachedEvent::Tournament(_) | AttachedEvent::TournamentRefused(_) => {}
                 AttachedEvent::LobbyJoined(lobby) => {
                     let decks = self.deck_choices(lobby.format);
                     if let Mode::MakeLobby { page, .. } = &mut self.mode {

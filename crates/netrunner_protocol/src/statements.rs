@@ -27,6 +27,24 @@ use netrunner_session::GameEndReason;
 pub const SEAT_TAG: &[u8] = b"netrunner-seat-v1";
 /// The tag a receipt is signed under.
 pub const RECEIPT_TAG: &[u8] = b"netrunner-receipt-v1";
+/// The tag a tournament registration is signed under.
+pub const REGISTRATION_TAG: &[u8] = b"netrunner-registration-v1";
+
+/// A player's word that they entered a tournament with these two decks
+/// (Phase 4 §7 stage 6a): which event at which server, as which key,
+/// each deck as its salted `deck_hash`. Signed by the player and
+/// published by the server beside the registration, it is the player's
+/// receipt that the server deals every one of their games from a list
+/// they chose and the server did not alter: at the reveal, the list and
+/// the salt check against it. The salt is the player's own, kept by both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistrationStatement {
+    pub tournament: String,
+    pub server_key: PublicKey,
+    pub key: PublicKey,
+    pub corp_hash: String,
+    pub runner_hash: String,
+}
 
 /// A player's word that they sat a match: which one, at which server, on
 /// which side, as which key against which, with which deck.

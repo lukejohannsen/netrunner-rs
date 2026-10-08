@@ -137,6 +137,34 @@ pub enum ClientMessage {
     Seek { chair: Chair },
     /// Stop looking. Answered with `SeekCancelled`.
     CancelSeek,
+    /// Hold a tournament on this server (Phase 4 §7 stage 6a), named and
+    /// in one of the server's formats, run as Null Signal Games run
+    /// theirs: registration first, each entrant's two decks locked for
+    /// the whole event behind a signed commitment; the rounds come in
+    /// later stages. Only a proved key may call one, and that key is its
+    /// organizer — the person the policies give the final say (3.2.1) —
+    /// and only a daemon with a data directory holds one, since a
+    /// tournament outlives any socket. Answered with `Tournament`, or
+    /// `TournamentRefused`.
+    CreateTournament { name: String, format: NsgFormat },
+    /// Every tournament the server holds, answered with `Tournaments`.
+    ListTournaments,
+    /// Enter a tournament with the two decks played for the whole event,
+    /// one Corp and one Runner: nothing is submitted per round, so there
+    /// is nothing to swap mid-event. `statement` is this key's signed
+    /// `statements::RegistrationStatement`, naming the two decks by
+    /// `statements::deck_hash` under `salt`; the server checks it against
+    /// the decks sent and publishes it as the entrant's commitment, and
+    /// the decks themselves stay with the server (`TournamentInfo`). The
+    /// salt is random, made by the player and kept by both sides, because
+    /// without one a well-known list's hash is confirmed by anyone who
+    /// guesses the list. Registering again replaces the entry while
+    /// registration is open. Answered with `Tournament` or
+    /// `TournamentRefused`.
+    Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile>, salt: String, statement: Signed },
+    /// Withdraw from a tournament while registration is open. Answered
+    /// with `Tournament` or `TournamentRefused`.
+    Unregister { tournament: String },
 }
 
 /// Which chair a player looks for a game in, and the deck it needs: one
@@ -348,4 +376,53 @@ pub enum ServerMessage {
     /// The game this attached connection was playing has ended and it is
     /// back in its lobby, free to look for the next one.
     BackInLobby { lobby: Option<LobbyInfo> },
+    /// The reply to `ListTournaments`.
+    Tournaments { tournaments: Vec<TournamentInfo> },
+    /// A tournament as it now stands, after `CreateTournament`, `Register`
+    /// or `Unregister` — the one the request named.
+    Tournament { tournament: TournamentInfo },
+    /// `CreateTournament`, `Register` or `Unregister` refused, with the
+    /// reason: no key proved, a server that keeps nothing, no such
+    /// tournament, a statement that does not hold, a deck the format
+    /// refuses.
+    TournamentRefused { reason: String },
+}
+
+/// A tournament as the server reports it (Phase 4 §7 stage 6). The
+/// entrants are public — a pairing names them — and their lists are not:
+/// each is named by its commitment alone until the event reveals it, as
+/// decklists stay private through Swiss at a table (Organized Play
+/// Policies 1.1.8).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TournamentInfo {
+    /// A short code, as a player's lobby has.
+    pub id: String,
+    pub name: String,
+    pub format: NsgFormat,
+    /// The key that made it, which has the final say over it.
+    pub organizer: PublicKey,
+    pub state: TournamentState,
+    /// In registration order.
+    pub entrants: Vec<Entrant>,
+}
+
+/// Where a tournament is. One variant today: the rounds are later stages,
+/// and an exhaustive match on this is what makes them add theirs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TournamentState {
+    /// Taking registrations.
+    Registering,
+}
+
+/// One entrant: who, and the commitment to the two decks the server holds
+/// for them — the `statements::RegistrationStatement` they signed, whose
+/// two hashes are repeated here for a reader that does not parse it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entrant {
+    /// The name the key attached with when it registered. A label.
+    pub name: String,
+    pub key: PublicKey,
+    pub corp_hash: String,
+    pub runner_hash: String,
+    pub commitment: Signed,
 }

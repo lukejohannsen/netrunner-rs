@@ -60,7 +60,7 @@ use uuid::Uuid;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
+use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo};
 
 use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Who};
 use crate::identity::{Credentials, KnownServers};
@@ -105,6 +105,14 @@ pub enum AttachedEvent {
     /// The answer to `standing`: whether this connection proved a key,
     /// and its standing on the server's book if it has one there.
     Standing { key: Option<netrunner_identity::PublicKey>, standing: Option<netrunner_protocol::Standing> },
+    /// The answer to `list_tournaments`.
+    Tournaments(Vec<TournamentInfo>),
+    /// A tournament as it now stands, after `create_tournament`,
+    /// `register` or `unregister`.
+    Tournament(TournamentInfo),
+    /// One of those refused, with the server's reason — or, for
+    /// `register`, this end's: no key to sign with.
+    TournamentRefused(String),
     /// A place at a match, with the channels to play it through.
     Joined(Box<Joined>),
     /// The game is over and the connection is in its lobby again.
@@ -118,9 +126,18 @@ pub enum AttachedEvent {
 /// the server answers comes out, and dropping it closes the socket — once
 /// no game's `tx` holds the connection either.
 pub struct Attached {
-    commands: mpsc::UnboundedSender<ClientMessage>,
+    commands: mpsc::UnboundedSender<Command>,
     events: mpsc::UnboundedReceiver<AttachedEvent>,
     link: watch::Receiver<Link>,
+}
+
+/// What a screen asks of the driver: a message for the server, or a
+/// registration the machine must sign before it becomes one
+/// (`connection::Connection::register`), which is why it is not a
+/// `ClientMessage` already.
+enum Command {
+    Send(ClientMessage),
+    Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile>, salt: String },
 }
 
 impl Attached {
@@ -175,12 +192,38 @@ impl Attached {
         self.send(ClientMessage::CancelSeek);
     }
 
+    /// Hold a tournament on the server, in `format`, with this key as its
+    /// organizer (Phase 4 §7 stage 6a). Answered with
+    /// `AttachedEvent::Tournament` or `TournamentRefused`.
+    pub fn create_tournament(&self, name: String, format: NsgFormat) {
+        self.send(ClientMessage::CreateTournament { name, format });
+    }
+
+    pub fn list_tournaments(&self) {
+        self.send(ClientMessage::ListTournaments);
+    }
+
+    /// Enter `tournament` with these two decks, locked for the whole
+    /// event. The commitment is signed here with the connection's key
+    /// under a salt made here and kept beside the key
+    /// (`identity::REGISTRATIONS_FILE`), so the player can check the list
+    /// the server reveals. Answered with `Tournament` or
+    /// `TournamentRefused`.
+    pub fn register(&self, tournament: String, corp: DeckFile, runner: DeckFile) {
+        let salt = format!("{:032x}", rand::random::<u128>());
+        let _ = self.commands.send(Command::Register { tournament, corp: Box::new(corp), runner: Box::new(runner), salt });
+    }
+
+    pub fn unregister(&self, tournament: String) {
+        self.send(ClientMessage::Unregister { tournament });
+    }
+
     /// The machine refuses what makes no sense where the connection is
     /// (`connection::Connection::submit`), and the server refuses the
     /// rest with a reason that comes back as an event; a send into a
     /// driver that has stopped is the `Link::Down` already reported.
     fn send(&self, message: ClientMessage) {
-        let _ = self.commands.send(message);
+        let _ = self.commands.send(Command::Send(message));
     }
 }
 
@@ -272,7 +315,16 @@ impl Connecting {
             AttachedEvent::Joined(joined) => Some(ConnectEvent::Joined(joined)),
             AttachedEvent::Link(Link::Down(error)) => Some(ConnectEvent::Failed(error)),
             AttachedEvent::Link(link) => Some(ConnectEvent::Link(link)),
-            AttachedEvent::Attached(_) | AttachedEvent::LobbyJoined(_) | AttachedEvent::Lobbies(_) | AttachedEvent::LobbyLeft | AttachedEvent::SeekCancelled | AttachedEvent::BackInLobby(_) | AttachedEvent::Standing { .. } => None,
+            AttachedEvent::Attached(_)
+            | AttachedEvent::LobbyJoined(_)
+            | AttachedEvent::Lobbies(_)
+            | AttachedEvent::LobbyLeft
+            | AttachedEvent::SeekCancelled
+            | AttachedEvent::BackInLobby(_)
+            | AttachedEvent::Standing { .. }
+            | AttachedEvent::Tournaments(_)
+            | AttachedEvent::Tournament(_)
+            | AttachedEvent::TournamentRefused(_) => None,
         }
     }
 }
@@ -306,12 +358,15 @@ fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, chair
     let target = Target::of(url);
     let known = target.known_servers(&goal);
     let pinned = known.as_ref().and_then(|(path, address)| KnownServers::load(path).ok()?.get(address));
-    let receipts = match &goal {
-        Goal::Attach(who) => who.credentials.as_ref().and_then(|credentials| credentials.receipts()),
-        Goal::Watch { .. } => None,
+    let (receipts, registrations) = match &goal {
+        Goal::Attach(who) => {
+            let credentials = who.credentials.as_ref();
+            (credentials.and_then(|credentials| credentials.receipts()), credentials.and_then(|credentials| credentials.registrations()))
+        }
+        Goal::Watch { .. } => (None, None),
     };
     let connection = Connection::new(goal, Instant::now()).with_pinned(pinned).with_lobby_and_seek(lobby, chair);
-    tokio::spawn(drive(target, connection, Kept { known, receipts }, commands_rx, events_tx, link_tx));
+    tokio::spawn(drive(target, connection, Kept { known, receipts, registrations }, commands_rx, events_tx, link_tx));
     Attached { commands, events, link }
 }
 
@@ -402,10 +457,12 @@ async fn dial_url(url: String) -> Result<Socket, String> {
 }
 
 /// What the driver writes for the player: a server's key the first time
-/// it is met, and every receipt a rated game ends in.
+/// it is met, every receipt a rated game ends in, and every tournament
+/// registration it signs, with its salt.
 struct Kept {
     known: Option<(std::path::PathBuf, String)>,
     receipts: Option<std::path::PathBuf>,
+    registrations: Option<std::path::PathBuf>,
 }
 
 /// The game under way, as the driver holds its end of the channel pair.
@@ -435,7 +492,7 @@ async fn drive(
     target: Target,
     mut conn: Connection,
     kept: Kept,
-    mut commands: mpsc::UnboundedReceiver<ClientMessage>,
+    mut commands: mpsc::UnboundedReceiver<Command>,
     events: mpsc::UnboundedSender<AttachedEvent>,
     link: watch::Sender<Link>,
 ) {
@@ -505,6 +562,9 @@ async fn drive(
                 Event::SeekRefused(reason) => AttachedEvent::SeekRefused(reason),
                 Event::SeekCancelled => AttachedEvent::SeekCancelled,
                 Event::Standing { key, standing } => AttachedEvent::Standing { key, standing },
+                Event::Tournaments(tournaments) => AttachedEvent::Tournaments(tournaments),
+                Event::Tournament(tournament) => AttachedEvent::Tournament(tournament),
+                Event::TournamentRefused(reason) => AttachedEvent::TournamentRefused(reason),
             };
             let _ = events.send(report);
         }
@@ -550,8 +610,24 @@ async fn drive(
                 Some(Ok(_)) => {}
             },
             command = commands.recv(), if commands_open => match command {
-                Some(message) => {
+                Some(Command::Send(message)) => {
                     conn.submit(message);
+                }
+                // Signed by the machine, kept here: the salt is the
+                // player's half of the commitment.
+                Some(Command::Register { tournament, corp, runner, salt }) => {
+                    let (corp_id, runner_id) = (corp.id.clone(), runner.id.clone());
+                    match conn.register(tournament, *corp, *runner, salt.clone()) {
+                        Some(statement) => {
+                            if let Some(path) = &kept.registrations {
+                                let registration = crate::identity::Registration { statement, salt, corp: corp_id, runner: runner_id };
+                                let _ = crate::identity::keep_registration(path, &registration);
+                            }
+                        }
+                        None => {
+                            let _ = events.send(AttachedEvent::TournamentRefused("this client has no key to sign a registration with".to_string()));
+                        }
+                    }
                 }
                 None => commands_open = false,
             },
@@ -929,6 +1005,69 @@ mod tests {
         known.insert(&url, netrunner_identity::Identity::from_secret([7; 32]).public_key());
         known.save(&known_path).unwrap();
         assert!(matches!(standing(&url, &credentials).await, Err(ConnectionError::ServerKeyChanged { .. })));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A tournament is made, entered and left over the attached
+    /// connection: the registration is signed by the driver's machine
+    /// under a salt the driver makes and keeps beside the key, and the
+    /// server's word on the tournament comes back as events. A client
+    /// with no key is told it cannot sign one.
+    #[tokio::test]
+    async fn a_tournament_is_entered_on_the_attached_connection_and_the_salt_kept() {
+        use netrunner_protocol::statements::REGISTRATION_TAG;
+        let dir = std::env::temp_dir().join(format!("netrunner_remote_tournament_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.unwrap();
+        let addr = server.local_addr().unwrap();
+        tokio::spawn(server.run());
+        let url = format!("ws://{addr}");
+        let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
+        let me = credentials.identity.public_key();
+        let mut attached = spawn(url.clone(), Goal::Attach(Who { player_name: "ann".into(), credentials: Some(Box::new(credentials)) }));
+        next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+
+        attached.create_tournament("Friday".into(), NsgFormat::Startup);
+        let tournament = |event| match event {
+            AttachedEvent::Tournament(tournament) => Some(tournament),
+            AttachedEvent::TournamentRefused(reason) => panic!("refused: {reason}"),
+            _ => None,
+        };
+        let made = next_where(&mut attached, tournament).await;
+        assert_eq!((made.organizer, made.entrants.len()), (me, 0));
+
+        attached.register(made.id.clone(), deck("brick_stack"), deck("dashing_mad"));
+        let entered = next_where(&mut attached, tournament).await;
+        let [entrant] = &entered.entrants[..] else { panic!("{:?}", entered.entrants) };
+        assert_eq!((entrant.name.as_str(), entrant.key), ("ann", me));
+        entrant.commitment.verify(REGISTRATION_TAG).expect("signed by this key");
+        // The salt is kept, with the statement it made.
+        let kept = std::fs::read_to_string(dir.join("client").join(crate::identity::REGISTRATIONS_FILE)).expect("a registrations file");
+        let registration: crate::identity::Registration = serde_json::from_str(kept.lines().next().unwrap()).unwrap();
+        assert_eq!((registration.statement.corp_hash.as_str(), registration.corp.as_str(), registration.runner.as_str()), (entrant.corp_hash.as_str(), "brick_stack", "dashing_mad"));
+        assert_eq!(registration.statement.tournament, made.id);
+        assert!(!registration.salt.is_empty());
+
+        attached.list_tournaments();
+        let listed = next_where(&mut attached, |event| match event {
+            AttachedEvent::Tournaments(list) => Some(list),
+            _ => None,
+        })
+        .await;
+        assert_eq!(listed, vec![entered]);
+        attached.unregister(made.id.clone());
+        assert!(next_where(&mut attached, tournament).await.entrants.is_empty());
+
+        let mut unsigned = spawn(url, Goal::Attach(Who { player_name: "nobody".into(), credentials: None }));
+        next_where(&mut unsigned, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+        unsigned.register(made.id, deck("brick_stack"), deck("dashing_mad"));
+        let reason = next_where(&mut unsigned, |event| match event {
+            AttachedEvent::TournamentRefused(reason) => Some(reason),
+            _ => None,
+        })
+        .await;
+        assert!(reason.contains("no key"), "{reason}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -39,6 +39,10 @@ pub const KNOWN_SERVERS_FILE: &str = "known_servers.json";
 /// player who keeps their receipts can show their history even if a
 /// server loses its own.
 pub const RECEIPTS_FILE: &str = "receipts.jsonl";
+/// Every tournament registration this key made, one JSON line each
+/// (`Registration`): the statement it signed and the salt the hashes
+/// were made with, which is what checks the list the server reveals.
+pub const REGISTRATIONS_FILE: &str = "registrations.jsonl";
 
 /// `$NETRUNNER_IDENTITY_DIR`, else `<data dir>/netrunner`, beside the
 /// settings, the saved decks and the record.
@@ -72,6 +76,10 @@ impl Credentials {
 
     pub fn receipts(&self) -> Option<PathBuf> {
         self.dir.as_ref().map(|dir| dir.join(RECEIPTS_FILE))
+    }
+
+    pub fn registrations(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|dir| dir.join(REGISTRATIONS_FILE))
     }
 
     /// The player's own, from `resolve_identity_dir`.
@@ -210,6 +218,35 @@ pub fn standing_lines(standing: Option<&netrunner_protocol::Standing>) -> Vec<St
 
 /// Appends a receipt a server handed this player. A failed write loses
 /// the player's copy and nothing else: the server keeps its own.
+/// One tournament registration as the player keeps it: the statement
+/// signed, the salt its hashes were made with, and which saved decks they
+/// were — so the player can check the list the server reveals, or show
+/// their own.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Registration {
+    pub statement: netrunner_protocol::statements::RegistrationStatement,
+    pub salt: String,
+    /// The decks' ids (`DeckFile::id`).
+    pub corp: String,
+    pub runner: String,
+}
+
+/// Appends `registration` to the registrations file, as `keep_receipt`
+/// keeps a receipt.
+pub fn keep_registration(path: &Path, registration: &Registration) -> Result<(), String> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    }
+    let line = serde_json::to_string(registration).expect("a registration serializes");
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| writeln!(file, "{line}"))
+        .map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
 pub fn keep_receipt(path: &Path, receipt: &netrunner_identity::Signed) -> Result<(), String> {
     use std::io::Write;
     if let Some(dir) = path.parent() {

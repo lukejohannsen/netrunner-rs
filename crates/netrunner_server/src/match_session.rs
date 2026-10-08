@@ -418,7 +418,11 @@ impl MatchSession {
                         | ClientMessage::JoinLobby { .. }
                         | ClientMessage::LeaveLobby
                         | ClientMessage::Seek { .. }
-                        | ClientMessage::CancelSeek => continue,
+                        | ClientMessage::CancelSeek
+                        | ClientMessage::CreateTournament { .. }
+                        | ClientMessage::ListTournaments
+                        | ClientMessage::Register { .. }
+                        | ClientMessage::Unregister { .. } => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {

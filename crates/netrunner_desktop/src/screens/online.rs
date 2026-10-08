@@ -749,6 +749,9 @@ fn net(
                 }
                 AttachedEvent::Standing { key, standing } => Intent::Standing(StandingHere::from_reply(key, standing)),
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
+                // Tournaments have no page yet (Phase 4 §7 stage 6a is the
+                // server and the client core; the pages are a later stage).
+                AttachedEvent::Tournaments(_) | AttachedEvent::Tournament(_) | AttachedEvent::TournamentRefused(_) => continue,
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Intent::Refused(reason),
