@@ -9890,3 +9890,29 @@ change to how a selection counts.
   are gone the next turn.
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 783 card files.
+
+#### Stage 11j — a redirect taken as the run would be declared successful (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, in the Core Set and System
+Update 2021, and one new `Effect`.
+- **Card:** Sneakdoor Beta, which leaves System Update 2021's list of
+  unbuilt cards (5 remain).
+
+- **"If that run would be declared successful, change the attacked
+  server to HQ"** (`Effect::RedirectRunOnSuccess`). Maintenance Access's
+  redirect moves the run as it would approach Archives, so Archives is
+  never approached; Sneakdoor Beta's approaches Archives, and what acts
+  on that approach acts, before the run moves. The run carries the
+  redirect with a flag saying when it is taken
+  (`RunState::redirect_at_success`, public in the view), and
+  `engine::complete_run` takes it before the declaration, so what is
+  declared successful and breached is the run on HQ, and a card saying
+  runs on HQ cannot be declared successful withholds it. Both redirects
+  share `run::redirect_to`. Composition didn't work: the one redirect
+  there was skipped the approach the card prints.
+- **Decks.** Encore takes two Sneakdoor Beta for its two Legwork, which
+  stay in Express Delivery.
+- **Tests.** Sneakdoor Beta approaching Archives, then declared
+  successful on HQ, breaching it past HQ's ice without encountering it.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 784 card files.

@@ -434,6 +434,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Surcharge(n)) => format!("install a card from the grip, paying {n} more"),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
+        Effect::RedirectRunOnSuccess(server) => format!("if the run would be declared successful, redirect it to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true } => {

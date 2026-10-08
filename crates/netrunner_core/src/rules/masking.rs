@@ -453,6 +453,11 @@ pub struct PublicRunState {
     /// announced destination. Public: the event was played face-up.
     #[serde(default)]
     pub redirect_on_approach: Option<ServerId>,
+    /// `RunState::redirect_at_success` — the redirect is Sneakdoor Beta's,
+    /// taken as the run would be declared successful. Public: the ability
+    /// that set it was used faceup.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub redirect_at_success: bool,
     /// `RunState::fully_broken`: public, since both players saw every
     /// subroutine broken, and carried so a sample built from the view
     /// passes the ice "after fully breaking it" where the real game will
@@ -1369,6 +1374,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bonus_run_credits: run.bonus_run_credits,
         run_credits_pay_for: run.run_credits_pay_for.clone(),
         redirect_on_approach: run.redirect_on_approach,
+        redirect_at_success: run.redirect_at_success,
         fully_broken: run.fully_broken,
         ice_derezzed: run.ice_derezzed,
         subroutine_broken: run.subroutine_broken,

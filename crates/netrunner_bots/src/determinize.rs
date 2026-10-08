@@ -846,6 +846,7 @@ fn determinize_run(
         bonus_run_credits: run.bonus_run_credits,
         run_credits_pay_for: run.run_credits_pay_for.clone(),
         redirect_on_approach: run.redirect_on_approach,
+        redirect_at_success: run.redirect_at_success,
         // Not in the view: a run's end rider and whether a subroutine
         // resolved are known to the seat that set them, not carried. The
         // determinized run does not fire a Charm Offensive rider — a

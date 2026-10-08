@@ -251,7 +251,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -878,10 +878,29 @@ fn apply_approach_redirect(
 ) -> Result<(), RulesError> {
     let Some(run) = state.active_run.as_ref() else { return Ok(()) };
     let Some(target) = run.redirect_on_approach else { return Ok(()) };
-    if !events.iter().any(|e| matches!(e, GameEvent::ServerApproached { .. })) {
+    if run.redirect_at_success || !events.iter().any(|e| matches!(e, GameEvent::ServerApproached { .. })) {
         return Ok(());
     }
-    let from = run.server;
+    let from = redirect_to(state, registry, target)?;
+    for event in events.iter_mut() {
+        if let GameEvent::ServerApproached { server } = event {
+            *server = target;
+        }
+    }
+    // The redirect is recorded just before the approach it changed, so the
+    // log reads "redirected, then approached HQ".
+    let approach = events.iter().position(|e| matches!(e, GameEvent::ServerApproached { .. })).unwrap_or(events.len());
+    events.insert(approach, GameEvent::RunRedirected { from, to: target });
+    Ok(())
+}
+
+/// The run now attacks `target`, every piece of its ice passed, at the
+/// success phase: the half of a redirect that Maintenance Access's (at the
+/// approach) and Sneakdoor Beta's (as the run would be declared
+/// successful, `engine::complete_run`) share. Returns the server the run
+/// was on.
+pub(crate) fn redirect_to(state: &mut GameState, registry: &CardRegistry, target: ServerId) -> Result<ServerId, RulesError> {
+    let from = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.server;
     let ice: Vec<RunIce> = state
         .corp
         .installed
@@ -894,21 +913,13 @@ fn apply_approach_redirect(
         .collect();
     let run = state.active_run.as_mut().expect("checked above");
     run.redirect_on_approach = None;
+    run.redirect_at_success = false;
     run.server = target;
     run.position = ice.len();
     run.ice = ice;
     run.phase = RunPhase::Success;
-    for event in events.iter_mut() {
-        if let GameEvent::ServerApproached { server } = event {
-            *server = target;
-        }
-    }
-    // The redirect is recorded just before the approach it changed, so the
-    // log reads "redirected, then approached HQ".
-    let approach = events.iter().position(|e| matches!(e, GameEvent::ServerApproached { .. })).unwrap_or(events.len());
-    events.insert(approach, GameEvent::RunRedirected { from, to: target });
     state.runner.servers_run_this_turn.push(target);
-    Ok(())
+    Ok(from)
 }
 
 /// Moves the run to `target`'s **outermost** position, rebuilding its ice

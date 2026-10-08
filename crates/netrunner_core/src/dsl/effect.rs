@@ -974,6 +974,16 @@ pub enum Effect {
     /// run is active. A run-state flag rather than an immediate change
     /// because the redirect happens at a later step of the same run.
     RedirectRunOnApproach(ServerId),
+    /// `RedirectRunOnApproach` taken later: when the run would be declared
+    /// successful, the attacked server becomes `ServerId` for the remainder
+    /// of the run — Sneakdoor Beta's "Run Archives. If that run would be
+    /// declared successful, change the attacked server to HQ". Archives is
+    /// approached first, so what acts on its approach acts, and what is
+    /// declared successful is the run on HQ (`RunState::
+    /// redirect_at_success`, taken by `engine::complete_run`). Composition
+    /// didn't work: the one redirect moved the run as it approached, which
+    /// skips the approach of Archives the card prints.
+    RedirectRunOnSuccess(ServerId),
     /// Registers `Effect` to resolve as the parking card when the active
     /// run ends, however it ends (`RunState::on_end`, evaluated by
     /// the `OnRunEnded` dispatch) — Charm Offensive's "When that run ends,
@@ -3121,6 +3131,7 @@ impl Effect {
             | Effect::SetAsideFromTopUntil { .. }
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
             | Effect::RedirectRunOnApproach(..)
+            | Effect::RedirectRunOnSuccess(..)
             | Effect::ArmRunEndPrevention(..)
             | Effect::Sabotage(..)
             | Effect::Mill { .. }

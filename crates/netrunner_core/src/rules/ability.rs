@@ -927,6 +927,13 @@ pub fn evaluate_effect(
         Effect::RedirectRunOnApproach(target) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.redirect_on_approach = Some(*target);
+            run.redirect_at_success = false;
+            Ok(Vec::new())
+        }
+        Effect::RedirectRunOnSuccess(target) => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.redirect_on_approach = Some(*target);
+            run.redirect_at_success = true;
             Ok(Vec::new())
         }
 
@@ -4784,7 +4791,7 @@ pub fn check_requirement(
         }
         EffectRequirement::AboutToApproach(server) => {
             let next = state.active_run.as_ref().is_some_and(|run| {
-                run.phase == RunPhase::Movement && run.position >= run.ice.len() && run.server == *server && run.redirect_on_approach.is_none()
+                run.phase == RunPhase::Movement && run.position >= run.ice.len() && run.server == *server && (run.redirect_on_approach.is_none() || run.redirect_at_success)
             });
             if next { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
