@@ -1307,7 +1307,7 @@ impl CardDefinition {
             // A trash does not say whether the card was installed.
             EventFilter::InstalledCard(_) if triggered.trigger == Trigger::OnCardTrashed => false,
             EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
-            EventFilter::Server(_) | EventFilter::Mark | EventFilter::ChosenServer | EventFilter::ProtectedByIce => about == TriggerAbout::Server,
+            EventFilter::Server(_) | EventFilter::ServerKind(_) | EventFilter::Mark | EventFilter::ChosenServer | EventFilter::ProtectedByIce => about == TriggerAbout::Server,
             EventFilter::Damage(_) => about == TriggerAbout::Damage,
             EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
             // Only a moment that names a player can be made one's.
@@ -1763,20 +1763,22 @@ impl CardDefinition {
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
         let mut gains = |effect: &Effect| {
-            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice, for_the_run } = e { gained.push((*subtype, *ice, *for_the_run)) })
+            effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype { subtype, ice, for_the_run, for_the_turn } = e { gained.push((*subtype, *ice, *for_the_run, *for_the_turn)) })
         };
         self.triggers.iter().flat_map(|triggered| &triggered.effects).for_each(&mut gains);
         self.abilities.iter().map(|ability| &ability.effect).for_each(&mut gains);
         self.subroutines.iter().map(|subroutine| &subroutine.effect).for_each(&mut gains);
-        if gained.iter().any(|(subtype, _, _)| *subtype == IceType::Other) {
+        if gained.iter().any(|(subtype, _, _, _)| *subtype == IceType::Other) {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
         }
         // "The ice you are encountering gains" (Pelangi) may be said by
         // anything; "each piece of ice gains" by nothing in the pool.
-        if gained.iter().any(|(_, ice, _)| *ice == crate::dsl::StrengthOf::EachIce)
-            || (gained.iter().any(|(_, ice, _)| *ice == crate::dsl::StrengthOf::This) && !matches!(self.card_type, CardType::Ice(_)))
-            // "For the remainder of this run" is said of the ice encountered.
-            || gained.iter().any(|(_, ice, for_the_run)| *for_the_run && *ice != crate::dsl::StrengthOf::Encountered)
+        if gained.iter().any(|(_, ice, _, _)| *ice == crate::dsl::StrengthOf::EachIce)
+            || (gained.iter().any(|(_, ice, _, for_the_turn)| *ice == crate::dsl::StrengthOf::This && !for_the_turn) && !matches!(self.card_type, CardType::Ice(_)))
+            // "For the remainder of this run" is said of the ice encountered,
+            // and "until the end of the turn" of the ice chosen.
+            || gained.iter().any(|(_, ice, for_the_run, _)| *for_the_run && *ice != crate::dsl::StrengthOf::Encountered)
+            || gained.iter().any(|(_, ice, for_the_run, for_the_turn)| *for_the_turn && (*for_the_run || *ice != crate::dsl::StrengthOf::This))
         {
             return Err(CardValidationError::SubtypeGainedByNonIce(self.id.clone()));
         }
@@ -2536,7 +2538,7 @@ mod tests {
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
-                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false }],
+                effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false, for_the_turn: false }],
                 requirement: None,
             }],
             ..Default::default()

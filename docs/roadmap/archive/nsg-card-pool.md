@@ -9856,3 +9856,37 @@ change to how a selection counts.
   in the stack, paying for it, for +2[link].
 - **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
   single-use, none unused, over 781 card files.
+
+#### Stage 11i — a remote server, and the chosen ice for the turn (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two cards and two words, with no new
+`Effect`.
+- **Cards from the Core Set:** Bank Job, Tinkering.
+
+- **"A remote server" in a trigger's condition** (`EventFilter::
+  ServerKind`). `EventFilter::Server` names servers, and its doc said a
+  remote server, whose number no card knows, would need a variant here;
+  Bank Job is the first card to print it. The turn log counts it as the
+  columns of the servers of that kind, so "the first time each turn" can
+  narrow by it too.
+- **Bank Job** is Armitage Codebusting's loaded credits and Account
+  Siphon's optional replacement of the breach, with a number from 0 to
+  what is left on it; emptied, it trashes itself. A run on a central is
+  breached as usual.
+- **A chosen ice's subtypes for the turn** (`GainIceSubtype::
+  for_the_turn`). `This` was Lycian Multi-Munition's own ice while it
+  stays rezzed; inside a selection's `then` it is the ice chosen, rezzed or
+  not, and the word makes the gain last until the end of the turn and
+  credits it to the card whose text it is. `validate` refuses the word on
+  the encountered ice or beside `for_the_run`.
+- **Tinkering** chooses a piece of ice, which gains sentry, code gate and
+  barrier until the end of the turn.
+- **Decks.** Encore takes two Bank Job for its two Info Bounty;
+  Level Pegging two Tinkering for its two Deep Dive. Every card given up
+  stays in another deck.
+- **Tests.** Two new tests: Bank Job loading 8[credit], breaching a
+  central as usual, taking 3 from a remote run and then the other 5, which
+  trashes it; Tinkering making a facedown Ice Wall all three types, which
+  are gone the next turn.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 783 card files.

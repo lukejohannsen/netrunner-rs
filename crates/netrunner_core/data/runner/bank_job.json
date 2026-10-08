@@ -1,0 +1,67 @@
+{
+  "id": "bank_job",
+  "title": "Bank Job",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 8
+        }
+      ],
+      "text": "When you install this resource, load 8[credit] on it."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "ServerKind": "Remote"
+      },
+      "effects": [
+        {
+          "SetAccessReplacement": {
+            "optional": true,
+            "effect": {
+              "ChooseNumber": {
+                "chooser": "Runner",
+                "max": "HostedCounters",
+                "then": {
+                  "Sequence": [
+                    {
+                      "RemoveCounters": "ChosenNumber"
+                    },
+                    {
+                      "GainCreditsAmount": [
+                        "Runner",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "EffectIf": {
+                        "condition": {
+                          "ThisCardCountersAtMost": 0
+                        },
+                        "effect": {
+                          "TrashCard": "ThisCard"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "text": "take any number of credits from this resource"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on a remote server, instead of breaching that server, you may take any number of credits from this resource."
+    }
+  ],
+  "built_from": 1029,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Level Pegging",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Lat: Ethical Freelancer, Downfall's Shaper identity, who draws a card at the end of a discard phase that leaves the grip the size of HQ. On Safety Net's frame, its identity swapped, with two Blueberry!™ Diesel for two of its three Net Shield: a look at the top of the stack and two cards for nothing. Safety Net keeps every card given up here. Downfall Stage 6: two In the Groove for two Joy Ride, an event played as the first click that pays a card or a credit for every install of a card costing 1[credit] or more that turn; and two Rejig for two Spark of Inspiration, an event whose additional cost returns an installed program or piece of hardware to the grip and whose install is that card's printed cost cheaper. Safety Net keeps Joy Ride and Spark of Inspiration. Tranche 8 Stage 5b: two Atman for two Self-Modifying Code, an AI icebreaker that takes the credits spent as it installs as power counters and interfaces only with ice of exactly its strength. Safety Net keeps Self-Modifying Code. Tranche 8 Stage 11b: two Access to Globalsec for its two Decoy and two Armitage Codebusting for its two Environmental Testing, a resource for a resource; both stay in other decks. Tranche 8 Stage 11d: two Battering Ram for its two Gauss, fracter for fracter; a tournament list keeps Gauss.",
+  "description": "Not a published list: built so the sweeps reach Lat: Ethical Freelancer, Downfall's Shaper identity, who draws a card at the end of a discard phase that leaves the grip the size of HQ. On Safety Net's frame, its identity swapped, with two Blueberry!™ Diesel for two of its three Net Shield: a look at the top of the stack and two cards for nothing. Safety Net keeps every card given up here. Downfall Stage 6: two In the Groove for two Joy Ride, an event played as the first click that pays a card or a credit for every install of a card costing 1[credit] or more that turn; and two Rejig for two Spark of Inspiration, an event whose additional cost returns an installed program or piece of hardware to the grip and whose install is that card's printed cost cheaper. Safety Net keeps Joy Ride and Spark of Inspiration. Tranche 8 Stage 5b: two Atman for two Self-Modifying Code, an AI icebreaker that takes the credits spent as it installs as power counters and interfaces only with ice of exactly its strength. Safety Net keeps Self-Modifying Code. Tranche 8 Stage 11b: two Access to Globalsec for its two Decoy and two Armitage Codebusting for its two Environmental Testing, a resource for a resource; both stay in other decks. Tranche 8 Stage 11d: two Battering Ram for its two Gauss, fracter for fracter; a tournament list keeps Gauss. Tranche 8 Stage 11i: two Tinkering for the Deep Dive, so a Core Set mod is played.",
   "style": [
     "rig"
   ],
@@ -58,10 +58,6 @@
       "count": 2
     },
     {
-      "card": "deep_dive",
-      "count": 2
-    },
-    {
       "card": "atman",
       "count": 2
     },
@@ -107,6 +103,10 @@
     },
     {
       "card": "battering_ram",
+      "count": 2
+    },
+    {
+      "card": "tinkering",
       "count": 2
     }
   ]

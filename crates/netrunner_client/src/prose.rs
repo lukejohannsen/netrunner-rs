@@ -529,7 +529,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
-        Effect::GainIceSubtype { subtype, ice, for_the_run } => match ice {
+        Effect::GainIceSubtype { subtype, for_the_turn: true, .. } => {
+            format!("that ice gains {} until the end of the turn", crate::board::facts::ice_type_words(&[*subtype]))
+        }
+        Effect::GainIceSubtype { subtype, ice, for_the_run, .. } => match ice {
             netrunner_core::dsl::StrengthOf::Encountered => format!(
                 "the ice you are encountering gains {} for the remainder of this {}",
                 crate::board::facts::ice_type_words(&[*subtype]),
@@ -702,6 +705,12 @@ fn describe_when(filter: &EventFilter) -> String {
         }
         EventFilter::InstalledFromHq(true) => "from HQ".to_string(),
         EventFilter::InstalledFromHq(false) => "from anywhere except HQ".to_string(),
+        EventFilter::ServerKind(kind) => format!("on {}", match kind {
+            netrunner_core::dsl::ServerKind::Remote => "a remote server",
+            netrunner_core::dsl::ServerKind::Central => "a central server",
+            netrunner_core::dsl::ServerKind::Hq => "HQ",
+            netrunner_core::dsl::ServerKind::RnD => "R&D",
+        }),
         EventFilter::InstalledIn(kind) => format!("in {}", match kind {
             netrunner_core::dsl::ServerKind::Remote => "a remote server",
             netrunner_core::dsl::ServerKind::Central => "a central server",

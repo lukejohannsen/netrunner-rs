@@ -760,6 +760,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
+        (EventFilter::ServerKind(kind), About::Server(server)) => kind.admits(*server),
         (EventFilter::Mark, About::Server(server)) => crate::rules::lingering::mark(state) == Some(*server),
         (EventFilter::ChosenServer, About::Server(server)) => crate::rules::lingering::chosen_server(state, listener_card, install) == Some(*server),
         (EventFilter::ProtectedByIce, About::Server(server)) => {
