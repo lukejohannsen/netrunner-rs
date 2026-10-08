@@ -782,6 +782,26 @@ fn tally(effect: &Effect, side: Side) -> Tally {
             if *chooser == side { tallies.max_by_key(|t| t.worth()) } else { tallies.min_by_key(|t| t.worth()) }
                 .unwrap_or_default()
         }
+        // "Resolve 2 of the following" (Bahia Bands; Phase 5 §56): the
+        // chooser's best `count` options by worth, summed — the opponent's
+        // worst. An option that reads as nothing here (a tag removed, run
+        // credits for trash costs) is simply not among the best.
+        Effect::ResolveSomeOf { chooser, count, options, .. } => {
+            let mut tallies: Vec<Tally> = options.iter().map(|option| tally(option, side)).collect();
+            tallies.sort_by_key(|t| if *chooser == side { -t.worth() } else { t.worth() });
+            tallies.into_iter().take(*count as usize).fold(Tally::default(), Tally::add)
+        }
+        // "Install 1 card from your grip, paying N[credit] less" (Bahia
+        // Bands): the install's click saved and the discount, read as a
+        // click and N credits whether or not the grip holds one — the
+        // tally reads text, not the table.
+        Effect::PromptChooseCards { then: Some(then), .. } if matches!(then.as_ref(), Effect::InstallRunnerCardFromGripWithDiscount(_)) => {
+            let credits = match then.as_ref() {
+                Effect::InstallRunnerCardFromGripWithDiscount(netrunner_core::dsl::Discount::Credits(n)) => *n as i32,
+                _ => 0,
+            };
+            Tally { credits, clicks: 1, ..Default::default() }
+        }
         _ => Tally::default(),
     }
 }
@@ -822,13 +842,15 @@ pub(super) fn run_end_income(run: &RunState, side: Side, passed: u32) -> (i32, u
 /// "if successful, gain 6[credit]", Red Team's "take 3[credit] from this
 /// resource", Jailbreak's and Joy Ride's draws. A rider that pays in
 /// anything else is nothing here; the accesses it adds are
-/// `rider_accesses`. The rider is seeded onto the run by the card that
-/// began it and is read here only off a run the search itself began, so
-/// it is never a sampled guess: a run in progress when the view was taken
-/// carries none (`determinize` leaves it `None`).
-pub(super) fn rider_income(run: &RunState, side: Side) -> (i32, u32) {
+/// `rider_accesses`. The clicks are what a rider saves — an install
+/// from the grip without its click (Bahia Bands; §56). The rider is
+/// seeded onto the run by the card that began it and is read here only
+/// off a run the search itself began, so it is never a sampled guess: a
+/// run in progress when the view was taken carries none (`determinize`
+/// leaves it `None`).
+pub(super) fn rider_income(run: &RunState, side: Side) -> (i32, u32, u32) {
     let sum = run.on_success_effect.as_deref().map(|effect| tally(effect, side)).unwrap_or_default();
-    (sum.credits, sum.cards.max(0) as u32)
+    (sum.credits, sum.cards.max(0) as u32, sum.clicks.max(0) as u32)
 }
 
 /// The accesses the rider on `run` adds to a breach of `server` beyond
@@ -1630,6 +1652,31 @@ pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A rider that resolves some of its options is read as the chooser's
+    /// best of them (Phase 5 §56): Bahia Bands' "resolve 2 of the
+    /// following" — draw 2, install from the grip for 1[c] less, remove a
+    /// tag, 4[c] for trash costs — reads as two cards, a click and a
+    /// credit, the draw and the install; the tag and the trash credits
+    /// are nothing here and so not among the best.
+    #[test]
+    fn a_rider_that_resolves_some_of_its_options_is_read_as_the_best_of_them() {
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let bahia = pool.get(&CardId("bahia_bands".to_string())).expect("Bahia Bands");
+        let rider = bahia
+            .triggers
+            .iter()
+            .flat_map(|trigger| trigger.effects.iter())
+            .find_map(|effect| match effect {
+                Effect::PromptChooseServer { on_success: Some(on_success), .. } => Some((**on_success).clone()),
+                _ => None,
+            })
+            .expect("Bahia Bands begins a run with a rider");
+        let run = RunState { server: netrunner_core::rules::ServerId::Hq, on_success_effect: Some(Box::new(rider)), ..Default::default() };
+        assert_eq!(rider_income(&run, Side::Runner), (1, 2, 1));
+        assert_eq!(rider_income(&run, Side::Corp), (0, 0, 0));
+    }
 
     /// A trojan's derez of its host is read off its triggers (Phase 5
     /// §54): Tranquilizer places one counter on install and one a turn
