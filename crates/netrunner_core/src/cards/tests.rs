@@ -28631,4 +28631,35 @@ mod reprints {
         let facedown = subliminal_messaging_corp_turn_after(&registry, false, true);
         assert!(facedown.pending_decision.is_none(), "a facedown copy is not heard");
     }
+
+    // ---- Stage 9g: cards revealed as an encounter begins ----
+
+    /// Slot Machine fires on a stack whose top three, once the top card
+    /// has gone to the bottom, are `revealed` (top last).
+    fn slot_machine_fires_over(registry: &CardRegistry, revealed: [&str; 3]) -> (GameState, GameState) {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("slot_machine")];
+        state.runner.stack = vec![id("corroder")];
+        state.runner.stack.extend(revealed.iter().map(|card| id(card)));
+        state.runner.stack.push(id("dirty_laundry"));
+        (state.clone(), fire(&state, registry))
+    }
+
+    #[test]
+    fn slot_machine_puts_the_top_card_on_the_bottom_and_reads_the_three_it_reveals() {
+        let registry = registry();
+        let (before, three) = slot_machine_fires_over(&registry, ["sure_gamble"; 3]);
+        assert_eq!(three.runner.stack.first(), Some(&id("dirty_laundry")), "the top card of the stack on the bottom");
+        assert_eq!(three.runner.resources.credits, Credits(before.runner.resources.credits.0 - 3), "the Runner loses 3[credit]");
+        assert_eq!(three.corp.resources.credits, Credits(before.corp.resources.credits.0 + 3), "3 events share a type: gain 3[credit]");
+        let placed = pick(&three, &registry, &corp_toggles(&three, &registry)[..1]);
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 3, "and place 3 advancement tokens on an installed card");
+
+        let (before, two) = slot_machine_fires_over(&registry, ["prepaid_voicepad", "sure_gamble", "sure_gamble"]);
+        assert_eq!(two.corp.resources.credits, Credits(before.corp.resources.credits.0 + 3), "2 events share a type: gain 3[credit]");
+        assert!(corp_toggles(&two, &registry).is_empty(), "but 2 are not 3");
+
+        let (before, none) = slot_machine_fires_over(&registry, ["prepaid_voicepad", "corroder", "sure_gamble"]);
+        assert_eq!(none.corp.resources.credits, before.corp.resources.credits, "no two share a type");
+    }
 }

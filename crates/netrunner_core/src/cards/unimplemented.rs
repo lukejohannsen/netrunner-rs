@@ -72,5 +72,4 @@ pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Magnum Opus Reprint* (`magnum_opus_reprint`): tranche 8 of the NSG plan.
 pub(crate) const MOR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("slot_machine", "Slot Machine"),
 ];

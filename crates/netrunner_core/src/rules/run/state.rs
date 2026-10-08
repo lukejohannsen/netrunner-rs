@@ -139,6 +139,15 @@ pub struct EncounterTally {
     /// the run's earlier ice.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub subroutines_broken: u32,
+    /// The cards revealed this encounter, in the order they were — Slot
+    /// Machine's "if you revealed 2 or more cards that share a type when
+    /// this encounter began" (`Amount::RevealedThisEncounterSharingAType`).
+    /// Recorded by every reveal while an encounter is in progress
+    /// (`ability::reveal`), because `GameState::revealed` is emptied when
+    /// the action that revealed them ends and the subroutines resolve on a
+    /// later one. Public, as a reveal is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revealed: Vec<crate::dsl::CardId>,
 }
 
 

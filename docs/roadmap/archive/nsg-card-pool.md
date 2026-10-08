@@ -9381,3 +9381,45 @@ of 82.
     facedown copy is not heard.
 - **DSL ratio** (`pool_status.py`): 15 of 107 `Effect` variants
   single-use, none unused, over 721 card files.
+
+#### Stage 9g — an ice that reads the top of the stack (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one Corp card and one new `Effect`.
+**Magnum Opus Reprint is complete (6 of 6).**
+- **Card from Magnum Opus Reprint:** Slot Machine.
+
+- **"When the Runner encounters this ice, they put the top card of the
+  stack on the bottom, then you reveal the top 3 cards of the stack"** is
+  two `TopOfDeck`s:
+  - The first takes 1 unrevealed card, with `each: AddToDeck(Bottom)`.
+  - The second reveals 3. Each card is a `CardRevealed` by the Corp.
+  - `TopOfDeck` is new. Composition didn't work: `LookAtTopOfDeck` shows
+    cards to one player and acts on none, and `RevealAtRandom` draws from
+    a hand. Its `each` must not park, as `RevealAtRandom`'s must not.
+- **"If you revealed 2 (3) or more cards that share a type when this
+  encounter began"** is `AmountAtLeast(RevealedThisEncounterSharingAType,
+  N)`.
+  - A card revealed during an encounter is now kept on the encounter's
+    tally (`EncounterTally::revealed`) until the encounter ends. The
+    subroutines resolve on a later action than the reveal, and
+    `GameState::revealed` is emptied when the revealing action ends.
+  - Every reveal records there (`ability::reveal`), whatever revealed it.
+    Cards revealed from a deck stay off `GameState::revealed`, which lists
+    cards revealed in a hand.
+  - The amount is the largest group sharing a card type, by
+    discriminant, as `CardTypesAmongFaceupInArchives` counts types.
+- **"Place 3 advancement tokens on an installed card"** chooses among the
+  Corp's installed cards. The engine places advancement counters on no
+  Runner card.
+- **Decks.** Paid Content (NBN: Making News, Eternal-only, which Slot
+  Machine needs) takes two Slot Machine for its two Virtual Service Agent,
+  code gate for code gate. Grand Opening and Pay to Win keep Virtual
+  Service Agent.
+- **Client.** The encounter's revealed cards reach the view inside the
+  tally, and the view ledger says why they need no picture: each reveal
+  is a line of the log.
+- **Tests.** One new test, over three stacks: three events revealed (lose
+  3, gain 3, place 3), two (lose 3, gain 3, nothing to place), and no
+  shared type (lose 3 only). In all three the top card goes to the bottom.
+- **DSL ratio** (`pool_status.py`): 16 of 108 `Effect` variants
+  single-use, none unused, over 722 card files.

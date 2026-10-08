@@ -78,6 +78,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
         Amount::InstalledIcebreakerCount => "the number of installed icebreakers".to_string(),
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
+        Amount::RevealedThisEncounterSharingAType => "the most cards revealed this encounter that share a type".to_string(),
         Amount::CardTypesAmongFaceupInArchives => "the number of card types among faceup cards in Archives".to_string(),
         Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
         Amount::CardsInstalledInRemotesThisTurn => "the cards installed in remote servers this turn".to_string(),
@@ -454,6 +455,14 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             match then {
                 Some(then) => format!("{access}, then {}", describe_effect(then, registry)),
                 None => access,
+            }
+        }
+        Effect::TopOfDeck { deck, count, reveal, each } => {
+            let pile = if *deck == Side::Corp { "R&D" } else { "the stack" };
+            let take = if *reveal { format!("reveal the top {count} card(s) of {pile}") } else { format!("take the top {count} card(s) of {pile}") };
+            match each {
+                Some(each) => format!("{take}, and for each: {}", describe_effect(each, registry)),
+                None => take,
             }
         }
         Effect::RevealAtRandom { side, count, each } => {
