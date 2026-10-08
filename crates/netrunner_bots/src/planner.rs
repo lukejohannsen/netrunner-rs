@@ -2497,6 +2497,75 @@ mod positions {
         assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
     }
 
+    /// A run event that pays when the run ends is played for what the end
+    /// pays (Phase 5 §53): with 6[c], a Cleaver and the centrals behind a
+    /// barrier, the Runner plays Bravado and runs — 6[c] plus one for the
+    /// wall it passes, against the 3[c] it costs — rather than clicking
+    /// for credits. Before, the leaf read a success rider only, and the
+    /// planner had Bravado legal on 136 Runner turns of 48 games of its
+    /// decks and played it 0 times.
+    #[test]
+    fn plays_bravado_for_what_the_runs_end_pays() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(3);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        registry.insert(wall);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(6), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(3);
+        state.runner.grip = vec![CardId("bravado".to_string()), CardId("wall".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("cleaver".to_string()), install_id: InstallId(10), base_strength: 3, ..Default::default() }];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("wall".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(index as u32 + 1),
+                server,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            });
+        }
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let play = PlayerAction::PlayEvent { card_id: CardId("bravado".to_string()) };
+        assert!(view.legal_actions.contains(&play), "{:?}", view.legal_actions);
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    actions.push(action);
+                    if state.active_run.is_some() {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        assert_eq!(actions.first(), Some(&play), "should play Bravado: {actions:?}");
+        let run = state.active_run.as_ref().expect("and run on it");
+        assert_eq!(run.on_end.len(), 1, "the run carries Bravado's rider: {actions:?}");
+    }
+
     /// A card that pays on a run is installed for what its runs will pay
     /// (Phase 5 §32): with 6[c], four clicks and the centrals behind ICE
     /// the rig cannot break, the Runner installs Red Team over clicking
