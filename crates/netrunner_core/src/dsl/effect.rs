@@ -1567,6 +1567,26 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         each: Option<Box<Effect>>,
     },
+    /// Takes the top `count` cards of `deck` — revealed when `reveal` says
+    /// so — and, with `each`, resolves it as each card in turn, top first:
+    /// Slot Machine's "they put the top card of the stack on the bottom"
+    /// is `each: AddToDeck(Bottom)` unrevealed, and its "then you reveal
+    /// the top 3 cards of the stack" is a reveal with no `each`. Fewer in
+    /// the deck, fewer taken. A card revealed during an encounter is the
+    /// encounter's (`EncounterTally::revealed`),
+    /// which its subroutines read on a later action. `each` must not park,
+    /// as `RevealAtRandom::each` must not. Composition didn't work:
+    /// `LookAtTopOfDeck` shows the cards to one player and acts on none,
+    /// `RevealAtRandom` draws from a hand, and every other card an effect
+    /// acts on is one a player chose or the acting card.
+    TopOfDeck {
+        deck: crate::rules::Side,
+        count: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        reveal: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        each: Option<Box<Effect>>,
+    },
     /// "Play a Psi Game" (CR 10.14.6): each player secretly bids 0, 1 or
     /// 2[credit], no more than they could spend (10.14.3), then both bids
     /// are revealed and spent (10.14.4) and `on_match` or `on_differ`
@@ -1981,6 +2001,15 @@ pub enum Amount {
     /// cards in Archives". Types, not subtypes, so every piece of ice is one
     /// type. No amount counted distinct kinds of anything.
     CardTypesAmongFaceupInArchives,
+    /// The most cards revealed this encounter that share a card type
+    /// (`EncounterTally::revealed`) — Slot Machine's "if you revealed 2 or
+    /// more cards that share a type when this encounter began",
+    /// `AmountAtLeast(.., 2)`. Types by discriminant, as
+    /// `CardTypesAmongFaceupInArchives` counts them; 0 outside an
+    /// encounter. Composition didn't work: no amount reads a reveal, and
+    /// the cards were revealed on an earlier action than the subroutine
+    /// that asks.
+    RevealedThisEncounterSharingAType,
     /// The Corp's installs of a card out of HQ this turn (`rules::
     /// turn_log`'s sum beside the cells) — The Holo Man's "If you have not
     /// installed any cards from HQ this turn", `Not(AmountAtLeast(.., 1))`.
@@ -3021,8 +3050,8 @@ impl Effect {
                 }
             }
             Effect::PromptChooseCards { then: None, .. } | Effect::IncreaseAboutToResolve { then: None, .. } => {}
-            Effect::RevealAtRandom { each: Some(effect), .. } => effect.for_each_effect(f),
-            Effect::RevealAtRandom { each: None, .. } => {}
+            Effect::RevealAtRandom { each: Some(effect), .. } | Effect::TopOfDeck { each: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::RevealAtRandom { each: None, .. } | Effect::TopOfDeck { each: None, .. } => {}
             Effect::PromptInstallCorpCard { then, if_rezzed, if_installed, .. } => {
                 for effect in [then, if_rezzed, if_installed].into_iter().flatten() {
                     effect.for_each_effect(f);

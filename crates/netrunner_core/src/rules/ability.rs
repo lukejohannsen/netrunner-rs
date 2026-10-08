@@ -631,7 +631,7 @@ pub fn evaluate_effect(
             let by = controller(ctx, state, registry);
             let mut events = Vec::new();
             for card in hand {
-                state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
+                reveal(state, *side, &card, true);
                 dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: *side, card, by })?;
             }
             Ok(events)
@@ -1019,7 +1019,7 @@ pub fn evaluate_effect(
             let by = controller(ctx, state, registry);
             let mut events = Vec::new();
             for card in &drawn {
-                state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
+                reveal(state, *side, card, true);
                 dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: *side, card: card.clone(), by })?;
             }
             if let Some(each) = each {
@@ -1027,6 +1027,32 @@ pub fn evaluate_effect(
                     let mut revealed = ResolutionContext::for_card(Some(card));
                     revealed.prompting_card = ctx.prompting_card.or(acting_card);
                     events.extend(evaluate_effect(state, each, &mut revealed, registry)?);
+                }
+            }
+            Ok(events)
+        }
+
+        // The top first, as a player turns them over.
+        Effect::TopOfDeck { deck, count, reveal: revealed, each } => {
+            let pile = match deck {
+                Side::Corp => &state.corp.r_and_d,
+                Side::Runner => &state.runner.stack,
+            };
+            let taken: Vec<CardId> = pile.iter().rev().take(*count as usize).cloned().collect();
+            let by = controller(ctx, state, registry);
+            let mut events = Vec::new();
+            if *revealed {
+                for card in &taken {
+                    reveal(state, *deck, card, false);
+                    dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: *deck, card: card.clone(), by })?;
+                }
+            }
+            if let Some(each) = each {
+                for card in &taken {
+                    let mut on = ResolutionContext::for_card(Some(card));
+                    on.prompting_card = ctx.prompting_card.or(acting_card);
+                    on.selected_in_stack = *deck == Side::Runner;
+                    events.extend(evaluate_effect(state, each, &mut on, registry)?);
                 }
             }
             Ok(events)
@@ -4178,6 +4204,22 @@ pub(crate) fn pay_cost_ctx(
     }
 }
 
+/// Reveals `card` (CR 1.21): during an encounter, it is one of the
+/// encounter's revealed cards (`EncounterTally::revealed`), which last
+/// until the encounter ends — Slot Machine's subroutines read what its
+/// encounter trigger revealed. A card revealed in its owner's hand is
+/// also on `GameState::revealed` until it moves or the ability has
+/// finished, which `in_hand` says; one on top of a deck is not, since
+/// that list is what a later step chooses among in the hand.
+fn reveal(state: &mut GameState, side: Side, card: &CardId, in_hand: bool) {
+    if in_hand {
+        state.revealed.push(crate::rules::state::RevealedCard { side, card: card.clone() });
+    }
+    if let Some(run) = state.active_run.as_mut().filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce) {
+        run.this_encounter.revealed.push(card.clone());
+    }
+}
+
 /// Who carries out a trash a card's text makes: its controller (CR
 /// 1.14.5), read off the card resolving. A card that names another
 /// player to do it — Noise's "the Corp trashes the top card of R&D" —
@@ -5132,6 +5174,16 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |card| card.hosted_cards.len() as u32),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
+        Amount::RevealedThisEncounterSharingAType => {
+            let types: Vec<std::mem::Discriminant<crate::dsl::CardType>> = state
+                .active_run
+                .iter()
+                .flat_map(|run| &run.this_encounter.revealed)
+                .filter_map(|card| registry.get(card))
+                .map(|def| std::mem::discriminant(&def.card_type))
+                .collect();
+            types.iter().map(|kind| types.iter().filter(|other| *other == kind).count()).max().unwrap_or(0) as u32
+        }
         // By discriminant: ice is one card type (CR 2.15.2) whatever its
         // `IceType`, which is a subtype.
         Amount::CardTypesAmongFaceupInArchives => {

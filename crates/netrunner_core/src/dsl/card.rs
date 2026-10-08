@@ -1122,7 +1122,7 @@ pub enum CardValidationError {
     IdentityCopySetInTheOpen(CardId),
     #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost or an operation's additional cost to play; X is chosen before anything is paid (CR 1.16.2c)")]
     XCostNotFirst(CardId),
-    #[error("card {0:?} resolves something for each card of a random reveal (`Effect::RevealAtRandom::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
+    #[error("card {0:?} resolves something for each card of a random reveal or a deck's top (`Effect::RevealAtRandom::each`, `Effect::TopOfDeck::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
     RevealedCardsCannotWait(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
@@ -1669,7 +1669,7 @@ impl CardDefinition {
             .collect();
         for root in roots {
             root.for_each_effect(&mut |effect| {
-                if let Effect::RevealAtRandom { each: Some(each), .. } = effect {
+                if let Effect::RevealAtRandom { each: Some(each), .. } | Effect::TopOfDeck { each: Some(each), .. } = effect {
                     revealed_cards_wait |= !never_parks(each);
                 }
                 if let Effect::Prohibit { what, until, encountered_ice, .. } = effect {
