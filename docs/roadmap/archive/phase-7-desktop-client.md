@@ -5692,6 +5692,66 @@ spectator's board from each side and of the settings screen. Desktop
 tests green and clippy silent.
 
 
+## 9. Decklists searched from NetrunnerDB — the search half DONE in the desktop (8 October 2026)
+
+`feat/decklist-search`. The download half was §10 Stage 6 (1 October
+2026): a published list by its link. This is the other half the person
+asked for: finding one without leaving the client.
+
+**Read off the API on 8 October 2026, before building.** v3's
+`/public/decklists` answers `filter[card_id]`, `filter[identity_card_id]`,
+`filter[side_id]`, `filter[faction_id]` and `filter[user_id]`, sorts by
+`-created_at`, pages twenty at a time with `links.next`; `filter[search]`
+and `filter[format_id]` answer 500, as they did on 30 September, and
+`filter[name]` matched nothing useful. Each row of the answer is a whole
+decklist — `card_slots` included — so a row picked from the results
+imports with no second request. So a search is **by a card or an
+identity, newest first, one page**: the person names a card, and the
+newest twenty lists that play it is what a person reads before they
+narrow the card. Pages, sides and factions are left until someone wants
+them; the request shape takes them.
+
+**The name is resolved in the client, against the catalog**
+(`models::decks::search_for`): the API takes an id and a person types a
+title, so the typed name is matched to a card — exactly, else the title
+it begins, else the title it is in, case ignored, the first by title
+among equals — and an identity goes to the identity filter. A name that
+matches nothing is refused in the pop-up in words rather than searched
+for nothing. Two Zahyas share a prefix; the first by title answers, and
+the pop-up says which title it searched.
+
+**One pop-up, one field, the rows under it.** Search NetrunnerDB… beside
+Import from NetrunnerDB… on the Decks toolbar opens `Popup::Search`: the
+field, Enter or Search sends (`netrunner_card_sync::fetch_decklists` on
+the tokio runtime through `netrunnerdb::Decklists::search`, one out at
+a time beside the one fetch), "Searching…" until the answer, and the
+rows — "name · by author · identity · day" — in a scrolling list under
+"The N newest lists playing <title>", each a button (`PopupButton::Pick`)
+that saves and opens the list through `Intent::Fetched`, the path a
+fetched list takes, with the author and the link kept as its
+description. A refusal from NetrunnerDB, or a name the catalog does not
+know, is the pop-up's to show with the field kept.
+
+**Checked.** `netrunner_card_sync::decklists::tests` pin the two
+request shapes and read a page trimmed from the live answer (two rows,
+their cards, a refusal, an empty page). `models::decks::tests` pin the
+resolver. `netrunnerdb::tests` pin one search at a time and the scripted
+answer. `tests/navigation.rs`
+`a_netrunnerdb_search_names_a_card_lists_the_newest_decklists_and_a_pick_opens_one`:
+a name the catalog does not know is refused with the field kept; "zahya"
+resolves to the identity and the scripted row comes back under its
+title in the row's words; picking it opens the editor on the saved
+deck; a 500 is shown in the pop-up. Screenshotted on the virtual
+compositor with the new `NETRUNNER_SEARCH=<name>` hook (the one dev
+hook that goes out to the network), which opens the pop-up, sends the
+search and holds the shot for the answer.
+
+**Left.** The terminal client's share of §9 and §10 (its builder still
+imports from a pasted list). A second page, a side or a faction filter,
+and a format filter once the API answers one.
+
+No engine change, so no coverage run or sweeps.
+
 ## 10. The deck builder by format, decks as files and from NetrunnerDB, art per printing — OPEN (30 September 2026)
 
 ### Stage 3 — A card is drawn with the printing a person chose (`feat/art-per-printing`, 30 September 2026)

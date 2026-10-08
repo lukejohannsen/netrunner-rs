@@ -39,6 +39,9 @@ pub enum SyncError {
     #[error("NetrunnerDB refused the decklist: {0}")]
     DecklistRefused(String),
 
+    #[error("NetrunnerDB answered {status} to the search")]
+    SearchDownload { status: u16 },
+
     #[error("NetrunnerDB's answer is not a decklist: {0}")]
     DecklistShape(String),
 }

@@ -78,7 +78,7 @@ impl Plugin for DecksPlugin {
             // the field's (it closes the pop-up through `Cancelled`), and
             // one key does one thing.
             .add_systems(Update, escape_closes_the_picker.in_set(Captures).after(edit_text_fields).run_if(in_state(AppScreen::Decks)))
-            .add_systems(Update, (controls, dropped_files, file_answers, fetch_answers, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
+            .add_systems(Update, (controls, dropped_files, file_answers, fetch_answers, search_answers, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
     }
 }
 
@@ -125,6 +125,8 @@ pub enum Control {
     Import,
     /// Import from NetrunnerDB…: the link pop-up.
     Fetch,
+    /// Search NetrunnerDB…: the card-name pop-up (§9).
+    Search,
     Side(Option<Side>),
     Back,
 }
@@ -155,6 +157,10 @@ pub enum PopupButton {
     Fetch,
     /// Import from NetrunnerDB: the clipboard into the field.
     Paste,
+    /// Search NetrunnerDB: search for what the field names.
+    Search,
+    /// Search NetrunnerDB: save and open this row of the results.
+    Pick(usize),
     Cancel,
 }
 
@@ -170,11 +176,16 @@ pub enum Popup {
     /// Import from NetrunnerDB: which decklist? `typed` is what the field
     /// holds across a redraw, `problem` why the last try was refused.
     Fetch { typed: String, problem: Option<String> },
+    /// Search NetrunnerDB: which card? `typed` as above; `found` is the
+    /// title searched and the newest lists that play it, once answered.
+    Search { typed: String, problem: Option<String>, found: Option<(String, Vec<netrunner_card_sync::Decklist>)> },
 }
 
 /// The most a decklist's link runs to, with room: a uuid is 36
 /// characters, and a page link with its slug about 120.
 const LINK_MAX: usize = 200;
+/// The most a card's name runs to, with room.
+const NAME_MAX: usize = 80;
 
 #[derive(Component)]
 struct ShelfBody;
@@ -217,15 +228,23 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
     if notice.is_some() {
         shelf.notice = notice;
     }
-    // `NETRUNNER_FETCH`: the link pop-up open for a screenshot.
-    match dev.as_ref().and_then(|dev| dev.fetch.clone()) {
-        Some(typed) => {
-            commands.insert_resource(Popup::Fetch { typed, problem: None });
-            commands.insert_resource(Dirty { shelf: false, popup: true });
-        }
-        None => {
-            commands.insert_resource(Popup::None);
-            commands.init_resource::<Dirty>();
+    // `NETRUNNER_SEARCH`: the search pop-up open with the name typed and
+    // the search sent (`search_answers`), for a screenshot of the rows.
+    if let Some(typed) = dev.as_ref().and_then(|dev| dev.search.clone()) {
+        commands.insert_resource(Popup::Search { typed: typed.clone(), problem: None, found: None });
+        commands.insert_resource(DevSearch(typed));
+        commands.insert_resource(Dirty { shelf: false, popup: true });
+    } else {
+        // `NETRUNNER_FETCH`: the link pop-up open for a screenshot.
+        match dev.as_ref().and_then(|dev| dev.fetch.clone()) {
+            Some(typed) => {
+                commands.insert_resource(Popup::Fetch { typed, problem: None });
+                commands.insert_resource(Dirty { shelf: false, popup: true });
+            }
+            None => {
+                commands.insert_resource(Popup::None);
+                commands.init_resource::<Dirty>();
+            }
         }
     }
 
@@ -283,6 +302,7 @@ fn spawn_toolbar(parent: &mut ChildSpawnerCommands, theme: &Theme, shelf: &Shelf
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "New deck", Val::Auto, Control::New));
         row.spawn(widgets::button(theme, "Import from file…", Val::Auto, Control::Import));
         row.spawn(widgets::button(theme, "Import from NetrunnerDB…", Val::Auto, Control::Fetch));
+        row.spawn(widgets::button(theme, "Search NetrunnerDB…", Val::Auto, Control::Search));
         let mut back = row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
     });
@@ -457,7 +477,15 @@ fn controls(
                 }
             }
             PopupButton::Delete(yes) => outcome = shelf.0.apply(Intent::ConfirmDelete(*yes), book),
-            PopupButton::Fetch => fetch = Some(fields.iter().map(|(field, _)| field.text.clone()).next().unwrap_or_default()),
+            PopupButton::Fetch | PopupButton::Search => fetch = Some(fields.iter().map(|(field, _)| field.text.clone()).next().unwrap_or_default()),
+            PopupButton::Pick(index) => {
+                if let Popup::Search { found: Some((_, rows)), .. } = &*popup
+                    && let Some(row) = rows.get(*index).cloned()
+                {
+                    *popup = Popup::None;
+                    outcome = shelf.0.apply(Intent::Fetched(row), book);
+                }
+            }
             PopupButton::Paste => {
                 if let Popup::Fetch { typed, problem } = &mut *popup {
                     match read_clipboard(clipboard.as_deref_mut()) {
@@ -471,15 +499,29 @@ fn controls(
             }
         }
     }
-    if let (Some(text), Popup::Fetch { typed, problem }) = (fetch, &mut *popup) {
-        // The field is redrawn from `typed`, so what was typed survives
-        // a refusal; the request itself answers through `fetch_answers`.
-        *typed = text.clone();
-        *problem = match DecklistRef::parse(&text) {
-            Ok(reference) => lists.fetch(runtime.as_deref(), reference).err(),
-            Err(reason) => Some(reason),
-        };
-        dirty.popup = true;
+    match (fetch, &mut *popup) {
+        (Some(text), Popup::Fetch { typed, problem }) => {
+            // The field is redrawn from `typed`, so what was typed survives
+            // a refusal; the request itself answers through `fetch_answers`.
+            *typed = text.clone();
+            *problem = match DecklistRef::parse(&text) {
+                Ok(reference) => lists.fetch(runtime.as_deref(), reference).err(),
+                Err(reason) => Some(reason),
+            };
+            dirty.popup = true;
+        }
+        // The name is resolved against the catalog here; the search
+        // answers through `search_answers`, and the last answer stays
+        // on the pop-up until the next comes.
+        (Some(text), Popup::Search { typed, problem, .. }) => {
+            *typed = text.clone();
+            *problem = match crate::models::decks::search_for(&text, book) {
+                Ok((search, _)) => lists.search(runtime.as_deref(), search).err(),
+                Err(reason) => Some(reason),
+            };
+            dirty.popup = true;
+        }
+        _ => {}
     }
     for entity in &presses {
         if let Ok(control) = marks.get(*entity) {
@@ -493,6 +535,10 @@ fn controls(
                 }
                 Control::Fetch => {
                     *popup = Popup::Fetch { typed: String::new(), problem: None };
+                    dirty.popup = true;
+                }
+                Control::Search => {
+                    *popup = Popup::Search { typed: String::new(), problem: None, found: None };
                     dirty.popup = true;
                 }
                 Control::Import => {
@@ -540,6 +586,16 @@ fn controls(
 
 /// An identity's title up to its colon: "Zahya Sadeghi", not "Zahya
 /// Sadeghi: Versatile Smuggler", for a new deck's name.
+/// A search result in one line: the list's name, its author, its
+/// identity by title (by id when the catalog does not know it) and the
+/// day it was published.
+fn result_line(core: &ClientCore, row: &netrunner_card_sync::Decklist) -> String {
+    let identity = book(core).get(&CardId(row.identity.clone())).map_or(row.identity.clone(), |card| short_title(card).to_string());
+    let day = row.created_at.get(..10).unwrap_or("");
+    let author = if row.author.is_empty() { "someone".to_string() } else { row.author.clone() };
+    format!("{} · by {author} · {identity} · {day}", row.name)
+}
+
 fn short_title(identity: &CardDefinition) -> &str {
     identity.title.split(':').next().unwrap_or(&identity.title).trim()
 }
@@ -626,6 +682,45 @@ fn fetch_answers(mut lists: ResMut<Decklists>, mut shelf: ResMut<Model>, mut pop
     }
 }
 
+/// NetrunnerDB's answer to a search, when it comes: the rows go on the
+/// pop-up under the title they were searched by, or the pop-up says why
+/// there are none. An answer to a pop-up since closed is dropped: the
+/// person has moved on.
+/// `NETRUNNER_SEARCH`'s name, waiting to be sent once the screen is up.
+#[derive(Resource)]
+struct DevSearch(String);
+
+#[allow(clippy::too_many_arguments)]
+fn search_answers(mut commands: Commands, mut lists: ResMut<Decklists>, mut popup: ResMut<Popup>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, runtime: Option<Res<TokioRuntime>>, hook: Option<Res<DevSearch>>, mut dev: Option<ResMut<crate::dev::Dev>>) {
+    if let Some(hook) = hook {
+        commands.remove_resource::<DevSearch>();
+        if let Popup::Search { problem, .. } = &mut *popup {
+            *problem = match crate::models::decks::search_for(&hook.0, book(&core)) {
+                Ok((search, _)) => lists.search(runtime.as_deref(), search).err(),
+                Err(reason) => Some(reason),
+            };
+            if problem.is_some() && let Some(dev) = dev.as_mut() {
+                dev.searched = true;
+            }
+            dirty.popup = true;
+        }
+    }
+    let Some(answer) = lists.poll_search() else { return };
+    if let Some(dev) = dev.as_mut() {
+        dev.searched = true;
+    }
+    let Popup::Search { typed, problem, found } = &mut *popup else { return };
+    match answer {
+        Ok(rows) => {
+            let title = crate::models::decks::search_for(typed, book(&core)).map(|(_, title)| title).unwrap_or_else(|_| typed.clone());
+            *found = Some((title, rows));
+            *problem = None;
+        }
+        Err(reason) => *problem = Some(reason),
+    }
+    dirty.popup = true;
+}
+
 /// The line an export leaves: where the file is, or why there is none.
 pub fn exported(result: Result<std::path::PathBuf, String>) -> String {
     match result {
@@ -691,7 +786,7 @@ fn refresh(
         node.display = if asking { Display::Flex } else { Display::None };
         commands.entity(layer).despawn_children();
         if asking {
-            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, &shelf.0, &popup, &images, lists.is_fetching()));
+            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, &shelf.0, &popup, &images, lists.is_fetching() || lists.is_searching()));
         }
     }
 }
@@ -784,6 +879,48 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                                 row.spawn(widgets::disabled_button(theme, "Fetch", px(160), PopupButton::Fetch));
                             } else {
                                 row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Fetch", px(160), PopupButton::Fetch));
+                            }
+                        });
+                    }
+                    Popup::Search { typed, problem, found } => {
+                        panel.spawn(widgets::heading(theme, "Search NetrunnerDB"));
+                        panel.spawn(widgets::dim(theme, "A card's or an identity's name: the newest published decklists that play it, twenty at a time. Pick one to save it as your own and open it in the editor; the author and the link stay with it."));
+                        panel.spawn((
+                            TextField::new(typed.clone(), NAME_MAX),
+                            widgets::field_node(percent(100)),
+                            BackgroundColor(theme.glass_strong),
+                            BorderColor::all(theme.accent),
+                            children![(Text::new(format!("{typed}|")), theme.font(size::BODY), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::AnyCharacter))],
+                        ));
+                        if let Some(problem) = problem {
+                            panel.spawn((widgets::notice(theme, problem.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        }
+                        if let Some((title, rows)) = found {
+                            let line = if rows.is_empty() { format!("No published decklist plays {title}.") } else { format!("The {} newest lists playing {title}, newest first:", rows.len()) };
+                            panel.spawn((widgets::label(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                            // The rows scroll: twenty is a page of the API's,
+                            // and the pop-up is capped at the window.
+                            let list = panel
+                                .spawn((bevy::ui_widgets::ScrollArea, Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(4), overflow: Overflow::scroll_y(), ..default() }))
+                                .with_children(|list| {
+                                    for (index, row) in rows.iter().enumerate() {
+                                        list.spawn(widgets::styled_button(theme, ButtonKind::Secondary, result_line(core, row), percent(100), PopupButton::Pick(index)));
+                                    }
+                                })
+                                .id();
+                            panel.spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() }).add_child(list).with_children(|row| {
+                                row.spawn(widgets::scrollbar(theme, list));
+                            });
+                        }
+                        panel.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(10), margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                            if fetching {
+                                row.spawn(widgets::dim(theme, "Searching…"));
+                            }
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, PopupButton::Cancel));
+                            if fetching {
+                                row.spawn(widgets::disabled_button(theme, "Search", px(160), PopupButton::Search));
+                            } else {
+                                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Search", px(160), PopupButton::Search));
                             }
                         });
                     }
