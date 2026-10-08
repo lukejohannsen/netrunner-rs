@@ -334,7 +334,54 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon)).max(0.0))
+        .sum()
+}
+
+/// What a program's derez of its host is worth over `horizon` turns
+/// (Phase 5 §54): the host's rez cost at `opponent_credit_weight` for
+/// every turn after the count is reached — the Corp pays it again each
+/// turn it wants the piece up, or leaves it down and the rig walks past
+/// it — at the discount every income over the horizon takes
+/// (`future_credit_weight`). `counters` is what the card holds now, or
+/// will on install. Nothing for a card that derezzes nothing.
+pub(super) fn host_derez_value(def: &CardDefinition, counters: u32, host_rez_cost: u32, w: &Weights, horizon: u32) -> f64 {
+    let Some(derez) = read::host_derez(def) else { return 0.0 };
+    let delay = derez.at.saturating_sub(counters).div_ceil(derez.per_turn.max(1));
+    f64::from(host_rez_cost) * w.opponent_credit_weight * f64::from(horizon.saturating_sub(delay)) * w.future_credit_weight
+}
+
+/// `host_derez_value` for a held card, on the dearest rezzed ice on the
+/// table — the host the install would pick. An unrezzed piece is worth
+/// nothing to it: its cost is the Corp's secret, and the count works on
+/// a rezzed one.
+pub(super) fn held_host_derez_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if read::host_derez(def).is_none() {
+        return 0.0;
+    }
+    let on_install = read::host_derez(def).map_or(0, |derez| derez.on_install);
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|ice| ice.rezzed && ice.slot == netrunner_core::rules::InstallSlot::Ice)
+        .filter_map(|ice| registry.get(&ice.card))
+        .map(|host| host_derez_value(def, on_install, host.cost, w, horizon))
+        .fold(0.0, f64::max)
+}
+
+/// `host_derez_value` summed over the rig's programs hosted on rezzed ice
+/// (Phase 5 §54).
+pub(super) fn rig_host_derez_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|card| {
+            let host = state.corp.installed.iter().find(|ice| Some(ice.install_id) == card.hosted_on_ice && ice.rezzed)?;
+            Some((registry.get(&card.card)?, card.counters, registry.get(&host.card)?.cost))
+        })
+        .map(|(def, counters, cost)| host_derez_value(def, counters, cost, w, horizon))
         .sum()
 }
 
@@ -487,9 +534,10 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// shown (`shown`, from `shown_for`) is worth its coverage less
 /// `unshown_breaker_weight`, and an R&D access the card promises is
 /// worth `rd_access_weight` (Stage 7; both zero at the reference).
-/// `access_trash` is what the card's access ability is worth where the
-/// caller read it (`access_trash_value`, zero for a card with none; Phase
-/// 5 §52). **The memory a console declares is not read here, on purpose:**
+/// `ability_value` is what the card's own text is worth where the caller
+/// read it — its access trash (`access_trash_value`, Phase 5 §52), its
+/// derez of the host it would be installed on (`held_host_derez_value`,
+/// §54) — zero for a card with neither. **The memory a console declares is not read here, on purpose:**
 /// the table pays `memory_weight` a free unit once the console is down,
 /// and crediting the held card the same unit (tried in §52) left the
 /// install nothing but its click — Hermes, 2[c] for +1[mu], went from 29
@@ -497,7 +545,7 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// term the install could not beat. A console is installed for the
 /// memory the held reading does not see, which is the one asymmetry the
 /// guide's "install your console" needs until a console's text is read.
-pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32, access_trash: f64) -> f64 {
+pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32, ability_value: f64) -> f64 {
     if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
         return 0.0;
     }
@@ -512,7 +560,7 @@ pub(super) fn install_delta(def: &CardDefinition, price: u32, rig: [bool; 3], sh
     } else {
         0.0
     };
-    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised + access_trash
+    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised + ability_value
         - unshown as f64 * w.unshown_breaker_weight
         - f64::from(price) * w.own_credit_weight
         - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
@@ -606,6 +654,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // An access ability that trashes what it accesses is a trash a turn
     // to a Dismantle Runner (`access_trash_value`, Phase 5 §52).
     *score += rig_access_trash_value(state, registry, w, horizon);
+    // A program's derez of its host is the host's rez a turn
+    // (`host_derez_value`, Phase 5 §54).
+    *score += rig_host_derez_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
@@ -698,6 +749,39 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A trojan's derez is its host's rez a turn (Phase 5 §54): held,
+    /// Tranquilizer is worth the dearest rezzed piece's cost at the
+    /// opponent's rate over the turns after its count, discounted, and
+    /// nothing while no piece is rezzed; hosted, the counters it holds
+    /// shorten the wait, and a 5[c] host pays five times a 1[c] one.
+    #[test]
+    fn a_trojans_derez_is_the_hosts_rez_a_turn() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let tranquilizer = pool.get(&CardId("tranquilizer".to_string())).expect("Tranquilizer").clone();
+        let w = guide();
+        let horizon = 9;
+        let mut state = GameState::new(0);
+        assert_eq!(held_host_derez_value(&state, &pool, &tranquilizer, &w, horizon), 0.0, "no ice to host on");
+        let ice = |id: u32, card: &str, rezzed: bool| InstalledCard { card: CardId(card.to_string()), install_id: InstallId(id), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() };
+        state.corp.installed = vec![ice(1, "palisade", false), ice(2, "whitespace", true), ice(3, "bran_1_0", true)];
+        let bran = pool.get(&CardId("bran_1_0".to_string())).expect("Brân 1.0").cost;
+        let whitespace = pool.get(&CardId("whitespace".to_string())).expect("Whitespace").cost;
+        assert!(bran > whitespace);
+        let held = held_host_derez_value(&state, &pool, &tranquilizer, &w, horizon);
+        // One counter on install, three to derez: two turns of waiting.
+        let expected = f64::from(bran) * w.opponent_credit_weight * f64::from(horizon - 2) * w.future_credit_weight;
+        assert!((held - expected).abs() < 1e-9, "{held} vs {expected}");
+        assert_eq!(host_derez_value(&tranquilizer, 1, bran, &w, horizon), held, "the dearest rezzed piece is the host read");
+        assert!(host_derez_value(&tranquilizer, 3, bran, &w, horizon) > held, "counters already there shorten the wait");
+        assert!((host_derez_value(&tranquilizer, 1, 5, &w, horizon) - 5.0 * host_derez_value(&tranquilizer, 1, 1, &w, horizon)).abs() < 1e-9);
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("tranquilizer".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(3)), counters: 1, ..Default::default() });
+        assert!((rig_host_derez_value(&state, &pool, &w, horizon) - held).abs() < 1e-9, "hosted on Brân it is worth what the hand read");
+        state.runner.rig[0].hosted_on_ice = Some(InstallId(1));
+        assert_eq!(rig_host_derez_value(&state, &pool, &w, horizon), 0.0, "on an unrezzed piece the cost is the Corp's secret");
+    }
 
     /// An access ability that trashes what it accesses is a trash a turn
     /// to a Dismantle Runner and nothing to any other (Phase 5 §52): at
