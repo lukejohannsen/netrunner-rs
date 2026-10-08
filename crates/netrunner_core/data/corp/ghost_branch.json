@@ -1,0 +1,37 @@
+{
+  "id": "ghost_branch",
+  "title": "Ghost Branch",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveTags": "HostedAdvancementTokens"
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may give the Runner 1 tag for each advancement token on Ghost Branch",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1087,
+  "is_playable": true
+}

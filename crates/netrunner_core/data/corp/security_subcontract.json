@@ -1,0 +1,42 @@
+{
+  "id": "security_subcontract",
+  "title": "Security Subcontract",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Trash": {
+              "from": "OwnInstalled",
+              "filter": {
+                "All": [
+                  "Ice",
+                  "Rezzed"
+                ]
+              },
+              "count": 1
+            }
+          }
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          4
+        ]
+      },
+      "text": "[click], trash a rezzed piece of ice: Gain 4[credit]."
+    }
+  ],
+  "built_from": 1096,
+  "is_playable": true
+}

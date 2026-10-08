@@ -29156,4 +29156,104 @@ mod reprints {
         let (installed, _) = pass_until_settled(installed, &registry);
         assert_eq!(counters_on(&installed, "aurora"), 0, "not a virus");
     }
+
+    // ---- Stage 11e: the Core Set's Corp assets and upgrades that compose ----
+
+    /// Melange Mining Corp. turns three clicks into 7[credit]; Adonis
+    /// Campaign pays 3[credit] a turn from its 12 and is trashed empty.
+    #[test]
+    fn melange_mining_corp_and_adonis_campaign_pay_the_corp() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![remote_root("melange_mining_corp", 0)];
+        let (used, _) = use_ability(&state, &registry, "melange_mining_corp", 0).expect("[click], [click], [click]: gain 7[credit]");
+        assert_eq!((used.corp.resources.credits, used.corp.resources.clicks), (Credits(17), Clicks(0)));
+
+        for (loaded, left) in [(12, 9), (3, 0)] {
+            let mut state = base_state();
+            state.corp.installed = vec![crate::rules::InstalledCard { counters: loaded, ..remote_root("adonis_campaign", 0) }];
+            state.corp.r_and_d = vec![id("hedge_fund"); 3];
+            let credits = state.corp.resources.credits;
+            crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+            let (begun, _) = close_all_windows(state, &registry);
+            assert_eq!(begun.corp.resources.credits, Credits(credits.0 + 3), "take 3[credit]");
+            if left == 0 {
+                assert!(begun.corp.installed.is_empty(), "no credits left, so trashed");
+            } else {
+                assert_eq!(begun.corp.installed[0].counters, left);
+            }
+        }
+    }
+
+    /// Research Station goes only in the root of HQ and gives +2 maximum
+    /// hand size.
+    #[test]
+    fn research_station_installs_only_in_hq_and_raises_hand_size() {
+        let registry = registry();
+        let mut state = base_state();
+        let hand = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
+        state.corp.hq = vec![id("research_station"), id("research_station")];
+        assert!(apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("research_station"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false }).is_err(), "only in the root of HQ");
+        let (installed, _) = install_corp(&state, &registry, "research_station", ServerId::Hq, InstallSlot::Root);
+        let mut installed = installed;
+        installed.corp.installed[0].rezzed = true;
+        assert_eq!(crate::rules::continuous::hand_size(&installed, &registry, Side::Corp), hand + 2);
+    }
+
+    /// Experiential Data gives the ice protecting its server +1 strength;
+    /// Akitaro Watanabe lowers its rez cost by 2.
+    #[test]
+    fn experiential_data_and_akitaro_watanabe_help_the_ice_of_their_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice_at_hq("ice_wall"), root_of_hq("experiential_data")];
+        let strength = |state: &GameState| crate::rules::continuous::installed_ice_strength(state, &registry, &id("ice_wall"), install_of(state, "ice_wall"));
+        assert_eq!(strength(&state), 2, "Ice Wall's 1, and 1 more");
+        state.corp.installed[0].server = ServerId::Remote(0);
+        assert_eq!(strength(&state), 1, "not this server");
+
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("enigma") }, root_of_hq("akitaro_watanabe")];
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, install_of(&state, "enigma")), -2, "lowered by 2");
+        state.corp.installed[0].server = ServerId::Remote(0);
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, install_of(&state, "enigma")), 0, "not this server");
+    }
+
+    /// Ghost Branch may tag the Runner once per advancement token, and
+    /// Project Junebug does 2 net damage per token for 1[credit].
+    #[test]
+    fn ghost_branch_and_project_junebug_spring_on_access() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, advancement_tokens: 2, ..remote_root("ghost_branch", 0) }];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (tagged, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("give the tags");
+        let (tagged, _) = pass_until_settled(tagged, &registry);
+        assert_eq!(tagged.runner.tags, 2, "1 tag for each advancement token");
+
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, advancement_tokens: 2, ..remote_root("project_junebug", 0) }];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "if you pay 1[credit]");
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
+        let (paid, _) = pass_until_settled(paid, &registry);
+        assert_eq!(paid.runner.grip.len(), 1, "2 net damage for each of 2 tokens");
+    }
+
+    /// Security Subcontract trashes a rezzed piece of ice for 4[credit].
+    #[test]
+    fn security_subcontract_trashes_a_rezzed_ice_for_four() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![remote_root("security_subcontract", 0), crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("enigma") }];
+        assert!(use_ability(&state, &registry, "security_subcontract", 0).is_err(), "no rezzed ice to trash");
+        state.corp.installed[1].rezzed = true;
+        let (mut used, _) = use_ability(&state, &registry, "security_subcontract", 0).expect("[click], trash a rezzed piece of ice");
+        if let Some(position) = corp_toggles(&used, &registry).first().copied() {
+            used = apply_action(&used, &registry, PlayerAction::ToggleCardSelection { position }).expect("the ice").0;
+        }
+        assert_eq!(used.corp.resources.credits, Credits(14), "gain 4[credit]");
+        assert!(used.corp.archives.iter().any(|archived| archived.card == id("enigma")));
+    }
 }

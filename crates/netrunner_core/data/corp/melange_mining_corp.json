@@ -1,0 +1,26 @@
+{
+  "id": "melange_mining_corp",
+  "title": "Melange Mining Corp.",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          7
+        ]
+      },
+      "text": "[click], [click], [click]: Gain 7[credit]."
+    }
+  ],
+  "built_from": 1108,
+  "is_playable": true
+}
