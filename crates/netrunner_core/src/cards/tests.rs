@@ -28715,4 +28715,57 @@ mod reprints {
             "Hush's [click] ability stays"
         );
     }
+
+    // ---- Stage 10a: expose ----
+
+    fn exposed(state: &GameState, card: &str) -> bool {
+        state.corp.installed.iter().find(|installed| installed.card == id(card)).is_some_and(|installed| installed.seen_by_runner && !installed.rezzed)
+    }
+
+    /// "Gain 2[credit] or expose 1 card": the card chosen among the Corp's
+    /// unrezzed installs is revealed, stays facedown, and the Runner
+    /// remembers it — a rezzed card is not offered.
+    #[test]
+    fn infiltration_gains_2_or_exposes_an_unrezzed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("infiltration")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..remote_root("pad_campaign", 1) }, remote_root("nico_campaign", 2)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("infiltration") }).expect("play");
+        let credits = asked.runner.resources.credits;
+        let (gained, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain");
+        assert_eq!(gained.runner.resources.credits, Credits(credits.0 + 2), "gain 2[credit]");
+
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("expose");
+        assert_eq!(runner_toggles(&choosing, &registry), vec![0], "only the unrezzed card");
+        let (picked, events) = {
+            let (toggled, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+            apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+        };
+        assert!(exposed(&picked, "pad_campaign"), "revealed, and still facedown");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardRevealed { side: Side::Corp, card, by: Side::Runner } if *card == id("pad_campaign"))));
+        let view = crate::view::build_client_view(&picked, &registry, Side::Runner);
+        assert!(
+            view.corp.servers.iter().flat_map(|server| server.root.iter()).any(|card| card.card == Some(id("pad_campaign")) && !card.rezzed),
+            "the Runner's view names it"
+        );
+    }
+
+    /// "Use this ability only if you have made a successful run on HQ this
+    /// turn": [click], 1[credit] exposes a card after one, and not before.
+    #[test]
+    fn lemuria_codecracker_exposes_a_card_after_a_successful_run_on_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..remote_root("pad_campaign", 1) }];
+        state.runner.rig = vec![rig("lemuria_codecracker", 0)];
+        assert!(use_ability(&state, &registry, "lemuria_codecracker", 0).is_err(), "no successful run on HQ yet");
+        let ran = pass_until_settled(run_to_completion(state, &registry, ServerId::Hq).0, &registry).0;
+        let (clicks, credits) = (ran.runner.resources.clicks, ran.runner.resources.credits);
+        let (asked, _) = use_ability(&ran, &registry, "lemuria_codecracker", 0).expect("[click], 1[credit]");
+        assert_eq!((asked.runner.resources.clicks.0, asked.runner.resources.credits.0), (clicks.0 - 1, credits.0 - 1));
+        let (toggled, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(exposed(&done, "pad_campaign"), "expose 1 card");
+    }
 }

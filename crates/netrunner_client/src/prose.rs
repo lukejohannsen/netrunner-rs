@@ -591,6 +591,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ChooseServer { only_protected_by_ice: true } => "choose a server protected by ice".to_string(),
         Effect::RevealHand(Side::Corp) => "reveal HQ".to_string(),
         Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
+        Effect::Expose => "expose it".to_string(),
         Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::CardType(card_type), until } => {
             format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))

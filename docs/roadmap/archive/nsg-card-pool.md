@@ -9466,3 +9466,48 @@ of 82.
   ability.
 - **DSL ratio** (`pool_status.py`): 16 of 108 `Effect` variants
   single-use, none unused, over 723 card files.
+
+#### Stage 10a — expose (8 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: two Runner cards and one new `Effect`.
+- **Cards from the Core Set:** Infiltration, Lemuria Codecracker.
+
+- **"Expose 1 card"** (CR 1.21.4: "to expose a card is to reveal it,
+  except that only installed, unrezzed cards can be exposed") is a
+  selection over the Corp's `Unrezzed` installs whose `then` is the new
+  `Expose`. It acts on the card chosen.
+  - The card is revealed by the Runner (`CardRevealed { by: Runner }`), so
+    a card that hears a reveal hears it. It stays facedown, and the Runner
+    remembers it (`InstalledCard::seen_by_runner`), so the Runner's view
+    names it from then on, as it names a card they accessed.
+  - Nothing happens if the card was rezzed or left the table while the
+    choice waited.
+  - Composition didn't work: a selection's `reveal` names the card to its
+    chooser, but the log mask hides a facedown install from the Runner,
+    and nothing marked it seen.
+- **Infiltration**: "Gain 2[credit] or expose 1 card" is a `PresentChoice`.
+- **Lemuria Codecracker**: "[click], 1[credit]: Expose 1 card. Use this
+  ability only if you have made a successful run on HQ this turn" is a
+  paid ability behind `TimesThisTurnWhen(OnSuccessfulRun, Server[Hq])`, as
+  Cataloguer's is behind R&D.
+- **Not yet preventable.** Zaibatsu Loyalty is the only card that prevents
+  an expose, and it is Stage 10b. It adds `Preventable::Expose` and routes
+  `Expose` through `prevention::would`, so neither is vocabulary no card
+  uses.
+- **Decks.** Pay As You Go takes two Infiltration for its two Running Hot;
+  Free Spirit and Burn Rate keep Running Hot. Hit List (Gabriel Santiago,
+  who runs HQ) takes two Lemuria Codecracker for its two Cezve; two
+  tournament lists keep Cezve.
+- **The observation vocabulary.** Infiltration is the first Core Set card
+  built after the packs' reserved blocks, and as `core` it would have
+  sorted into the middle of the legacy pool and moved Elevation's slots.
+  The Core Set now has a block of its own after the packs'
+  (`RESERVED_BLOCKS`, slots 758..=870, by printed code), and the 19 legacy
+  Core cards are named (`CORE_FIRST_WAVE`) and keep their slots. No slot a
+  model was trained against moves; `CARD_VOCAB` stays 1024.
+- **Tests.** Two new tests. Infiltration gains 2, or exposes the one
+  unrezzed card (a rezzed one is not offered), and the Runner's view then
+  names it. Lemuria's ability is refused before a successful run on HQ,
+  then costs [click] and 1[credit] and exposes.
+- **DSL ratio** (`pool_status.py`): 16 of 109 `Effect` variants
+  single-use, none unused, over 725 card files.

@@ -1,0 +1,47 @@
+{
+  "id": "infiltration",
+  "title": "Infiltration",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  2
+                ]
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OpponentInstalled",
+                  "filter": "Unrezzed",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": "Expose"
+                }
+              }
+            ],
+            "texts": [
+              "Gain 2[credit]",
+              "expose 1 card"
+            ]
+          }
+        }
+      ],
+      "text": "Gain 2[credit] or expose 1 card."
+    }
+  ],
+  "built_from": 1049,
+  "is_playable": true
+}

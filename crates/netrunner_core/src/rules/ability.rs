@@ -637,6 +637,21 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        // The card chosen, still installed and facedown, revealed by the
+        // Runner and remembered.
+        Effect::Expose => {
+            let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+            let Some(exposed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install && !installed.rezzed) else {
+                return Ok(Vec::new());
+            };
+            exposed.seen_by_runner = true;
+            let card = exposed.card.clone();
+            reveal(state, Side::Corp, &card, false);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by: Side::Runner })?;
+            Ok(events)
+        }
+
         // About the chooser: the selection's prompter inside its `then`,
         // the acting install otherwise.
         Effect::Remember { what, until } => {
