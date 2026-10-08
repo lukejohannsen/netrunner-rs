@@ -23,6 +23,8 @@
 
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
+
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
@@ -175,8 +177,10 @@ pub enum SubmitError {
 /// jinteki.net's `/undo-click` keeps four, and nobody has asked it for more.
 pub const UNDO_DEPTH: usize = 4;
 
-/// What taking the last move back would cost.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What taking the last move back would cost. Serialized because a host
+/// tells a seat over the wire what its take-back would cost
+/// (`netrunner_protocol::ServerMessage::Back`, Phase 4 §5 stage e).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Rewind {
     /// The person is still on the prompt their own move opened, and the
     /// move taught them nothing: no card left a hidden zone for their
@@ -239,7 +243,8 @@ pub struct Session {
     /// never in `history` at all when recording is off.
     ended: Option<(Side, GameEndReason)>,
     /// How many `RewindPoint`s to keep; 0 (the default) keeps none, so
-    /// self-play, the gym and the server never pay for a clone.
+    /// self-play and the gym never pay for a clone. A host keeps them for
+    /// its channel seats, which is who the free line was kept for.
     undo_depth: usize,
     /// Oldest first. Only the newest can be `free`.
     rewind_points: VecDeque<RewindPoint>,
@@ -552,6 +557,23 @@ impl Session {
             return None;
         }
         self.rewind_points.back().map(|point| if point.free { Rewind::Free } else { Rewind::Undo })
+    }
+
+    /// `can_rewind`, for a seat that may take back only its own move. A
+    /// host seats two people, and the newest kept state is whichever of
+    /// them moved last: the other seat asking would take back a move that
+    /// was never theirs. `None` when the newest move is not `side`'s — not
+    /// the next one down, because a move is taken back from the state it
+    /// left, and that state has moved on under the other seat's move.
+    pub fn can_rewind_by(&self, side: Side) -> Option<Rewind> {
+        self.rewind_points.back().filter(|point| point.side == side)?;
+        self.can_rewind()
+    }
+
+    /// `rewind`, only where `can_rewind_by(side)` says it may.
+    pub fn rewind_by(&mut self, side: Side) -> Option<Rewound> {
+        self.can_rewind_by(side)?;
+        self.rewind()
     }
 
     /// Takes the person's last move back: the state it was made from is

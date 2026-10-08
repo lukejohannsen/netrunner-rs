@@ -317,6 +317,47 @@ async fn a_casual_lobby_between_two_keys_is_rated_by_nobody() {
     let mut runner_socket = seek_in(&url, Some(&bo), "bo", &lobby.id, runner()).await;
     assert!(matches!(next(&mut runner_socket).await, ServerMessage::MatchJoined { .. }));
     assert!(matches!(next(&mut corp_socket).await, ServerMessage::MatchJoined { .. }));
+    // An unrated lobby takes an undo back at one press (Phase 4 §5 stage
+    // e): the Corp's click for a credit is over the moment it is taken,
+    // so going back is past the free line — and the host offers it,
+    // takes it, and tells both seats.
+    use netrunner_core::rules::PlayerAction;
+    send(&mut corp_socket, ClientMessage::SubmitAction(PlayerAction::KeepHand)).await;
+    next_where(&mut runner_socket, |message| matches!(message, ServerMessage::ActionLog(_)).then_some(())).await;
+    send(&mut runner_socket, ClientMessage::SubmitAction(PlayerAction::KeepHand)).await;
+    // Through the turn's start — each seat's one legal action at a time,
+    // the window's passes — to the Corp's action phase.
+    let click = PlayerAction::GainCreditClick { side: Side::Corp };
+    loop {
+        let (seat, message) = tokio::select! {
+            message = next(&mut corp_socket) => (Side::Corp, message),
+            message = next(&mut runner_socket) => (Side::Runner, message),
+        };
+        let ServerMessage::StateUpdate(view) = message else { continue };
+        if seat == Side::Corp && view.legal_actions.contains(&click) {
+            break;
+        }
+        if let [only] = &view.legal_actions[..] {
+            let socket = if seat == Side::Corp { &mut corp_socket } else { &mut runner_socket };
+            send(socket, ClientMessage::SubmitAction(only.clone())).await;
+        }
+    }
+    send(&mut corp_socket, ClientMessage::SubmitAction(click)).await;
+    let offered = next_where(&mut corp_socket, |message| match message {
+        ServerMessage::Back { rewind } => Some(rewind),
+        _ => None,
+    })
+    .await;
+    assert_eq!(offered, Some(netrunner_protocol::Rewind::Undo), "a lobby that does not rate offers the undo too");
+    send(&mut corp_socket, ClientMessage::TakeBack).await;
+    for socket in [&mut corp_socket, &mut runner_socket] {
+        let (by, removed) = next_where(socket, |message| match message {
+            ServerMessage::TakenBack { by, removed, .. } => Some((by, removed)),
+            _ => None,
+        })
+        .await;
+        assert_eq!((by, removed), (Side::Corp, 1));
+    }
     send(&mut runner_socket, ClientMessage::Surrender).await;
     // Back in the lobby with no `Rated` between the end and the return.
     let after_end = next_where(&mut corp_socket, |message| match message {

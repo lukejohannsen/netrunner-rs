@@ -25,6 +25,14 @@ server's own do, and the line over **Find a game** shows your standing there
 once you have played. Make a lobby of your own and mark it **Unrated** for a
 game nobody wants on their record.
 
+A move can be taken back online as it can at home — **Take it back** on the
+desktop, `u` in the terminal — whenever the host offers it. A move still on
+its own prompt that has shown you nothing goes back in any game. One past
+that — a draw, an access, your opponent's reply — goes back only in an
+unrated lobby, where your opponent sees the board go back with a line saying
+who took it; in a rated lobby it stays, because taking it back would need
+your opponent's consent, and nothing asks for that yet.
+
 ## How a ticket gets through
 
 A ticket names your machine by a key, not by an address. Both machines

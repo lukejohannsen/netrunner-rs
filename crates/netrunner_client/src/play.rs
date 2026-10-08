@@ -50,14 +50,21 @@
 //! act, not the thread: a seat is asked whenever its view lists an action,
 //! as the terminal's remote client always did, because the server accepts
 //! an action from the seat it is not waiting on (a rez in the Runner's
-//! window). There is no take-back online and no record to keep: the host
-//! holds the game, and this end holds only its view of it.
+//! window). A take-back is the host's to take too (`ClientMessage::
+//! TakeBack`, Phase 4 §5 stage e): what it would cost comes as the host's
+//! `Back`, and the host's `TakenBack` follows the restored view as
+//! `ActionLog` follows an applied one, so both arrive here as the
+//! `Back` and `Rewound` a local match sends — for the other seat's move
+//! as well as the person's own, since the host puts both boards back.
+//! There is no record to keep: the host holds the game, and this end
+//! holds only its view of it.
 //!
 //! **A local game is casual, so a take-back costs nothing.** The session
 //! still says which kind each one is (`Rewind::Free`, `Rewind::Undo`) and
 //! the messages still carry it, because that line is the one a rated game
-//! between two people will be held to and the same messages will come off
-//! a socket. Nothing here branches on it: nobody rates a game against a
+//! between two people is held to: a host takes the free kind back in any
+//! game and the undo past it only in an unrated lobby, and says which it
+//! offers. Nothing here branches on it: nobody rates a game against a
 //! bot (`crate::record`), and an undone game is recorded like any other.
 
 use std::path::PathBuf;
@@ -228,11 +235,13 @@ pub enum MatchMessage {
     /// (`ServerMessage::DecisionClock`), and the client counts down
     /// itself. A local match has no clock.
     Clock { side: Side, remaining: Duration },
-    /// The person's last move was taken back: `view` is the board it was
-    /// made from and `removed` is how many `Applied` entries no longer
-    /// happened, newest first — the log drops them and the board snaps
-    /// back without a transition, since nothing moved *to* here.
-    Rewound { view: Box<ClientView>, removed: usize, kind: Rewind },
+    /// `by`'s last move was taken back — the person's own in a local
+    /// match, and at a host the other seat's as well, since the host puts
+    /// every board back: `view` is the board it was made from and
+    /// `removed` is how many `Applied` entries no longer happened, newest
+    /// first — the log drops them and the board snaps back without a
+    /// transition, since nothing moved *to* here.
+    Rewound { view: Box<ClientView>, removed: usize, kind: Rewind, by: Side },
     /// The engine refused the last `submit`; the human is still awaiting
     /// on the same view. `reason` is `RulesError`'s own message.
     Rejected { reason: String },
@@ -614,12 +623,13 @@ impl MatchHandle {
     /// restored is one the engine produced, the history loses the entries
     /// since so the record still replays, and `submit` still never
     /// filters. It costs nothing, whichever kind it is: a local game is
-    /// casual (the module doc).
+    /// casual (the module doc). At a host it is the host's to take, and
+    /// the host's `Back` said what it offers.
     pub fn rewind(&self) -> Result<(), String> {
         match &self.driver {
             Driver::Local(commands) => commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string()),
-            // `Back` is never sent for one, so no client offers it.
-            Driver::Remote { .. } => Err("a game online cannot take a move back".to_string()),
+            Driver::Remote { tx: Some(tx), .. } => tx.send(ClientMessage::TakeBack).map_err(|_| "the connection has closed".to_string()),
+            Driver::Remote { tx: None, .. } => Err("you have left the match".to_string()),
         }
     }
 
@@ -820,7 +830,7 @@ fn drive(
                             Some(rewound) => {
                                 mirror(&session, history);
                                 let view = Box::new(session.view_for(human));
-                                if messages.send(MatchMessage::Rewound { view, removed: rewound.removed, kind: rewound.kind }).is_err() {
+                                if messages.send(MatchMessage::Rewound { view, removed: rewound.removed, kind: rewound.kind, by: human }).is_err() {
                                     return forfeit(&session, &mut seat);
                                 }
                                 break;
@@ -1013,6 +1023,15 @@ impl Feed {
                 Feed::ask(view, out);
             }
             ServerMessage::ActionRejected { reason } => out.push(MatchMessage::Rejected { reason }),
+            ServerMessage::Back { rewind } => out.push(MatchMessage::Back { rewind }),
+            // A take-back is the restored view and then this, as an
+            // action is its view and then its entry.
+            ServerMessage::TakenBack { by, removed, kind } => {
+                let Some(view) = self.held.take().or_else(|| self.last.clone()) else { return };
+                self.last = Some(view.clone());
+                out.push(MatchMessage::Rewound { view: view.clone(), removed, kind, by });
+                Feed::ask(view, out);
+            }
             ServerMessage::DecisionClock { side, remaining } => out.push(MatchMessage::Clock { side, remaining }),
             ServerMessage::GameEnded { winner, reason } => {
                 self.ended = true;
@@ -1236,7 +1255,7 @@ mod tests {
                 MatchMessage::Awaiting { view } if offered == Some(Rewind::Undo) && !undone => {
                     undone = true;
                     handle.rewind().unwrap();
-                    let MatchMessage::Rewound { view: restored, removed, kind } = handle.wait().unwrap() else { panic!("a move was there to undo") };
+                    let MatchMessage::Rewound { view: restored, removed, kind, .. } = handle.wait().unwrap() else { panic!("a move was there to undo") };
                     assert_eq!(kind, Rewind::Undo);
                     assert!(removed >= 1);
                     assert_eq!(Some(&restored.runner.clicks), before.as_ref(), "the board the move was made from");
@@ -1614,6 +1633,23 @@ mod lesson_tests {
         assert!(matches!(&out[..], [MatchMessage::Clock { side: Side::Corp, .. }]));
     }
 
+    /// The host's offer is passed on as it stands, and a take-back is the
+    /// restored view and then the host's word — one `Rewound`, as an
+    /// action is one `Applied` — followed by an `Awaiting` when the
+    /// restored view lists an action, whichever seat's move it was.
+    #[test]
+    fn a_take_back_at_a_host_is_the_restored_view_and_then_the_word() {
+        let mut feed = Feed::new();
+        fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
+        let out = fed(&mut feed, ServerMessage::Back { rewind: Some(Rewind::Free) });
+        assert!(matches!(&out[..], [MatchMessage::Back { rewind: Some(Rewind::Free) }]), "{out:?}");
+        assert!(fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp))).is_empty(), "the restored view waits for the word");
+        let out = fed(&mut feed, ServerMessage::TakenBack { by: Side::Runner, removed: 2, kind: Rewind::Undo });
+        assert!(matches!(&out[..], [MatchMessage::Rewound { removed: 2, kind: Rewind::Undo, by: Side::Runner, .. }, MatchMessage::Awaiting { .. }]), "{out:?}");
+        let out = fed(&mut feed, ServerMessage::Back { rewind: None });
+        assert!(matches!(&out[..], [MatchMessage::Back { rewind: None }]), "{out:?}");
+    }
+
     /// The server's rating arrives after the end and is passed on after it,
     /// for the end panel to add.
     #[test]
@@ -1652,22 +1688,37 @@ mod lesson_tests {
         assert_eq!(handle.link(), Some(Link::Up));
         assert!(matches!(handle.wait(), Some(MatchMessage::Snapshot { .. })), "the host's opening view");
 
-        let mut applied = 0;
-        while applied < 40 {
+        // Forty actions, and one of the Corp's own taken back once the
+        // host offers it: a bot's lobby is unrated, so the undo past the
+        // free line is offered too, and the host's `Back` says so.
+        let (mut applied, mut offered, mut asked, mut rewound) = (0, None, false, false);
+        while applied < 40 || !rewound {
+            assert!(applied < 400, "the host never offered a move of the Corp's own back");
             match handle.wait().expect("the match runs on") {
+                MatchMessage::Back { rewind } => offered = rewind,
+                MatchMessage::Awaiting { .. } if offered.is_some() && !rewound && !asked => {
+                    asked = true;
+                    handle.rewind().unwrap();
+                }
                 MatchMessage::Awaiting { view } => handle.submit(view.legal_actions[0].clone()).unwrap(),
                 MatchMessage::Applied { entry, view } => {
                     applied += 1;
                     assert_eq!(view.viewer, Viewer::Player(Side::Corp));
                     assert!(entry.turn_number <= view.turn.max(1), "an entry travels with the view it left");
                 }
+                MatchMessage::Rewound { view, removed, by, .. } => {
+                    assert!(asked && !rewound, "a take-back nobody asked for");
+                    assert_eq!((by, view.viewer), (Side::Corp, Viewer::Player(Side::Corp)));
+                    assert!(removed >= 1, "the move taken back was in the log");
+                    rewound = true;
+                }
+                MatchMessage::Rejected { reason } if asked && !rewound => panic!("the host offered a take-back and refused it: {reason}"),
                 // The first action is an idle seat's at times, and the
                 // host may have moved on before it arrived.
                 MatchMessage::Rejected { .. } | MatchMessage::Clock { .. } | MatchMessage::Snapshot { .. } => {}
                 other => panic!("not a message of a game in progress: {other:?}"),
             }
         }
-        assert!(handle.rewind().is_err(), "no take-back online");
         drop(handle);
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !runtime.block_on(crate::remote::list_matches(&url)).unwrap().0.is_empty() {

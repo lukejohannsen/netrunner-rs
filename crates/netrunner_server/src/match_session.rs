@@ -28,7 +28,7 @@ use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{legal_actions_for, GameState, Side, Viewer};
 use netrunner_core::view::build_client_view;
-use netrunner_session::{MatchHistory, Seat, Session, SessionStep};
+use netrunner_session::{MatchHistory, Rewind, Seat, Session, SessionStep, UNDO_DEPTH};
 
 use crate::protocol::{ClientMessage, GameEndReason, ServerMessage};
 
@@ -205,6 +205,16 @@ pub struct MatchSession {
     /// keep a vanished player's seat alive by acting. Cleared when that
     /// seat reattaches.
     grace_deadline: Option<(Side, Instant)>,
+    /// Whether a seat may take back a move past the free line
+    /// (`netrunner_session::Rewind::Undo`): only where the game is
+    /// unrated — a lobby that does not rate, or a bot in the other chair.
+    /// In a rated game an undo would need the other seat's consent,
+    /// which nothing yet asks for (`docs/identity-and-rating.md` §5), so
+    /// it is refused there and the free kind is all that is offered.
+    undo: bool,
+    /// The last `ServerMessage::Back` each seat was sent (Corp, Runner),
+    /// so one goes out only when the offer changes.
+    back: [Option<Rewind>; 2],
 }
 
 /// What `await_seat` came back with.
@@ -233,6 +243,11 @@ enum SeatEvent {
     /// out-of-turn message, which is rare. Refusals are answered inside
     /// `await_seat` and never surface here.
     IdleActionApplied,
+    /// The *other* seat asked for its last move back. Handled by the
+    /// pump, not inside `await_seat`, because taking it back changes
+    /// whose decision is awaited — and a refusal is answered the same
+    /// way, since the pump holds what the offer was.
+    IdleTakeBack,
 }
 
 impl MatchSession {
@@ -241,7 +256,10 @@ impl MatchSession {
         let (runner_seat, runner_channel) = runner.split();
         let (reattach_tx, reattach_rx) = mpsc::unbounded_channel();
         MatchSession {
-            session: Session::new(state, registry, corp_seat, runner_seat),
+            // Every channel seat's last moves are kept, so a person at a
+            // host can take one back as they can in a local game: the
+            // free kind always, the undo past it where `with_undo` says.
+            session: Session::new(state, registry, corp_seat, runner_seat).with_undo(UNDO_DEPTH),
             corp: corp_channel,
             runner: runner_channel,
             reattach_tx,
@@ -252,7 +270,17 @@ impl MatchSession {
             outcome: None,
             decision_deadline: None,
             grace_deadline: None,
+            undo: false,
+            back: [None, None],
         }
+    }
+
+    /// Whether a seat may take back a move past the free line — see the
+    /// field. Off by default: a host that says nothing rates nothing
+    /// wrongly, and the free take-back is fair whatever the lobby says.
+    pub fn with_undo(mut self, undo: bool) -> Self {
+        self.undo = undo;
+        self
     }
 
     /// See `TurnTimeout`. `None` (the default) runs without a clock.
@@ -338,6 +366,10 @@ impl MatchSession {
                             self.broadcast_applied();
                             continue;
                         }
+                        SeatEvent::IdleTakeBack => {
+                            self.take_back(side.other());
+                            continue;
+                        }
                     };
                     match message {
                         ClientMessage::SubmitAction(action) => match self.session.submit(action) {
@@ -367,6 +399,7 @@ impl MatchSession {
                             self.send_game_ended(side.other(), GameEndReason::Surrender);
                             break;
                         }
+                        ClientMessage::TakeBack => self.take_back(side),
                         // Handshake messages belong to the transport; one
                         // that reaches the session is a client repeating
                         // itself and is ignored.
@@ -423,7 +456,7 @@ impl MatchSession {
             self.grace_deadline = None;
         }
         loop {
-            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, grace_deadline, .. } = self;
+            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, grace_deadline, undo, back, .. } = self;
             let (seat, idle) = match side {
                 Side::Corp => (corp.as_mut(), runner.as_mut()),
                 Side::Runner => (runner.as_mut(), corp.as_mut()),
@@ -456,6 +489,13 @@ impl MatchSession {
                                 let remaining = decision_deadline.saturating_duration_since(Instant::now());
                                 slot.send(ServerMessage::DecisionClock { side, remaining });
                             }
+                            // A fresh client holds no offer, so it is told
+                            // the standing one when there is one.
+                            let offer = Self::offer_for(session, *undo, reattached);
+                            back[reattached as usize] = offer;
+                            if offer.is_some() {
+                                slot.send(ServerMessage::Back { rewind: offer });
+                            }
                             if reattached == side {
                                 *grace_deadline = None;
                             }
@@ -480,6 +520,7 @@ impl MatchSession {
                 },
                 message = Self::recv_idle(idle) => match message {
                     Some(ClientMessage::Surrender) => return SeatEvent::Surrendered { by: side.other() },
+                    Some(ClientMessage::TakeBack) => return SeatEvent::IdleTakeBack,
                     Some(ClientMessage::SubmitAction(action)) => {
                         let offered = legal_actions_for(session.state(), session.registry(), side.other()).contains(&action);
                         let applied = offered && session.submit(action).is_ok();
@@ -556,6 +597,52 @@ impl MatchSession {
             && let Some(entry) = self.session.last_entry_for(Viewer::Spectator)
         {
             self.send_to_spectators(ServerMessage::ActionLog(Box::new(entry)));
+        }
+        self.send_offers();
+    }
+
+    /// What `side`'s `TakeBack` would do now: its own last move, free or
+    /// an undo — and an undo only where `undo` allows one.
+    fn offer_for(session: &Session, undo: bool, side: Side) -> Option<Rewind> {
+        session.can_rewind_by(side).filter(|kind| *kind == Rewind::Free || undo)
+    }
+
+    /// Each channel seat's `Back`, sent only when the offer changed since
+    /// the last one — after every applied action and every take-back.
+    fn send_offers(&mut self) {
+        for side in [Side::Corp, Side::Runner] {
+            let offer = Self::offer_for(&self.session, self.undo, side);
+            if offer != self.back[side as usize] {
+                self.back[side as usize] = offer;
+                self.send_to(side, ServerMessage::Back { rewind: offer });
+            }
+        }
+    }
+
+    /// `side` asked for its last move back. Taken where the offer stands —
+    /// the state goes back to the one the move was made from, every
+    /// viewer gets that state and then the `TakenBack` that says how many
+    /// log entries went with it — and refused to `side` alone otherwise,
+    /// with the reason: nothing to take back, or an undo in a game whose
+    /// lobby rates it.
+    fn take_back(&mut self, side: Side) {
+        match Self::offer_for(&self.session, self.undo, side) {
+            Some(_) => {
+                let rewound = self.session.rewind_by(side).expect("the offer was read off the same session");
+                // The decision that was awaited is gone with the move; the
+                // one re-offered gets a clock of its own, as after an action.
+                self.decision_deadline = None;
+                self.broadcast_state_updates();
+                self.broadcast(ServerMessage::TakenBack { by: side, removed: rewound.removed, kind: rewound.kind });
+                self.send_offers();
+            }
+            None => {
+                let reason = match self.session.can_rewind_by(side) {
+                    Some(Rewind::Undo) => "that move showed you something, and this lobby rates its games: it cannot be taken back without your opponent's consent, which nothing here asks for yet",
+                    _ => "there is no move of yours to take back",
+                };
+                self.send_to(side, ServerMessage::ActionRejected { reason: reason.to_string() });
+            }
         }
     }
 
@@ -1342,5 +1429,145 @@ mod reattach_tests {
         assert!(runner_rx.try_recv().is_err());
 
         run.abort();
+    }
+
+    /// The Runner's turn, four clicks, Red Team installed with Archives
+    /// already run and Jailbreak in the grip — `netrunner_session`'s own
+    /// take-back fixture: Red Team's click opens a server prompt on the
+    /// Runner, which is the free kind of move to take back.
+    fn red_team_turn() -> CoreGameState {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{InstallId, InstalledRunnerCard, ServerId};
+        let card = |id: &str| CardId(id.to_string());
+        let mut state = CoreGameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.turn = 2;
+        state.runner.resources.clicks.0 = 4;
+        state.runner.resources.credits.0 = 5;
+        state.runner.rig.push(InstalledRunnerCard { card: card("red_team"), install_id: InstallId(100), counters: 12, ..Default::default() });
+        state.runner.servers_run_this_turn.push(ServerId::Archives);
+        state.runner.grip = vec![card("jailbreak")];
+        state.runner.stack = vec![card("sure_gamble"), card("sure_gamble"), card("sure_gamble")];
+        state.corp.r_and_d = vec![card("hedge_fund"), card("hedge_fund"), card("hedge_fund")];
+        state
+    }
+
+    /// Two people at a host, as channel pairs: `(session, [corp, runner])`,
+    /// each seat its `(server messages in, client messages out)`.
+    type Pair = (mpsc::UnboundedReceiver<ServerMessage>, mpsc::UnboundedSender<ClientMessage>);
+    fn two_people(state: CoreGameState) -> (MatchSession, [Pair; 2]) {
+        let registry = fixtures::sample_registry();
+        let (corp_tx, corp_rx) = mpsc::unbounded_channel();
+        let (corp_client_tx, corp_client_rx) = mpsc::unbounded_channel();
+        let (runner_tx, runner_rx) = mpsc::unbounded_channel();
+        let (runner_client_tx, runner_client_rx) = mpsc::unbounded_channel();
+        let session = MatchSession::new(
+            state,
+            registry,
+            PlayerSlot::Channel { tx: corp_tx, rx: corp_client_rx },
+            PlayerSlot::Channel { tx: runner_tx, rx: runner_client_rx },
+        );
+        (session, [(corp_rx, corp_client_tx), (runner_rx, runner_client_tx)])
+    }
+
+    /// The next message on `rx` that `wanted` picks out, skipping the rest.
+    async fn next_where<T>(rx: &mut mpsc::UnboundedReceiver<ServerMessage>, wanted: impl Fn(ServerMessage) -> Option<T>) -> T {
+        loop {
+            let message = rx.recv().await.expect("the session is running");
+            if let Some(found) = wanted(message) {
+                return found;
+            }
+        }
+    }
+
+    /// A move still on its own prompt goes back for free, at a host as in
+    /// a local game (Phase 4 §5 stage e): the Runner is told it may, asks,
+    /// and both seats get the board the move was made from and then the
+    /// `TakenBack` that drops the entry — in a match whose lobby rates it,
+    /// since the free kind is fair. The Corp, whose move it was not, is
+    /// refused with a reason and nothing moves.
+    #[tokio::test]
+    async fn a_free_take_back_at_a_host_puts_both_boards_back() {
+        let (session, [(mut corp_rx, corp_tx), (mut runner_rx, runner_tx)]) = two_people(red_team_turn());
+        let run = tokio::spawn(session.run());
+        let ServerMessage::StateUpdate(view) = runner_rx.recv().await.unwrap() else { panic!() };
+        let ability = view.legal_actions.iter().find(|action| matches!(action, PlayerAction::ActivateAbility { .. })).cloned().expect("Red Team's ability is legal");
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+
+        runner_tx.send(ClientMessage::SubmitAction(ability)).unwrap();
+        let offered = next_where(&mut runner_rx, |message| match message {
+            ServerMessage::Back { rewind } => Some(rewind),
+            _ => None,
+        })
+        .await;
+        assert_eq!(offered, Some(Rewind::Free), "still on its own prompt, the move taught nothing");
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::ActionLog(_)));
+        assert!(corp_rx.try_recv().is_err(), "the Corp has no move of its own to be offered back");
+
+        // Not the Corp's to take.
+        corp_tx.send(ClientMessage::TakeBack).unwrap();
+        let ServerMessage::ActionRejected { reason } = corp_rx.recv().await.unwrap() else { panic!("the Corp asked for a move that was not theirs") };
+        assert!(reason.contains("no move of yours"), "{reason}");
+        assert!(runner_rx.try_recv().is_err(), "a refusal reaches the seat that asked and nobody else");
+
+        runner_tx.send(ClientMessage::TakeBack).unwrap();
+        let ServerMessage::StateUpdate(restored) = runner_rx.recv().await.unwrap() else { panic!("the restored board comes first") };
+        assert_eq!(restored.turn, 2);
+        assert!(restored.pending_decision.is_none(), "the prompt the move opened is gone with it");
+        let ServerMessage::TakenBack { by, removed, kind } = runner_rx.recv().await.unwrap() else { panic!("then the take-back") };
+        assert_eq!((by, removed, kind), (Side::Runner, 1, Rewind::Free));
+        let ServerMessage::Back { rewind } = runner_rx.recv().await.unwrap() else { panic!("the offer is gone: one move, one take-back") };
+        assert_eq!(rewind, None);
+        // The Corp's board goes back too, and its log with it.
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::TakenBack { by: Side::Runner, removed: 1, kind: Rewind::Free }));
+        run.abort();
+    }
+
+    /// Past the free line the move is an undo, which a rated lobby refuses
+    /// — it would need the other seat's consent, which nothing asks for
+    /// yet — and an unrated one takes at one press, as a game against a
+    /// bot does. The offer says which: nothing in the rated match, `Undo`
+    /// in the unrated one.
+    #[tokio::test]
+    async fn an_undo_is_offered_only_where_the_lobby_does_not_rate() {
+        for undo in [false, true] {
+            let registry = fixtures::sample_registry();
+            let (corp_deck, runner_deck) = fixtures::sample_decks();
+            let (mut state, _) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).unwrap();
+            // Straight to the Corp's action phase: a mulligan decision is
+            // not a move, and the turn's start is nobody's to take back.
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.resources.clicks = netrunner_core::rules::Clicks(3);
+            let (session, [(mut corp_rx, corp_tx), (mut runner_rx, _runner_tx)]) = two_people(state);
+            let run = tokio::spawn(session.with_undo(undo).run());
+            assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+            assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+
+            // A click for a credit is over the moment it is taken: no
+            // prompt is left on the Corp, so going back is an undo.
+            corp_tx.send(ClientMessage::SubmitAction(PlayerAction::GainCreditClick { side: Side::Corp })).unwrap();
+            assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+            assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::ActionLog(_)));
+            if undo {
+                assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::Back { rewind: Some(Rewind::Undo) }));
+            } else {
+                assert!(corp_rx.try_recv().is_err(), "nothing offered, so nothing said");
+            }
+
+            corp_tx.send(ClientMessage::TakeBack).unwrap();
+            if undo {
+                let ServerMessage::StateUpdate(restored) = corp_rx.recv().await.unwrap() else { panic!() };
+                assert_eq!(restored.corp.clicks, 3, "the click is back");
+                assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::TakenBack { by: Side::Corp, removed: 1, kind: Rewind::Undo }));
+                assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::Back { rewind: None }));
+            } else {
+                let ServerMessage::ActionRejected { reason } = corp_rx.recv().await.unwrap() else { panic!("a rated lobby refuses an undo") };
+                assert!(reason.contains("rates its games"), "{reason}");
+                assert!(reason.contains("consent"), "{reason}");
+            }
+            run.abort();
+        }
     }
 }

@@ -33,7 +33,7 @@ pub mod statements;
 /// resolving, and the wire format is unaffected: moving a type does not
 /// change its serde representation.
 pub use netrunner_core::rules::{ConcealedAction, PublicAction};
-pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
+pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry, Rewind};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -81,6 +81,17 @@ pub enum ClientMessage {
     Spectate { match_id: Uuid },
     SubmitAction(PlayerAction),
     Surrender,
+    /// Take this seat's last move back (Phase 4 §5 stage e): the host
+    /// restores the state the move was made from — a restore in the
+    /// session, never a `PlayerAction` (AGENTS.md's Session Rule) — and
+    /// answers every seat with a fresh `StateUpdate` and a `TakenBack`,
+    /// or this seat alone with `ActionRejected` when there is nothing
+    /// to take back or the move cannot be. What it would cost was in the
+    /// last `Back`: the free kind is always taken, and the undo past it
+    /// only where the lobby does not rate its games — in a rated game an
+    /// undo would need the other seat's consent, which nothing yet asks
+    /// for (`docs/identity-and-rating.md` §5).
+    TakeBack,
     /// Attach to the server with nothing but a name — and a key, proved
     /// just before by `Identify` and `Prove`, if the player is to be
     /// rated — and stay attached:
@@ -302,6 +313,22 @@ pub enum ServerMessage {
     /// decision rather than ticks: the client can count down by itself.
     DecisionClock { side: Side, remaining: Duration },
     GameEnded { winner: Side, reason: GameEndReason },
+    /// What this seat's `TakeBack` would do now: `Free` or `Undo`
+    /// (`netrunner_session::Rewind`), or `None` when there is no move of
+    /// this seat's to take back — or the one there is would be an undo
+    /// the lobby does not allow. Sent only when it changes, as a local
+    /// match's `MatchMessage::Back` is, so a seat that ignores it misses
+    /// nothing. A message and not a `ClientView` field because a
+    /// take-back is the driver's, not the engine's: the view is what a
+    /// seat is shown, and the engine knows no take-back.
+    Back { rewind: Option<Rewind> },
+    /// `by` took its last move back. Sent to every seat and spectator
+    /// right after the `StateUpdate` of the state the move was made from,
+    /// as `ActionLog` follows the state an action left: `removed` is how
+    /// many `ActionLog` entries no longer happened, newest first — the
+    /// same count for every viewer, since each got one entry per applied
+    /// action — and `kind` what it cost `by`.
+    TakenBack { by: Side, removed: usize, kind: Rewind },
     /// The reply to `Attach`: attached, and the open lobbies.
     Attached { lobbies: Vec<LobbyInfo> },
     /// The reply to `ListLobbies`.

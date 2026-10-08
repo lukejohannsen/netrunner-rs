@@ -119,7 +119,7 @@ impl Attached {
         match message {
             // In a game, the game's messages go to the game and nothing
             // else is answered: the lobby is where the player returns.
-            ClientMessage::SubmitAction(_) | ClientMessage::Surrender => {
+            ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::TakeBack => {
                 if let Some(seat) = playing.as_ref().filter(|_| self.in_match) {
                     let _ = seat.into.send(message);
                 }
