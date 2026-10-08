@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 78, 18, 6, 105 | 4, 0, 0, — | in progress: Stages 1a–11k; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 78, 18, 6, 106 | 4, 0, 0, — | in progress: Stages 1a–11l; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 110
-`Effect` variants single-use, none unused, over 785 card files** (8 October
-2026, with tranche 8 Stage 11k, which added none and asks an install's
+`Effect` variants single-use, none unused, over 786 card files** (8 October
+2026, with tranche 8 Stage 11l, which added none and lets the Runner pay
+`Cost::Forfeit`; Stage 11k, at 17 of 110 over 785, added none and asks an install's
 copy whether it is unrezzed; Stage 11j, at 17 of 110 over 784, added one, `RedirectRunOnSuccess`,
 used by Sneakdoor Beta alone, its reason on the variant; Stage 11i, at 16
 of 109 over 783, added none and two words: an
@@ -1185,6 +1186,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11i** — two Core Set cards, a trigger can be about a remote server, and a chosen ice can gain subtypes until the end of the turn (Bank Job, Tinkering) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11j** — Sneakdoor Beta, from the Core Set and System Update 2021: a run's redirect can be taken as it would be declared successful, after its server was approached (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11k** — Forged Activation Orders, from the Core Set and System Update 2021: the Corp rezzes the ice the Runner chose, or it is trashed, and a card's own copy can be asked whether it is unrezzed (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 11l** — Data Dealer, from the Core Set: the Runner forfeits an agenda from their own score area, and a forfeit says whose it was, so a stolen Greenmail pays the Corp nothing (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1286,6 +1288,10 @@ nine by kind):
     **11j closed**, Sneakdoor Beta, with one new `Effect`: the redirect
     taken as the run would be declared successful.
     **11k closed**, Forged Activation Orders, with no new `Effect`.
+    **11l closed**, Data Dealer, with no new `Effect`: the Runner forfeits
+    an agenda from their own score area, and a forfeit says whose it was.
+    Déjà Vu waits on its own stage: a played event is in the heap while
+    its own choice is parked, so it could return itself.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

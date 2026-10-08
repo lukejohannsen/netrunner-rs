@@ -29674,4 +29674,39 @@ mod reprints {
             }
         }
     }
+
+    // ---- Stage 11l: the Runner forfeits ----
+
+    #[test]
+    fn data_dealer_forfeits_a_stolen_agenda_of_the_runners_choosing_for_nine_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("data_dealer", 0)];
+        let dealer = |state: &GameState| PlayerAction::ActivateAbility { target: install_of(state, "data_dealer"), ability_index: 0 };
+        assert!(
+            !crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&dealer(&state)),
+            "nothing stolen, nothing to forfeit"
+        );
+
+        // Greenmail's "when you forfeit this agenda" is the Corp's: a
+        // stolen one forfeited by the Runner pays the Corp nothing.
+        state.runner.scored_agendas = ["offworld_office", "greenmail"]
+            .iter()
+            .map(|card| crate::rules::ScoredAgenda { install_id: fixture_install_id(card), ..crate::rules::ScoredAgenda::plain(id(card)) })
+            .collect();
+        state.runner.resources.agenda_points = crate::rules::AgendaPoints(3);
+        let (clicks, credits, corp_credits) = (state.runner.resources.clicks, state.runner.resources.credits, state.corp.resources.credits);
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&dealer(&state)));
+        let (asked, _) = apply_action(&state, &registry, dealer(&state)).expect("which agenda");
+        assert!(matches!(&asked.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Card(_), .. })), "the Runner's to choose");
+        let (dealt, events) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("forfeit Greenmail");
+        let (dealt, _) = close_all_windows(dealt, &registry);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::AgendaForfeited { side: Side::Runner, .. })), "{events:?}");
+        assert_eq!(dealt.runner.resources.credits, Credits(credits.0 + 9));
+        assert_eq!(dealt.runner.resources.clicks.0, clicks.0 - 1);
+        assert_eq!(dealt.corp.resources.credits, corp_credits, "Greenmail heard nothing");
+        assert_eq!(dealt.runner.scored_agendas.iter().map(|scored| scored.card.0.as_str()).collect::<Vec<_>>(), ["offworld_office"]);
+        assert_eq!(dealt.runner.resources.agenda_points, crate::rules::AgendaPoints(2), "the forfeited point goes with it");
+        assert!(dealt.corp.removed_from_game.contains(&id("greenmail")));
+    }
 }

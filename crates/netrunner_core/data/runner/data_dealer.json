@@ -1,0 +1,32 @@
+{
+  "id": "data_dealer",
+  "title": "Data Dealer",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Forfeit": 1
+          }
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          9
+        ]
+      },
+      "text": "[click], forfeit 1 agenda: Gain 9[credit]."
+    }
+  ],
+  "built_from": 1031,
+  "is_playable": true
+}

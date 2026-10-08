@@ -452,11 +452,13 @@ pub enum GameEvent {
     /// Workers hears it (`Trigger::OnActionFinished`); the turn log has
     /// already counted it (`TurnLog::times_taken`).
     ActionFinished { side: Side, action: crate::rules::turn_log::SameAction },
-    /// An agenda left the Corp's score area as a forfeit (Biawak's rez,
-    /// Plutus's). Paired with `CardRemovedFromGame`, which says where it
-    /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
-    /// off.
-    AgendaForfeited { card: CardId },
+    /// An agenda left `side`'s score area as a forfeit (Biawak's rez,
+    /// Plutus's, the Runner's Data Dealer). Paired with
+    /// `CardRemovedFromGame`, which says where it went; this one says
+    /// *why*, which is what `Trigger::OnForfeit` keys off, and *who*, since
+    /// Greenmail's "when you forfeit this agenda" is the Corp's alone and a
+    /// stolen Greenmail is forfeited by the Runner.
+    AgendaForfeited { side: Side, card: CardId },
     /// A card was added to `side`'s score area "as an agenda" worth
     /// `points` (CR 10.1.3) — Myōshu out of Archives and Word on the Street
     /// out of the Runner's rig into the Corp's, Jeitinho out of the rig into
