@@ -2083,6 +2083,11 @@ pub fn evaluate_effect(
                 .with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)))
                 .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref());
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
+            // "That many" when fewer qualify is as many as there are
+            // (CR 1.2.4): Aggressive Secretary's "trash 1 program for each
+            // advancement token" trashes every program when the Runner
+            // has fewer than its tokens.
+            let min = if count.is_some() { min.min(available.len() as u32) } else { min };
             // An installed Runner card trashed by the text of ice whose
             // `TrashLimit` this encounter has spent (Sorocaban Blade): there
             // is nothing it may choose.

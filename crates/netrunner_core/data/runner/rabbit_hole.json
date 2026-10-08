@@ -1,0 +1,71 @@
+{
+  "id": "rabbit_hole",
+  "title": "Rabbit Hole",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "All": [
+                {
+                  "AmongCards": [
+                    "rabbit_hole"
+                  ]
+                },
+                {
+                  "InstallableRunnerCardWithDiscount": {
+                    "Credits": 0
+                  }
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "InstallRunnerCardFromZone": {
+                    "from": "OwnStack",
+                    "discount": {
+                      "Credits": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When Rabbit Hole is installed, you may search your stack for another copy of Rabbit Hole and install it by paying its install cost. Shuffle your stack."
+    }
+  ],
+  "built_from": 1039,
+  "is_playable": true
+}

@@ -544,7 +544,8 @@ pub enum Effect {
         /// "That many": `min` and `max` both, read when the prompt parks —
         /// Simulation Reset's "Shuffle **that many** cards from Archives
         /// into R&D", `CardsSelected` inside the `then` of the selection
-        /// that trashed them. Nothing is asked when it comes to 0, and
+        /// that trashed them. When fewer cards qualify, every one of them is
+        /// chosen (CR 1.2.4). Nothing is asked when it comes to 0, and
         /// `validate` wants `min` and `max` written 0 beside it.
         /// Composition didn't work: `min` and `max` are printed numbers,
         /// and the only other way to say "the number just chosen" was one
@@ -556,8 +557,8 @@ pub enum Effect {
         /// 2 cards", `Increased { HostedCounters, HostedCounters }`. Nothing
         /// is asked when it comes to 0, and `validate` wants `min` and `max`
         /// written 0 beside it, as beside `count`. Composition didn't work:
-        /// `count` is exactly that many, and the prompt does nothing when
-        /// fewer cards qualify.
+        /// `count` must choose that many, or every card when fewer
+        /// qualify, and "up to" may choose none.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         up_to: Option<Amount>,
     },

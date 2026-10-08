@@ -58,12 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 98 | 6, 0, 0, — | in progress: Stages 1a–11g; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 76, 18, 6, 101 | 6, 0, 0, — | in progress: Stages 1a–11h; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **16 of 109
-`Effect` variants single-use, none unused, over 778 card files** (8 October
-2026, with tranche 8 Stage 11g, which added none and changed nothing in the
-engine; Stage 11f, at 16 of 109 over 773, added none and made a stolen agenda's
+`Effect` variants single-use, none unused, over 781 card files** (8 October
+2026, with tranche 8 Stage 11h, which added none and made a "that many"
+selection take every card when fewer qualify; Stage 11g, at 16 of 109 over
+778, added none and changed nothing in the engine; Stage 11f, at 16 of 109 over 773, added none and made a stolen agenda's
 abilities inactive unless its text says otherwise; Stage 11e, at 16 of 109 over 766, the same; Stage 11d, at 16 of 109 over 758, the same; Stage 11c, at 16 of 109 over 751, the same; Stage 11b, at 16 of 109 over 742, the same; Stage 11a, at 16 of 109 over 734, the same; Stage 10b, at 16 of 109 over 726, which added none and one `Preventable`,
 `Expose`, used by Zaibatsu Loyalty alone; Stage 10a, at 16 of 109 over
 725, added one, `Expose`, used by both its cards; Stage 9h, at 16 of 108 over 723, added none and one `Scope`,
@@ -1175,6 +1176,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11e** — eight Core Set Corp assets and upgrades, composed with no change to the engine (Melange Mining Corp., Adonis Campaign, Research Station, Experiential Data, Akitaro Watanabe, Ghost Branch, Project Junebug, Security Subcontract) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11f** — five Core Set agendas and two tracer ice, composed, and a stolen agenda's abilities inactive unless its text says otherwise (Priority Requisition, Private Security Force, Posted Bounty, AstroScript Pilot Program, Breaking News, Matrix Analyzer, Data Raven) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11g** — five Core Set cards that compose with no change to the engine (Modded, Wyrm, Red Herrings, Cell Portal, Shipment from MirrorMorph) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
+- **Stage 11h** — three Core Set cards, and a "that many" selection takes every card when fewer qualify (CR 1.2.4) (Aggressive Secretary, Demolition Run, Rabbit Hole) (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1268,6 +1270,8 @@ nine by kind):
     3.2.3), which the sweep found through a stolen Private Security Force.
     **11g closed**, five cards that compose with no change to the engine
     (Modded, Wyrm, Red Herrings, Cell Portal, Shipment from MirrorMorph).
+    **11h closed**, Aggressive Secretary, Demolition Run and Rabbit Hole; a
+    "that many" selection takes every card when fewer qualify (CR 1.2.4).
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and
