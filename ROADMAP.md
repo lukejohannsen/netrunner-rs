@@ -45,7 +45,7 @@ One line each, owned by the area file named. A fix closes the line here and reco
 - **Session / tests** — `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture (Phase 4 §3).
 - **Network** — no graceful server shutdown; no spectator count cap or delayed omniscient stream; the TUI header does not show the matchup (Phase 4 §3). Port mapping is untested against a real router; the server's handshake is not sans-IO; the terminal's settings form does not edit `relay`; a resume over an iroh ticket is tested only over TCP (Phase 4 §6, Phase 7 §7).
 - **Terminal client** — the last-used server address is not remembered between sessions (Phase 6 §3).
-- **Desktop client** — a `ChooseCards` prompt's positions are reachable only from the panel; the log keeps 80 lines (Phase 7 §3); the control bar's buttons carry no affordance glow (§4p); a lesson hint still echoes its prose (§6c); Cleaver's menu entries printed raw symbols — check against §4bg (§6d); `"tint": "state"` is promised by the skin guide and not wired (§4n, §4r); `crates/netrunner_client/src/board/breaks.rs` cites "Phase 7 §5.2", which is now §8 item 2.
+- **Desktop client** — the log keeps 80 lines (Phase 7 §3); the control bar's buttons carry no affordance glow (§4p, decided against at the time: greying already says it); a lesson hint still echoes its prose (§6c); `"tint": "state"` is promised by the skin guide and not wired (§4n, §4r).
 
 ## How this file is kept
 

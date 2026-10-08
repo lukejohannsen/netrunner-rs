@@ -71,19 +71,19 @@ entries built, one PR each, driven by what the person asked for after playing. E
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
 settled are AGENTS.md §5, which is where to read them. **§4's movement, owed since §3, is
 done (§4bm, 8 October 2026), and so are §8's replay notes (§4bn) and §9's search half in the desktop.
-Open: §8 item 4; §9's and §10's terminal share; and the owed list.**
+Open: §9's and §10's terminal share, and the owed list.**
 
 ## Owed
 
 - **Movement** (§3 → §4): **built** (§4bm, `feat/card-movement`, 8 October 2026): every `CardMoved` transition is a flight over the board (`screens::flight`, `models::flight`), the card at its destination hidden until it lands; a rez is still a highlight rather than a flip. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with six AI-assisted tracks (the sounds themselves were Kenney's CC0 recordings until §13 replaced them with a set synthesized here); five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
-- **§3's other gaps**: a `ChooseCards` prompt's positions are reachable only from the panel; the log keeps 80 lines.
+- **§3's other gaps**: the log keeps 80 lines. ~~A `ChooseCards` prompt's positions are reachable only from the panel.~~ Done in §4x (18 September 2026): the decision pop-up draws each candidate as its card, and the card is its own button; the line outlived the fix.
 - **§4m**: a 3D or perspective board — deferred, not refused; revisit when a run should feel dramatic.
 - **§4n, §4r — art still on the drawn tier**: panels' own art, the remaining icons, player bars, the fanned hand, the hovered card, the right-hand side; and `"tint": "state"` is promised by the skin guide and not wired (§4q delivered the contact shadows; §4t tried and removed a central's mark).
 - **§4p**: the control bar's buttons carry no affordance glow.
 - **§4y**: per-identity board styles, deferred at the person's choice.
-- **§6c**: a lesson hint still echoes its prose. **§6d**: Cleaver's menu entries printed raw symbols ("1[credit]") — check against §4bg before fixing.
+- **§6c**: a lesson hint still echoes its prose. ~~**§6d**: Cleaver's menu entries printed raw symbols ("1[credit]").~~ Done in §4bg (25 September 2026): `widgets::symbols::draw` splits every `Text` at its tokens, a menu entry's label among them; the line outlived the fix.
 - **§7**: a resume over an iroh ticket is tested only over TCP.
-- **§8 item 4**: the take-back's server half ("the server can take (b) later"). ~~**§8 item 5**: replay notes — a file beside the record, and an editor.~~ Done in §4bn (8 October 2026).
+- ~~**§8 item 4**: the take-back's server half ("the server can take (b) later").~~ Done in Phase 4 §5 stage (e) (8 October 2026): `ClientMessage::TakeBack`, the free kind in any game and an undo where the lobby does not rate, which `MatchHandle::take_back` sends to a host. ~~**§8 item 5**: replay notes — a file beside the record, and an editor.~~ Done in §4bn (8 October 2026).
 - **§9**: decklists searched from NetrunnerDB — done in the desktop (8 October 2026), by a card's or an identity's name, newest first; the download half was §10 Stage 6 (1 October 2026). The terminal client's share of both stays here.
 - **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–6 are done (1 October 2026). What the plan left for later: the person's own art (`Art::Custom`, room made in Stage 3), and the terminal client's share of Stages 5–6 (its builder still imports from a pasted list).
 
