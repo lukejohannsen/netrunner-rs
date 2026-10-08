@@ -1,0 +1,43 @@
+{
+  "id": "posted_bounty",
+  "title": "Posted Bounty",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "ForfeitSelf",
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                },
+                {
+                  "GiveBadPublicity": {
+                    "Fixed": 1
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may forfeit it. If you do, give the Runner 1 tag and take 1 bad publicity"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1095,
+  "is_playable": true
+}

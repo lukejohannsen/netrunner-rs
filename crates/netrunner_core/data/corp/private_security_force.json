@@ -1,0 +1,28 @@
+{
+  "id": "private_security_force",
+  "title": "Private Security Force",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "IsTagged",
+      "effect": {
+        "DealDamage": [
+          "Meat",
+          1
+        ]
+      },
+      "text": "If the Runner is tagged, Private Security Force gains: \"[click]: Do 1 meat damage.\""
+    }
+  ],
+  "built_from": 1107,
+  "is_playable": true
+}

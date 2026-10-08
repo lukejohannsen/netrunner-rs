@@ -679,6 +679,20 @@ impl EffectRequirement {
         }
     }
 
+    /// Whether what this gates may be used from the Runner's score area:
+    /// an `InRunnersScoreArea` the ability requires, alone or under `And`
+    /// (never under `Not`, which keeps it out). An agenda there is
+    /// inactive "unless the agenda's card text specifies otherwise" (CR
+    /// 3.2.3, 4.5.4), and Oracle Thinktank's "only if this agenda is in
+    /// the Runner's score area" is the pool's one card that does.
+    pub fn works_from_runners_score_area(&self) -> bool {
+        match self {
+            EffectRequirement::InRunnersScoreArea => true,
+            EffectRequirement::And(one, other) => one.works_from_runners_score_area() || other.works_from_runners_score_area(),
+            _ => false,
+        }
+    }
+
     /// Whether this is, or contains under `And`/`Not`, a `OncePerRun` — or
     /// a `OncePerEncounter`, the same use limit over a shorter stretch,
     /// keyed the same way and held to the same two rules by `validate`.

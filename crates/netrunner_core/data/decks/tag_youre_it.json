@@ -3,7 +3,7 @@
   "name": "Tag, You're It",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only. Parhelion Stage 3a: two Regulatory Capture for its two Sacrifice Zone Expansion, a requirement of 6 its bad publicity lowers. Parhelion Stage 5c: two Kimberlite Field for two of its three Orbital Superiority, a scored agenda that trashes a rezzed card for a Runner card no dearer, and two Yakov Erikovich Avdakov for its two Regolith Mining License, credits for every trash from its server. Midnight Sun Stage 4: two Mutually Assured Destruction for its two Government Subsidy. Midnight Sun Stage 5: two Trust Operation for its two Retribution, a gray op that needs a tag for a gray op that needs a tag; four other Sweep decks keep Retribution. Uprising Stage 5: Transport Monopoly for its Orbital Superiority, point for point. Uprising Stage 7a gave two Hedge Fund (still in Ad Nihilum and others) for two Argus Crackdown, a lockdown that does meat damage on every successful run on a server protected by ice. Tranche 8 Stage 6b: two Executive Boot Camp for its two Clearinghouse, an asset for an asset, a rez a credit cheaper as each turn begins; Pork Chops and Sampler keep Clearinghouse. Tranche 8 Stage 7a: two Excalibur for its two Palisade, a neutral piece of ice for a neutral piece of ice, after which the Runner cannot make another run that turn; many decks keep Palisade. Tranche 8 Stage 11a: two SEA Source for two of its Public Trail, a tag after a successful run for a tag after a successful run, and a Closed Accounts for its Hedge Fund, to spend the tag; Ad Nihilum keeps Public Trail. Tranche 8 Stage 11c: two Hunter for its two Tithe, a sentry for a sentry that tags.",
+  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only. Parhelion Stage 3a: two Regulatory Capture for its two Sacrifice Zone Expansion, a requirement of 6 its bad publicity lowers. Parhelion Stage 5c: two Kimberlite Field for two of its three Orbital Superiority, a scored agenda that trashes a rezzed card for a Runner card no dearer, and two Yakov Erikovich Avdakov for its two Regolith Mining License, credits for every trash from its server. Midnight Sun Stage 4: two Mutually Assured Destruction for its two Government Subsidy. Midnight Sun Stage 5: two Trust Operation for its two Retribution, a gray op that needs a tag for a gray op that needs a tag; four other Sweep decks keep Retribution. Uprising Stage 5: Transport Monopoly for its Orbital Superiority, point for point. Uprising Stage 7a gave two Hedge Fund (still in Ad Nihilum and others) for two Argus Crackdown, a lockdown that does meat damage on every successful run on a server protected by ice. Tranche 8 Stage 6b: two Executive Boot Camp for its two Clearinghouse, an asset for an asset, a rez a credit cheaper as each turn begins; Pork Chops and Sampler keep Clearinghouse. Tranche 8 Stage 7a: two Excalibur for its two Palisade, a neutral piece of ice for a neutral piece of ice, after which the Runner cannot make another run that turn; many decks keep Palisade. Tranche 8 Stage 11a: two SEA Source for two of its Public Trail, a tag after a successful run for a tag after a successful run, and a Closed Accounts for its Hedge Fund, to spend the tag; Ad Nihilum keeps Public Trail. Tranche 8 Stage 11c: two Hunter for its two Tithe, a sentry for a sentry that tags. Tranche 8 Stage 11f: a Posted Bounty for one of its three Hostile Takeover, a Private Security Force for its Above the Law and a Priority Requisition for its The Basalt Spire, point for point; Hostile Bid keeps Hostile Takeover, and Land Grab the other two.",
   "style": [
     "kill"
   ],
@@ -14,20 +14,12 @@
       "count": 2
     },
     {
-      "card": "above_the_law",
-      "count": 1
-    },
-    {
       "card": "off_the_books",
       "count": 1
     },
     {
       "card": "hostile_takeover",
-      "count": 3
-    },
-    {
-      "card": "the_basalt_spire",
-      "count": 1
+      "count": 2
     },
     {
       "card": "scorched_earth",
@@ -108,6 +100,18 @@
     {
       "card": "hunter",
       "count": 2
+    },
+    {
+      "card": "posted_bounty",
+      "count": 1
+    },
+    {
+      "card": "private_security_force",
+      "count": 1
+    },
+    {
+      "card": "priority_requisition",
+      "count": 1
     }
   ]
 }

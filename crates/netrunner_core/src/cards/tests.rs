@@ -29256,4 +29256,125 @@ mod reprints {
         assert_eq!(used.corp.resources.credits, Credits(14), "gain 4[credit]");
         assert!(used.corp.archives.iter().any(|archived| archived.card == id("enigma")));
     }
+
+    // ---- Stage 11f: the Core Set's agendas and tracer ice that compose ----
+
+    /// Priority Requisition may rez a piece of ice for nothing as it is
+    /// scored; Posted Bounty may be forfeited for a tag and a bad
+    /// publicity.
+    #[test]
+    fn priority_requisition_rezzes_ice_free_and_posted_bounty_may_be_forfeited() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { advancement_tokens: 5, rezzed: false, ..remote_root("priority_requisition", 0) },
+            crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("enigma") },
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "priority_requisition") }).expect("score");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("rez a piece of ice");
+        let offered = corp_toggles(&choosing, &registry);
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (rezzed, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(rezzed.corp.installed.iter().any(|installed| installed.card == id("enigma") && installed.rezzed));
+        assert_eq!(rezzed.corp.resources.credits, Credits(10), "ignoring all costs");
+
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, rezzed: false, ..remote_root("posted_bounty", 0) }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "posted_bounty") }).expect("score");
+        let (forfeited, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("forfeit it");
+        assert_eq!((forfeited.runner.tags, forfeited.corp.bad_publicity), (1, 1));
+        assert!(forfeited.corp.scored_agendas.is_empty());
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("keep it");
+        assert_eq!((kept.runner.tags, kept.corp.scored_agendas.len()), (0, 1));
+    }
+
+    /// AstroScript Pilot Program scores with a counter that places an
+    /// advancement counter; Breaking News tags twice and takes the tags
+    /// back as the turn's discard phase ends.
+    #[test]
+    fn astroscript_advances_a_card_and_breaking_news_tags_until_the_discard_phase_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { advancement_tokens: 3, rezzed: false, ..remote_root("astroscript_pilot_program", 0) },
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("ghost_branch", 1) },
+        ];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "astroscript_pilot_program") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1);
+        let (idle, _) = close_all_windows(scored, &registry);
+        let astro = PlayerAction::ActivateAbility { target: idle.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (choosing, _) = apply_action(&idle, &registry, astro).expect("hosted agenda counter");
+        let offered = corp_toggles(&choosing, &registry);
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (placed, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("place it");
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 1, "Ghost Branch can be advanced");
+
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, rezzed: false, ..remote_root("breaking_news", 0) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "breaking_news") }).expect("score");
+        assert_eq!(scored.runner.tags, 2, "give the Runner 2 tags");
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&scored), &registry, PlayerAction::EndTurn).expect("end the turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert_eq!(ended.runner.tags, 0, "the Runner removes 2 tags");
+    }
+
+    /// Private Security Force does a meat damage for a [click], only while
+    /// the Runner is tagged.
+    #[test]
+    fn private_security_force_does_meat_damage_while_the_runner_is_tagged() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("private_security_force"))];
+        let force = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        assert!(apply_action(&state, &registry, force.clone()).is_err(), "the Runner is not tagged");
+        state.runner.tags = 1;
+        let (used, _) = apply_action(&state, &registry, force.clone()).expect("[click]: do 1 meat damage");
+        let (used, _) = close_all_windows(used, &registry);
+        assert_eq!((used.runner.grip.len(), used.corp.resources.clicks), (1, Clicks(2)));
+
+        // Stolen, it is inactive (CR 4.5.4): the Runner's score area is no
+        // place for the Corp to use it from.
+        let mut stolen = state.clone();
+        stolen.runner.scored_agendas = std::mem::take(&mut stolen.corp.scored_agendas);
+        assert!(apply_action(&stolen, &registry, force).is_err(), "inactive in the Runner's score area");
+        assert!(!crate::rules::legal_actions_for(&stolen, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::ActivateAbility { .. })));
+    }
+
+    /// Matrix Analyzer may sell an advancement counter for 1[credit] as it
+    /// is encountered, and traces at 2 for a tag; Data Raven makes the
+    /// Runner take a tag or end the run, and spends its power counters on
+    /// tags.
+    #[test]
+    fn matrix_analyzer_and_data_raven_tag_the_runner() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("matrix_analyzer"), crate::rules::InstalledCard { rezzed: false, ..remote_root("ghost_branch", 0) }];
+        let asked = encounter(&state, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "you may pay 1[credit]");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
+        let offered = corp_toggles(&choosing, &registry);
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (placed, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("place it");
+        let branch = placed.corp.installed.iter().find(|installed| installed.card == id("ghost_branch")).expect("installed");
+        assert_eq!(branch.advancement_tokens, 1);
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let (passed, _) = apply_action(&declined, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        let (tracing, _) = apply_action(&passed, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("subroutines fire");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "trace[2]");
+
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("data_raven")];
+        let asked = encounter(&state, &registry);
+        let (tagged, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 1 tag");
+        assert_eq!(tagged.runner.tags, 1);
+        let (ended, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("end the run");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none());
+
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 1, ..ice_at_hq("data_raven") }];
+        let (used, _) = use_ability(&state, &registry, "data_raven", 0).expect("hosted power counter: give 1 tag");
+        assert_eq!((used.runner.tags, used.corp.installed[0].counters), (1, 0));
+    }
 }

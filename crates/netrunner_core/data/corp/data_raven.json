@@ -1,0 +1,66 @@
+{
+  "id": "data_raven",
+  "title": "Data Raven",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 4,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              "EndTheRun"
+            ],
+            "texts": [
+              "take 1 tag",
+              "end the run"
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, they must take 1 tag or end the run."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      },
+      "text": "Hosted power counter: Give the Runner 1 tag."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, place 1 power counter on this ice.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "AddCounters": 1
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 1088,
+  "is_playable": true
+}
