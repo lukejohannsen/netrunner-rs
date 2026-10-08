@@ -574,6 +574,7 @@ pub fn narrate_event(
             WouldHappen::EncounterAbility { .. } => "a \"when encountered\" ability was prevented".to_string(),
             WouldHappen::RunEnds { .. } => "the run's end was prevented".to_string(),
             WouldHappen::Trace { .. } => "the trace's base strength was reduced to 0".to_string(),
+            WouldHappen::Expose { .. } => "an expose was prevented".to_string(),
             // Nothing prevents a draw; the arm is the compiler's.
             WouldHappen::Draw { .. } => format!("{amount} card(s) of a draw were prevented"),
         },

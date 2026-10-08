@@ -28768,4 +28768,71 @@ mod reprints {
         let (done, _) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
         assert!(exposed(&done, "pad_campaign"), "expose 1 card");
     }
+
+    // ---- Stage 10b: Zaibatsu Loyalty ----
+
+    /// Infiltration's expose aimed at the PAD Campaign beside a facedown
+    /// Zaibatsu Loyalty, parked where the Corp is asked.
+    fn expose_beside_zaibatsu(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("infiltration")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("pad_campaign", 1) },
+            crate::rules::InstalledCard { rezzed: false, ..remote_root("zaibatsu_loyalty", 2) },
+        ];
+        let (asked, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("infiltration") }).expect("play");
+        let (choosing, _) = apply_action(&asked, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("expose");
+        let position = asked.corp.installed.iter().position(|installed| installed.card == id("pad_campaign")).expect("installed");
+        let (toggled, _) = apply_action(&choosing, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    /// Passes for whoever holds priority until nothing is parked on the
+    /// expose.
+    fn pass_the_window(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while state.pending_prevention.is_some() {
+            let side = crate::rules::current_actor(&state).expect("somebody is asked");
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    /// "When a card would be exposed, you may rez this asset" is heard
+    /// facedown (CR 9.1.8c), and once rezzed its interrupt prevents the
+    /// expose: the PAD Campaign is never revealed.
+    #[test]
+    fn zaibatsu_loyalty_rezzes_on_an_expose_and_prevents_it() {
+        let registry = registry();
+        let asked = expose_beside_zaibatsu(&registry);
+        assert!(!exposed(&asked, "pad_campaign"), "not yet: the Corp is asked first");
+        assert_eq!(crate::rules::current_actor(&asked), Some(Side::Corp));
+        let (rezzed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("rez this asset");
+        assert!(rezzed.corp.installed.iter().any(|installed| installed.card == id("zaibatsu_loyalty") && installed.rezzed), "rezzed for 0");
+        let credits = rezzed.corp.resources.credits;
+        let (prevented, _) = apply_action(&rezzed, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("zaibatsu_loyalty"), ability_index: 0 })
+            .expect("1[credit]: prevent 1 card from being exposed");
+        assert_eq!(prevented.corp.resources.credits, Credits(credits.0 - 1));
+        let done = pass_the_window(prevented, &registry);
+        assert!(!exposed(&done, "pad_campaign"), "prevented");
+        assert!(!done.corp.installed.iter().find(|installed| installed.card == id("pad_campaign")).expect("installed").seen_by_runner);
+    }
+
+    /// The [trash] half pays with the asset itself, and a declined rez
+    /// leaves nothing to prevent the expose with.
+    #[test]
+    fn zaibatsu_loyalty_trashes_to_prevent_or_lets_the_expose_through() {
+        let registry = registry();
+        let asked = expose_beside_zaibatsu(&registry);
+        let (rezzed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("rez this asset");
+        let (trashed, _) = apply_action(&rezzed, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("zaibatsu_loyalty"), ability_index: 1 })
+            .expect("[trash]: prevent 1 card from being exposed");
+        let done = pass_the_window(trashed, &registry);
+        assert!(!exposed(&done, "pad_campaign"), "prevented");
+        assert!(done.corp.installed.iter().all(|installed| installed.card != id("zaibatsu_loyalty")), "trashed to pay");
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        let done = pass_the_window(declined, &registry);
+        assert!(exposed(&done, "pad_campaign"), "nothing could prevent it");
+        assert!(done.corp.installed.iter().any(|installed| installed.card == id("zaibatsu_loyalty") && !installed.rezzed));
+    }
 }

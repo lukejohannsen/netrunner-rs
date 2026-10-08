@@ -1014,6 +1014,11 @@ pub enum WouldHappen {
     /// drawn waits in `PendingPrevention::waiting`. Public: how many cards
     /// a player draws is.
     Draw { side: Side, amount: u32 },
+    /// The Runner would expose the installed, unrezzed Corp card `install`
+    /// (CR 1.21.4; Zaibatsu Loyalty's "prevent 1 card from being
+    /// exposed"). Named by its handle and nothing else, as a trash is: the
+    /// card is facedown, and a handle says nothing about it.
+    Expose { install: InstallId },
 }
 
 impl WouldHappen {
@@ -1022,7 +1027,7 @@ impl WouldHappen {
     pub fn amount(&self) -> u32 {
         match self {
             WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } | WouldHappen::Draw { amount, .. } => *amount,
-            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } => 1,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } | WouldHappen::Expose { .. } => 1,
         }
     }
 
@@ -1036,6 +1041,8 @@ impl WouldHappen {
             | WouldHappen::Trace { .. } => Side::Runner,
             WouldHappen::Trash { owner, .. } => *owner,
             WouldHappen::Draw { side, .. } => *side,
+            // The card is the Corp's, and so is the one card that prevents it.
+            WouldHappen::Expose { .. } => Side::Corp,
         }
     }
 }
@@ -1684,6 +1691,9 @@ pub enum Heard {
     /// An agenda in the Runner's score area: its `from_runner_score_area`
     /// triggers only (CR 4.5.4, Project Vacheron).
     FromRunnerScoreArea,
+    /// A Corp card installed facedown: its `while_unrezzed` triggers only
+    /// (CR 9.1.8c, Zaibatsu Loyalty).
+    WhileUnrezzed,
 }
 
 impl Heard {
@@ -1691,7 +1701,7 @@ impl Heard {
     pub fn admits(self, subject: Option<crate::dsl::Subject>) -> bool {
         use crate::dsl::Subject;
         match (self, subject) {
-            (Heard::FromDiscard | Heard::FromRunnerScoreArea, _) => true,
+            (Heard::FromDiscard | Heard::FromRunnerScoreArea | Heard::WhileUnrezzed, _) => true,
             (Heard::Unfiltered | Heard::AsBoth, _) | (_, None) => true,
             (Heard::AsBystander, Some(subject)) => subject == Subject::Any,
             (Heard::AsSubject, Some(subject)) => subject == Subject::This,

@@ -1737,7 +1737,7 @@ mod tests {
         growing.card_type = CardType::Asset;
         growing.advancement_requirement = Some(0);
         growing.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],

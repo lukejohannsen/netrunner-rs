@@ -451,6 +451,15 @@ pub enum Trigger {
     /// mandatory draw included. Composition didn't work: a draw was not a moment
     /// until it had happened (`CardDrawn`, heard by nothing).
     OnDrawAboutToResolve,
+    /// "When a card **would be exposed**" (Zaibatsu Loyalty) —
+    /// `GameEvent::AboutToResolve` of a `WouldHappen::Expose`, the expose
+    /// parked by `rules::prevention` so that what hears it resolves before
+    /// the players are asked to prevent it, as `OnDrawAboutToResolve`
+    /// resolves before the draw. About nothing a card can be "this" of:
+    /// the exposed card is facedown, and naming it would say what it is.
+    /// Composition didn't work: an expose was not a moment until it had
+    /// happened (`CardRevealed`), and by then there is nothing to prevent.
+    OnExposeAboutToResolve,
     /// "Whenever you create a server" (Turtlebacks), and "the first time
     /// each turn you create a remote server" (Near-Earth Hub: Broadcast
     /// Center) — `GameEvent::ServerCreated`, emitted where an install's
@@ -945,7 +954,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 57] = [
+    pub const ALL: [Trigger; 58] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -1001,6 +1010,7 @@ impl Trigger {
         Trigger::OnAbilityTookCredits,
         Trigger::OnCardRevealed,
         Trigger::OnDrawAboutToResolve,
+        Trigger::OnExposeAboutToResolve,
         Trigger::OnServerCreated,
         Trigger::WhileTrue,
     ];
@@ -1074,6 +1084,7 @@ impl Trigger {
             | Trigger::OnActionFinished
             | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::OnDrawAboutToResolve
+            | Trigger::OnExposeAboutToResolve
             | Trigger::WhileTrue
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
@@ -1171,6 +1182,7 @@ impl Trigger {
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
             | Trigger::OnDamageAboutToResolve
+            | Trigger::OnExposeAboutToResolve
             | Trigger::OnVirusCountersPurged
             | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::WhileTrue
@@ -1203,7 +1215,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnServerCreated | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

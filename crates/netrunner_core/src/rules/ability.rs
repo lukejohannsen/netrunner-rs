@@ -639,17 +639,14 @@ pub fn evaluate_effect(
 
         // The card chosen, still installed and facedown, revealed by the
         // Runner and remembered.
+        // Through the prevention door (Zaibatsu Loyalty), which announces it
+        // and makes it happen (`expose`) if nobody prevents it.
         Effect::Expose => {
             let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
-            let Some(exposed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install && !installed.rezzed) else {
+            if !state.corp.installed.iter().any(|installed| installed.install_id == install && !installed.rezzed) {
                 return Ok(Vec::new());
-            };
-            exposed.seen_by_runner = true;
-            let card = exposed.card.clone();
-            reveal(state, Side::Corp, &card, false);
-            let mut events = Vec::new();
-            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by: Side::Runner })?;
-            Ok(events)
+            }
+            prevention::would(state, registry, WouldHappen::Expose { install }, ctx)
         }
 
         // About the chooser: the selection's prompter inside its `then`,
@@ -2881,6 +2878,8 @@ pub(crate) fn fire_card_triggers(
                 // a card in play never resolves one (`Heard::FromDiscard`).
                 && t.from_discard == (due.heard == crate::rules::state::Heard::FromDiscard)
                 && t.from_runner_score_area == (due.heard == crate::rules::state::Heard::FromRunnerScoreArea)
+            && t.while_unrezzed == (due.heard == crate::rules::state::Heard::WhileUnrezzed)
+                && t.while_unrezzed == (due.heard == crate::rules::state::Heard::WhileUnrezzed)
                 && !((t.first_each_turn || t.first_each_encounter) && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, card_id, due.install, triggering_event)
         })
@@ -4217,6 +4216,22 @@ pub(crate) fn pay_cost_ctx(
             Ok(events)
         }
     }
+}
+
+/// Exposes the install `install` (CR 1.21.4), once nobody prevented it: an
+/// installed, unrezzed Corp card is revealed by the Runner, stays facedown,
+/// and is remembered (`InstalledCard::seen_by_runner`). Nothing if it was
+/// rezzed or left the table while the players were asked.
+pub(crate) fn expose(state: &mut GameState, registry: &CardRegistry, install: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(exposed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install && !installed.rezzed) else {
+        return Ok(Vec::new());
+    };
+    exposed.seen_by_runner = true;
+    let card = exposed.card.clone();
+    reveal(state, Side::Corp, &card, false);
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by: Side::Runner })?;
+    Ok(events)
 }
 
 /// Reveals `card` (CR 1.21): during an encounter, it is one of the
@@ -6329,7 +6344,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -6367,7 +6382,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -6393,7 +6408,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

@@ -74,6 +74,7 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
         (Preventable::EncounterAbility, WouldHappen::EncounterAbility { .. }) => true,
         (Preventable::RunEnding, WouldHappen::RunEnds { .. }) => true,
         (Preventable::TraceBaseStrength, WouldHappen::Trace { base }) => *base > 0,
+        (Preventable::Expose, WouldHappen::Expose { .. }) => true,
         _ => false,
     }
 }
@@ -83,7 +84,7 @@ fn prevents_up_to(word: &Preventable) -> u32 {
     match word {
         Preventable::Damage { up_to, .. } => *up_to,
         Preventable::Tags(amount) => *amount,
-        Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength => 1,
+        Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength | Preventable::Expose => 1,
     }
 }
 
@@ -145,7 +146,10 @@ pub(crate) fn would(
     }
     // A draw is heard as damage is, and for the same reason: The Class
     // Act's "the first time each turn" counts the draws before it.
-    let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. });
+    // And an expose: Zaibatsu Loyalty's "when a card would be exposed,
+    // you may rez this asset" is heard facedown, and only an announcement
+    // could reach it.
+    let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. } | WouldHappen::Expose { .. });
     if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         let responsible = responsible_for(registry, ctx.acting_card);
         let source = ctx.acting_install;
@@ -348,7 +352,7 @@ fn settle_within(
     }
     let mut events = Vec::new();
     while let Some(position) =
-        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve) && due.continuation.is_none())
+        state.deferred_triggers.iter().position(|due| matches!(due.trigger, Trigger::OnDamageAboutToResolve | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve) && due.continuation.is_none())
     {
         let due = state.deferred_triggers.remove(position);
         events.extend(dispatcher::fire_deferred(state, registry, &due)?);
@@ -568,6 +572,8 @@ fn happen(
         // Whatever heard it has resolved; the cards are drawn now, from
         // the stack as it has left it.
         WouldHappen::Draw { side, .. } => Ok(ability::draw(state, *side, amount)),
+        // Not prevented: the card is revealed, and the Runner remembers it.
+        WouldHappen::Expose { install } => ability::expose(state, registry, *install),
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             // Carried out, so it is one of the encountered ice's trashes

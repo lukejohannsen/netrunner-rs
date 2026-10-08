@@ -387,6 +387,23 @@ pub struct TriggeredEffect {
     /// Runner's score area, which is right for every other agenda.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_runner_score_area: bool,
+    /// Heard while this Corp card is installed facedown, and only then —
+    /// CR 9.1.8c: an ability that changes when its card can be rezzed is
+    /// active while the card is inactive. Zaibatsu Loyalty's "When a card
+    /// would be exposed, you may rez this asset" is the one card, and the
+    /// copy that hears it is the unrezzed install (`listeners`,
+    /// `Heard::WhileUnrezzed`); once rezzed it hears nothing of the kind,
+    /// since a rezzed card has nothing left to rez. `from_discard`'s shape
+    /// a third time: a place a card listens from that is not where active
+    /// cards are. Composition didn't work: no listener reached a facedown
+    /// install for anything but what was about the card itself.
+    ///
+    /// The Runner sees the Corp being asked, which a facedown card that
+    /// heard nothing would never show. That is the card's own cost: an
+    /// expose is announced whatever is installed, and the question is
+    /// asked only when a Zaibatsu Loyalty is there to hear it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub while_unrezzed: bool,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
@@ -1096,6 +1113,8 @@ pub enum CardValidationError {
     OtherIsNotAnIceType(CardId, &'static str),
     #[error("card {0:?}: a trigger active in the Runner's score area (`from_runner_score_area`) is an agenda's")]
     ScoreAreaTriggerOffAnAgenda(CardId),
+    #[error("card {0:?}: a trigger heard while facedown (`while_unrezzed`) is an installed Corp card's, and no other zone's")]
+    UnrezzedTriggerOffTheTable(CardId),
     #[error("card {0:?}: `GainIceSubtype` about `This` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on, and no card says \"each piece of ice gains\"")]
     SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
@@ -1737,6 +1756,9 @@ impl CardDefinition {
         if self.card_type != CardType::Agenda && self.triggers.iter().any(|triggered| triggered.from_runner_score_area) {
             return Err(CardValidationError::ScoreAreaTriggerOffAnAgenda(self.id.clone()));
         }
+        if self.triggers.iter().any(|triggered| triggered.while_unrezzed && (self.side != Side::Corp || self.card_type == CardType::Operation || triggered.from_discard || triggered.from_runner_score_area)) {
+            return Err(CardValidationError::UnrezzedTriggerOffTheTable(self.id.clone()));
+        }
         // "This ice gains the chosen subtypes" acts on the acting install,
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
@@ -1987,7 +2009,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -2009,7 +2031,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -2175,7 +2197,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -2240,7 +2262,7 @@ mod tests {
             when,
             acts_on_subject: false,
             first_each_turn: true, first_each_encounter: false, granted: false,
-            from_discard: false, from_runner_score_area: false,
+            from_discard: false, from_runner_score_area: false, while_unrezzed: false,
             text: None,
             effects: vec![],
             requirement,
@@ -2290,7 +2312,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -2512,7 +2534,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_run: false }],
                 requirement: None,
@@ -2537,7 +2559,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -2594,7 +2616,7 @@ mod tests {
                 when: None,
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2621,7 +2643,7 @@ mod tests {
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
                 first_each_turn: false, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2647,7 +2669,7 @@ mod tests {
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
@@ -2674,7 +2696,7 @@ mod tests {
                 when: Some(EventFilter::InRootOfThisServer),
                 acts_on_subject: false,
                 first_each_turn: true, first_each_encounter: false, granted: false,
-                from_discard: false, from_runner_score_area: false,
+                from_discard: false, from_runner_score_area: false, while_unrezzed: false,
                 text: None,
             }],
             ..CardDefinition::default()
