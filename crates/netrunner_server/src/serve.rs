@@ -133,6 +133,9 @@ pub struct ServeOptions {
     /// matches end was rejected: it needs a wake-up from the session-exit
     /// task, and nobody has asked to wait.
     pub max_matches: Option<usize>,
+    /// How many spectators each match takes; `None` is no limit. See
+    /// `MatchSession::DEFAULT_MAX_SPECTATORS` for why there is one.
+    pub max_spectators: Option<usize>,
     /// See `MatchSession::with_turn_timeout`; `None` runs without a clock.
     pub turn_timeout: TurnTimeout,
     /// Pin the matchup instead of rotating: a published decklist id per
@@ -182,6 +185,7 @@ impl Default for ServeOptions {
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
+            max_spectators: Some(crate::match_session::DEFAULT_MAX_SPECTATORS),
             turn_timeout: None,
             corp_deck: None,
             runner_deck: None,
@@ -1313,10 +1317,10 @@ where
             // `rx` would kick the spectator on its first keypress. Drain
             // and discard instead.
             tokio::spawn(async move { while session_rx.recv().await.is_some() {} });
-            // `Spectating` before the control message, so it precedes the
-            // `StateUpdate` the session answers with.
-            let _ = session_tx.send(ServerMessage::Spectating { match_id });
-            if handle.add_spectator(session_tx.clone()).is_err() {
+            // The session says `Spectating` itself, ahead of the
+            // `StateUpdate` it answers with — or refuses the sink at its
+            // spectator cap, with `ConnectRejected` and nothing before it.
+            if handle.add_spectator(session_tx.clone(), match_id).is_err() {
                 let _ = session_tx.send(ServerMessage::ConnectRejected { reason: "the match ended".into() });
             }
         }
@@ -1513,6 +1517,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     let session = MatchSession::new(state, shared.cards.clone(), corp.slot, runner.slot)
         .with_undo(!rated_lobby)
         .with_reconnect_grace(shared.options.reconnect_grace)
+        .with_max_spectators(shared.options.max_spectators)
         .with_turn_timeout(shared.options.turn_timeout);
     let handle = session.reattach_handle();
     registry.matches.insert(

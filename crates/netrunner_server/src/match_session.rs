@@ -39,6 +39,14 @@ use crate::protocol::{ClientMessage, GameEndReason, ServerMessage};
 /// the *other* player took ten minutes would be a strange rule.
 pub const DEFAULT_RECONNECT_GRACE: Duration = Duration::from_secs(30);
 
+/// How many spectators a match takes unless the daemon says otherwise.
+/// Every broadcast is cloned per spectator sink and a spectator view is
+/// built per broadcast, so an uncapped match was the one place a stranger
+/// could cost the host memory and time without holding a seat. Thirty-two
+/// is a crowd at a table, not a stream (Phase 4 §3's "delayed omniscient
+/// stream" is the thing for that, and is not built).
+pub const DEFAULT_MAX_SPECTATORS: usize = 32;
+
 /// A seat's cost of not answering: every awaited decision gets this long
 /// before the match is awarded to the other side (`GameEndReason::
 /// TimedOut`). `None` — the default — means no clock at all.
@@ -104,7 +112,10 @@ impl PlayerSlot {
 /// second arm doing the same thing.
 enum SeatControl {
     Reattach { side: Side, tx: mpsc::UnboundedSender<ServerMessage>, rx: mpsc::UnboundedReceiver<ClientMessage> },
-    AddSpectator { tx: mpsc::UnboundedSender<ServerMessage> },
+    /// `match_id` rides along so the session can say `Spectating` itself,
+    /// first, ahead of the `StateUpdate` it answers with — or refuse the
+    /// sink at the cap with nothing sent before the refusal.
+    AddSpectator { tx: mpsc::UnboundedSender<ServerMessage>, match_id: uuid::Uuid },
 }
 
 /// Lets whoever holds the sockets — `serve` — give a seat a new channel
@@ -149,12 +160,13 @@ impl ReattachHandle {
     }
 
     /// Adds a sink that receives the spectator's copy of everything the
-    /// seats get, starting with a `StateUpdate` of the current position.
-    /// Spectators hold no seat and no token: nothing they send reaches the
-    /// session, and a spectator that drops is simply pruned on the next
-    /// send.
-    pub fn add_spectator(&self, tx: mpsc::UnboundedSender<ServerMessage>) -> Result<(), MatchOver> {
-        self.0.send(SeatControl::AddSpectator { tx }).map_err(|_| MatchOver)
+    /// seats get, starting with `Spectating { match_id }` and a
+    /// `StateUpdate` of the current position — or, at the match's
+    /// spectator cap, a `ConnectRejected` and nothing else. Spectators
+    /// hold no seat and no token: nothing they send reaches the session,
+    /// and a spectator that drops is simply pruned on the next send.
+    pub fn add_spectator(&self, tx: mpsc::UnboundedSender<ServerMessage>, match_id: uuid::Uuid) -> Result<(), MatchOver> {
+        self.0.send(SeatControl::AddSpectator { tx, match_id }).map_err(|_| MatchOver)
     }
 
     /// Whether the session is still running. A `false` is final; a `true`
@@ -185,6 +197,8 @@ pub struct MatchSession {
     /// however many there are, and a closed sink is dropped at the send
     /// that finds it closed.
     spectators: Vec<mpsc::UnboundedSender<ServerMessage>>,
+    /// How many of them the match takes; `None` is no limit.
+    max_spectators: Option<usize>,
     reconnect_grace: Duration,
     turn_timeout: TurnTimeout,
     /// Who won and why, once a `GameEnded` has gone out — the result
@@ -266,6 +280,7 @@ impl MatchSession {
             reattach_rx,
             spectators: Vec::new(),
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
+            max_spectators: Some(DEFAULT_MAX_SPECTATORS),
             turn_timeout: None,
             outcome: None,
             decision_deadline: None,
@@ -280,6 +295,12 @@ impl MatchSession {
     /// wrongly, and the free take-back is fair whatever the lobby says.
     pub fn with_undo(mut self, undo: bool) -> Self {
         self.undo = undo;
+        self
+    }
+
+    /// Overrides `DEFAULT_MAX_SPECTATORS`; `None` takes every watcher.
+    pub fn with_max_spectators(mut self, cap: Option<usize>) -> Self {
+        self.max_spectators = cap;
         self
     }
 
@@ -460,7 +481,7 @@ impl MatchSession {
             self.grace_deadline = None;
         }
         loop {
-            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, grace_deadline, undo, back, .. } = self;
+            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, max_spectators, grace_deadline, undo, back, .. } = self;
             let (seat, idle) = match side {
                 Side::Corp => (corp.as_mut(), runner.as_mut()),
                 Side::Runner => (runner.as_mut(), corp.as_mut()),
@@ -505,7 +526,16 @@ impl MatchSession {
                             }
                         }
                     }
-                    SeatControl::AddSpectator { tx } => {
+                    SeatControl::AddSpectator { tx, match_id } => {
+                        // Sinks that have gone are pruned at the next
+                        // send; counted here too, so a crowd that left
+                        // does not keep the next watcher out.
+                        spectators.retain(|tx| !tx.is_closed());
+                        if max_spectators.is_some_and(|cap| spectators.len() >= cap) {
+                            let _ = tx.send(ServerMessage::ConnectRejected { reason: "the match has as many watchers as it takes".into() });
+                            continue;
+                        }
+                        let _ = tx.send(ServerMessage::Spectating { match_id });
                         let view = build_client_view(session.state(), session.registry(), Viewer::Spectator);
                         let _ = tx.send(ServerMessage::StateUpdate(Box::new(view)));
                         if let Some(decision_deadline) = decision_deadline {
@@ -862,7 +892,8 @@ mod tests {
         };
         assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
         let (spectator_tx, mut spectator_rx) = mpsc::unbounded_channel();
-        reattach.add_spectator(spectator_tx).unwrap();
+        reattach.add_spectator(spectator_tx, uuid::Uuid::new_v4()).unwrap();
+        assert!(matches!(spectator_rx.recv().await.unwrap(), ServerMessage::Spectating { .. }));
         assert!(matches!(spectator_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
 
         corp_client_tx.send(ClientMessage::SubmitAction(install.clone())).unwrap();
@@ -1370,7 +1401,9 @@ mod reattach_tests {
         expect_state_update(&mut runner_rx).await;
 
         let (tx, mut spectator_rx) = spectator_sink();
-        handle.add_spectator(tx).expect("the match is running");
+        let match_id = uuid::Uuid::new_v4();
+        handle.add_spectator(tx, match_id).expect("the match is running");
+        assert!(matches!(spectator_rx.recv().await, Some(ServerMessage::Spectating { match_id: seen }) if seen == match_id), "the session says Spectating first");
         let view = match spectator_rx.recv().await {
             Some(ServerMessage::StateUpdate(view)) => *view,
             other => panic!("expected the spectator's first StateUpdate, got {other:?}"),
@@ -1388,6 +1421,42 @@ mod reattach_tests {
         run.abort();
     }
 
+    /// At the cap a watcher is refused with `ConnectRejected` and nothing
+    /// before it, the watchers already in keep their stream, and a watcher
+    /// who left makes room for the next.
+    #[tokio::test]
+    async fn a_match_takes_only_so_many_spectators_and_a_seat_freed_is_taken_again() {
+        let (state, registry) = state(59);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot).with_max_spectators(Some(1));
+        let handle = session.reattach_handle();
+        let run = tokio::spawn(session.run());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+
+        let (first_tx, mut first) = spectator_sink();
+        handle.add_spectator(first_tx, uuid::Uuid::new_v4()).unwrap();
+        assert!(matches!(first.recv().await, Some(ServerMessage::Spectating { .. })));
+        expect_state_update(&mut first).await;
+
+        let (second_tx, mut second) = spectator_sink();
+        handle.add_spectator(second_tx, uuid::Uuid::new_v4()).unwrap();
+        assert!(matches!(second.recv().await, Some(ServerMessage::ConnectRejected { reason }) if reason.contains("watchers")), "the cap refuses, and says so first");
+        assert!(second.recv().await.is_none(), "and sends nothing after: the session dropped the sink");
+
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut first).await;
+
+        // The first leaves; the next is taken.
+        drop(first);
+        let (third_tx, mut third) = spectator_sink();
+        handle.add_spectator(third_tx, uuid::Uuid::new_v4()).unwrap();
+        assert!(matches!(third.recv().await, Some(ServerMessage::Spectating { .. })), "a watcher who left made room");
+        run.abort();
+    }
+
     #[tokio::test]
     async fn a_spectator_that_drops_is_pruned_without_disturbing_play() {
         let (state, registry) = state(53);
@@ -1400,7 +1469,8 @@ mod reattach_tests {
         expect_state_update(&mut runner_rx).await;
 
         let (tx, mut spectator_rx) = spectator_sink();
-        handle.add_spectator(tx).unwrap();
+        handle.add_spectator(tx, uuid::Uuid::new_v4()).unwrap();
+        assert!(matches!(spectator_rx.recv().await, Some(ServerMessage::Spectating { .. })));
         expect_state_update(&mut spectator_rx).await;
         drop(spectator_rx);
 
