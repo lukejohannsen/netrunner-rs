@@ -10347,3 +10347,20 @@ new `Effect`.
   precondition is gone too: since this stage it has none.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 797 card files.
+
+#### Stage 11x — the Core Set's gate (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: no card; the gate that closes tranche 8.
+- **The gate.** `core_set` (113 printings) is a row of
+  `every_nsg_pack_card_is_implemented_or_explicitly_excluded`, with an
+  empty `CORE_UNIMPLEMENTED` in `cards::unimplemented`. The plan named a
+  test of its own (`every_core_set_card_is_implemented_or_explicitly_excluded`);
+  a row of the one pack gate checks the same three things (every printing
+  built or listed, the printed count, no stale entry) and is where every
+  other set's gate lives. `pool_status.py` lists `core` among its gated
+  packs, so its row reads `113 113 0`.
+- **Every set the catalog embeds is gated**, and Eternal's in-catalog
+  count reads complete (797 of 797). The three reprint lists that closed
+  earlier are written `&[]` like the rest.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 797 card files.

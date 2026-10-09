@@ -56,13 +56,16 @@ pub(crate) const UR_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.
-pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
-];
+pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.
-pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[
-];
+pub(crate) const SM_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Magnum Opus Reprint* (`magnum_opus_reprint`): tranche 8 of the NSG plan.
-pub(crate) const MOR_UNIMPLEMENTED: &[(&str, &str)] = &[
-];
+pub(crate) const MOR_UNIMPLEMENTED: &[(&str, &str)] = &[];
+
+/// The *Core Set* (`core_set`): its reprinted cards were built with their
+/// reprints and the rest by tranche 8 Stage 11, so it was gated (Stage 11x)
+/// only once every card was built; a catalog sync that changes its list
+/// now fails here.
+pub(crate) const CORE_UNIMPLEMENTED: &[(&str, &str)] = &[];
