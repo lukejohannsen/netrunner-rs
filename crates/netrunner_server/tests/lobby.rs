@@ -448,6 +448,28 @@ async fn a_spectator_joins_a_running_match_by_id() {
     assert!(matches!(next(&mut spectator).await, ServerMessage::ActionLog(_)));
 }
 
+/// A daemon's spectator cap: the watcher past it is refused with
+/// `ConnectRejected` before anything else and the socket closed, while
+/// the one inside it keeps its stream.
+#[tokio::test]
+async fn a_match_full_of_spectators_refuses_the_next() {
+    let url = start_server(ServeOptions { max_spectators: Some(1), ..bot_daemon() }).await;
+    let mut corp_seat = seek(&url, "corp", corp("corp")).await;
+    let (match_id, _, _) = joined(next(&mut corp_seat).await);
+    state_update(next(&mut corp_seat).await);
+
+    let mut first = open(&url, ClientMessage::Spectate { match_id }).await;
+    assert!(matches!(next(&mut first).await, ServerMessage::Spectating { .. }));
+    state_update(next(&mut first).await);
+
+    let mut second = open(&url, ClientMessage::Spectate { match_id }).await;
+    assert!(matches!(next(&mut second).await, ServerMessage::ConnectRejected { reason } if reason.contains("watchers")));
+    assert!(closed_by_server(&mut second).await);
+
+    send(&mut corp_seat, ClientMessage::SubmitAction(PlayerAction::KeepHand)).await;
+    state_update(next(&mut first).await);
+}
+
 #[tokio::test]
 async fn spectating_an_unknown_match_is_refused() {
     let url = human_daemon().await;

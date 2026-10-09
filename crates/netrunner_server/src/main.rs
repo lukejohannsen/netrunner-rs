@@ -77,6 +77,11 @@ struct Config {
     #[arg(long)]
     max_matches: Option<usize>,
 
+    /// (serve mode) How many spectators each match takes; 32 if omitted,
+    /// 0 for no limit. A watcher past it is refused.
+    #[arg(long)]
+    max_spectators: Option<usize>,
+
     /// (serve mode) How many seconds a match waits for a disconnected
     /// player whose action it needs before awarding the game to the other
     /// side. A client resumes with the session token from `MatchJoined`.
@@ -239,6 +244,11 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,
+        max_spectators: match config.max_spectators {
+            Some(0) => None,
+            Some(cap) => Some(cap),
+            None => Some(netrunner_server::match_session::DEFAULT_MAX_SPECTATORS),
+        },
         turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
         corp_deck: config.corp_deck.clone(),
         runner_deck: config.runner_deck.clone(),
