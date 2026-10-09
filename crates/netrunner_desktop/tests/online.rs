@@ -206,6 +206,85 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     assert!(app.world().get_resource::<Connected>().is_none(), "disconnecting lets the connection and the server go");
 }
 
+/// Tournaments from the pages (Phase 4 §7 stage 6b), at a daemon that
+/// keeps things: one client holds a tournament from the form and lands on
+/// its page; another opens it from the list, registers with the decks
+/// its drop-downs show, is told it is entered, and withdraws; the
+/// organizer's Refresh sees both. Each client's key is made in its own
+/// directory the first time it connects.
+#[test]
+fn a_tournament_is_held_entered_and_left_from_the_pages() {
+    use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+    let data = std::env::temp_dir().join(format!("netrunner_desktop_tournament_daemon_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
+    let address = runtime.block_on(async {
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+        let address = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        address
+    });
+    let join = |app: &mut App| {
+        tap_control(app, Control::Open(Page::Join));
+        app.world_mut().resource_mut::<Model>().0.address = address.clone();
+        tap_control(app, Control::Go);
+        until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
+    };
+    let tournament = |app: &App| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.open_tournament().cloned());
+
+    let (mut organizer, _dir) = headless_client("organizer");
+    join(&mut organizer);
+    tap_control(&mut organizer, Control::Open(Page::Tournaments));
+    until(&mut organizer, "the list", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.tournaments_listed));
+    assert!(texts(&mut organizer).iter().any(|text| text == "This server holds none."));
+    tap_control(&mut organizer, Control::Open(Page::MakeTournament));
+    assert_eq!(page(&organizer), Page::MakeTournament);
+    organizer.world_mut().resource_mut::<Model>().0.make_tournament.name = "Friday".to_string();
+    tap_control(&mut organizer, Control::Go);
+    until(&mut organizer, "the tournament's page", |app| page(app) == Page::Tournament && tournament(app).is_some_and(|info| info.name == "Friday"));
+    let made = tournament(&organizer).unwrap();
+    assert_eq!((made.id.len(), made.entrants.len()), (6, 0));
+    let shown = texts(&mut organizer);
+    assert!(shown.iter().any(|text| text == "You hold this tournament. Not entered yet."), "{shown:?}");
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::Register).is_some(), "the organizer may enter too");
+
+    let (mut entrant, entrant_dir) = headless_client("entrant");
+    join(&mut entrant);
+    tap_control(&mut entrant, Control::Open(Page::Tournaments));
+    until(&mut entrant, "the list with one", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.tournaments.len() == 1));
+    tap_control(&mut entrant, Control::OpenTournament(0));
+    until(&mut entrant, "the decks legal in its format", |app| page(app) == Page::Tournament && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.tournament_decks.is_empty()));
+    assert!(find::<Control>(&mut entrant, |c| *c == Control::Unregister).is_none(), "not entered yet");
+    let chosen = {
+        let server = entrant.world().resource::<Model>().0.server.clone().unwrap();
+        (server.tournament_chosen(netrunner_core::rules::Side::Corp).unwrap().id.clone(), server.tournament_chosen(netrunner_core::rules::Side::Runner).unwrap().id.clone())
+    };
+    tap_control(&mut entrant, Control::Register);
+    until(&mut entrant, "the entry", |app| tournament(app).is_some_and(|info| info.entrants.len() == 1));
+    let shown = texts(&mut entrant);
+    assert!(shown.iter().any(|text| text == "You are entered, with the two decks you committed to."), "{shown:?}");
+    assert!(shown.iter().any(|text| text.starts_with("entrant · ")), "the entrant by name and key: {shown:?}");
+    assert!(find::<Control>(&mut entrant, |c| *c == Control::Unregister).is_some());
+    let kept = std::fs::read_to_string(entrant_dir.join("identity").join(netrunner_client::identity::REGISTRATIONS_FILE)).expect("the registration is kept beside the key");
+    let line = kept.lines().last().unwrap();
+    assert!(line.contains(&format!("\"corp\":\"{}\"", chosen.0)) && line.contains(&format!("\"runner\":\"{}\"", chosen.1)), "the decks the drop-downs showed: {line}");
+
+    tap_control(&mut organizer, Control::Refresh);
+    until(&mut organizer, "the entrant on the organizer's page", |app| tournament(app).is_some_and(|info| info.entrants.len() == 1));
+
+    tap_control(&mut entrant, Control::Unregister);
+    until(&mut entrant, "the withdrawal", |app| tournament(app).is_some_and(|info| info.entrants.is_empty()));
+    press(&mut entrant, KeyCode::Escape, Key::Escape);
+    entrant.update();
+    assert_eq!(page(&entrant), Page::Tournaments);
+    press(&mut entrant, KeyCode::Escape, Key::Escape);
+    entrant.update();
+    assert_eq!(page(&entrant), Page::Server, "Escape walks back a page at a time, attached still");
+    assert!(entrant.world().get_resource::<Connected>().is_some());
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// A second client connects to the host by address: the host's one lobby
 /// is listed, a lobby of the guest's own is made and joined, the host's
 /// is joined back, and Escape disconnects.

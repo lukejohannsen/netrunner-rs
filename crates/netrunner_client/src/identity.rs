@@ -26,7 +26,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use netrunner_identity::{Identity, PublicKey};
+use netrunner_identity::Identity;
+/// Re-exported for the two clients, which name a key only to say whose a
+/// tournament entry is and never depend on the identity crate themselves.
+pub use netrunner_identity::PublicKey;
 
 /// Overrides the directory both files live in — for a test, a second
 /// profile on one machine, or a dev hook that must not touch the

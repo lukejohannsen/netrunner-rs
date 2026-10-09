@@ -37,6 +37,14 @@
 //! The address field takes Ctrl+V (Cmd+V) while it is being edited, as
 //! every field does (`widgets::text_field`), and has a Paste button beside
 //! it; a host's ticket and addresses each have a Copy button.
+//!
+//! **Tournaments are pages under the Server page** (Phase 4 §7 stage 6b,
+//! the terminal's rows as the desktop's forms): the server's tournaments
+//! listed, each a button to its page — its code, its entrants, and for a
+//! key that has one the two decks to lock in and Register, or Withdraw —
+//! and one held from a form of its own by the key this connection proved.
+//! The deck drop-downs are the lobby's on the Server page and the entry's
+//! on a tournament's (`Intent::SetCorpDeck` reads the page).
 
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
@@ -47,6 +55,7 @@ use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::identity::StandingHere;
 use netrunner_client::online;
+use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
@@ -214,6 +223,10 @@ pub enum Control {
     Chair(ChairChoice),
     Seek,
     CancelSeek,
+    /// The tournaments page's and a tournament's.
+    OpenTournament(usize),
+    Register,
+    Unregister,
     Disconnect,
 }
 
@@ -355,6 +368,9 @@ fn controls(
             Control::Chair(chair) => Intent::SetChair(chair),
             Control::Seek => Intent::Seek,
             Control::CancelSeek => Intent::CancelSeek,
+            Control::OpenTournament(index) => Intent::OpenTournament(index),
+            Control::Register => Intent::Register,
+            Control::Unregister => Intent::Unregister,
             Control::Disconnect => Intent::Disconnect,
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
@@ -443,7 +459,17 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
                 commands.remove_resource::<Connected>();
             }
             Outcome::Decks(format) => form.set_decks(deck_choices(core, format)),
-            Outcome::ListLobbies | Outcome::JoinLobby { .. } | Outcome::LeaveLobby | Outcome::CreateLobby { .. } | Outcome::Seek(_) | Outcome::CancelSeek => {
+            Outcome::TournamentDecks(format) => form.set_tournament_decks(deck_choices(core, format)),
+            Outcome::ListLobbies
+            | Outcome::JoinLobby { .. }
+            | Outcome::LeaveLobby
+            | Outcome::CreateLobby { .. }
+            | Outcome::Seek(_)
+            | Outcome::CancelSeek
+            | Outcome::ListTournaments
+            | Outcome::CreateTournament { .. }
+            | Outcome::Register { .. }
+            | Outcome::Unregister { .. } => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
             }
             Outcome::Nothing | Outcome::Redraw => {}
@@ -518,6 +544,10 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::CreateLobby { name, format, closed, password, casual } => connected.attached.create_lobby(name, format, closed, password, casual),
         Outcome::Seek(chair) => connected.attached.seek(chair),
         Outcome::CancelSeek => connected.attached.cancel_seek(),
+        Outcome::ListTournaments => connected.attached.list_tournaments(),
+        Outcome::CreateTournament { name, format } => connected.attached.create_tournament(name, format),
+        Outcome::Register { tournament, corp, runner } => connected.attached.register(tournament, *corp, *runner),
+        Outcome::Unregister { tournament } => connected.attached.unregister(tournament),
         _ => {}
     }
 }
@@ -767,11 +797,11 @@ fn net(
                     connected.attached.standing();
                     Intent::Attached { lobbies, hosting }
                 }
-                AttachedEvent::Standing { key, standing } => Intent::Standing(StandingHere::from_reply(key, standing)),
+                AttachedEvent::Standing { key, standing } => Intent::Standing { key, standing: StandingHere::from_reply(key, standing) },
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
-                // Tournaments have no page yet (Phase 4 §7 stage 6a is the
-                // server and the client core; the pages are a later stage).
-                AttachedEvent::Tournaments(_) | AttachedEvent::Tournament(_) | AttachedEvent::TournamentRefused(_) => continue,
+                AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
+                AttachedEvent::Tournament(info) => Intent::Tournament(info),
+                AttachedEvent::TournamentRefused(reason) => Intent::Refused(reason),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Intent::Refused(reason),
@@ -867,6 +897,7 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::Port => &form.port,
         Field::LobbyName => &form.make.name,
         Field::LobbyPassword => &form.make.password,
+        Field::TournamentName => &form.make_tournament.name,
     }
 }
 
@@ -890,6 +921,14 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
             None => spawn_waiting(parent, theme, form),
         },
         Page::MakeLobby => spawn_make_lobby(parent, theme, form),
+        Page::Tournaments | Page::Tournament | Page::MakeTournament => match &form.server {
+            Some(server) => match form.page {
+                Page::Tournaments => spawn_tournaments(parent, theme, server),
+                Page::Tournament => spawn_tournament(parent, theme, server),
+                _ => spawn_make_tournament(parent, theme, form),
+            },
+            None => spawn_waiting(parent, theme, form),
+        },
     }
     if let Some(notice) = &form.notice {
         parent.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -1038,6 +1077,7 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
         section.spawn(widgets::row(12.0)).with_children(|row| {
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a lobby…", Control::Open(Page::MakeLobby)));
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Tournaments…", Control::Open(Page::Tournaments)));
         });
     });
     section(parent, theme, "A closed lobby", |section| {
@@ -1100,6 +1140,21 @@ fn deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &Serv
         Side::Corp => (server.corp_decks(), server.corp_deck),
         Side::Runner => (server.runner_decks(), server.runner_deck),
     };
+    deck_dropdown_of(parent, theme, decks, chosen, side, format);
+}
+
+/// The deck this player would lock in for `side` in the open tournament,
+/// from those legal in its format. The same drop-down markers as the
+/// lobby's: the model reads the page to tell whose choice a change is.
+fn tournament_deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState, side: Side, format: NsgFormat) {
+    let chosen = match side {
+        Side::Corp => server.tournament_corp,
+        Side::Runner => server.tournament_runner,
+    };
+    deck_dropdown_of(parent, theme, server.tournament_side_decks(side), chosen, side, format);
+}
+
+fn deck_dropdown_of(parent: &mut ChildSpawnerCommands, theme: &Theme, decks: Vec<&DeckFile>, chosen: usize, side: Side, format: NsgFormat) {
     if decks.is_empty() {
         parent.spawn(widgets::dim(theme, format!("No {side:?} deck is legal in {}: build one under Decks.", capitalised(format_name(format)))));
         return;
@@ -1109,6 +1164,85 @@ fn deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &Serv
         Side::Corp => spawn_dropdown(parent, theme, "Corp deck", choices, chosen, CorpDeckDropdown),
         Side::Runner => spawn_dropdown(parent, theme, "Runner deck", choices, chosen, RunnerDeckDropdown),
     };
+}
+
+/// The server's tournaments, each a button to its page, and the way to
+/// hold one.
+fn spawn_tournaments(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState) {
+    parent.spawn(widgets::heading(theme, format!("Tournaments at {}", shortened(&server.address))));
+    parent.spawn((widgets::dim(theme, "Run as Null Signal Games run theirs: each entrant locks two decks, one a side, for the whole event behind a signed commitment; the lists stay private. The rounds come in a later stage."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    section(parent, theme, "Tournaments", |section| {
+        match (server.tournaments_listed, server.tournaments.is_empty()) {
+            (false, _) => section.spawn(widgets::dim(theme, "Asking the server…")),
+            (true, true) => section.spawn(widgets::dim(theme, "This server holds none.")),
+            (true, false) => section.spawn(widgets::dim(theme, "Open one to see who has entered, and to enter.")),
+        };
+        for (index, info) in server.tournaments.iter().enumerate() {
+            section.spawn(widgets::styled_button(theme, ButtonKind::Secondary, tournament::line(info), percent(100), Control::OpenTournament(index)));
+        }
+        section.spawn(widgets::row(12.0)).with_children(|row| {
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Hold a tournament…", Control::Open(Page::MakeTournament)));
+        });
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+    });
+}
+
+/// One tournament: its code, format and state, who holds it and where
+/// this key stands in it, its entrants, and — for a key that may — the
+/// two decks to lock in and Register, with Withdraw for an entrant.
+fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState) {
+    let Some(info) = server.open_tournament() else {
+        parent.spawn(widgets::heading(theme, "Tournament"));
+        parent.spawn(widgets::dim(theme, "The server no longer lists it."));
+        buttons(parent, |row| {
+            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        });
+        return;
+    };
+    parent.spawn(widgets::heading(theme, info.name.clone()));
+    parent.spawn(widgets::dim(theme, format!("Code {} · {} · {}", info.id, capitalised(format_name(info.format)), tournament::state_label(info.state))));
+    parent.spawn(widgets::dim(theme, format!("Held by {}", info.organizer.fingerprint())));
+    parent.spawn((widgets::dim(theme, tournament::standing_line(info, server.key.as_ref())), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    section(parent, theme, if info.entrants.is_empty() { "Entered".to_string() } else { format!("Entered ({})", info.entrants.len()) }, |section| {
+        if info.entrants.is_empty() {
+            section.spawn(widgets::dim(theme, "Nobody has entered yet."));
+        }
+        for entrant in &info.entrants {
+            section.spawn(widgets::label(theme, tournament::entrant_line(entrant)));
+        }
+    });
+    if server.may_register() {
+        section(parent, theme, "Your entry", |section| {
+            section.spawn((widgets::dim(theme, "The two decks you play for the whole event. The server checks them against the format and publishes a commitment to them, never the lists."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            tournament_deck_dropdown(section, theme, server, Side::Corp, info.format);
+            tournament_deck_dropdown(section, theme, server, Side::Runner, info.format);
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                let label = if server.is_entered() { "Register again with these decks" } else { "Register" };
+                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, label, Val::Auto, Control::Register));
+                if server.is_entered() {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Withdraw", Val::Auto, Control::Unregister));
+                }
+            });
+        });
+    }
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
+    });
+}
+
+fn spawn_make_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Hold a tournament"));
+    parent.spawn((widgets::dim(theme, "Held by your key, which has the final say over it. Entrants register two decks, one a side, locked for the whole event."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    section(parent, theme, "Name", |section| field_box(section, theme, Field::TournamentName, &form.make_tournament.name, "what the entrants see", false));
+    format_section(parent, theme, form.make_tournament.format, "The format every entrant's decks must be legal in.");
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Hold", px(220), Control::Go));
+    });
 }
 
 fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {

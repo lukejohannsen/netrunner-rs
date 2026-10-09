@@ -71,6 +71,7 @@ pub mod skin;
 pub mod standing;
 pub mod table;
 pub mod tally;
+pub mod tournament;
 pub mod start;
 mod view_ledger;
 

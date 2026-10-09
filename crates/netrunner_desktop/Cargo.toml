@@ -44,6 +44,10 @@ image = { version = "0.25", default-features = false }
 tokio = { workspace = true }
 # The id of a match to watch, as the server lists it.
 uuid = "1"
+# A test names a key to stand in for a tournament entrant; the client
+# itself reaches a key only through `netrunner_client::identity`.
+[dev-dependencies]
+netrunner_identity = { path = "../netrunner_identity" }
 
 [features]
 # Enables the policy-network opponent, through the client crate.
