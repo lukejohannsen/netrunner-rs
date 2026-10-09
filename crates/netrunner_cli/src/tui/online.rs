@@ -355,8 +355,14 @@ pub struct OnlineScreen {
     player: String,
     format: NsgFormat,
     /// The address Join and Watch start from: `--server`, as the flag path
-    /// uses it.
+    /// uses it — which the settings file fills with the last server joined
+    /// — and, once a connection is made here, that server.
     default_address: String,
+    /// The address of the last connection made and not yet kept: the menu
+    /// takes it after every step and writes it to the settings file, since
+    /// this screen has no settings path of its own. Taken rather than
+    /// written here so a test screen never touches a real file.
+    used_address: Option<String>,
     /// The connection, for as long as the person stays attached — through
     /// the game and back.
     attached: Option<Attached>,
@@ -394,6 +400,7 @@ impl OnlineScreen {
             player,
             format,
             default_address,
+            used_address: None,
             attached: None,
             hosting: None,
             hosting_lines: String::new(),
@@ -406,6 +413,19 @@ impl OnlineScreen {
     pub fn with_identity_dir(mut self, dir: Option<std::path::PathBuf>) -> Self {
         self.identity_dir = dir;
         self
+    }
+
+    /// A connection was made to `url`: the next form starts from it, and
+    /// the menu keeps it (Phase 6 §3).
+    fn used(&mut self, url: &str) {
+        self.default_address = url.to_string();
+        self.used_address = Some(url.to_string());
+    }
+
+    /// The address of a connection made since the last call, for the
+    /// settings file.
+    pub fn take_used_address(&mut self) -> Option<String> {
+        self.used_address.take()
     }
 
     fn form(&self, kind: FormKind) -> Form {
@@ -671,6 +691,7 @@ impl OnlineScreen {
                     KeyCode::Char('a') => editing = true,
                     KeyCode::Enter if !matches.is_empty() => {
                         let url = normalize_address(&address);
+                        self.used(&url);
                         let match_id = matches[cursor].match_id;
                         let back = Box::new(Mode::Watch { address, editing, matches, cursor });
                         self.mode = Mode::Waiting { connecting: remote::watch(url.clone(), match_id), status: format!("Connecting to {url}…"), back };
@@ -756,6 +777,7 @@ impl OnlineScreen {
                     return OnlineStep::Continue;
                 }
                 let url = normalize_address(&form.address);
+                self.used(&url);
                 (url.clone(), format!("Connecting to {url}…"))
             }
             FormKind::Host => {
@@ -948,6 +970,7 @@ impl OnlineScreen {
 
     fn fetch_matches(&mut self, address: String) -> OnlineStep {
         let url = normalize_address(&address);
+        self.used(&url);
         let matches = match block_on_bounded(remote::list_matches(&url)) {
             Some(Ok((matches, _, _))) => {
                 if matches.is_empty() {

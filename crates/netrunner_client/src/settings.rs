@@ -97,6 +97,13 @@ pub struct Settings {
     /// The format decks are checked against — `--format`'s default.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "format_by_name")]
     pub format: Option<NsgFormat>,
+    /// The server Join and Watch start from: the address of the last one
+    /// the person connected to — written when a connection is made, never
+    /// as it is typed — and `--server`'s default in the terminal client.
+    /// Shared, because either client joins a server, and a person who
+    /// plays on one server plays on it from both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
     /// The desktop client's preferences. Skipped while untouched so a
     /// terminal-only player's file stays two fields long.
     #[serde(default, skip_serializing_if = "DesktopPrefs::is_default")]
@@ -554,6 +561,7 @@ mod tests {
         let mut settings = Settings {
             player: Some("case".to_string()),
             format: Some(NsgFormat::Startup),
+            server: Some("ws://play.example.net:8080".to_string()),
             desktop: DesktopPrefs { window_size: Some((1280, 800)), table: Table::Named("neon-alley".to_string()), skin: Skin::Drawn, ..Default::default() },
             relay: Some("off".to_string()),
             ..Default::default()

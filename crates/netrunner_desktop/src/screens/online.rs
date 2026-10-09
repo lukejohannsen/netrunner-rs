@@ -238,7 +238,10 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
         Some(mut model) => model.0.reopen(connected.is_some()),
         None => {
             let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-            commands.insert_resource(Model(OnlineForm::new(hosting::normalize_address("127.0.0.1"), format)));
+            // Join starts from the last server connected to, which both
+            // clients keep in the settings file (Phase 6 §3).
+            let address = core.settings.server.clone().unwrap_or_else(|| hosting::normalize_address("127.0.0.1"));
+            commands.insert_resource(Model(OnlineForm::new(address, format)));
         }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
@@ -283,7 +286,7 @@ fn escape(
     model: Option<ResMut<Model>>,
     mut net: Option<ResMut<Net>>,
     mut dirty: ResMut<Dirty>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
@@ -294,7 +297,7 @@ fn escape(
     captured.0 = true;
     let outcome = model.0.apply(Intent::Back);
     if let Some(net) = net.as_mut() {
-        carry_out(outcome, &mut model.0, net, &mut commands, &core, runtime.as_deref(), &mut navigate);
+        carry_out(outcome, &mut model.0, net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
     }
     dirty.0 = true;
 }
@@ -317,7 +320,7 @@ fn controls(
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
     mut dirty: ResMut<Dirty>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     theme: Res<Theme>,
     mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
@@ -377,7 +380,7 @@ fn controls(
         };
         let outcome = model.0.apply(intent);
         dirty.0 = true;
-        carry_out(outcome, &mut model.0, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate);
+        carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
     }
 }
 
@@ -391,6 +394,20 @@ pub(crate) fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>)
         bevy::clipboard::ClipboardRead::Ready(Ok(text)) => Ok(text),
         bevy::clipboard::ClipboardRead::Ready(Err(error)) => Err(format!("The clipboard could not be read: {error}")),
         _ => Err("The clipboard is not ready; try again".to_string()),
+    }
+}
+
+/// A server was connected to: Join starts from it next time, here and in
+/// the terminal client (Phase 6 §3). Written when the connection is
+/// made, never as the address is typed, and a file that cannot be
+/// written costs the connection nothing.
+fn remember_server(core: &mut ClientCore, url: &str) {
+    if core.settings.server.as_deref() == Some(url) {
+        return;
+    }
+    core.settings.server = Some(url.to_string());
+    if let Err(error) = core.save_settings() {
+        warn!("the server address was not kept: {error}");
     }
 }
 
@@ -409,7 +426,7 @@ fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text
 /// the person disconnects; the machine and the server answer it, and the
 /// answers come back through `net`.
 #[allow(clippy::too_many_arguments)]
-fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &ClientCore, runtime: Option<&TokioRuntime>, navigate: &mut MessageWriter<Navigate>) {
+fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &mut ClientCore, runtime: Option<&TokioRuntime>, navigate: &mut MessageWriter<Navigate>) {
     let needs_runtime = matches!(outcome, Outcome::Host { .. } | Outcome::Connect { .. } | Outcome::List { .. } | Outcome::Watch { .. });
     let Some(runtime) = runtime.filter(|_| needs_runtime) else {
         match outcome {
@@ -454,6 +471,7 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             host(form, net, commands, core, runtime, port, reach, format, relay);
         }
         Outcome::Connect { url } => {
+            remember_server(core, &url);
             let credentials = match core.credentials() {
                 Ok(credentials) => credentials,
                 Err(error) => {
@@ -466,10 +484,12 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
         Outcome::Watch { url, match_id } => {
+            remember_server(core, &url);
             net.connecting = Some(remote::watch(url.clone(), match_id));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
         Outcome::List { url } => {
+            remember_server(core, &url);
             let (tx, rx) = mpsc::channel();
             runtime.0.spawn(async move {
                 let answer = match tokio::time::timeout(LIST_TIMEOUT, remote::list_matches(&url)).await {
@@ -536,7 +556,7 @@ fn dev_page(
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
     mut dirty: ResMut<Dirty>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
@@ -553,7 +573,7 @@ fn dev_page(
             dev.autoplayed = dev.autoplay;
         }
         match ready {
-            Ok((url, match_id)) => carry_out(Outcome::Watch { url, match_id }, form, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate),
+            Ok((url, match_id)) => carry_out(Outcome::Watch { url, match_id }, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate),
             Err(reason) => {
                 form.apply(Intent::Failed(reason));
             }
@@ -702,7 +722,7 @@ fn net(
     mut connected: Option<ResMut<Connected>>,
     mut model: ResMut<Model>,
     mut dirty: ResMut<Dirty>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
@@ -787,7 +807,7 @@ fn net(
                 }
             };
             let outcome = model.0.apply(intent);
-            carry_out(outcome, &mut model.0, &mut net, &mut commands, &core, runtime.as_deref(), &mut navigate);
+            carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
         }
     }
 
