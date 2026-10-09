@@ -653,7 +653,17 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
         let Some(card) = registry.get(card_id) else { continue };
         match card.card_type {
             CardType::Event => candidates.push(PlayerAction::PlayEvent { card_id: card_id.clone() }),
-            CardType::Hardware => candidates.push(PlayerAction::InstallHardware { card_id: card_id.clone() }),
+            CardType::Hardware => {
+                // Into the rig, unless it installs only onto another card
+                // (The Personal Touch), and onto each rig card that admits
+                // it, as a resource onto Hackerspace.
+                if card.installs_onto.is_none() {
+                    candidates.push(PlayerAction::InstallHardware { card_id: card_id.clone(), host: None });
+                }
+                for host in state.runner.rig.iter().filter(|host| crate::rules::continuous::may_install_onto(state, registry, card, host.install_id)) {
+                    candidates.push(PlayerAction::InstallHardware { card_id: card_id.clone(), host: Some(host.install_id) });
+                }
+            }
             // A Trojan (`installs_on_ice: true`, e.g. Botulus) can't be
             // installed via the ordinary Rig-install flow at all — see
             // `install_program_on_ice_candidates` instead. This guard only

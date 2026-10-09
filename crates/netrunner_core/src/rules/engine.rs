@@ -336,7 +336,7 @@ fn apply_action_once(
         PlayerAction::CompleteRun => complete_run(state, registry),
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
-        PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
+        PlayerAction::InstallHardware { card_id, host } => install_hardware(state, registry, card_id, host),
         PlayerAction::InstallProgram { card_id, trash_first } => install_program(state, registry, card_id, trash_first),
         PlayerAction::InstallResource { card_id, host } => install_resource(state, registry, card_id, host),
         PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
@@ -1953,6 +1953,10 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
                 return false;
             }
         }
+        // A card that installs only onto another (The Personal Touch) has
+        // no place a text install could put it: none in the pool lets the
+        // Runner choose a host (`CardDefinition::installs_onto`).
+        CardType::Hardware | CardType::Resource if card_def.installs_onto.is_some() => return false,
         CardType::Hardware | CardType::Resource => {}
         _ => return false,
     }
@@ -2114,6 +2118,7 @@ fn install_hardware(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
+    host: Option<InstallId>,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -2133,12 +2138,26 @@ fn install_hardware(
     // the older one (CR 3.8.5b, 10.3.1d; `checkpoint::enforce_consoles`).
     // It was refused until Rules Conformance B.
 
-    let cost = continuous::install_cost_of(&next, registry, card_def);
+    // Asked with the card already out of the grip, as `install_resource`
+    // asks: the host must be there and admit it.
+    match host {
+        Some(host) if next.find_rig_install(host).is_none() || !continuous::may_install_onto(&next, registry, card_def, host) => {
+            return Err(RulesError::CannotInstallOnto { card: card_id, host });
+        }
+        None if card_def.installs_onto.is_some() => return Err(RulesError::MustBeInstalledOnto(card_id)),
+        _ => {}
+    }
+    let cost = continuous::install_cost_onto(&next, registry, card_def, host);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
     events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
+    if let Some(host) = host
+        && let Some(installed) = next.runner.rig.last_mut()
+    {
+        installed.hosted_on_rig_card = Some(host);
+    }
     // A console's memory is deliberately *not* applied here: memory is derived
     // from what is installed (`memory::available_memory`), so a console's
     // "+1[mu]" takes effect by virtue of the console being in the rig and
@@ -3751,9 +3770,9 @@ mod tests {
         let penny = CardId("pennyshaver".to_string());
         let mut state = runner_state_with_grip(4, 5, vec![penny.clone(), penny.clone()]);
         state.runner.rig = Vec::new();
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone() }).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone(), host: None }).unwrap();
         assert_eq!(state.runner.rig.len(), 1);
-        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone() }).unwrap();
+        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone(), host: None }).unwrap();
         assert_eq!(state.runner.rig.len(), 1, "the second copy replaced the first");
         assert_eq!(state.runner.heap, vec![penny.clone()]);
         assert!(events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == penny)));
@@ -5235,7 +5254,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallHardware { card_id: card_id.clone() },
+            PlayerAction::InstallHardware { card_id: card_id.clone(), host: None },
         )
         .expect("action should succeed");
 
@@ -5265,7 +5284,7 @@ mod tests {
     fn corp_turn_install_hardware_returns_not_your_turn() {
         let card_id = CardId("clone_chip".to_string());
         let state = corp_state(3, 5);
-        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id, host: None });
 
         assert_eq!(
             result,
@@ -5280,7 +5299,7 @@ mod tests {
     fn runner_install_hardware_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("clone_chip".to_string());
         let state = runner_state_with_grip(3, 5, Vec::new());
-        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id: card_id.clone(), host: None });
 
         assert_eq!(
             result,
@@ -5449,7 +5468,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallHardware { card_id: card_id.clone() },
+            PlayerAction::InstallHardware { card_id: card_id.clone(), host: None },
         )
         .expect("action should succeed");
 
@@ -6942,7 +6961,7 @@ mod tests {
             Some(RulesError::CardTypeMismatch { card: card("resource"), expected: "an event" })
         );
         assert_eq!(
-            play(PlayerAction::InstallHardware { card_id: card("program") }),
+            play(PlayerAction::InstallHardware { card_id: card("program"), host: None }),
             Some(RulesError::CardTypeMismatch { card: card("program"), expected: "hardware" })
         );
         assert_eq!(
@@ -6954,7 +6973,7 @@ mod tests {
             Some(RulesError::CardNotResource { card: card("event") })
         );
         assert_eq!(play(PlayerAction::PlayEvent { card_id: card("event") }), None);
-        assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware") }), None);
+        assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware"), host: None }), None);
         assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program"), trash_first: false }), None);
         assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource"), host: None }), None);
     }

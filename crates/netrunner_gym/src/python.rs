@@ -196,9 +196,12 @@ mod tests {
     ///
     /// 3261 → 3773 for a card name chosen (DF Stage 8, Complete Image and
     /// Whistleblower), a slot per name up to `MAX_NAME_OPTIONS`, appended.
+    ///
+    /// 3773 → 4285 for hardware installed onto a rig card (tranche 8 Stage
+    /// 11p, The Personal Touch), appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 3773);
+        assert_eq!(ACTION_SPACE_SIZE, 4285);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

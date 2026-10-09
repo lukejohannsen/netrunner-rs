@@ -750,7 +750,8 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::CompleteRun => "Complete run".to_string(),
         PlayerAction::PlayEvent { card_id } => format!("Play {}", title(card_id)),
         PlayerAction::PlayOperation { card_id } => format!("Play {}", title(card_id)),
-        PlayerAction::InstallHardware { card_id } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallHardware { card_id, host: None } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallHardware { card_id, host: Some(host) } => format!("Install {} onto {}", title(card_id), install_label(host)),
         PlayerAction::InstallProgram { card_id, trash_first: false } => format!("Install {}", title(card_id)),
         PlayerAction::InstallProgram { card_id, trash_first: true } => format!("Install {}, trashing programs first", title(card_id)),
         PlayerAction::InstallResource { card_id, host: None } => format!("Install {}", title(card_id)),
@@ -1044,7 +1045,11 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             "Spend 1 click and the play cost to play {}: resolve its text, then it goes to Archives.",
             title(card_id)
         ),
-        PlayerAction::InstallHardware { card_id } => format!("Spend 1 click and its install cost to install {} in your rig. Hardware stays in play.", title(card_id)),
+        PlayerAction::InstallHardware { card_id, host: None } => format!("Spend 1 click and its install cost to install {} in your rig. Hardware stays in play.", title(card_id)),
+        PlayerAction::InstallHardware { card_id, host: Some(_) } => format!(
+            "Spend 1 click and its install cost to install {} onto a card that hosts it. It leaves play if its host does.",
+            title(card_id)
+        ),
         PlayerAction::InstallProgram { card_id, trash_first } => format!(
             "Spend 1 click and its install cost to install {}. Programs take memory (MU); you have 4 MU by default, and an icebreaker is how you get through ice. With no room, you trash programs of your choice to make it.{}",
             title(card_id),
@@ -1677,7 +1682,7 @@ mod tests {
             PlayerAction::CompleteRun,
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
-            PlayerAction::InstallHardware { card_id: card() },
+            PlayerAction::InstallHardware { card_id: card(), host: None },
             PlayerAction::InstallProgram { card_id: card(), trash_first: false },
             PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },

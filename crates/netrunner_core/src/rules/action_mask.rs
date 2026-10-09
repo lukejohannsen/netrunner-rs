@@ -270,13 +270,20 @@ const HAND_ABILITY_LEN: usize = 2 * MAX_HAND_SIZE * MAX_ABILITIES_PER_CARD;
 const CHOOSE_CARD_NAME_START: usize = HAND_ABILITY_START + HAND_ABILITY_LEN;
 const CHOOSE_CARD_NAME_LEN: usize = MAX_NAME_OPTIONS;
 
+/// `InstallHardware` onto a rig card (The Personal Touch's "only on an
+/// icebreaker"), laid out as `InstallResource` onto one is: every hand
+/// slot crossed with every rig slot. **Appended** (tranche 8 Stage 11p),
+/// so nothing moved: 3773 → 4285.
+const INSTALL_HARDWARE_ON_HOST_START: usize = CHOOSE_CARD_NAME_START + CHOOSE_CARD_NAME_LEN;
+const INSTALL_HARDWARE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = CHOOSE_CARD_NAME_START + CHOOSE_CARD_NAME_LEN;
+    pub const SIZE: usize = INSTALL_HARDWARE_ON_HOST_START + INSTALL_HARDWARE_ON_HOST_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -330,8 +337,13 @@ impl ActionSpace {
             PlayerAction::PlayEvent { card_id } => {
                 Some(PLAY_EVENT_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
-            PlayerAction::InstallHardware { card_id } => {
+            PlayerAction::InstallHardware { card_id, host: None } => {
                 Some(INSTALL_HARDWARE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
+            }
+            PlayerAction::InstallHardware { card_id, host: Some(host) } => {
+                let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
+                let host_slot = bounded_position_rig(&state.runner.rig, *host, MAX_INSTALLED_PER_SIDE)?;
+                Some(INSTALL_HARDWARE_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
             }
             PlayerAction::InstallProgram { card_id, trash_first } => {
                 let start = if *trash_first { INSTALL_PROGRAM_TRASHING_START } else { INSTALL_PROGRAM_START };
@@ -527,7 +539,7 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, INSTALL_HARDWARE_START, INSTALL_HARDWARE_LEN) {
             let card_id = state.runner.playable_hand().get(local)?.clone();
-            return Some(PlayerAction::InstallHardware { card_id });
+            return Some(PlayerAction::InstallHardware { card_id, host: None });
         }
         for (start, trash_first) in [(INSTALL_PROGRAM_START, false), (INSTALL_PROGRAM_TRASHING_START, true)] {
             if let Some(local) = in_segment(index, start, INSTALL_PROGRAM_LEN) {
@@ -653,6 +665,11 @@ impl ActionSpace {
             let card_id = state.runner.playable_hand().get(local / MAX_INSTALLED_PER_SIDE)?.clone();
             let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
             return Some(PlayerAction::InstallResource { card_id, host: Some(host) });
+        }
+        if let Some(local) = in_segment(index, INSTALL_HARDWARE_ON_HOST_START, INSTALL_HARDWARE_ON_HOST_LEN) {
+            let card_id = state.runner.playable_hand().get(local / MAX_INSTALLED_PER_SIDE)?.clone();
+            let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
+            return Some(PlayerAction::InstallHardware { card_id, host: Some(host) });
         }
         if let Some(local) = in_segment(index, HAND_ABILITY_START, HAND_ABILITY_LEN) {
             let (hand_slot, ability_index) = (local / MAX_ABILITIES_PER_CARD, local % MAX_ABILITIES_PER_CARD);
@@ -1562,7 +1579,11 @@ mod tests {
         // Tocsin), appended.** Each hand's slot by ability slot (128).
         // **3261 → 3773: a card name chosen (Downfall Stage 8, Complete
         // Image and Whistleblower), appended.** A slot a name (512).
-        assert_eq!(ActionSpace::SIZE, 3773);
+        // **3773 → 4285: hardware installed onto a rig card (tranche 8
+        // Stage 11p, The Personal Touch), appended.** Hand slot by rig
+        // slot (512).
+        assert_eq!(ActionSpace::SIZE, 4285);
+        assert_eq!(INSTALL_HARDWARE_ON_HOST_START, 3773, "appended after a card name chosen");
         assert_eq!(CHOOSE_CARD_NAME_START, 3261, "appended after an ability used from a hand");
         assert_eq!(HAND_ABILITY_START, 3133, "appended after a resource installed onto a rig card");
         assert_eq!(INSTALL_RESOURCE_ON_HOST_START, 2621, "appended after the installs that trash first");

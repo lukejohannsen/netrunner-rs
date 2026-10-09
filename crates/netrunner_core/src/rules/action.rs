@@ -125,7 +125,18 @@ pub enum PlayerAction {
     /// install discount), move `card_id` from the Grip into the Rig.
     /// Runner-only. A second console trashes the first (CR 3.8.5b, at the
     /// checkpoint), as a second copy of a ◆ card does.
-    InstallHardware { card_id: CardId },
+    ///
+    /// `host` installs it onto that rig card instead, as `InstallResource`'s
+    /// does: where the hardware says it may only go there (The Personal
+    /// Touch's "only on an icebreaker", `CardDefinition::installs_onto`)
+    /// or the host says it may host it. Such a card is refused without a
+    /// host (`RulesError::MustBeInstalledOnto`). A field rather than a
+    /// variant, for `InstallResource`'s reason.
+    InstallHardware {
+        card_id: CardId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<InstallId>,
+    },
     /// Spend 1 click and `card_id`'s registry `cost` in credits (less any
     /// install discount), move `card_id` from the Grip into the Rig.
     /// Runner-only. Its memory cost is read from the registry; a program
@@ -615,7 +626,7 @@ mod tests {
             PlayerAction::CompleteRun,
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
-            PlayerAction::InstallHardware { card_id: card() },
+            PlayerAction::InstallHardware { card_id: card(), host: None },
             PlayerAction::InstallProgram { card_id: card(), trash_first: false },
             PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },

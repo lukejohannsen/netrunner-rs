@@ -1314,7 +1314,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallHardware { card_id: CardId("pennyshaver".to_string()) },
+            PlayerAction::InstallHardware { card_id: CardId("pennyshaver".to_string()), host: None },
         )
         .expect("install pennyshaver");
         assert_eq!(state.runner.memory_units.0, base + 1, "the console grants +1 MU");
@@ -3748,7 +3748,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("pennyshaver".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("pennyshaver".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("pennyshaver".to_string()), host: None })
                 .expect("install pennyshaver");
         assert_eq!(state.runner.resources.credits, Credits(7), "10 - 3 (install cost)");
 
@@ -3781,7 +3781,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("carnivore".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()), host: None })
                 .expect("install carnivore");
 
         assert_eq!(state.runner.memory_units, crate::rules::MemoryUnits(5), "4 base + 1 from Carnivore's console MU bonus");
@@ -3800,10 +3800,10 @@ mod system_gateway {
         state.runner.grip = vec![CardId("carnivore".to_string()), CardId("pantograph".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()), host: None })
                 .expect("first console installs fine");
 
-        let second = PlayerAction::InstallHardware { card_id: CardId("pantograph".to_string()) };
+        let second = PlayerAction::InstallHardware { card_id: CardId("pantograph".to_string()), host: None };
         assert!(crate::rules::legal_actions(&state, &registry).contains(&second), "a second console is offered");
         let (state, events) = apply_action(&state, &registry, second).expect("a second console installs");
         let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
@@ -3862,7 +3862,7 @@ mod system_gateway {
         }];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()), host: None })
                 .expect("install carnivore");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
@@ -4003,7 +4003,7 @@ mod system_gateway {
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("the turn's first program");
         assert_eq!(state.runner.resources.credits, Credits(8), "10 - 2");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()) }).expect("install the optimizer");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()), host: None }).expect("install the optimizer");
         assert_eq!(state.runner.resources.credits, Credits(6), "8 - 2");
         let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false }).expect("the turn's second program");
         assert_eq!(state.runner.resources.credits, Credits(2), "6 - 4: not the first program this turn, whoever was watching the first");
@@ -4050,7 +4050,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()), host: None })
             .expect("install telework contract");
         assert_eq!(state.runner.resources.credits, Credits(9), "a resource pays its printed 1, and spends nobody's first time");
-        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()) })
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()), host: None })
             .expect("install dzmz optimizer");
         assert_eq!(state.runner.resources.credits, Credits(8), "9 - 2 (cost) + 1 (Kate)");
         let (after, _) =
@@ -4080,7 +4080,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallHardware { card_id: CardId("t400_memory_diamond".to_string()) },
+            PlayerAction::InstallHardware { card_id: CardId("t400_memory_diamond".to_string()), host: None },
         )
         .expect("install t400 memory diamond");
 
@@ -6756,7 +6756,7 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("gamedragon_pro".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("gamedragon_pro".to_string()), host: None })
                 .expect("install gamedragon");
         assert!(
             matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
@@ -10796,7 +10796,7 @@ mod vantage_point {
             state.phase = GamePhase::Action(Side::Runner);
             state.runner.tags = tags;
             state.runner.grip = vec![id("borrowed_goods")];
-            let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("borrowed_goods") }).expect("install");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("borrowed_goods"), host: None }).expect("install");
             assert_eq!(state.runner.tags, after, "starting from {tags}");
         }
     }
@@ -12288,7 +12288,7 @@ mod vantage_point {
         state.runner.identity = Some(id("hiram_0mission_svensson_shadow_of_the_past"));
         state.runner.grip = vec![id("t400_memory_diamond"), id("sure_gamble")];
         state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
-        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond") }).expect("install");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond"), host: None }).expect("install");
         assert_eq!(looked_at(&events), vec![id("ice_wall")], "the top of R&D is the end of the pile");
         let look = events.iter().find(|event| matches!(event, crate::rules::GameEvent::CardsLookedAt { .. })).expect("a look");
         assert!(crate::rules::mask_event_for_player(look, &state, Side::Corp).is_none(), "the Corp is not shown it");
@@ -16420,7 +16420,7 @@ mod the_automata_initiative {
         state.runner.grip = vec![id("lilypad"), id("corroder"), id("gordian_blade")];
         state.runner.stack = vec![id("sure_gamble"); 3];
         let before = crate::rules::memory::available_memory(&state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("lilypad") }).expect("install it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("lilypad"), host: None }).expect("install it");
         assert_eq!(crate::rules::memory::available_memory(&state, &registry), before + 2, "+2[mu]");
         assert!(state.pending_decision.is_none(), "hardware is not a program");
 
@@ -18548,7 +18548,7 @@ mod parhelion {
         state.runner.grip = vec![id("zenit_chip_jz_2mj"), id("sure_gamble")];
         state.runner.stack = vec![id("corroder"); 3];
         state.corp.installed = vec![root_at("pad_campaign", 0)];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("zenit_chip_jz_2mj") }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("zenit_chip_jz_2mj"), host: None }).expect("install");
         assert_eq!((state.runner.brain_damage, state.runner.grip.len()), (1, 0), "suffer 1 core damage");
 
         let remote = successful_run(&state, &registry, ServerId::Remote(0));
@@ -18565,7 +18565,7 @@ mod parhelion {
         let mut state = runner_turn();
         state.runner.grip = vec![id("hippocampic_mechanocytes"), id("sure_gamble"), id("sure_gamble")];
         let before = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("hippocampic_mechanocytes") }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("hippocampic_mechanocytes"), host: None }).expect("install");
         assert_eq!((counters(&state, "hippocampic_mechanocytes"), state.runner.grip.len()), (Some(2), 1), "2 counters, 1 meat damage");
         assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), before + 2);
         let mut one = state.clone();
@@ -18982,7 +18982,7 @@ mod parhelion {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("basilar_synthgland_2kvj"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj") }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj"), host: None }).expect("install");
         assert_eq!(installed.runner.brain_damage, 2, "2 core damage");
         assert_eq!(installed.runner.grip.len(), 1);
 
@@ -19001,7 +19001,7 @@ mod parhelion {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("basilar_synthgland_2kvj"), id("sure_gamble")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj") }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj"), host: None }).expect("install");
         assert!(installed.is_over(), "more damage than cards in the grip (CR 1.7.2b)");
     }
 
@@ -19049,7 +19049,7 @@ mod parhelion {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("time_bomb")];
-        let install = PlayerAction::InstallHardware { card_id: id("time_bomb") };
+        let install = PlayerAction::InstallHardware { card_id: id("time_bomb"), host: None };
         assert_eq!(apply_action(&state, &registry, install.clone()).map(|_| ()), Err(RulesError::InstallRequirementUnmet { card: id("time_bomb") }));
         assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&install), "and it is not offered");
 
@@ -19141,7 +19141,7 @@ mod parhelion {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("poison_vial")];
-        let (vial, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("poison_vial") }).expect("install");
+        let (vial, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("poison_vial"), host: None }).expect("install");
         assert_eq!(vial.runner.rig[0].counters, 3, "loaded with 3 power counters");
 
         state.corp.installed = vec![ice_at_hq("bran_1_0")];
@@ -19169,7 +19169,7 @@ mod parhelion {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("wake_implant_v2a_jrj"), id("sure_gamble"), id("sure_gamble")];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("wake_implant_v2a_jrj") }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("wake_implant_v2a_jrj"), host: None }).expect("install");
         assert_eq!(state.runner.grip.len(), 1, "1 meat damage");
         let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
         assert_eq!(state.runner.rig[0].counters, 1, "a successful run on HQ");
@@ -20747,7 +20747,7 @@ mod midnight_sun {
     }
 
     fn install_hardware(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
-        apply_action(state, registry, PlayerAction::InstallHardware { card_id: id(card) }).expect("install").0
+        apply_action(state, registry, PlayerAction::InstallHardware { card_id: id(card), host: None }).expect("install").0
     }
 
     /// "[trash] or hosted power counter": the trash is a cost and the
@@ -22893,7 +22893,7 @@ mod uprising {
         let card_id = id(card);
         let action = match registry.get(&card_id).expect("a card").card_type {
             crate::dsl::CardType::Program => PlayerAction::InstallProgram { card_id, trash_first: false },
-            crate::dsl::CardType::Hardware => PlayerAction::InstallHardware { card_id },
+            crate::dsl::CardType::Hardware => PlayerAction::InstallHardware { card_id, host: None },
             _ => PlayerAction::InstallResource { card_id, host: None },
         };
         let (installed, _) = apply_action(state, registry, action).expect("install");
@@ -25056,10 +25056,10 @@ mod downfall {
         assert_eq!(state_after.runner.resources.credits, Credits(7), "Daily Casts is neither a job nor a connection: 3, and Az's first is unspent");
         let state_after = install_resource(&state_after, "telework_contract");
         assert_eq!(state_after.runner.resources.credits, Credits(7), "a job: 1 - 1");
-        let (state_after, _) = apply_action(&state_after, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer") }).expect("install");
+        let (state_after, _) = apply_action(&state_after, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer"), host: None }).expect("install");
         assert_eq!(state_after.runner.resources.credits, Credits(5), "the second: full price");
 
-        let (hardware_first, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer") }).expect("install");
+        let (hardware_first, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dzmz_optimizer"), host: None }).expect("install");
         assert_eq!(hardware_first.runner.resources.credits, Credits(9), "hardware: 2 - 1");
         let connection = install_resource(&state, "friend_of_a_friend");
         assert_eq!(connection.runner.resources.credits, Credits(8), "a connection: 3 - 1");
@@ -25228,6 +25228,32 @@ mod downfall {
 
         let (declined, _) = apply_action(&scored, &registry, PlayerAction::ConfirmCardSelection).expect("you may");
         assert_eq!(declined.corp.r_and_d.len(), 6);
+    }
+
+    #[test]
+    fn the_personal_touch_installs_only_on_an_icebreaker_and_gives_it_a_strength() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![rig("corroder", 1), rig("daily_casts", 2)];
+        state.next_install_id = 3;
+        state.runner.grip = vec![id("the_personal_touch")];
+        let touch = |host| PlayerAction::InstallHardware { card_id: id("the_personal_touch"), host };
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.contains(&touch(Some(InstallId(1)))), "onto Corroder");
+        assert!(!offered.contains(&touch(Some(InstallId(2)))), "not onto a resource");
+        assert!(!offered.contains(&touch(None)), "not into the rig on its own");
+        assert!(matches!(apply_action(&state, &registry, touch(None)), Err(crate::rules::RulesError::MustBeInstalledOnto(_))));
+        assert!(apply_action(&state, &registry, touch(Some(InstallId(2)))).is_err());
+
+        let before = crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]);
+        let (installed, _) = apply_action(&state, &registry, touch(Some(InstallId(1)))).expect("install onto Corroder");
+        let hosted = installed.runner.rig.iter().find(|card| card.card == id("the_personal_touch")).expect("installed");
+        assert_eq!(hosted.hosted_on_rig_card, Some(InstallId(1)));
+        assert_eq!(installed.runner.resources.credits, Credits(8), "2[credit]");
+        assert_eq!(crate::rules::continuous::breaker_strength(&installed, &registry, &installed.runner.rig[0]), before + 1, "host icebreaker has +1 strength");
     }
 
     #[test]
@@ -25512,10 +25538,10 @@ mod downfall {
         let mut state = runner_turn();
         state.runner.grip = vec![id("masterwork_v37"), id("t400_memory_diamond"), id("dzmz_optimizer")];
         state.runner.stack = vec![id("sure_gamble"); 3];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("masterwork_v37") }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("masterwork_v37"), host: None }).expect("install");
         let installed = pass_until_settled(installed, &registry).0;
         assert_eq!(installed.runner.grip.len(), 3, "its own install is the turn's first piece of hardware: draw 1");
-        let (second, _) = apply_action(&installed, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond") }).expect("install");
+        let (second, _) = apply_action(&installed, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond"), host: None }).expect("install");
         let second = pass_until_settled(second, &registry).0;
         assert_eq!(second.runner.grip.len(), 2, "the second draws nothing");
 
@@ -26952,7 +26978,7 @@ mod reprints {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("prepaid_voicepad")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("prepaid_voicepad") }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("prepaid_voicepad"), host: None }).expect("install");
         let (mut state, _) = close_all_windows(installed, &registry);
         assert_eq!(counters_on(&state, "prepaid_voicepad"), 1, "refill to 1 as it is installed");
         state.runner.resources.credits = Credits(4);
@@ -29581,7 +29607,7 @@ mod reprints {
         let link = crate::rules::continuous::link(&state, &registry);
         state.runner.grip = vec![id("rabbit_hole")];
         state.runner.stack = vec![id("sure_gamble"), id("rabbit_hole")];
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("rabbit_hole") }).expect("install");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("rabbit_hole"), host: None }).expect("install");
         let offered = runner_toggles(&asked, &registry);
         assert_eq!(offered.len(), 1, "another copy of Rabbit Hole, and nothing else");
         let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
