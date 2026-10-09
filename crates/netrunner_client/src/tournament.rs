@@ -48,16 +48,18 @@ pub fn bye_line(info: &TournamentInfo, round: &Round<PublicKey>) -> Option<Strin
 }
 
 /// One row of the standings: rank, name, points, the record as
-/// wins–ties–losses with byes noted, and the two tiebreakers to two
-/// places — "1. ann · 6 pts · 2–0–0 · SoS 1.50 · ESoS 1.25".
+/// wins–ties–losses with byes noted, the two tiebreakers to two places,
+/// and "dropped" for a player who left — "1. ann · 6 pts · 2–0–0 · SoS
+/// 1.50 · ESoS 1.25".
 pub fn standing_row(info: &TournamentInfo, rank: usize, standing: &Standing<PublicKey>) -> String {
     let byes = match standing.byes {
         0 => String::new(),
         1 => " (a bye)".to_string(),
         n => format!(" ({n} byes)"),
     };
+    let dropped = if info.dropped.contains(&standing.key) { " · dropped" } else { "" };
     format!(
-        "{rank}. {} · {} pts · {}–{}–{}{byes} · SoS {:.2} · ESoS {:.2}",
+        "{rank}. {} · {} pts · {}–{}–{}{byes} · SoS {:.2} · ESoS {:.2}{dropped}",
         name_of(info, &standing.key),
         standing.points,
         standing.wins + standing.byes,
@@ -94,6 +96,7 @@ pub fn round_line(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<Stri
             }
         }
         (None, Some(my_key)) if round.bye.as_ref() == Some(my_key) => format!("Round {number}: you sit this one out with a bye, which counts as a win."),
+        (None, Some(_)) if is_dropped(info, key) => format!("Round {number} is being played; you have dropped."),
         _ => format!("Round {number} is being played."),
     })
 }
@@ -123,6 +126,19 @@ pub fn is_organizer(info: &TournamentInfo, key: Option<&PublicKey>) -> bool {
     key.is_some_and(|key| info.organizer == *key)
 }
 
+/// Whether this key dropped mid-event: still an entrant, still in the
+/// standings, paired no more.
+pub fn is_dropped(info: &TournamentInfo, key: Option<&PublicKey>) -> bool {
+    key.is_some_and(|key| info.dropped.contains(key))
+}
+
+/// Whether this key may drop: entered in a tournament in its rounds and
+/// not dropped already. The server refuses a drop with a game under way;
+/// a client shows the button and lets the server say so.
+pub fn may_drop(info: &TournamentInfo, key: Option<&PublicKey>) -> bool {
+    matches!(info.state, TournamentState::Playing { .. }) && entry_of(info, key).is_some() && !is_dropped(info, key)
+}
+
 /// One entrant as a list names them: the name they attached with and the
 /// fingerprint of their key, since a name is a label anyone may wear and
 /// the key is who they are (Phase 4 §5).
@@ -141,6 +157,7 @@ pub fn standing_line(info: &TournamentInfo, key: Option<&PublicKey>) -> String {
     }
     match (key, entry_of(info, key)) {
         (None, _) => parts.push("This client has no key, so it cannot enter.".to_string()),
+        (Some(_), Some(_)) if is_dropped(info, key) => parts.push("You dropped from this tournament; your results stand.".to_string()),
         (Some(_), Some(_)) => parts.push("You are entered, with the two decks you committed to.".to_string()),
         (Some(_), None) if info.state == TournamentState::Registering => parts.push("Not entered yet.".to_string()),
         (Some(_), None) => parts.push("Not entered.".to_string()),
@@ -155,7 +172,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new() }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -210,7 +227,18 @@ mod tests {
         // Extended one is too.
         assert_eq!(standing_row(&info, 1, &rows[0]), "1. ann · 3 pts · 1–0–0 · SoS 0.00 · ESoS 3.00");
         assert_eq!(standing_row(&info, 2, &rows[1]), "2. cy · 3 pts · 1–0–0 (a bye) · SoS 0.00 · ESoS 0.00");
+        // cy drops: still a row, paired no more, told so.
+        info.dropped = vec![cy];
+        assert!(is_dropped(&info, Some(&cy)) && !is_dropped(&info, Some(&ann)) && !may_drop(&info, Some(&cy)) && may_drop(&info, Some(&ann)));
+        assert_eq!(standing_line(&info, Some(&cy)), "You dropped from this tournament; your results stand.");
+        assert_eq!(standing_row(&info, 2, &info.standings()[1]), "2. cy · 3 pts · 1–0–0 (a bye) · SoS 0.00 · ESoS 0.00 · dropped");
+        info.rounds.push(Round { tables: vec![Table { corp: ann, runner: bo, result: None }], bye: None });
+        info.state = TournamentState::Playing { round: 2 };
+        assert_eq!(round_line(&info, Some(&cy)).as_deref(), Some("Round 2 is being played; you have dropped."));
+        info.rounds.pop();
+        info.dropped.clear();
         info.state = TournamentState::Finished;
+        assert!(!may_drop(&info, Some(&ann)), "nothing to drop from once it is over");
         assert_eq!(round_line(&info, Some(&ann)), None);
         assert_eq!(standing_line(&info, Some(&ann)), "You are entered, with the two decks you committed to.");
         assert_eq!(standing_line(&info, Some(&Identity::from_secret([9; 32]).public_key())), "Not entered.");

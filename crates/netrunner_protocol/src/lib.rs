@@ -166,8 +166,14 @@ pub enum ClientMessage {
     /// registration is open. Answered with `Tournament` or
     /// `TournamentRefused`.
     Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile>, salt: String, statement: Signed },
-    /// Withdraw from a tournament while registration is open. Answered
-    /// with `Tournament` or `TournamentRefused`.
+    /// Withdraw from a tournament while registration is open — or, in
+    /// the rounds, drop from it: the entry and every result stay in the
+    /// standings (`TournamentInfo::dropped`), the key is paired no more,
+    /// and a table of the current round it has not played is forfeit to
+    /// the opponent, who is stood up if waiting there. Refused while the
+    /// key's game is under way — the board's Surrender writes that loss
+    /// — and after the tournament is over. Answered with `Tournament` or
+    /// `TournamentRefused`.
     Unregister { tournament: String },
     /// The organizer begins the next round (Phase 4 §7 stage 6b): the
     /// first closes registration — two entrants at least — and fixes the
@@ -409,8 +415,9 @@ pub enum ServerMessage {
     /// `Register`, `Unregister`, `BeginRound`, `FinishTournament` and
     /// `RecordResult`, and **pushed unasked** to every attached entrant
     /// and the organizer when a round begins, a table's game ends, a
-    /// result is recorded or the tournament finishes — so a player
-    /// waiting on the page sees the pairing when it is posted.
+    /// result is recorded, a player drops or the tournament finishes —
+    /// so a player waiting on the page sees the pairing when it is
+    /// posted.
     Tournament { tournament: TournamentInfo },
     /// One of those refused, with the reason: no key proved, a server
     /// that keeps nothing, no such tournament, a statement that does not
@@ -443,6 +450,10 @@ pub struct TournamentInfo {
     /// result filled in as its game ends. The standings are
     /// `swiss::standings(&seeding, &rounds)`, on either end.
     pub rounds: Vec<swiss::Round<PublicKey>>,
+    /// Entrants who dropped mid-event (`ClientMessage::Unregister` in the
+    /// rounds): still entrants, still in the standings with every result
+    /// they have, paired no more. In the order they left.
+    pub dropped: Vec<PublicKey>,
 }
 
 impl TournamentInfo {

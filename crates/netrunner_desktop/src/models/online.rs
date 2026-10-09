@@ -338,6 +338,12 @@ impl ServerState {
         self.open_tournament().is_some_and(|info| tournament::is_organizer(info, self.key.as_ref()))
     }
 
+    /// Whether this key may drop from the open tournament: entered, in
+    /// the rounds, not dropped already (`tournament::may_drop`).
+    pub fn may_drop(&self) -> bool {
+        self.open_tournament().is_some_and(|info| tournament::may_drop(info, self.key.as_ref()))
+    }
+
     /// The round the organizer may begin now, as its button reads: the
     /// first once two have entered, the next once every table of the
     /// current one has a result. `None` for anyone else, and between.
@@ -801,8 +807,12 @@ impl OnlineForm {
                     }
                 }
             }
+            // Withdraw while registering, drop in the rounds: one message.
             Intent::Unregister => match &self.server {
-                Some(server) if self.page == Page::Tournament && server.is_entered() && server.may_register() => Outcome::Unregister { tournament: server.tournament.clone().expect("entered in the open tournament") },
+                Some(server) if self.page == Page::Tournament && ((server.is_entered() && server.may_register()) || server.may_drop()) => {
+                    self.notice = None;
+                    Outcome::Unregister { tournament: server.tournament.clone().expect("entered in the open tournament") }
+                }
                 _ => Outcome::Nothing,
             },
             Intent::Sit => match &self.server {
@@ -1325,7 +1335,7 @@ mod tests {
     }
 
     fn tournament_info(id: &str, organizer: PublicKey, entrants: Vec<netrunner_server::protocol::Entrant>) -> TournamentInfo {
-        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new() }
+        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() }
     }
 
     fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
@@ -1462,6 +1472,17 @@ mod tests {
         form.apply(Intent::SeekCancelled);
         form.reopen(true);
         assert_eq!(form.page, Page::Tournament, "back from the game, the tournament's page");
+        // bo may drop; dropped (and forfeit), bo has no seat and nothing
+        // more to drop from.
+        assert!(form.server.as_ref().unwrap().may_drop());
+        assert_eq!(form.apply(Intent::Unregister), Outcome::Unregister { tournament: "K7M2QX".into() });
+        let mut left = playing.clone();
+        left.dropped = vec![bo];
+        left.rounds[0].tables[0].result = Some(TableOutcome::CorpWon);
+        form.apply(Intent::Tournament(left));
+        let server = form.server.as_ref().unwrap();
+        assert!(!server.may_drop() && !server.may_sit() && server.is_entered());
+        assert_eq!(form.apply(Intent::Unregister), Outcome::Nothing, "dropped already");
 
         // cy, the bye: no seat.
         let mut bye = attached();

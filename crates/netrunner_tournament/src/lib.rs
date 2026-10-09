@@ -26,6 +26,14 @@
 //! that opponent's points per round played, byes counting as rounds the
 //! opponent played and never as opponents; Extended Strength of Schedule
 //! is the mean of their opponents' Strength of Schedule.
+//!
+//! **A drop is a player, not an erasure.** An entrant who leaves
+//! mid-event keeps their row in the standings with every result they
+//! have — their opponents' Strength of Schedule still counts the games
+//! played against them, as Cobra's does — and is paired no more: `pair`
+//! is told who has dropped and leaves them out of the tables and the bye.
+//! Their unplayed table of the round they left is the caller's to settle
+//! (a forfeit, the policies' answer to a player who is not there).
 
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -226,11 +234,14 @@ fn record_of<K: Clone + PartialEq>(key: &K, rounds: &[Round<K>]) -> Standing<K> 
 ///   and when they are even too, the lower-standing player takes the
 ///   Corp — so round 1's sides follow the seeding, as its order does.
 ///
+/// `dropped` are paired no more: out of the tables and out of the bye,
+/// their rows still in the standings everyone else is ordered by.
+///
 /// A seeding of one entrant is a round of no tables and that entrant's
 /// bye; of none, an empty round.
-pub fn pair<K: Clone + Eq + Hash>(seeding: &[K], rounds: &[Round<K>]) -> Round<K> {
+pub fn pair<K: Clone + Eq + Hash>(seeding: &[K], rounds: &[Round<K>], dropped: &[K]) -> Round<K> {
     let standings = standings(seeding, rounds);
-    let mut order: Vec<&Standing<K>> = standings.iter().collect();
+    let mut order: Vec<&Standing<K>> = standings.iter().filter(|row| !dropped.contains(&row.key)).collect();
     let bye = if order.len() % 2 == 1 {
         let at = order.iter().rposition(|row| row.byes == 0).unwrap_or(order.len() - 1);
         Some(order.remove(at).key.clone())
@@ -348,7 +359,7 @@ mod tests {
     #[test]
     fn the_bye_goes_to_the_lowest_without_one_and_round_one_follows_the_seeding() {
         let seeding = ['a', 'b', 'c', 'd', 'e'];
-        let first = pair(&seeding, &[]);
+        let first = pair(&seeding, &[], &[]);
         assert_eq!(first.bye, Some('e'));
         assert_eq!(first.tables.len(), 2);
         assert_eq!(first.tables.iter().map(|t| (t.corp, t.runner)).collect::<Vec<_>>(), vec![('b', 'a'), ('d', 'c')], "even sides: the lower-standing takes the Corp");
@@ -356,12 +367,12 @@ mod tests {
         played.tables[0].result = Some(Outcome::RunnerWon);
         played.tables[1].result = Some(Outcome::CorpWon);
         // a 3, d 3, e 3 (bye), b 0, c 0: the lowest without a bye is c.
-        let second = pair(&seeding, &[played]);
+        let second = pair(&seeding, &[played], &[]);
         assert_eq!(second.bye, Some('c'));
         let rows = standings(&seeding, &[]);
         assert_eq!(rows.iter().map(|row| row.key).collect::<Vec<_>>(), seeding.to_vec(), "before any round the standings are the seeding");
-        assert_eq!(pair(&['a'], &[]), Round { tables: vec![], bye: Some('a') });
-        assert_eq!(pair::<char>(&[], &[]), Round { tables: vec![], bye: None });
+        assert_eq!(pair(&['a'], &[], &[]), Round { tables: vec![], bye: Some('a') });
+        assert_eq!(pair::<char>(&[], &[], &[]), Round { tables: vec![], bye: None });
     }
 
     /// Two who have met are not paired again while any other pairing is
@@ -373,14 +384,14 @@ mod tests {
         // a 3, c 3, b 0, d 0: a and c meet (a was Corp, c was Corp — c,
         // lower-standing, takes the Corp... both played Corp once, so
         // neither "wants" it, and equal Corp games gives it to the lower).
-        let second = pair(&seeding, std::slice::from_ref(&first));
+        let second = pair(&seeding, std::slice::from_ref(&first), &[]);
         assert_eq!(second.tables.iter().map(|t| (t.corp, t.runner)).collect::<Vec<_>>(), vec![('c', 'a'), ('d', 'b')]);
         let mut second_played = second.clone();
         second_played.tables[0].result = Some(Outcome::RunnerWon);
         second_played.tables[1].result = Some(Outcome::RunnerWon);
         // a 6, b 3, c 3, d 0. a has met b and c: the search pairs a with d
         // and b with c (who have not met) rather than a with b again.
-        let third = pair(&seeding, &[first, second_played]);
+        let third = pair(&seeding, &[first, second_played], &[]);
         let pairs: Vec<(char, char)> = third.tables.iter().map(|t| unordered_chars(t.corp, t.runner)).collect();
         assert_eq!(pairs, vec![('a', 'd'), ('b', 'c')]);
         // a: Corp 1, Runner 1; d: Corp 1, Runner 1 — even, so the lower
@@ -388,12 +399,34 @@ mod tests {
         assert_eq!(third.tables.iter().map(|t| (t.corp, t.runner)).collect::<Vec<_>>(), vec![('d', 'a'), ('b', 'c')]);
     }
 
+    /// A drop keeps its row and its opponents' Strength of Schedule, and
+    /// is neither paired nor given the bye — even when it is the lowest
+    /// without one.
+    #[test]
+    fn a_drop_is_paired_no_more_and_keeps_its_row() {
+        let seeding = ['a', 'b', 'c', 'd', 'e', 'f'];
+        let first = Round { tables: vec![table('a', 'b', Some(Outcome::CorpWon)), table('c', 'd', Some(Outcome::CorpWon)), table('e', 'f', Some(Outcome::CorpWon))], bye: None };
+        // Six became five: a bye, to the lowest remaining without one.
+        // b and f are both on 0 with no bye; b stands above f (the
+        // seeding breaks their tie), so f sits out, and d is at no table.
+        let second = pair(&seeding, std::slice::from_ref(&first), &['d']);
+        assert_eq!(second.bye, Some('f'));
+        assert_eq!(second.tables.len(), 2);
+        assert!(second.tables.iter().all(|t| t.corp != 'd' && t.runner != 'd'));
+        let rows = standings(&seeding, &[first]);
+        assert_eq!(rows.len(), 6, "the drop keeps its row");
+        assert_eq!(standing_of(&rows, 'c').sos, 0.0, "c's one opponent, d, scored nothing — and still counts");
+        // Two left of three: no bye at all.
+        let two = pair(&['a', 'b', 'c'], &[], &['c']);
+        assert_eq!((two.bye, two.tables.len()), (None, 1));
+    }
+
     /// When every pairing is a rematch, neighbours are paired anyway.
     #[test]
     fn a_rematch_is_allowed_when_nothing_else_is_left() {
         let seeding = ['a', 'b'];
         let rounds = [Round { tables: vec![table('a', 'b', Some(Outcome::CorpWon))], bye: None }];
-        let next = pair(&seeding, &rounds);
+        let next = pair(&seeding, &rounds, &[]);
         assert_eq!(next.tables.len(), 1);
         assert_eq!(unordered_chars(next.tables[0].corp, next.tables[0].runner), ('a', 'b'));
         assert_eq!((next.tables[0].corp, next.tables[0].runner), ('b', 'a'), "a played Corp, so b takes it");
