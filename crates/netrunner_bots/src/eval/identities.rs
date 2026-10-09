@@ -58,9 +58,9 @@
 //! the engine's price of a held card (`runner::held_price`).
 
 use super::*;
-use netrunner_core::dsl::{ContinuousKind, Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
+use netrunner_core::dsl::{CardId, ContinuousKind, Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
 use netrunner_core::rules::turn_log::{Class, ServerClass};
-use netrunner_core::rules::{check_requirement, eligible_positions, ResolutionContext, ServerId};
+use netrunner_core::rules::{check_requirement, eligible_positions, InstallId, ResolutionContext, ServerId};
 
 /// What the identities' text pays at a moment, to each side.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -180,6 +180,34 @@ pub(super) fn run_success(state: &GameState, registry: &CardRegistry, run: &RunS
     breach.add(after)
 }
 
+/// What the Corp's lockdowns in play take from the Runner's next run
+/// (Phase 5 §58): what they print about a run beginning and succeeding,
+/// read for a run on HQ and for one on R&D — the servers a Runner's run
+/// is most often on — and the cheaper of the two for the Corp, since the
+/// run is the Runner's to aim. A run a turn, the rate every reading of a
+/// run's trigger is taken at (`about_every_run`). SYNC Rerouting's "give
+/// the Runner 1 tag unless they pay 4[credit]" is the Runner's cheaper
+/// side, as any "unless" is (`paid`).
+///
+/// **Why.** A lockdown pays on the Runner's turn, past the end of the
+/// turn the Corp's line plans, so it was priced as a click spent for
+/// nothing and the planner never played SYNC Rerouting or Argus
+/// Crackdown on a pass of the full pool, where random seats did.
+pub(super) fn lockdowns_on_the_next_run(state: &GameState, registry: &CardRegistry) -> Pays {
+    if state.corp.play_area.is_empty() {
+        return Pays::default();
+    }
+    let credits = state.runner.resources.credits.0;
+    [ServerId::Hq, ServerId::RnD]
+        .into_iter()
+        .map(|server| {
+            let at = At { server, accesses: 1, accessing: None, runner_credits: credits };
+            heard_from(state, registry, lockdowns(state), &[Trigger::OnRunStart, Trigger::OnSuccessfulRun], &at)
+        })
+        .min_by(|a, b| a.worth(Side::Corp).total_cmp(&b.worth(Side::Corp)))
+        .unwrap_or_default()
+}
+
 /// What both identities print about the Runner accessing `installed` in
 /// `server`'s root: BANGUN's "whenever the Runner accesses a faceup
 /// installed agenda, do 2 meat damage and give the Runner 1 tag".
@@ -229,15 +257,35 @@ fn breach_accesses(state: &GameState, run: &RunState, server: ServerId, promised
     }
 }
 
-/// Every trigger of either identity on one of `triggers` that would be
-/// heard at `at`, summed.
+/// Every trigger of either identity, and of a lockdown in the Corp's play
+/// area, on one of `triggers` that would be heard at `at`, summed.
+///
+/// **A lockdown is read as an identity is** (Phase 5 §58): it is active
+/// where it lies (CR 3.5.1c) and is never installed, rezzed or trashed in
+/// the Runner's turn, so what it prints about the Runner's runs —
+/// Argus Crackdown's "do 2 meat damage" on a successful run on a server
+/// protected by ice — happens at a moment the line does not reach, which
+/// is exactly what this module reads. Its "the chosen server" is the
+/// choice the copy made (`lingering::chosen_server`), as the listener scan
+/// asks it.
 fn heard(state: &GameState, registry: &CardRegistry, triggers: &[Trigger], at: &At) -> Pays {
+    let identities = [state.corp.identity.as_ref(), state.runner.identity.as_ref()].into_iter().flatten().map(|id| (id, None));
+    heard_from(state, registry, identities.chain(lockdowns(state)), triggers, at)
+}
+
+/// The Corp's lockdowns in play, each with its copy's handle.
+fn lockdowns(state: &GameState) -> impl Iterator<Item = (&CardId, Option<InstallId>)> {
+    state.corp.play_area.iter().map(|played| (&played.card, Some(played.handle)))
+}
+
+/// `heard` over the cards `sources` names.
+fn heard_from<'a>(state: &GameState, registry: &CardRegistry, sources: impl Iterator<Item = (&'a CardId, Option<InstallId>)>, triggers: &[Trigger], at: &At) -> Pays {
     let mut pays = Pays::default();
-    for id in [state.corp.identity.as_ref(), state.runner.identity.as_ref()].into_iter().flatten() {
+    for (id, handle) in sources {
         let Some(def) = registry.get(id) else { continue };
         let ctx = ResolutionContext::for_card(Some(id));
         for trigger in def.triggers.iter().filter(|trigger| triggers.contains(&trigger.trigger) && trigger.subject != Some(Subject::This)) {
-            if !admits(trigger, at.server) || (trigger.first_each_turn && spent(state, trigger)) {
+            if !admits(state, trigger, at.server, id, handle) || (trigger.first_each_turn && spent(state, trigger)) {
                 continue;
             }
             if let Some(requirement) = &trigger.requirement
@@ -253,13 +301,18 @@ fn heard(state: &GameState, registry: &CardRegistry, triggers: &[Trigger], at: &
     pays
 }
 
-/// Whether a trigger's `when` admits the moment's server. A condition on
+/// Whether a trigger's `when` admits the moment's server: the servers it
+/// names, a server protected by ice and the server the listening copy
+/// chose, as the listener scan judges them (`listeners`). A condition on
 /// anything else is not one this reading can answer ahead of the moment,
 /// and is taken as not met.
-fn admits(trigger: &TriggeredEffect, server: ServerId) -> bool {
+fn admits(state: &GameState, trigger: &TriggeredEffect, server: ServerId, card: &CardId, handle: Option<InstallId>) -> bool {
+    use netrunner_core::rules::InstallSlot;
     match &trigger.when {
         None => true,
         Some(EventFilter::Server(servers)) => servers.contains(&server),
+        Some(EventFilter::ProtectedByIce) => state.corp.installed.iter().any(|card| card.server == server && card.slot == InstallSlot::Ice),
+        Some(EventFilter::ChosenServer) => netrunner_core::rules::lingering::chosen_server(state, card, handle) == Some(server),
         Some(_) => false,
     }
 }
@@ -542,7 +595,6 @@ mod tests {
     use super::*;
     use crate::eval::runner::access_prospect;
     use crate::eval::test_support::*;
-    use netrunner_core::dsl::CardId;
     use netrunner_core::rules::{GameEvent, InstallId, InstallSlot};
 
     fn id(card: &str) -> Option<CardId> {
@@ -590,6 +642,30 @@ mod tests {
         assert_eq!(run_success(&state, &pool, &run_on(ServerId::Archives)).runner_credits, 0);
         state.corp.hq.clear();
         assert_eq!(run_success(&state, &pool, &run_on(ServerId::Hq)).runner_credits, 0, "nothing to access, nothing accessed");
+    }
+
+    /// A lockdown in the play area is read as an identity is (§58): Argus
+    /// Crackdown's damage on a successful run on a server protected by ice
+    /// and on no other, and SYNC Rerouting's "unless they pay 4[credit]"
+    /// as the Runner's cheaper side — the credits while it has them, the
+    /// tag once it does not.
+    #[test]
+    fn a_lockdown_in_play_is_read_on_the_runs_it_is_about() {
+        use netrunner_core::rules::PlayedOperation;
+        let pool = pool();
+        let mut state = table();
+        state.corp.play_area = vec![PlayedOperation { card: CardId("argus_crackdown".to_string()), handle: InstallId(90) }];
+        assert_eq!(run_success(&state, &pool, &run_on(ServerId::Hq)).damage, 0, "HQ has no ice");
+        state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() });
+        assert_eq!(run_success(&state, &pool, &run_on(ServerId::Hq)).damage, 2);
+        assert_eq!(run_success(&state, &pool, &run_on(ServerId::RnD)).damage, 0, "R&D has no ice");
+        assert_eq!(lockdowns_on_the_next_run(&state, &pool).damage, 0, "the Runner's next run goes where it costs least");
+
+        state.corp.play_area = vec![PlayedOperation { card: CardId("sync_rerouting".to_string()), handle: InstallId(91) }];
+        state.runner.resources.credits = netrunner_core::rules::Credits(6);
+        assert_eq!(lockdowns_on_the_next_run(&state, &pool), Pays { runner_credits: -4, ..Pays::default() });
+        state.runner.resources.credits = netrunner_core::rules::Credits(3);
+        assert_eq!(lockdowns_on_the_next_run(&state, &pool), Pays { tags: 1, ..Pays::default() });
     }
 
     #[test]
