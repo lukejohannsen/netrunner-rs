@@ -95,6 +95,14 @@ struct Config {
     #[arg(long)]
     turn_timeout_secs: Option<u64>,
 
+    /// (serve mode) How many minutes a tournament round runs before time
+    /// is called: no seat is given at its tables after that, and a game
+    /// under way finishes the turn in play and one more, then goes to
+    /// agenda points (Organized Play Policies 1.1.5.3). Forty, as
+    /// single-sided Swiss is run (1.1.5.2).
+    #[arg(long, default_value_t = 40)]
+    round_minutes: u64,
+
     /// (serve mode) Pin the Corp's published decklist by id (e.g.
     /// `fine_print`) instead of rotating the sample pool with each
     /// match's seed. Each side is pinned independently.
@@ -250,6 +258,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             None => Some(netrunner_server::match_session::DEFAULT_MAX_SPECTATORS),
         },
         turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
+        round_length: Duration::from_secs(config.round_minutes * 60),
         corp_deck: config.corp_deck.clone(),
         runner_deck: config.runner_deck.clone(),
         formats: config.formats.iter().map(|&format| format.into()).collect(),

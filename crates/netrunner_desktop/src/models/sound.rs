@@ -195,9 +195,14 @@ pub fn after_the_beats(events: &[GameEvent]) -> &[GameEvent] {
     &events[carried..]
 }
 
-/// The end of the match, from `chair`.
-pub fn ending(winner: Side, chair: Side) -> Sfx {
-    if winner == chair { Sfx::Win } else { Sfx::Loss }
+/// The end of the match, from `chair`. A tie — time called with the
+/// points even — is neither sound: the table closes.
+pub fn ending(winner: Option<Side>, chair: Side) -> Sfx {
+    match winner {
+        Some(winner) if winner == chair => Sfx::Win,
+        Some(_) => Sfx::Loss,
+        None => Sfx::Close,
+    }
 }
 
 /// The sound of going from `before` things open to `after`: one more is
@@ -308,8 +313,9 @@ mod tests {
 
     #[test]
     fn the_end_is_heard_from_the_persons_chair() {
-        assert_eq!(ending(Side::Runner, Side::Runner), Sfx::Win);
-        assert_eq!(ending(Side::Corp, Side::Runner), Sfx::Loss);
+        assert_eq!(ending(Some(Side::Runner), Side::Runner), Sfx::Win);
+        assert_eq!(ending(Some(Side::Corp), Side::Runner), Sfx::Loss);
+        assert_eq!(ending(None, Side::Runner), Sfx::Close, "a tie is neither");
     }
 
     #[test]

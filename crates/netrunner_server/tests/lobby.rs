@@ -500,7 +500,7 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     state_update(next(&mut quitter).await);
     assert_eq!(list_matches(&url).await.0[0].runner, "operator bot", "a rung is seated under its own name");
     send(&mut quitter, ClientMessage::Surrender).await;
-    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Some(Side::Runner), .. }));
 
     tokio::time::timeout(Duration::from_secs(10), async {
         while !list_matches(&url).await.0.is_empty() {

@@ -114,7 +114,7 @@ impl Pacer {
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
-            MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } | MatchMessage::LessonComplete { .. } | MatchMessage::Rated { .. } => (false, Vec::new(), false),
+            MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } | MatchMessage::LessonComplete { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => (false, Vec::new(), false),
         };
         let paced = self.in_run || run_after || events.iter().any(trail::concerns_run);
         self.in_run = run_after;
@@ -242,7 +242,7 @@ mod tests {
                     Beat::Apply(MatchMessage::Rejected { reason }) => panic!("{reason}"),
                     Beat::Apply(MatchMessage::Back { .. } | MatchMessage::Rewound { .. }) => {}
                     Beat::Apply(MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. }) => unreachable!("a local match is not a lesson"),
-                    Beat::Apply(MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. }) => unreachable!("a local match sends none of these"),
+                    Beat::Apply(MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. }) => unreachable!("a local match sends none of these"),
                     Beat::Apply(MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break 'game,
                 }
             }

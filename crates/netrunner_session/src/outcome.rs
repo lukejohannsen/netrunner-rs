@@ -38,6 +38,14 @@ pub enum GameEndReason {
     /// like `Disconnected` it is reported by the pump with the *other*
     /// side as the winner, and the final `GameState` is not `GameOver`.
     TimedOut,
+    /// Time was called on a tournament round and the end-of-round rule
+    /// ran its course (Null Signal Games' Organized Play Policies
+    /// 1.1.5.3): the turn in progress was finished, the other side took
+    /// one more, and agenda points decided — or did not, and the game is
+    /// a tie with no winner, the one end a pump reports without one. The
+    /// fourth transport outcome; `netrunner_server::MatchSession` alone
+    /// keeps the round's clock.
+    TimeCalled,
 }
 
 /// Best-effort classification — see `GameEndReason`'s doc comment. A
@@ -47,7 +55,7 @@ pub enum GameEndReason {
 /// `turn::enter_start_of_turn`'s doc comment); anything else defaults to
 /// the ordinary agenda-point threshold.
 ///
-/// `Surrender`, `Disconnected` and `TimedOut` are never produced here: none
+/// `Surrender`, `Disconnected`, `TimedOut` and `TimeCalled` are never produced here: none
 /// is a rules outcome at all, so only the transport that received the
 /// concession (or lost the client, or watched its clock run out) can
 /// report them.

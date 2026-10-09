@@ -250,10 +250,18 @@ pub enum MatchMessage {
     /// (`netrunner_client::identity::rated_line` says it in words). Only
     /// a match on a server that keeps ratings sends it.
     Rated { before: netrunner_protocol::Rating, after: netrunner_protocol::Rating },
-    /// The match ended. `report` is where the game leaves the player's
+    /// Time was called on the tournament round a remote game is played
+    /// in, during turn `turn` (`ServerMessage::TimeCalled`): that turn is
+    /// finished, the other side takes one more, and the game ends on
+    /// agenda points (Organized Play Policies 1.1.5.3). A local match has
+    /// no round.
+    TimeCalled { turn: u32 },
+    /// The match ended. `winner` is `None` for the one end with none —
+    /// time called with the agenda points even — which a local match
+    /// never produces. `report` is where the game leaves the player's
     /// record, `None` when none is kept; `notice` is a record file that
     /// would not save, which must not hide the result.
-    Ended { winner: Side, reason: GameEndReason, view: Box<ClientView>, report: Option<RecordReport>, notice: Option<String> },
+    Ended { winner: Option<Side>, reason: GameEndReason, view: Box<ClientView>, report: Option<RecordReport>, notice: Option<String> },
     /// The session stopped without a `GameOver`: a stall, or a bot seat
     /// the session could not resolve. Nothing more will arrive.
     Stalled { reason: String },
@@ -858,7 +866,7 @@ fn drive(
                     Some(Err(error)) => (None, Some(format!("the result could not be recorded: {error}"))),
                     None => (None, None),
                 };
-                let _ = messages.send(MatchMessage::Ended { winner, reason, view, report, notice });
+                let _ = messages.send(MatchMessage::Ended { winner: Some(winner), reason, view, report, notice });
                 return;
             }
             SessionStep::Stalled(reason) => {
@@ -956,7 +964,7 @@ fn drive_lesson(
             }
             LessonStep::Ended { winner, reason } => {
                 let view = Box::new(lesson.session().view_for(lesson.learner()));
-                let _ = messages.send(MatchMessage::Ended { winner, reason, view, report: None, notice: None });
+                let _ = messages.send(MatchMessage::Ended { winner: Some(winner), reason, view, report: None, notice: None });
                 return;
             }
             LessonStep::Stalled(reason) => {
@@ -1033,11 +1041,17 @@ impl Feed {
                 Feed::ask(view, out);
             }
             ServerMessage::DecisionClock { side, remaining } => out.push(MatchMessage::Clock { side, remaining }),
+            ServerMessage::TimeCalled { turn } => out.push(MatchMessage::TimeCalled { turn }),
             ServerMessage::GameEnded { winner, reason } => {
                 self.ended = true;
                 out.push(match self.held.take().or_else(|| self.last.take()) {
                     Some(view) => MatchMessage::Ended { winner, reason, view, report: None, notice: None },
-                    None => MatchMessage::Stalled { reason: format!("the {winner:?} won before this client was shown the board") },
+                    None => MatchMessage::Stalled {
+                        reason: match winner {
+                            Some(winner) => format!("the {winner:?} won before this client was shown the board"),
+                            None => "the game ended in a tie before this client was shown the board".to_string(),
+                        },
+                    },
                 });
             }
             // A place taken back: the host's fresh view follows.
@@ -1166,7 +1180,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("a legal action was rejected: {reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => unreachable!("a local match sends none of these"),
                 MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
@@ -1272,7 +1286,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => unreachable!("a local match sends none of these"),
                 MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         };
@@ -1319,7 +1333,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => unreachable!("a local match sends none of these"),
                 MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
@@ -1397,7 +1411,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => unreachable!("a local match sends none of these"),
                 MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
@@ -1461,7 +1475,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } | MatchMessage::TimeCalled { .. } => unreachable!("a local match sends none of these"),
                 MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
@@ -1629,8 +1643,8 @@ mod lesson_tests {
         assert!(matches!(feed.closed("gone".into()), Some(MatchMessage::Stalled { reason }) if reason == "gone"));
         fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
         fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
-        let out = fed(&mut feed, ServerMessage::GameEnded { winner: Side::Runner, reason: GameEndReason::Surrender });
-        assert!(matches!(&out[..], [MatchMessage::Ended { winner: Side::Runner, report: None, .. }]), "{out:?}");
+        let out = fed(&mut feed, ServerMessage::GameEnded { winner: Some(Side::Runner), reason: GameEndReason::Surrender });
+        assert!(matches!(&out[..], [MatchMessage::Ended { winner: Some(Side::Runner), report: None, .. }]), "{out:?}");
         assert!(feed.closed("gone".into()).is_none(), "the match is over; the socket closing is not news");
         let out = fed(&mut Feed::new(), ServerMessage::DecisionClock { side: Side::Corp, remaining: Duration::from_secs(9) });
         assert!(matches!(&out[..], [MatchMessage::Clock { side: Side::Corp, .. }]));
@@ -1659,7 +1673,7 @@ mod lesson_tests {
     fn a_rating_after_the_end_is_passed_on() {
         let mut feed = Feed::new();
         fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
-        fed(&mut feed, ServerMessage::GameEnded { winner: Side::Corp, reason: GameEndReason::Surrender });
+        fed(&mut feed, ServerMessage::GameEnded { winner: Some(Side::Corp), reason: GameEndReason::Surrender });
         let rating = |rating| netrunner_protocol::Rating { rating, deviation: 300.0, volatility: 0.06 };
         let receipt = netrunner_identity::Identity::from_secret([1; 32]).sign(b"t", String::new());
         let out = fed(&mut feed, ServerMessage::Rated { receipt: Box::new(receipt), before: rating(1500.0), after: rating(1600.0) });

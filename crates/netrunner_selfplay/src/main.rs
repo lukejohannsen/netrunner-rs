@@ -765,6 +765,7 @@ fn end_reason_of(step: &SessionStep) -> String {
             GameEndReason::Surrender => "surrender",
             GameEndReason::Disconnected => "disconnected",
             GameEndReason::TimedOut => "timed_out",
+            GameEndReason::TimeCalled => "time_called",
         },
         SessionStep::Stalled(StallReason::BudgetExhausted) => "stall_budget_exhausted",
         SessionStep::Stalled(StallReason::NoLegalActions { .. }) => "stall_no_legal_actions",

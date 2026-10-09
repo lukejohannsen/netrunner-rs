@@ -82,7 +82,7 @@ use netrunner_session::{MatchRecordHeader, RecordedBot};
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
-use crate::protocol::DrawOffer;
+use crate::protocol::{DrawOffer, RoundClock};
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
@@ -140,6 +140,13 @@ pub struct ServeOptions {
     pub max_spectators: Option<usize>,
     /// See `MatchSession::with_turn_timeout`; `None` runs without a clock.
     pub turn_timeout: TurnTimeout,
+    /// How long a tournament round runs before time is called
+    /// (`ClientMessage::BeginRound` sets each round's clock from it):
+    /// forty minutes, single-sided Swiss's (Organized Play Policies
+    /// 1.1.5.2). Once called, no seat is given at a table of the round,
+    /// and a game under way finishes the turn in progress and one more
+    /// (1.1.5.3, `MatchSession::with_round_end`).
+    pub round_length: Duration,
     /// Pin the matchup instead of rotating: a published decklist id per
     /// side (`decks::by_id`), resolved once at `bind` so a bad name is a
     /// startup error rather than a per-connection `ConnectRejected`.
@@ -189,6 +196,7 @@ impl Default for ServeOptions {
             max_matches: None,
             max_spectators: Some(crate::match_session::DEFAULT_MAX_SPECTATORS),
             turn_timeout: None,
+            round_length: DEFAULT_ROUND_LENGTH,
             corp_deck: None,
             runner_deck: None,
             formats: DEFAULT_FORMATS.to_vec(),
@@ -196,6 +204,9 @@ impl Default for ServeOptions {
         }
     }
 }
+
+/// Single-sided Swiss's round (Organized Play Policies 1.1.5.2).
+pub const DEFAULT_ROUND_LENGTH: Duration = Duration::from_secs(40 * 60);
 
 /// The formats a daemon offers by default, in lobby order. Not every
 /// format: Snapshot is a Fantasy Flight Games pool no shipped deck is
@@ -471,6 +482,8 @@ struct Tournament {
     /// yet matched: cleared for a table when its result is written, and
     /// whole when a round begins.
     draw_offers: Vec<DrawOffer>,
+    /// The current round's clock, set when it begins.
+    clock: Option<RoundClock>,
 }
 
 /// One entrant's registration: the decks the server holds for them, the
@@ -488,6 +501,17 @@ struct Entry {
 impl Tournament {
     fn entry(&self, key: &PublicKey) -> Option<&Entry> {
         self.entrants.iter().find(|entry| entry.key == *key)
+    }
+
+    /// Whether the current round's time has been called.
+    fn time_called(&self) -> bool {
+        self.clock.is_some_and(|clock| clock.remaining(unix_now()).is_none())
+    }
+
+    /// When the current round's time is called, on the monotonic clock
+    /// a match task sleeps against.
+    fn round_end(&self) -> Option<tokio::time::Instant> {
+        self.clock.map(|clock| tokio::time::Instant::now() + Duration::from_secs(clock.remaining(unix_now()).unwrap_or(0)))
     }
 
     /// The round being played, by its index into `rounds`.
@@ -514,6 +538,7 @@ impl Tournament {
             rounds: self.rounds.clone(),
             dropped: self.dropped.clone(),
             draw_offers: self.draw_offers.clone(),
+            clock: self.clock,
             entrants: self
                 .entrants
                 .iter()
@@ -1519,7 +1544,7 @@ fn seat_vs_bot(
         Side::Corp => (human, bot),
         Side::Runner => (bot, human),
     };
-    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None);
+    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None, None);
 }
 
 /// `ServeBotKind::None`: pair with the first compatible waiter in the same
@@ -1548,7 +1573,7 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let rated_lobby = registry.lobby_info(&waiter.lobby, &shared.options).is_some_and(|lobby| lobby.rated);
     let (match_id, seed) = registry.allocate(shared.base_seed);
     let (corp, runner) = assign_sides(waiter, newcomer, seed);
-    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None);
+    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None, None);
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -1562,7 +1587,7 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
 /// players met in rates its games (`LobbyInfo::rated`); a bot's seat
 /// never is.
 #[allow(clippy::too_many_arguments)]
-fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool, table: Option<TableRef>) {
+fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool, table: Option<TableRef>, round_end: Option<tokio::time::Instant>) {
     let mut dealt = shared.decks_for(seed, format);
     // A brought deck replaces the deal for its side, pinned or rotating:
     // the player chose it, and the operator's pin is the default for a
@@ -1636,7 +1661,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         .with_undo(!rated_lobby)
         .with_reconnect_grace(shared.options.reconnect_grace)
         .with_max_spectators(shared.options.max_spectators)
-        .with_turn_timeout(shared.options.turn_timeout);
+        .with_turn_timeout(shared.options.turn_timeout)
+        .with_round_end(round_end);
     let handle = session.reattach_handle();
     registry.matches.insert(
         match_id,
@@ -1695,14 +1721,14 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         // role's rating off the other's; a forfeit — surrender,
         // disconnect, clock — is a loss like any other; a stall is
         // nobody's.
-        let rated = matches!(keys, [Some(corp), Some(runner)] if corp != runner) && outcome.is_some() && rated_lobby;
+        let rated = matches!(keys, [Some(corp), Some(runner)] if corp != runner) && outcome.is_some_and(|(winner, _)| winner.is_some()) && rated_lobby;
         let [corp_commitment, runner_commitment] = entry.commitments.map(|commitment| commitment.and_then(|commitment| commitment.signed));
         let receipt = Receipt {
             match_id,
             server_key: shared.identity.public_key(),
             corp: ReceiptSeat { name: entry.corp, key: keys[0], commitment: corp_commitment },
             runner: ReceiptSeat { name: entry.runner, key: keys[1], commitment: runner_commitment },
-            winner: outcome.map(|(winner, _)| winner),
+            winner: outcome.and_then(|(winner, _)| winner),
             reason: outcome.map(|(_, reason)| reason),
             rated,
             engine: ENGINE.to_string(),
@@ -1715,17 +1741,18 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         let signed = shared.identity.sign(RECEIPT_TAG, serde_json::to_string(&receipt).expect("a receipt serializes"));
         shared.keep_record(match_id, &record, &signed, ended_at);
         // A table's result is the game's: a win either way, and a stall
-        // nobody won is a tie (1.1.4). Its standings are the
-        // tournament's own; the game is not on the ladder.
+        // nobody won or time called with the points even is a tie
+        // (1.1.4, 1.1.5.3). Its standings are the tournament's own; the
+        // game is not on the ladder.
         if let Some(table) = table {
             let result = match outcome {
-                Some((Side::Corp, _)) => TableOutcome::CorpWon,
-                Some((Side::Runner, _)) => TableOutcome::RunnerWon,
-                None => TableOutcome::Tie,
+                Some((Some(Side::Corp), _)) => TableOutcome::CorpWon,
+                Some((Some(Side::Runner), _)) => TableOutcome::RunnerWon,
+                Some((None, _)) | None => TableOutcome::Tie,
             };
             shared.table_ended(table, result);
         }
-        let ([Some(corp), Some(runner)], Some((winner, _))) = (keys, outcome) else { return };
+        let ([Some(corp), Some(runner)], Some((Some(winner), _))) = (keys, outcome) else { return };
         if !rated {
             return;
         }

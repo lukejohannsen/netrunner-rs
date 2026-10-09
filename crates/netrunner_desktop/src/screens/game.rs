@@ -4673,22 +4673,27 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else if let (Some(over), Some(_)) = (&game.over, &game.lesson) {
                     // The match ended before the lesson did: the step was
                     // not reached, so it is the lesson again, not a result.
-                    let won = over.winner == game.side;
+                    let won = over.winner == Some(game.side);
                     panel.spawn(widgets::heading(theme, if won { "You won before the lesson finished" } else { "The lesson ended early" }));
-                    panel.spawn((widgets::dim(theme, format!("{:?} wins: {}. The lesson's last steps were never reached.", over.winner, end_reason(over.reason))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn((widgets::dim(theme, format!("{}: {}. The lesson's last steps were never reached.", verdict(over.winner), end_reason(over.reason))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Learn to Play", Val::Auto, Click::Menu));
                         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Try again", Val::Auto, Click::RetryLesson));
                     });
                 } else if let Some(over) = &game.over {
-                    let won = over.winner == game.side;
+                    let won = over.winner == Some(game.side);
                     let watching = game.watching();
                     if watching {
-                        panel.spawn((Text::new(format!("The {:?} wins", over.winner)), theme.font(size::HEADING), TextColor(theme.accent)));
+                        panel.spawn((Text::new(match over.winner { Some(winner) => format!("The {winner:?} wins"), None => "A tie".to_string() }), theme.font(size::HEADING), TextColor(theme.accent)));
                         panel.spawn(widgets::dim(theme, end_reason_watched(over.winner, over.reason)));
                     } else {
-                        panel.spawn((Text::new(if won { "You win" } else { "You lose" }), theme.font(size::HEADING), TextColor(if won { theme.accent } else { theme.danger })));
-                        panel.spawn(widgets::dim(theme, format!("{:?} wins: {}", over.winner, end_reason(over.reason))));
+                        let (heading, colour) = match over.winner {
+                            Some(_) if won => ("You win", theme.accent),
+                            Some(_) => ("You lose", theme.danger),
+                            None => ("A tie", theme.accent),
+                        };
+                        panel.spawn((Text::new(heading), theme.font(size::HEADING), TextColor(colour)));
+                        panel.spawn(widgets::dim(theme, format!("{}: {}", verdict(over.winner), end_reason(over.reason))));
                     }
                     if let Some(report) = &over.report {
                         for line in report.lines() {
@@ -5307,16 +5312,23 @@ fn target_title(game: &Game, target: &Target) -> String {
     }
 }
 
+/// "Corp wins", "Runner wins", or "A tie" — the one end with no winner.
+fn verdict(winner: Option<Side>) -> String {
+    match winner {
+        Some(winner) => format!("{winner:?} wins"),
+        None => "A tie".to_string(),
+    }
+}
+
 /// How a match a spectator watched ended, naming the side rather than
 /// "the other side", which is nobody's from the stands.
-fn end_reason_watched(winner: Side, reason: netrunner_client::play::GameEndReason) -> String {
+fn end_reason_watched(winner: Option<Side>, reason: netrunner_client::play::GameEndReason) -> String {
     use netrunner_client::play::GameEndReason;
-    let loser = winner.other();
-    match reason {
-        GameEndReason::Surrender => format!("the {loser:?} conceded"),
-        GameEndReason::Disconnected => format!("the {loser:?} disconnected"),
-        GameEndReason::TimedOut => format!("the {loser:?} ran out of time"),
-        other => end_reason(other).to_string(),
+    match (winner, reason) {
+        (Some(winner), GameEndReason::Surrender) => format!("the {:?} conceded", winner.other()),
+        (Some(winner), GameEndReason::Disconnected) => format!("the {:?} disconnected", winner.other()),
+        (Some(winner), GameEndReason::TimedOut) => format!("the {:?} ran out of time", winner.other()),
+        (_, other) => end_reason(other).to_string(),
     }
 }
 
@@ -5330,6 +5342,7 @@ fn end_reason(reason: netrunner_client::play::GameEndReason) -> &'static str {
         GameEndReason::Surrender => "the other side surrendered",
         GameEndReason::Disconnected => "the other side disconnected",
         GameEndReason::TimedOut => "the other side ran out of time",
+        GameEndReason::TimeCalled => "time was called on the round, and agenda points decided",
     }
 }
 

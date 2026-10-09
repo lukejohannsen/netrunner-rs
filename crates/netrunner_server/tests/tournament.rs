@@ -19,13 +19,17 @@ use netrunner_server::protocol::statements::{deck_hash, RegistrationStatement, R
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::{Outcome, Role};
 use netrunner_server::protocol::{DrawOffer, TournamentInfo, TournamentState};
+use std::time::Duration as RoundLength;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn start(data_dir: Option<PathBuf>) -> (String, PublicKey) {
-    let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, ..ServeOptions::default() };
+    start_with(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, ..ServeOptions::default() }).await
+}
+
+async fn start_with(options: ServeOptions) -> (String, PublicKey) {
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let (addr, key) = (server.local_addr().unwrap(), server.public_key());
     tokio::spawn(server.run());
@@ -609,5 +613,90 @@ async fn an_intentional_draw_is_offered_by_both_players() {
         }
     };
     assert!(listed[0].draw_offers.is_empty(), "the offer lapsed when the game started");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The round clock (Organized Play Policies 1.1.5.2–1.1.5.3): a round
+/// begun carries its clock; a game under way when time is called is told
+/// so; once called, no seat is given at a table of the round and no draw
+/// is offered, and the organizer records what was not played.
+#[tokio::test]
+async fn time_is_called_on_a_round() {
+    let dir = scratch("clock");
+    let (url, server_key) = start_with(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.clone()), round_length: RoundLength::from_secs(2), ..ServeOptions::default() }).await;
+    let people = [player(1), player(2)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "Clocked").await;
+    assert_eq!(made.clock, None, "no clock while registering");
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+        next_tournament(&mut sockets[index]).await;
+    }
+    next_tournament(&mut sockets[0]).await;
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = next_tournament(&mut sockets[0]).await;
+    next_tournament(&mut sockets[1]).await;
+    let clock = first.clock.expect("a round carries its clock");
+    assert_eq!(clock.seconds, 2);
+    assert!(clock.remaining(clock.began_at).is_some() && clock.remaining(clock.began_at + 2).is_none());
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    let table = first.rounds[0].tables[0].clone();
+    let (corp_at, runner_at) = (index_of(&table.corp), index_of(&table.runner));
+
+    // Both sit at once; time is called on the game two seconds in, and
+    // both seats are told the turn it fell in.
+    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    assert!(matches!(next(&mut sockets[corp_at]).await, ServerMessage::Queued { .. }));
+    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    next_joined(&mut sockets[runner_at]).await;
+    next_joined(&mut sockets[corp_at]).await;
+    for index in [corp_at, runner_at] {
+        let turn = loop {
+            match next(&mut sockets[index]).await {
+                ServerMessage::TimeCalled { turn } => break turn,
+                ServerMessage::GameEnded { .. } => panic!("the game ends after the turn in play and one more, not at the call"),
+                _ => continue,
+            }
+        };
+        assert!(turn <= 2, "called in the opening turns: {turn}");
+    }
+    // The rule itself is the session's test; here the Corp concedes.
+    send(&mut sockets[corp_at], ClientMessage::Surrender).await;
+    let after = loop {
+        let info = next_tournament(&mut sockets[0]).await;
+        if info.rounds[0].complete() {
+            break info;
+        }
+    };
+    assert_eq!(after.rounds[0].tables[0].result, Some(Outcome::RunnerWon));
+    for socket in sockets.iter_mut().skip(1) {
+        loop {
+            if next_tournament(socket).await.rounds[0].complete() {
+                break;
+            }
+        }
+    }
+
+    // Round 2: once its time is called, no seat and no draw offer; the
+    // organizer records the table.
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let second = next_tournament(&mut sockets[0]).await;
+    next_tournament(&mut sockets[1]).await;
+    assert!(second.clock.is_some_and(|clock| clock.began_at >= clock.began_at), "a fresh clock");
+    tokio::time::sleep(RoundLength::from_millis(2500)).await;
+    let (corp2, runner2) = (index_of(&second.rounds[1].tables[0].corp), index_of(&second.rounds[1].tables[0].runner));
+    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    { let reason = seek_refused(&mut sockets[corp2]).await; assert!(reason.contains("time is called"), "{reason}"); }
+    send(&mut sockets[runner2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[runner2]).await; assert!(reason.contains("five minutes"), "{reason}"); }
+    send(&mut sockets[0], ClientMessage::RecordResult { tournament: made.id.clone(), table: 0, outcome: Outcome::Tie }).await;
+    let recorded = next_tournament(&mut sockets[0]).await;
+    assert!(recorded.rounds[1].complete());
     let _ = std::fs::remove_dir_all(&dir);
 }

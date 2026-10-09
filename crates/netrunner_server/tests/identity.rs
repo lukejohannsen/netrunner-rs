@@ -131,7 +131,7 @@ async fn play_one(url: &str, corp_seat: (Option<&Identity>, &str), runner_seat: 
     send(&mut runner_socket, ClientMessage::Surrender).await;
     loop {
         if let ServerMessage::GameEnded { winner, .. } = next(&mut corp_socket).await {
-            assert_eq!(winner, Side::Corp);
+            assert_eq!(winner, Some(Side::Corp));
             break;
         }
     }

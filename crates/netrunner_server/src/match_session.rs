@@ -183,8 +183,10 @@ pub struct Finished {
     /// Every applied action and its events, in order: with the setup's
     /// header, a record that replays the match bit for bit.
     pub history: MatchHistory,
-    /// Who won and why; `None` for a stall.
-    pub outcome: Option<(Side, GameEndReason)>,
+    /// Who won and why; `None` for a stall. The winner is `None` for the
+    /// one end that has none: time called on a tournament round with
+    /// the agenda points even (`GameEndReason::TimeCalled`).
+    pub outcome: Option<(Option<Side>, GameEndReason)>,
 }
 
 pub struct MatchSession {
@@ -205,7 +207,7 @@ pub struct MatchSession {
     /// `run_with_outcome` hands back, so the host can rate a match ended
     /// by surrender, disconnect or clock, none of which the final
     /// `GameState` records.
-    outcome: Option<(Side, GameEndReason)>,
+    outcome: Option<(Option<Side>, GameEndReason)>,
     /// When the decision currently awaited runs out, if a clock is on.
     /// Lives here rather than in `await_seat` so that a rejected action —
     /// which re-enters `await_seat` for the same decision — finds the
@@ -229,6 +231,18 @@ pub struct MatchSession {
     /// The last `ServerMessage::Back` each seat was sent (Corp, Runner),
     /// so one goes out only when the offer changes.
     back: [Option<Rewind>; 2],
+    /// When the tournament round this game is played in has its time
+    /// called (`with_round_end`); `None` for a game outside a round,
+    /// which is every game but a table's.
+    round_end: Option<Instant>,
+    /// The turn time was called in, once it has been: the end-of-round
+    /// rule (Organized Play Policies 1.1.5.3) lets that turn finish and
+    /// the other side take one more, so the game ends on agenda points
+    /// when the turn counter has moved twice past it. Checked after
+    /// every applied action rather than on a turn event, because an
+    /// idle seat's action and a bot's apply through different arms and
+    /// the counter is one fact.
+    time_called_in: Option<u32>,
 }
 
 /// What `await_seat` came back with.
@@ -262,6 +276,8 @@ enum SeatEvent {
     /// whose decision is awaited — and a refusal is answered the same
     /// way, since the pump holds what the offer was.
     IdleTakeBack,
+    /// The round clock ran out while a seat was awaited.
+    TimeCalled,
 }
 
 impl MatchSession {
@@ -287,6 +303,8 @@ impl MatchSession {
             grace_deadline: None,
             undo: false,
             back: [None, None],
+            round_end: None,
+            time_called_in: None,
         }
     }
 
@@ -307,6 +325,16 @@ impl MatchSession {
     /// See `TurnTimeout`. `None` (the default) runs without a clock.
     pub fn with_turn_timeout(mut self, timeout: TurnTimeout) -> Self {
         self.turn_timeout = timeout;
+        self
+    }
+
+    /// The round clock: when it runs out, time is called
+    /// (`ServerMessage::TimeCalled`), the turn in progress is finished,
+    /// the other side takes one more, and the game ends on agenda points
+    /// — a tie when they are even (Organized Play Policies 1.1.5.3).
+    /// `None` (the default) is a game with no round.
+    pub fn with_round_end(mut self, round_end: Option<Instant>) -> Self {
+        self.round_end = round_end;
         self
     }
 
@@ -358,6 +386,10 @@ impl MatchSession {
                 SessionStep::Applied { .. } => {
                     self.decision_deadline = None;
                     self.broadcast_applied();
+                    if self.past_the_last_turn() {
+                        self.end_on_time();
+                        break;
+                    }
                 }
                 SessionStep::Awaiting { side, .. } => {
                     let message = match self.await_seat(side).await {
@@ -368,16 +400,20 @@ impl MatchSession {
                             // can report it. The seat that vanished gets
                             // the message too, uselessly; its `send` is
                             // already a no-op.
-                            self.send_game_ended(side.other(), GameEndReason::Disconnected);
+                            self.send_game_ended(Some(side.other()), GameEndReason::Disconnected);
                             break;
                         }
                         SeatEvent::TimedOut => {
-                            self.send_game_ended(side.other(), GameEndReason::TimedOut);
+                            self.send_game_ended(Some(side.other()), GameEndReason::TimedOut);
                             break;
                         }
                         SeatEvent::Surrendered { by } => {
-                            self.send_game_ended(by.other(), GameEndReason::Surrender);
+                            self.send_game_ended(Some(by.other()), GameEndReason::Surrender);
                             break;
+                        }
+                        SeatEvent::TimeCalled => {
+                            self.call_time();
+                            continue;
                         }
                         // The board changed under the awaited decision, so
                         // re-step: the same seat is asked again, from a
@@ -385,6 +421,10 @@ impl MatchSession {
                         SeatEvent::IdleActionApplied => {
                             self.decision_deadline = None;
                             self.broadcast_applied();
+                            if self.past_the_last_turn() {
+                                self.end_on_time();
+                                break;
+                            }
                             continue;
                         }
                         SeatEvent::IdleTakeBack => {
@@ -397,6 +437,10 @@ impl MatchSession {
                             Ok(()) => {
                                 self.decision_deadline = None;
                                 self.broadcast_applied();
+                                if self.past_the_last_turn() {
+                                    self.end_on_time();
+                                    break;
+                                }
                             }
                             // A bot slot only ever picks from
                             // `view.legal_actions`, so this is only
@@ -417,7 +461,7 @@ impl MatchSession {
                             }
                         },
                         ClientMessage::Surrender => {
-                            self.send_game_ended(side.other(), GameEndReason::Surrender);
+                            self.send_game_ended(Some(side.other()), GameEndReason::Surrender);
                             break;
                         }
                         ClientMessage::TakeBack => self.take_back(side),
@@ -452,7 +496,7 @@ impl MatchSession {
                     }
                 }
                 SessionStep::Ended { winner, reason } => {
-                    self.send_game_ended(winner, reason);
+                    self.send_game_ended(Some(winner), reason);
                     break;
                 }
                 SessionStep::Stalled(_) => break,
@@ -486,7 +530,9 @@ impl MatchSession {
             self.grace_deadline = None;
         }
         loop {
-            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, max_spectators, grace_deadline, undo, back, .. } = self;
+            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, max_spectators, grace_deadline, undo, back, round_end, time_called_in, .. } = self;
+            // The round clock fires once; after that the turns decide.
+            let round_end = round_end.filter(|_| time_called_in.is_none());
             let (seat, idle) = match side {
                 Side::Corp => (corp.as_mut(), runner.as_mut()),
                 Side::Runner => (runner.as_mut(), corp.as_mut()),
@@ -594,6 +640,9 @@ impl MatchSession {
                 // whichever fires first names the reason.
                 _ = tokio::time::sleep_until(decision_deadline.unwrap_or_else(Instant::now)), if decision_deadline.is_some() => {
                     return SeatEvent::TimedOut;
+                }
+                _ = tokio::time::sleep_until(round_end.unwrap_or_else(Instant::now)), if round_end.is_some() => {
+                    return SeatEvent::TimeCalled;
                 }
             }
         }
@@ -722,9 +771,37 @@ impl MatchSession {
         }
     }
 
-    fn send_game_ended(&mut self, winner: Side, reason: GameEndReason) {
+    fn send_game_ended(&mut self, winner: Option<Side>, reason: GameEndReason) {
         self.outcome = Some((winner, reason));
         self.broadcast(ServerMessage::GameEnded { winner, reason });
+    }
+
+    /// Time is called (1.1.5.3): noted by the turn it fell in, and told
+    /// to both seats and the stands.
+    fn call_time(&mut self) {
+        let turn = self.session.state().turn;
+        self.time_called_in = Some(turn);
+        self.broadcast(ServerMessage::TimeCalled { turn });
+    }
+
+    /// Whether the turn time was called in and the other side's one more
+    /// are both over: the counter moves at each turn's start, so two
+    /// past the called one is the start of the turn that is not played.
+    fn past_the_last_turn(&self) -> bool {
+        self.time_called_in.is_some_and(|called| self.session.state().turn >= called + 2)
+    }
+
+    /// The end-of-round rule's verdict: more agenda points wins, even is
+    /// a tie (1.1.5.3) — the one end with no winner.
+    fn end_on_time(&mut self) {
+        let state = self.session.state();
+        let (corp, runner) = (state.corp.resources.agenda_points.0, state.runner.resources.agenda_points.0);
+        let winner = match corp.cmp(&runner) {
+            std::cmp::Ordering::Greater => Some(Side::Corp),
+            std::cmp::Ordering::Less => Some(Side::Runner),
+            std::cmp::Ordering::Equal => None,
+        };
+        self.send_game_ended(winner, GameEndReason::TimeCalled);
     }
 }
 
@@ -1114,7 +1191,7 @@ mod reattach_tests {
         // idle, so this waits exactly the grace period in zero wall time.
         match runner_rx.recv().await {
             Some(ServerMessage::GameEnded { winner, reason }) => {
-                assert_eq!(winner, Side::Runner);
+                assert_eq!(winner, Some(Side::Runner));
                 assert_eq!(reason, GameEndReason::Disconnected);
             }
             other => panic!("expected the Runner to be awarded the game, got {other:?}"),
@@ -1175,7 +1252,7 @@ mod reattach_tests {
 
     fn expect_game_ended(message: Option<ServerMessage>) -> (Side, GameEndReason) {
         match message {
-            Some(ServerMessage::GameEnded { winner, reason }) => (winner, reason),
+            Some(ServerMessage::GameEnded { winner, reason }) => (winner.expect("a winner"), reason),
             other => panic!("expected GameEnded, got {other:?}"),
         }
     }
@@ -1296,6 +1373,63 @@ mod reattach_tests {
         run.await.unwrap();
     }
 
+    /// The end-of-round rule (Organized Play Policies 1.1.5.3): when the
+    /// round clock runs out both seats are told the turn it fell in, that
+    /// turn is finished, the other side takes one more, and the game ends
+    /// on agenda points, which here decide or do not as the random walk
+    /// fell. Two random walkers in the chairs, each playing from the view
+    /// it is sent; the clock is already out when the game starts, since
+    /// under a paused clock the walk would reach the rules' own end
+    /// before any virtual second passed.
+    #[tokio::test(start_paused = true)]
+    async fn time_called_ends_the_game_after_the_turn_in_play_and_one_more() {
+        let (state, registry) = state(41);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry.clone(), corp_slot, runner_slot).with_round_end(Some(Instant::now()));
+        let run = tokio::spawn(session.run());
+        let mut agents = [RandomAgent::new(3), RandomAgent::new(4)];
+        let (mut called, mut ended) = (None, None);
+        let mut told = [None, None];
+        let mut applied = 0usize;
+        while ended.is_none() {
+            let (side, message) = tokio::select! {
+                message = corp_rx.recv() => (Side::Corp, message),
+                message = runner_rx.recv() => (Side::Runner, message),
+            };
+            let Some(message) = message else { panic!("the {side:?}'s channel closed with no GameEnded: called {called:?}, {applied} actions applied") };
+            if matches!(message, ServerMessage::ActionLog(_)) {
+                applied += 1;
+            }
+            match message {
+                ServerMessage::StateUpdate(view) if !view.legal_actions.is_empty() => {
+                    let action = agents[side as usize].select_action(&view, &registry);
+                    let tx = if side == Side::Corp { &corp_tx } else { &runner_tx };
+                    // The game may have ended behind a view still queued here.
+                    let _ = tx.send(ClientMessage::SubmitAction(action));
+                }
+                ServerMessage::TimeCalled { turn } => {
+                    told[side as usize] = Some(turn);
+                    called.get_or_insert(turn);
+                }
+                ServerMessage::GameEnded { winner, reason } => ended = Some((winner, reason)),
+                _ => {}
+            }
+        }
+        let called = called.expect("time was called");
+        assert_eq!(told, [Some(called), Some(called)], "both seats are told, once, the same turn");
+        let state = run.await.unwrap();
+        assert_eq!(ended.map(|(_, reason)| reason), Some(GameEndReason::TimeCalled));
+        assert_eq!(state.turn, called + 2, "the turn in play, one more, and the next never played");
+        let (corp, runner) = (state.corp.resources.agenda_points.0, state.runner.resources.agenda_points.0);
+        let expected = match corp.cmp(&runner) {
+            std::cmp::Ordering::Greater => Some(Side::Corp),
+            std::cmp::Ordering::Less => Some(Side::Runner),
+            std::cmp::Ordering::Equal => None,
+        };
+        assert_eq!(ended.map(|(winner, _)| winner), Some(expected), "agenda points decide: {corp} to {runner}");
+    }
+
     #[tokio::test(start_paused = true)]
     async fn the_reconnect_grace_still_wins_when_it_is_shorter() {
         let (state, registry) = state(41);
@@ -1333,7 +1467,7 @@ mod reattach_tests {
         assert_eq!(expect_game_ended(corp_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
         assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
         let Finished { outcome, .. } = run.await.unwrap();
-        assert_eq!(outcome, Some((Side::Corp, GameEndReason::Surrender)));
+        assert_eq!(outcome, Some((Some(Side::Corp), GameEndReason::Surrender)));
     }
 
     /// An out-of-turn action the engine refuses is answered at once and

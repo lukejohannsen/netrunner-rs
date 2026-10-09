@@ -312,7 +312,9 @@ impl HandOrder {
 /// The end of the match, for the game-over overlay.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Over {
-    pub winner: Side,
+    /// `None` for a tie: time called on a tournament round with the
+    /// agenda points even (`GameEndReason::TimeCalled`).
+    pub winner: Option<Side>,
     pub reason: GameEndReason,
     pub report: Option<RecordReport>,
     pub notice: Option<String>,
@@ -1142,6 +1144,12 @@ impl Game {
                 }
                 Outcome::Redraw
             }
+            // The round's time (Organized Play Policies 1.1.5.3): a line
+            // in the log, where both chairs read what happens next.
+            MatchMessage::TimeCalled { turn } => {
+                self.log.push(netrunner_client::actions::LogLine { text: format!("           Time is called in turn {turn}: this turn is finished, the other side takes one more, then agenda points decide."), names: Vec::new() });
+                Outcome::Redraw
+            }
             MatchMessage::Notice(text) => {
                 self.log.push(netrunner_client::actions::LogLine { text: format!("           (model: {text})"), names: Vec::new() });
                 self.model_notice = Some(text);
@@ -1955,7 +1963,7 @@ mod tests {
         assert!(game.awaiting);
         assert_eq!(game.rejection.as_deref(), Some("no"));
         let view = Box::new(game.view.clone().unwrap());
-        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Ended { winner: Side::Corp, reason: GameEndReason::AgendaThreshold, view, report: None, notice: None })));
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Ended { winner: Some(Side::Corp), reason: GameEndReason::AgendaThreshold, view, report: None, notice: None })));
         assert!(game.finished() && !game.awaiting && game.actions.is_empty());
         assert_eq!(game.apply(Intent::RequestQuit), Outcome::Quit, "no confirmation once it is over");
         handle.join();
