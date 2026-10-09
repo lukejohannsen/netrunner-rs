@@ -303,7 +303,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OwnGrip => "the grip".to_string(),
         CardZoneRef::OwnHeap => "the heap".to_string(),
         CardZoneRef::OwnSetAside => "the cards set aside".to_string(),
-        CardZoneRef::OpponentSetAside => "the Corp's cards set aside".to_string(),
+        CardZoneRef::OpponentSetAside => format!("the {opponent:?}'s cards set aside"),
         CardZoneRef::HostedOnSource => match source_card {
             Some(card) => format!("hosted on {}", card_title(card, registry)),
             None => "hosted here".to_string(),

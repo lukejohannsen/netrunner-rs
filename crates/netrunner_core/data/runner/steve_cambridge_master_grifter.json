@@ -1,0 +1,91 @@
+{
+  "id": "steve_cambridge_master_grifter",
+  "title": "Steve Cambridge: Master Grifter",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnHeap",
+                "count": 2,
+                "filter": "Any"
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnHeap",
+                      "filter": "Any",
+                      "min": 2,
+                      "max": 2,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "destination": "OwnSetAside",
+                      "then": {
+                        "Sequence": [
+                          {
+                            "PromptChooseCards": {
+                              "side": "Corp",
+                              "source": "OpponentSetAside",
+                              "filter": "Any",
+                              "min": 1,
+                              "max": 1,
+                              "reveal": false,
+                              "shuffle_after": false,
+                              "destination": "OpponentRemovedFromGame"
+                            }
+                          },
+                          {
+                            "PromptChooseCards": {
+                              "side": "Runner",
+                              "source": "OwnSetAside",
+                              "filter": "Any",
+                              "min": 1,
+                              "max": 1,
+                              "reveal": false,
+                              "shuffle_after": false,
+                              "destination": "OwnGrip"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may choose 2 cards in your heap",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you make a successful run on HQ, you may choose 2 cards in your heap. If you do, the Corp removes 1 of those cards from the game, then you add the other card to your grip."
+    }
+  ],
+  "built_from": 31014,
+  "is_playable": true
+}

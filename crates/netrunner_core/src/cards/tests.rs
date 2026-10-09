@@ -23672,6 +23672,61 @@ mod uprising {
     }
 
     #[test]
+    fn steve_cambridge_on_the_first_hq_success_hands_the_corp_two_heap_cards_to_remove_one_and_takes_the_other() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("steve_cambridge_master_grifter"));
+        state.runner.heap = vec![id("sure_gamble"), id("corroder"), id("easy_mark")];
+        state.corp.hq.clear();
+        let run_hq = |state: &GameState| {
+            let (mut running, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+            for _ in 0..40 {
+                if running.active_run.is_none() || running.pending_decision.is_some() {
+                    break;
+                }
+                let next = crate::rules::legal_actions_for(&running, &registry, Side::Runner)
+                    .into_iter()
+                    .find(|action| !matches!(action, PlayerAction::JackOut))
+                    .or_else(|| running.paid_ability_window.as_ref().map(|window| PlayerAction::PassPriority { side: window.active_priority }))
+                    .expect("a way on");
+                running = apply_action(&running, &registry, next).expect("on").0;
+            }
+            running
+        };
+
+        let asked = run_hq(&state);
+        assert!(asked.pending_decision.is_some(), "you may choose 2 cards in your heap");
+        let declined = choose(&asked, &registry, 1);
+        assert_eq!(declined.runner.heap.len(), 3, "declined: nothing moves");
+
+        let choosing = choose(&asked, &registry, 0);
+        let heap = toggles(&choosing, &registry, Side::Runner);
+        assert_eq!(heap.len(), 3, "any card in the heap");
+        let mut chosen = choosing.clone();
+        for position in [0, 1] {
+            chosen = apply_action(&chosen, &registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        let (chosen, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm 2");
+        assert_eq!(chosen.runner.heap, vec![id("easy_mark")]);
+        let corp_picks = toggles(&chosen, &registry, Side::Corp);
+        assert_eq!(corp_picks.len(), 2, "the Corp removes 1 of those cards");
+        let removed = pick(&chosen, &registry, corp_picks[1]);
+        assert_eq!(removed.runner.removed_from_game, vec![id("corroder")]);
+        let mut done = removed;
+        if let Some(position) = toggles(&done, &registry, Side::Runner).first().copied() {
+            done = pick(&done, &registry, position);
+        }
+        assert!(done.runner.grip.contains(&id("sure_gamble")), "you add the other card to your grip");
+        assert!(done.runner.set_aside.is_empty());
+
+        // The first time each turn: a second success on HQ asks nothing.
+        let mut again = pass_until_settled(done, &registry).0;
+        again.runner.heap = vec![id("sure_gamble"), id("easy_mark")];
+        let second = run_hq(&again);
+        assert!(second.pending_decision.is_none(), "not the first successful run on HQ this turn");
+    }
+
+    #[test]
     fn cordyceps_may_spend_a_counter_once_a_turn_on_a_central_success_to_swap_its_ice_with_another() {
         let registry = registry();
         let mut state = runner_turn();

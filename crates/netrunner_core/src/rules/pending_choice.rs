@@ -78,7 +78,8 @@ fn owning_side(chooser: Side, zone: &CardZoneRef) -> Side {
         | CardZoneRef::OpponentHand
         | CardZoneRef::OpponentDeck
         | CardZoneRef::OpponentScoreArea
-        | CardZoneRef::OpponentRemovedFromGame => chooser.other(),
+        | CardZoneRef::OpponentRemovedFromGame
+        | CardZoneRef::OpponentSetAside => chooser.other(),
         _ => chooser,
     }
 }
@@ -105,7 +106,10 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnGrip => state.runner.grip.clone(),
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
-        CardZoneRef::OpponentSetAside => state.corp.set_aside.clone(),
+        CardZoneRef::OpponentSetAside => match owner {
+            Side::Corp => state.corp.set_aside.clone(),
+            Side::Runner => state.runner.set_aside.clone(),
+        },
         CardZoneRef::PlayArea => state.corp.play_area.iter().map(|played| played.card.clone()).collect(),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
@@ -627,7 +631,10 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnGrip => Some(&mut state.runner.grip),
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
         CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
-        CardZoneRef::OpponentSetAside => Some(&mut state.corp.set_aside),
+        CardZoneRef::OpponentSetAside => match owner {
+            Side::Corp => Some(&mut state.corp.set_aside),
+            Side::Runner => Some(&mut state.runner.set_aside),
+        },
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => None,
             Side::Runner => Some(&mut state.runner.heap),

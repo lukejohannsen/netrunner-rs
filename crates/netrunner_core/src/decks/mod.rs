@@ -554,6 +554,9 @@ mod tests {
             // Tranche 8 Stage 11n: Reina Roja's deck, on Free Spirit's
             // frame, so it holds Core Set cards as that one does.
             ("rez_tax", &neither),
+            // Tranche 8 Stage 11v: Steve Cambridge's deck, on Hit List's
+            // frame, whose Core Set cards keep it out of every format.
+            ("cold_reading", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),
