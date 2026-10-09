@@ -1305,7 +1305,12 @@ impl OnlineScreen {
                     (_, None) => self.notice = Some(format!("No Runner deck is legal in {}: build one under Decks", format_name(tournament.info.format))),
                 },
                 TournamentRow::Withdraw | TournamentRow::Drop => attached.unregister(tournament.info.id.clone()),
-                TournamentRow::Sit => attached.sit(tournament.info.id.clone()),
+                // The seat is taken with the table's seed commitment as this
+                // page read it (Phase 4 §7 stage 6c).
+                TournamentRow::Sit => match tournament::my_seed_commitment(&tournament.info, page.key.as_ref()) {
+                    Some(commitment) => attached.sit(tournament.info.id.clone(), commitment),
+                    None => self.notice = Some("This table has no seed commitment yet: read the tournament again".to_string()),
+                },
                 TournamentRow::StandUp => attached.cancel_seek(),
                 TournamentRow::OfferDraw => attached.offer_draw(tournament.info.id.clone()),
                 TournamentRow::BeginRound => attached.begin_round(tournament.info.id.clone()),
@@ -1636,6 +1641,9 @@ impl OnlineScreen {
             TournamentState::Playing { .. } | TournamentState::Finished => {
                 head.push(bold(if info.state == TournamentState::Finished { "Final standings:".to_string() } else { "Standings:".to_string() }));
                 head.extend(info.standings().iter().enumerate().map(|(index, standing)| Line::from(format!("  {}", tournament::standing_row(info, index + 1, standing)))));
+                if let Some(line) = tournament::seeds_line(info) {
+                    head.push(Line::from(line));
+                }
                 if let Some(current) = info.current_round() {
                     head.push(Line::from(""));
                     head.push(bold(format!("Round {}:", info.rounds.len())));
@@ -2331,6 +2339,26 @@ mod tests {
         until(&mut organizer, "the seat let go", |screen| server_page_of(screen).is_some_and(|page| page.seeking.is_none())).await;
         drop(entrant_seat);
         until(&mut entrant, "the result, pushed", |screen| info_of(screen).is_some_and(|info| info.rounds[0].tables[0].result == Some(winner))).await;
+        // The seed commit-reveal through the real driver (Phase 4 §7 stage
+        // 6c): the table's secret is revealed and checks against its
+        // commitment, and the receipt the daemon kept holds both seats'
+        // statements, each signed with the nonce the driver made and the
+        // registered deck the machine held it to.
+        let revealed = info_of(&organizer).unwrap();
+        assert!(matches!(revealed.seeds[0].check(), Ok(Some(_))), "{:?}", revealed.seeds);
+        let receipts: Vec<std::path::PathBuf> = std::fs::read_dir(data.join("matches"))
+            .unwrap()
+            .flatten()
+            .flat_map(|month| std::fs::read_dir(month.path()).unwrap().flatten().map(|entry| entry.path()))
+            .filter(|path| path.to_string_lossy().ends_with(".receipt.json"))
+            .collect();
+        let signed: netrunner_client::identity::Signed = serde_json::from_str(&std::fs::read_to_string(&receipts[0]).unwrap()).unwrap();
+        let receipt: netrunner_server::protocol::statements::Receipt = serde_json::from_str(&signed.payload).unwrap();
+        for seat in [&receipt.corp, &receipt.runner] {
+            let commitment = seat.commitment.as_ref().unwrap_or_else(|| panic!("{} did not sign their seat", seat.name));
+            let said: netrunner_server::protocol::statements::SeatStatement = serde_json::from_str(&commitment.payload).unwrap();
+            assert_eq!(said.table.map(|table| table.seed_commitment), Some(revealed.seeds[0].commitment.clone()));
+        }
         let text = drawn(&organizer);
         for wanted in ["· 3 pts ·", "· 0 pts ·", " won", "[ Begin round 2 ]", "[ End the tournament"] {
             assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");

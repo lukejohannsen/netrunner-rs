@@ -249,7 +249,9 @@ pub enum Outcome {
     /// The open tournament's format: the screen reads the decks legal in
     /// it and hands them to [`OnlineForm::set_tournament_decks`].
     TournamentDecks(NsgFormat),
-    Sit { tournament: String },
+    /// With the table's seed commitment as the page read it (Phase 4 §7
+    /// stage 6c).
+    Sit { tournament: String, seed_commitment: String },
     BeginRound { tournament: String },
     FinishTournament { tournament: String },
     RecordResult { tournament: String, table: usize, outcome: TableOutcome },
@@ -826,8 +828,16 @@ impl OnlineForm {
             },
             Intent::Sit => match &self.server {
                 Some(server) if self.page == Page::Tournament && server.may_sit() && server.seeking.is_none() => {
-                    self.notice = None;
-                    Outcome::Sit { tournament: server.tournament.clone().expect("a table in the open tournament") }
+                    match server.open_tournament().and_then(|info| tournament::my_seed_commitment(info, server.key.as_ref())) {
+                        Some(seed_commitment) => {
+                            self.notice = None;
+                            Outcome::Sit { tournament: server.tournament.clone().expect("a table in the open tournament"), seed_commitment }
+                        }
+                        None => {
+                            self.notice = Some("This table has no seed commitment yet: refresh the tournament".to_string());
+                            Outcome::Redraw
+                        }
+                    }
                 }
                 _ => Outcome::Nothing,
             },
@@ -1351,7 +1361,7 @@ mod tests {
     }
 
     fn tournament_info(id: &str, organizer: PublicKey, entrants: Vec<netrunner_server::protocol::Entrant>) -> TournamentInfo {
-        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None }
+        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() }
     }
 
     fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
@@ -1471,6 +1481,7 @@ mod tests {
         playing.seeding = vec![bo, ann, cy];
         playing.rounds = vec![Round { tables: vec![Table { corp: ann, runner: bo, result: None }], bye: Some(cy) }];
         playing.state = TournamentState::Playing { round: 1 };
+        playing.seeds = vec![netrunner_server::protocol::statements::TableSeed { round: 0, table: 0, commitment: "commitment".into(), reveal: None }];
 
         // bo, paired: the seat, and nothing of the organizer's.
         let mut form = attached();
@@ -1481,7 +1492,7 @@ mod tests {
         let server = form.server.as_ref().unwrap();
         assert!(server.may_sit() && !server.may_register() && server.next_round().is_none() && !server.may_finish() && server.tables_to_record().is_empty());
         assert_eq!(form.apply(Intent::BeginRound), Outcome::Nothing);
-        assert_eq!(form.apply(Intent::Sit), Outcome::Sit { tournament: "K7M2QX".into() });
+        assert_eq!(form.apply(Intent::Sit), Outcome::Sit { tournament: "K7M2QX".into(), seed_commitment: "commitment".into() });
         form.apply(Intent::Queued(1));
         assert_eq!(form.apply(Intent::Sit), Outcome::Nothing, "seated already");
         assert_eq!(form.apply(Intent::CancelSeek), Outcome::CancelSeek);

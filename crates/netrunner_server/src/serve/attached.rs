@@ -230,11 +230,11 @@ impl Attached {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
             },
-            ClientMessage::Sit { tournament } => {
+            ClientMessage::Sit { tournament, seed_commitment, nonce } => {
                 if playing.is_some() {
                     return self.send(ServerMessage::SeekRefused { reason: "already looking for a game, or playing one: cancel first".into() });
                 }
-                match self.sit(&tournament) {
+                match self.sit(&tournament, &seed_commitment, nonce) {
                     Ok(seat) => *playing = Some(seat),
                     Err(reason) => self.send(ServerMessage::SeekRefused { reason }),
                 }
@@ -442,7 +442,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id, tournament);
         self.shared.save_tournaments(&registry);
@@ -606,6 +606,14 @@ impl Attached {
             TournamentState::Finished => return Err("the tournament is over".into()),
         }
         let next = swiss::pair(&tournament.seeding, &tournament.rounds, &tournament.dropped);
+        // Each table's secret, made now and committed to in the info the
+        // pairing is published with: before any player has a nonce to
+        // bring (Phase 4 §7 stage 6c).
+        let round = tournament.rounds.len();
+        for table in 0..next.tables.len() {
+            let secret = netrunner_identity::sha256_hex(&rand::random::<[u8; 32]>());
+            tournament.seeds.push(TableSecret { round, table, secret, nonces: None });
+        }
         tournament.rounds.push(next);
         tournament.draw_offers.clear();
         tournament.clock = Some(RoundClock { began_at: unix_now(), seconds: self.shared.options.round_length.as_secs() });
@@ -726,12 +734,18 @@ impl Attached {
     /// This key takes its seat at this round's table. The first to sit
     /// waits, as a seek does; the second starts the game, dealt from the
     /// two registered lists on the sides the pairing gave — nothing is
-    /// brought, because everything was locked at registration.
-    fn sit(&mut self, id: &str) -> Result<Playing, String> {
+    /// brought, because everything was locked at registration — and
+    /// seeded from the table's secret and both seats' nonces (Phase 4 §7
+    /// stage 6c). The seat names the commitment it read, so a player
+    /// never sits at a table whose secret is not the one published.
+    fn sit(&mut self, id: &str, seed_commitment: &str, nonce: String) -> Result<Playing, String> {
         let key = self.key.ok_or("a seat is a key's: prove one before attaching")?;
+        if !statements::nonce_is_valid(&nonce) {
+            return Err(format!("a seat's nonce is 1 to {} letters and digits", statements::MAX_NONCE));
+        }
         let id = id.trim().to_uppercase();
         let mut registry = self.shared.lock();
-        let (round, table, format, mine, theirs, round_end) = {
+        let (round, table, format, mine, theirs, round_end, secret, salts) = {
             let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
             let (round, current) = tournament.current().ok_or("no round is being played")?;
             let (table, slot) = current.table_of(&key).ok_or("you have no table this round")?;
@@ -753,7 +767,16 @@ impl Attached {
                 TableRole::Runner => TableRole::Corp,
             };
             let theirs = deck_for(tournament.entry(&opponent).ok_or("your opponent is not entered")?, other_role);
-            (round, table, tournament.format, (role, mine), theirs, tournament.round_end())
+            let secret = tournament.seeds.iter().find(|seed| seed.round == round && seed.table == table).ok_or("this table has no seed")?;
+            if statements::seed_commitment(&secret.secret) != seed_commitment {
+                return Err("that is not this table's seed commitment: read the tournament again".into());
+            }
+            let salt_of = |key: &PublicKey| tournament.entry(key).map(|entry| entry.salt.clone()).unwrap_or_default();
+            let salts = match role {
+                TableRole::Corp => [salt_of(&key), salt_of(&opponent)],
+                TableRole::Runner => [salt_of(&opponent), salt_of(&key)],
+            };
+            (round, table, tournament.format, (role, mine), theirs, tournament.round_end(), secret.secret.clone(), salts)
         };
         let table_ref = TableRef { tournament: id.clone(), round, table };
         let (out_tx, out) = mpsc::unbounded_channel::<ServerMessage>();
@@ -772,7 +795,7 @@ impl Attached {
                 // sat again: the newer seat replaces the older, which is
                 // told so.
                 refuse(&seated.tx, "you sat at this table again from another connection");
-                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
+                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, nonce, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
                 let _ = out_tx.send(ServerMessage::Queued { session_token: token, position: 1 });
                 Ok(Playing { token, out, into, lobby })
             }
@@ -781,7 +804,14 @@ impl Attached {
                     registry.tables.insert(table_ref, TableState::Waiting(seated));
                     return Err(AT_CAP.into());
                 }
-                let (match_id, seed) = registry.allocate(self.shared.base_seed);
+                // The daemon's own seed is not this game's: the table's is
+                // the three parties' (`statements::table_seed`).
+                let (match_id, _) = registry.allocate(self.shared.base_seed);
+                let nonces = match role {
+                    TableRole::Corp => [nonce, seated.nonce.clone()],
+                    TableRole::Runner => [seated.nonce.clone(), nonce],
+                };
+                let seed = statements::table_seed(&secret, &nonces[0], &nonces[1]);
                 let me = SeatedPlayer { name: self.player_name.clone(), key: Some(key), token, slot, deck: Some(deck), lobby: Some(lobby.clone()), bot: None };
                 let them = SeatedPlayer { name: seated.player_name, key: Some(seated.key), token: seated.token, slot: seated.slot, deck: Some(theirs), lobby: Some(seated.lobby), bot: None };
                 let (corp, runner) = match role {
@@ -790,14 +820,20 @@ impl Attached {
                 };
                 // A game under way is the table's answer: an offer made
                 // before it lapses, as it would at a table in person.
+                // The nonces are kept with the secret, for the reveal.
                 if let Some(tournament) = registry.tournaments.0.get_mut(&id) {
                     tournament.draw_offers.retain(|offer| offer.table != table);
+                    if let Some(kept) = tournament.seeds.iter_mut().find(|seed| seed.round == round && seed.table == table) {
+                        kept.nonces = Some(nonces.clone());
+                    }
                 }
-                start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(table_ref), round_end);
+                self.shared.save_tournaments(&registry);
+                let game = TableGame { table: table_ref, round_end, secret, nonces, salts };
+                start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(game));
                 Ok(Playing { token, out, into, lobby })
             }
             None => {
-                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
+                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, nonce, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
                 let _ = out_tx.send(ServerMessage::Queued { session_token: token, position: 1 });
                 Ok(Playing { token, out, into, lobby })
             }

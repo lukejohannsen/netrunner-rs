@@ -80,7 +80,7 @@ use netrunner_rating::{Outcome, RatingBook, Track};
 use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
-use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
+use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
@@ -484,6 +484,35 @@ struct Tournament {
     draw_offers: Vec<DrawOffer>,
     /// The current round's clock, set when it begins.
     clock: Option<RoundClock>,
+    /// Every table's seed so far (Phase 4 §7 stage 6c): the server's
+    /// secret, made as the round is paired, and the nonces its game was
+    /// seeded with once it starts. Only the secret's hash leaves the
+    /// server until the table has a result (`info`).
+    seeds: Vec<TableSecret>,
+}
+
+/// One table's half of the seed the server holds: its secret, never sent
+/// until the table has a result, and the two nonces the players sat with
+/// (Corp, Runner), once both have and the game has started.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TableSecret {
+    round: usize,
+    table: usize,
+    secret: String,
+    nonces: Option<[String; 2]>,
+}
+
+impl TableSecret {
+    /// The table's seed as the wire carries it: the commitment always,
+    /// the reveal once `revealed` — the table has a result.
+    fn published(&self, revealed: bool) -> TableSeed {
+        let reveal = revealed.then(|| SeedReveal {
+            secret: self.secret.clone(),
+            corp_nonce: self.nonces.as_ref().map(|[corp, _]| corp.clone()),
+            runner_nonce: self.nonces.as_ref().map(|[_, runner]| runner.clone()),
+        });
+        TableSeed { round: self.round, table: self.table, commitment: statements::seed_commitment(&self.secret), reveal }
+    }
 }
 
 /// One entrant's registration: the decks the server holds for them, the
@@ -539,6 +568,14 @@ impl Tournament {
             dropped: self.dropped.clone(),
             draw_offers: self.draw_offers.clone(),
             clock: self.clock,
+            seeds: self
+                .seeds
+                .iter()
+                .map(|seed| {
+                    let revealed = self.rounds.get(seed.round).and_then(|round| round.tables.get(seed.table)).is_some_and(|table| table.result.is_some());
+                    seed.published(revealed)
+                })
+                .collect(),
             entrants: self
                 .entrants
                 .iter()
@@ -566,6 +603,20 @@ struct TableRef {
     table: usize,
 }
 
+/// What a tournament table's game brings to `start_match` beyond any
+/// game's: the table, when its round's time is called, and the seed's
+/// terms (Phase 4 §7 stage 6c) — the commitment, the server's secret and
+/// each seat's nonce and registration salt (Corp, Runner). The salt is
+/// the one the seat's registration was hashed under, so the deck hash
+/// its seat statement names is the hash it signed at registration.
+struct TableGame {
+    table: TableRef,
+    round_end: Option<tokio::time::Instant>,
+    secret: String,
+    nonces: [String; 2],
+    salts: [String; 2],
+}
+
 /// Where a table stands between the pairing and its result: one player
 /// seated and waiting for the other, or the game under way.
 enum TableState {
@@ -575,12 +626,14 @@ enum TableState {
 
 /// A player who sat at their table first (`ClientMessage::Sit`), held
 /// until the opponent sits: the name `MatchList` will show, their key,
-/// the token `Queued` carried, the lobby they go back to, and the
-/// channels the match will play them through. Their deck is not here:
-/// it is the one they registered, read when the game starts.
+/// the token `Queued` carried, the lobby they go back to, the channels
+/// the match will play them through, and their half of the seed. Their
+/// deck is not here: it is the one they registered, read when the game
+/// starts.
 struct Seated {
     token: Uuid,
     key: PublicKey,
+    nonce: String,
     player_name: String,
     lobby: String,
     tx: mpsc::UnboundedSender<ServerMessage>,
@@ -1544,7 +1597,7 @@ fn seat_vs_bot(
         Side::Corp => (human, bot),
         Side::Runner => (bot, human),
     };
-    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None, None);
+    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None);
 }
 
 /// `ServeBotKind::None`: pair with the first compatible waiter in the same
@@ -1573,7 +1626,7 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let rated_lobby = registry.lobby_info(&waiter.lobby, &shared.options).is_some_and(|lobby| lobby.rated);
     let (match_id, seed) = registry.allocate(shared.base_seed);
     let (corp, runner) = assign_sides(waiter, newcomer, seed);
-    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None, None);
+    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None);
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -1587,7 +1640,8 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
 /// players met in rates its games (`LobbyInfo::rated`); a bot's seat
 /// never is.
 #[allow(clippy::too_many_arguments)]
-fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool, table: Option<TableRef>, round_end: Option<tokio::time::Instant>) {
+fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool, table: Option<TableGame>) {
+    let round_end = table.as_ref().and_then(|game| game.round_end);
     let mut dealt = shared.decks_for(seed, format);
     // A brought deck replaces the deal for its side, pinned or rotating:
     // the player chose it, and the operator's pin is the default for a
@@ -1639,7 +1693,12 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     for side in [Side::Corp, Side::Runner] {
         let index = seat_index(side);
         let Some(key) = keys[index] else { continue };
-        let salt = netrunner_identity::sha256_hex(&rand::random::<[u8; 16]>())[..32].to_string();
+        // A table seat's deck is the one it registered, under the salt it
+        // registered with: the hash it signs now is the hash it signed then.
+        let salt = match &table {
+            Some(game) => game.salts[index].clone(),
+            None => netrunner_identity::sha256_hex(&rand::random::<[u8; 16]>())[..32].to_string(),
+        };
         let statement = SeatStatement {
             match_id,
             server_key: shared.identity.public_key(),
@@ -1648,6 +1707,13 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             opponent_key: keys[1 - index],
             deck_hash: statements::deck_hash(&salt, decks[index]),
             started_at,
+            table: table.as_ref().map(|game| TableSeat {
+                tournament: game.table.tournament.clone(),
+                round: game.table.round,
+                table: game.table.table,
+                seed_commitment: statements::seed_commitment(&game.secret),
+                nonce: game.nonces[index].clone(),
+            }),
         };
         let payload = serde_json::to_string(&statement).expect("a seat statement serializes");
         sign_requests.push((side, ServerMessage::SignSeat { statement: payload.clone(), salt }));
@@ -1677,8 +1743,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     );
     // A tournament table's game: the table is playing until it ends, so
     // the organizer cannot record over it and nobody sits at it again.
-    if let Some(table) = &table {
-        registry.tables.insert(table.clone(), TableState::Playing(match_id));
+    if let Some(game) = &table {
+        registry.tables.insert(game.table.clone(), TableState::Playing(match_id));
     }
 
     let mut tokens = Vec::with_capacity(seats.len());
@@ -1737,6 +1803,12 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             started_at,
             ended_at,
             action_chain: None,
+            table: table.as_ref().map(|game| TableSeed {
+                round: game.table.round,
+                table: game.table.table,
+                commitment: statements::seed_commitment(&game.secret),
+                reveal: Some(SeedReveal { secret: game.secret.clone(), corp_nonce: Some(game.nonces[0].clone()), runner_nonce: Some(game.nonces[1].clone()) }),
+            }),
         };
         let signed = shared.identity.sign(RECEIPT_TAG, serde_json::to_string(&receipt).expect("a receipt serializes"));
         shared.keep_record(match_id, &record, &signed, ended_at);
@@ -1744,7 +1816,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         // nobody won or time called with the points even is a tie
         // (1.1.4, 1.1.5.3). Its standings are the tournament's own; the
         // game is not on the ladder.
-        if let Some(table) = table {
+        if let Some(TableGame { table, .. }) = table {
             let result = match outcome {
                 Some((Some(Side::Corp), _)) => TableOutcome::CorpWon,
                 Some((Some(Side::Runner), _)) => TableOutcome::RunnerWon,

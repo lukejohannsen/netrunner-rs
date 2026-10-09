@@ -74,6 +74,18 @@ use netrunner_core::rules::{Side, Viewer};
 use netrunner_identity::PublicKey;
 use netrunner_core::decks::DeckFile;
 use netrunner_protocol::statements::{deck_hash, RegistrationStatement, SeatStatement, REGISTRATION_TAG, SEAT_TAG};
+
+/// What this connection sat at a tournament table with (Phase 4 §7 stage
+/// 6c): the table's seed commitment as the player read it, the nonce the
+/// driver made, and the registration the driver kept for the tournament —
+/// what a table seat's statement must name before it is signed.
+#[derive(Debug, Clone)]
+struct TableTerms {
+    tournament: String,
+    seed_commitment: String,
+    nonce: String,
+    registration: Option<RegistrationStatement>,
+}
 use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, ServerMessage, TournamentInfo};
 use uuid::Uuid;
 
@@ -294,6 +306,9 @@ pub struct Connection {
     /// before it is signed.
     server_key: Option<PublicKey>,
     seated_at: Option<(Uuid, Side)>,
+    /// The terms of a seat taken at a tournament table, from `sit` until
+    /// the game ends or the seat is refused or stood up from.
+    table: Option<TableTerms>,
     retry: Option<Retry>,
     dial_due: bool,
     outbox: VecDeque<ClientMessage>,
@@ -317,6 +332,7 @@ impl Connection {
             pinned: None,
             server_key: None,
             seated_at: None,
+            table: None,
             retry: None,
             dial_due: true,
             outbox: VecDeque::new(),
@@ -465,11 +481,13 @@ impl Connection {
             }
             (Phase::Attached | Phase::Queued, ServerMessage::SeekRefused { reason }) => {
                 self.seeking = None;
+                self.table = None;
                 self.phase = Phase::Attached;
                 self.events.push_back(Event::SeekRefused(reason));
             }
             (Phase::Queued, ServerMessage::SeekCancelled) => {
                 self.seeking = None;
+                self.table = None;
                 self.phase = Phase::Attached;
                 self.events.push_back(Event::SeekCancelled);
             }
@@ -594,9 +612,9 @@ impl Connection {
             ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::TakeBack | ClientMessage::SeatSigned { .. } => self.phase == Phase::Joined,
             ClientMessage::JoinLobby { .. } | ClientMessage::CreateLobby { .. } | ClientMessage::LeaveLobby | ClientMessage::Seek { .. } => self.phase == Phase::Attached,
             ClientMessage::CancelSeek => self.phase == Phase::Queued,
-            // A seat at one's table is a seek: taken while attached and
-            // not looking, stood up from with `CancelSeek`.
-            ClientMessage::Sit { .. } => self.phase == Phase::Attached,
+            // A seat at one's table goes through `sit`, which keeps the
+            // table's terms for the seat statement to be checked against.
+            ClientMessage::Sit { .. } => false,
             ClientMessage::ListLobbies
             | ClientMessage::ListMatches
             | ClientMessage::MyStanding
@@ -652,6 +670,24 @@ impl Connection {
         Some(statement)
     }
 
+    /// Take the seat at this round's table in `tournament` (Phase 4 §7
+    /// stage 6c): a seek, taken while attached and not looking and stood
+    /// up from with `CancelSeek`, which brings `nonce` — the player's half
+    /// of the game's seed, made by the driver, since this machine has no
+    /// randomness — and names `seed_commitment`, the table's as the player
+    /// read it. `registration` is the statement the driver kept when it
+    /// registered: the table seat's statement is signed only if its deck
+    /// hash is the one registered for its side, and only if it names this
+    /// commitment and this nonce. Returns whether the seat was asked for.
+    pub fn sit(&mut self, tournament: String, seed_commitment: String, nonce: String, registration: Option<RegistrationStatement>) -> bool {
+        if self.phase != Phase::Attached {
+            return false;
+        }
+        self.table = Some(TableTerms { tournament: tournament.clone(), seed_commitment: seed_commitment.clone(), nonce: nonce.clone(), registration });
+        self.outbox.push_back(ClientMessage::Sit { tournament, seed_commitment, nonce });
+        true
+    }
+
     /// The player has left. The driver closes the transport, which is how a
     /// player waiting in a lobby leaves it rather than being paired after
     /// they have gone.
@@ -663,24 +699,45 @@ impl Connection {
     /// This seat's signature over `statement`, if the statement names what
     /// this connection knows to be true: this player's key, the server
     /// that challenged it, the match and side it was seated in, and the
-    /// deck it brought for that side, hashed with `salt`. A statement
-    /// that names anything else is not signed — the game goes on, and the
-    /// receipt simply lacks this seat's word.
+    /// deck it plays. A seat found by a seek names the deck it brought for
+    /// that side, hashed with `salt`; a tournament table's seat names the
+    /// hash it registered for that side, the commitment it read and the
+    /// nonce it brought (Phase 4 §7 stage 6c). A statement that names
+    /// anything else — or a table where none was sat at, or none where one
+    /// was — is not signed: the game goes on, and the receipt simply
+    /// lacks this seat's word.
     fn sign_seat(&self, statement: &str, salt: &str) -> Option<netrunner_identity::Signature> {
         let credentials = self.credentials()?;
+        let me = credentials.identity.public_key();
         let said: SeatStatement = serde_json::from_str(statement).ok()?;
         let (match_id, side) = self.seated_at?;
-        let deck = match (self.chair.as_ref()?, side) {
-            (Chair::Corp(deck), Side::Corp) | (Chair::Runner(deck), Side::Runner) => deck,
-            (Chair::Random { corp, .. }, Side::Corp) => corp,
-            (Chair::Random { runner, .. }, Side::Runner) => runner,
-            _ => return None,
+        let deck_is_mine = match (&said.table, &self.table) {
+            (None, None) => {
+                let deck = match (self.chair.as_ref()?, side) {
+                    (Chair::Corp(deck), Side::Corp) | (Chair::Runner(deck), Side::Runner) => deck,
+                    (Chair::Random { corp, .. }, Side::Corp) => corp,
+                    (Chair::Random { runner, .. }, Side::Runner) => runner,
+                    _ => return None,
+                };
+                said.deck_hash == deck_hash(salt, &deck.to_deck())
+            }
+            (Some(at), Some(terms)) => {
+                let registration = terms.registration.as_ref()?;
+                let registered = match side {
+                    Side::Corp => &registration.corp_hash,
+                    Side::Runner => &registration.runner_hash,
+                };
+                at.tournament.eq_ignore_ascii_case(&terms.tournament)
+                    && at.seed_commitment == terms.seed_commitment
+                    && at.nonce == terms.nonce
+                    && registration.tournament.eq_ignore_ascii_case(&terms.tournament)
+                    && registration.key == me
+                    && Some(registration.server_key) == self.server_key
+                    && said.deck_hash == *registered
+            }
+            _ => false,
         };
-        let true_to_this_seat = said.key == credentials.identity.public_key()
-            && Some(said.server_key) == self.server_key
-            && said.match_id == match_id
-            && said.side == side
-            && said.deck_hash == deck_hash(salt, &deck.to_deck());
+        let true_to_this_seat = deck_is_mine && said.key == me && Some(said.server_key) == self.server_key && said.match_id == match_id && said.side == side;
         true_to_this_seat.then(|| credentials.identity.sign(SEAT_TAG, statement.to_string()).signature)
     }
 
@@ -754,6 +811,7 @@ impl Connection {
         self.token = None;
         self.seated_at = None;
         self.chair = None;
+        self.table = None;
     }
 
     /// A reconnect has an answer: the link is up again.
@@ -1293,7 +1351,7 @@ mod tests {
         let payload = statement.verify(REGISTRATION_TAG).expect("signed by this key");
         assert_eq!(serde_json::from_str::<RegistrationStatement>(payload).unwrap(), said);
 
-        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![], draw_offers: vec![], clock: None };
+        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![], draw_offers: vec![], clock: None, seeds: vec![] };
         conn.on_message(ServerMessage::Tournament { tournament: info.clone() }, t0);
         conn.on_message(ServerMessage::TournamentRefused { reason: "no such tournament".into() }, t0);
         conn.on_message(ServerMessage::Tournaments { tournaments: vec![info.clone()] }, t0);
@@ -1420,6 +1478,7 @@ mod tests {
             opponent_key: None,
             deck_hash: deck_hash("salt", deck),
             started_at: 0,
+            table: None,
         })
         .unwrap()
     }
@@ -1449,5 +1508,60 @@ mod tests {
             conn.on_message(ServerMessage::SignSeat { statement: said, salt: salt.into() }, t0);
             assert!(sent(&mut conn).is_empty());
         }
+    }
+
+    /// A tournament table's seat (Phase 4 §7 stage 6c): signed only when
+    /// the statement names the commitment the player read, the nonce it
+    /// brought and the deck hash it registered for its side; a statement
+    /// naming another nonce, another commitment, another deck, or no
+    /// table at all is not.
+    #[test]
+    fn a_table_seat_is_signed_only_for_its_commitment_nonce_and_registered_deck() {
+        use netrunner_protocol::statements::TableSeat;
+        let t0 = Instant::now();
+        let me = Identity::from_secret([1; 32]).public_key();
+        let mut conn = Connection::new(Goal::Attach(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        conn.on_message(challenge(false), t0);
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
+        sent(&mut conn);
+        let registration = RegistrationStatement { tournament: "K7M2QX".into(), server_key: server().public_key(), key: me, corp_hash: "corp-hash".into(), runner_hash: "runner-hash".into() };
+        assert!(!conn.submit(ClientMessage::Sit { tournament: "K7M2QX".into(), seed_commitment: "c".into(), nonce: "n".into() }), "only through sit");
+        assert!(conn.sit("K7M2QX".into(), "commitment".into(), "nonce1".into(), Some(registration)));
+        assert!(matches!(&sent(&mut conn)[..], [ClientMessage::Sit { nonce, seed_commitment, .. }] if nonce == "nonce1" && seed_commitment == "commitment"));
+        conn.on_message(ServerMessage::Queued { session_token: Uuid::new_v4(), position: 1 }, t0);
+        conn.on_message(joined(Uuid::nil()), t0);
+        sent(&mut conn);
+        let side = conn.seated_at.unwrap().1;
+        let said = |deck_hash: &str, nonce: &str, commitment: &str, table: bool| {
+            serde_json::to_string(&SeatStatement {
+                match_id: Uuid::nil(),
+                server_key: server().public_key(),
+                side,
+                key: me,
+                opponent_key: None,
+                deck_hash: deck_hash.into(),
+                started_at: 0,
+                table: table.then(|| TableSeat { tournament: "K7M2QX".into(), round: 0, table: 0, seed_commitment: commitment.into(), nonce: nonce.into() }),
+            })
+            .unwrap()
+        };
+        let mine = if side == Side::Corp { "corp-hash" } else { "runner-hash" };
+        let theirs = if side == Side::Corp { "runner-hash" } else { "corp-hash" };
+        for (statement, why) in [
+            (said(mine, "nonce2", "commitment", true), "another nonce"),
+            (said(mine, "nonce1", "other", true), "another commitment"),
+            (said(theirs, "nonce1", "commitment", true), "the other side's deck"),
+            (said(mine, "nonce1", "commitment", false), "no table"),
+        ] {
+            conn.on_message(ServerMessage::SignSeat { statement, salt: "s".into() }, t0);
+            assert!(sent(&mut conn).is_empty(), "signed with {why}");
+        }
+        let true_one = said(mine, "nonce1", "commitment", true);
+        conn.on_message(ServerMessage::SignSeat { statement: true_one.clone(), salt: "s".into() }, t0);
+        let [ClientMessage::SeatSigned { signature }] = sent(&mut conn)[..] else { panic!("the true statement is signed") };
+        assert_eq!(me.verify(SEAT_TAG, true_one.as_bytes(), &signature), Ok(()));
     }
 }

@@ -131,6 +131,38 @@ pub fn round_line(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<Stri
     })
 }
 
+/// The seed commitment of this key's table this round, as the server
+/// published it when the round was paired: what a seat is taken with
+/// (`remote::Attached::sit`, Phase 4 §7 stage 6c). `None` for the bye,
+/// a key with no table, and outside a round.
+pub fn my_seed_commitment(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<String> {
+    let TournamentState::Playing { round } = info.state else { return None };
+    let (table, _, _) = my_table(info, key)?;
+    let round = round as usize - 1;
+    info.seeds.iter().find(|seed| seed.round == round && seed.table == table).map(|seed| seed.commitment.clone())
+}
+
+/// What the revealed seeds say, for the page under the standings: how
+/// many games' shuffles can be checked, and whether every secret the
+/// server revealed is the one it committed to when it paired the round —
+/// or which tables' are not. `None` until something is revealed.
+pub fn seeds_line(info: &TournamentInfo) -> Option<String> {
+    let revealed: Vec<_> = info.seeds.iter().filter(|seed| seed.reveal.is_some()).collect();
+    if revealed.is_empty() {
+        return None;
+    }
+    let broken: Vec<String> = revealed.iter().filter(|seed| seed.check().is_err()).map(|seed| format!("round {} table {}", seed.round + 1, seed.table + 1)).collect();
+    if !broken.is_empty() {
+        return Some(format!("Shuffles: the secret the server revealed is not the one it committed to at {}.", broken.join(", ")));
+    }
+    let played = revealed.iter().filter(|seed| matches!(seed.check(), Ok(Some(_)))).count();
+    Some(match played {
+        0 => "Shuffles: every secret the server revealed is the one it committed to; no game has been dealt yet.".to_string(),
+        1 => "Shuffles: every secret the server revealed is the one it committed to, and 1 game's seed can be checked.".to_string(),
+        n => format!("Shuffles: every secret the server revealed is the one it committed to, and {n} games' seeds can be checked."),
+    })
+}
+
 /// The round's clock at `now` (seconds since the Unix epoch, the
 /// client's own): what is left, to the minute, or that time is called
 /// and what that means (Organized Play Policies 1.1.5.3). `None` outside
@@ -220,7 +252,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -296,6 +328,18 @@ mod tests {
         info.rounds.pop();
         info.dropped.clear();
         info.state = TournamentState::Playing { round: 1 };
+        // The seeds: ann's table's commitment is what ann sits with; the
+        // bye has none; a reveal is checked against its commitment.
+        use netrunner_protocol::statements::{seed_commitment, SeedReveal, TableSeed};
+        info.seeds = vec![TableSeed { round: 0, table: 0, commitment: seed_commitment("s"), reveal: None }];
+        assert_eq!(my_seed_commitment(&info, Some(&ann)), Some(seed_commitment("s")));
+        assert_eq!(my_seed_commitment(&info, Some(&cy)), None, "the bye has no table");
+        assert_eq!(seeds_line(&info), None, "nothing revealed");
+        info.seeds[0].reveal = Some(SeedReveal { secret: "s".into(), corp_nonce: Some("a".into()), runner_nonce: Some("b".into()) });
+        assert_eq!(seeds_line(&info).as_deref(), Some("Shuffles: every secret the server revealed is the one it committed to, and 1 game's seed can be checked."));
+        info.seeds[0].reveal = Some(SeedReveal { secret: "t".into(), corp_nonce: None, runner_nonce: None });
+        assert_eq!(seeds_line(&info).as_deref(), Some("Shuffles: the secret the server revealed is not the one it committed to at round 1 table 1."));
+        info.seeds.clear();
         // The clock, read by the client's own time.
         assert_eq!(clock_line(&info, 0), None, "no clock, no line");
         info.clock = Some(netrunner_protocol::RoundClock { began_at: 1_000, seconds: 40 * 60 });
