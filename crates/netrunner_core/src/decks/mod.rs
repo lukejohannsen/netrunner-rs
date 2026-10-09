@@ -551,6 +551,9 @@ mod tests {
             // and Rielle "Kit" Peddler's, on Safety Net's.
             ("free_spirit", &neither),
             ("transhuman", &neither),
+            // Tranche 8 Stage 11n: Reina Roja's deck, on Free Spirit's
+            // frame, so it holds Core Set cards as that one does.
+            ("rez_tax", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

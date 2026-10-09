@@ -29738,4 +29738,29 @@ mod reprints {
         assert!(viruses.runner.grip.contains(&id("imp")) && viruses.runner.grip.contains(&id("datasucker")));
         assert!(viruses.runner.heap.contains(&id("sure_gamble")));
     }
+
+    // ---- Stage 11n: Reina Roja ----
+
+    #[test]
+    fn reina_roja_taxes_the_first_ice_rez_each_turn_only() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("reina_roja_freedom_fighter"));
+        let at = |card: &str, server: ServerId| crate::rules::InstalledCard { rezzed: false, server, install_id: fixture_install_id(&format!("{card}{server:?}")), ..ice_at_hq(card) };
+        state.corp.installed = vec![at("ice_wall", ServerId::Hq), at("ice_wall", ServerId::RnD)];
+        let rez_on = |state: &GameState, server: ServerId| {
+            let (state, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server }).expect("run");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+            let ice = state.corp.installed.iter().find(|card| card.server == server).expect("the ice").install_id;
+            apply_action(&state, &registry, PlayerAction::RezIce { ice }).expect("rez").0
+        };
+        let first = rez_on(&state, ServerId::Hq);
+        assert_eq!(first.corp.resources.credits, Credits(10 - 2), "1 printed + 1 for the turn's first");
+        // The run is not what is being priced; set it aside and rez again.
+        let mut again = first.clone();
+        again.active_run = None;
+        again.paid_ability_window = None;
+        let second = rez_on(&again, ServerId::RnD);
+        assert_eq!(second.corp.resources.credits, Credits(10 - 2 - 1), "the second rez costs what it prints");
+    }
 }

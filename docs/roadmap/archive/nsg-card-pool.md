@@ -10012,3 +10012,33 @@ Update 2021, with no new `Effect`.
   Networking's test passes unchanged.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 787 card files.
+
+#### Stage 11n — the first ice rez each turn costs more (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from System Update 2021, with no
+new `Effect`, and a Sweep deck.
+- **Card:** Reina Roja: Freedom Fighter, which leaves System Update
+  2021's list of unbuilt cards (3 remain).
+
+- **"The first piece of ice the Corp rezzes each turn costs 1[credit]
+  more to rez."** Xanadu's `RezCost` on `Scope::Ice`, with
+  `first_each_turn`. A rez is priced before it happens, so the question
+  is the one an install discount asks: has the turn counted none yet
+  (`turn_log::Occurrences::ice_rezzes`, the `OnRez` moments of ice).
+  `continuous::first_this_turn` and `CardDefinition::validate` both take
+  the new scope, so nothing is spent and an identity that missed the
+  turn's first rez does not tax the second.
+- **Rez Tax**, a Sweep deck on Free Spirit's frame with its identity
+  swapped, so the sweeps play Reina. Pinned to neither format, as Free
+  Spirit is, since it holds Core Set cards.
+- **The fog gate learned a watched ice swap.** Adding Rez Tax moved
+  the sweep's schedule, and at seed 117 the view sweep's
+  `no_client_view_or_log_entry_ever_names_a_card_it_conceals` met
+  Tatu-Bola swapped into HQ: the masking names a half of an
+  `IceSwapped` only when the viewer has seen it rezzed, and they watched
+  it leave the table, as with a faceup card added back to a hand. The
+  gate was missing that rule; the masking was right.
+- **Tests.** Reina taxing the turn's first Ice Wall rez by 1[credit] and
+  not the second.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 788 card files.

@@ -441,6 +441,18 @@ impl Occurrences {
         Occurrences::meant_by(Trigger::OnPlay, Some(&EventFilter::Card(filter.clone())), controller)
     }
 
+    /// The rezzes a `Scope::Ice(filter)` rez cost is about: every
+    /// `OnRez` moment of a piece of ice the filter admits — Reina Roja's
+    /// "the first piece of ice the Corp rezzes each turn". Only the Corp
+    /// rezzes, so the controller names nobody.
+    pub(crate) fn ice_rezzes(filter: &CardFilter, controller: Side) -> Result<Occurrences, String> {
+        let ice = match filter {
+            CardFilter::Any => CardFilter::Ice,
+            filter => CardFilter::All(vec![CardFilter::Ice, filter.clone()]),
+        };
+        Occurrences::meant_by(Trigger::OnRez, Some(&EventFilter::Card(ice)), controller)
+    }
+
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
         // A conjunction counts what every part admits: the columns all of
         // them name, of the one player any of them names.

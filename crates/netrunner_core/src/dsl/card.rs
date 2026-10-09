@@ -1605,11 +1605,12 @@ impl CardDefinition {
             };
             let occurrences = match (&effect.applies_to, counted) {
                 (Scope::Installing(filter), _) => crate::rules::turn_log::Occurrences::installs(filter, self.side),
+                (Scope::Ice(filter), _) if matches!(effect.kind, ContinuousKind::RezCost(_)) => crate::rules::turn_log::Occurrences::ice_rezzes(filter, self.side),
                 (Scope::Playing(filter), _) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
                 (Scope::Player(_), Some(trigger)) => crate::rules::turn_log::Occurrences::meant_by(trigger, None, self.side),
                 _ => {
                     return Err(self.first_time_misfit(
-                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
+                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`), a rez of ice (`Ice` with `RezCost`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
                     ));
                 }
             };
