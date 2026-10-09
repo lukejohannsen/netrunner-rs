@@ -762,6 +762,15 @@ pub struct RunState {
     /// nothing (CR 6.5.9a). A run's own count, as `encounters` is.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub ice_passed: u32,
+    /// Which pieces of ice the Runner has passed during this run, by
+    /// handle, each once — kept into `CompletedRun::passed` for En
+    /// Passant's "1 unrezzed piece of ice you passed during your last run"
+    /// (`CardFilter::PassedDuringLastRun`). A list beside `ice_passed`, not
+    /// in place of it: Into the Depths counts each *time* ice was passed,
+    /// and a forced encounter can bring the run past one piece twice. The
+    /// engine's, as `last_encountered` is: no client draws a past pass.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passed: Vec<crate::rules::state::InstallId>,
     /// The piece of ice encountered last this run, by its handle — set as
     /// each encounter begins and kept into `CompletedRun::last_encountered`
     /// for Always Have a Backup Plan's "the last piece of ice you
@@ -913,6 +922,7 @@ impl Default for RunState {
             breached: None,
             encounters: 0,
             ice_passed: 0,
+            passed: Vec::new(),
             last_encountered: None,
             on_success_card: None,
             on_success_install: None,

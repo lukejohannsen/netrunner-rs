@@ -887,6 +887,8 @@ fn determinize_run(
         // The engine's: the view's run does not carry it (`RunState::
         // last_encountered`).
         last_encountered: None,
+        // The engine's, as `last_encountered` is (`RunState::passed`).
+        passed: Vec::new(),
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.

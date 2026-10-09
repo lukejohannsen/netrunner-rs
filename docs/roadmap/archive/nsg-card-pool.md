@@ -10244,3 +10244,29 @@ new `Effect`, and a Sweep deck.
   finds a virus in the stack.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 794 card files.
+
+#### Stage 11u — the ice the last run passed (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from System Update 2021, with no
+new `Effect`.
+- **Card:** En Passant (System Update 2021 has 80 of 82 built; Steve
+  Cambridge and Ayla "Bios" Rahim remain).
+
+- **"Play only if you made a successful run this turn."** A
+  `play_requirement` on the turn log, `TimesThisTurn(OnSuccessfulRun)`.
+- **"Trash 1 unrezzed piece of ice you passed during your last run."**
+  The run keeps which ice it passed, by handle, each once
+  (`RunState::passed`, set where `GameEvent::IcePassed` is announced), and
+  the last run keeps it (`CompletedRun::passed`). A new instance-level
+  `CardFilter::PassedDuringLastRun` reads it, beside `UnrezzedIce`, so a
+  second copy of the same ice the run never reached is not offered. A
+  list beside the count `ice_passed`, not in its place: Into the Depths
+  counts each time ice was passed. The engine's, as `last_encountered`
+  is: the view carries no past run.
+- **Free Spirit**, a Sweep deck, takes two for its two Running Hot, an
+  event for an event; Rez Tax and Burn Rate keep Running Hot.
+- **Tests.** Refused before a successful run; after a run on HQ past an
+  unrezzed Ice Wall, the Ice Wall is offered and trashed, and the
+  unrezzed Enigma on R&D is not offered.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 795 card files.

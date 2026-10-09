@@ -23636,6 +23636,42 @@ mod uprising {
     }
 
     #[test]
+    fn en_passant_after_a_successful_run_trashes_unrezzed_ice_that_run_passed_and_no_other() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut elsewhere = crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("enigma", 0) };
+        elsewhere.server = ServerId::RnD;
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall", 0) }, elsewhere];
+        state.corp.hq.clear();
+        state.runner.grip = vec![id("en_passant")];
+        let refused = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("en_passant") });
+        assert!(refused.is_err(), "play only if you made a successful run this turn");
+
+        let (mut running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..40 {
+            if running.active_run.is_none() {
+                break;
+            }
+            let next = crate::rules::legal_actions_for(&running, &registry, Side::Runner)
+                .into_iter()
+                .find(|action| !matches!(action, PlayerAction::JackOut))
+                .or_else(|| running.paid_ability_window.as_ref().map(|window| PlayerAction::PassPriority { side: window.active_priority }))
+                .expect("a way on");
+            running = apply_action(&running, &registry, next).expect("on").0;
+        }
+        let (ran, _) = pass_until_settled(running, &registry);
+        assert!(ran.last_completed_run.as_ref().is_some_and(|run| run.successful), "a successful run on HQ");
+
+        let (played, _) = apply_action(&ran, &registry, PlayerAction::PlayEvent { card_id: id("en_passant") }).expect("play");
+        let offered = toggles(&played, &registry, Side::Runner);
+        assert_eq!(offered.len(), 1, "the Ice Wall the run passed, not the Enigma it never reached");
+        let trashed = pick(&played, &registry, offered[0]);
+        assert!(trashed.corp.installed.iter().all(|ice| ice.card != id("ice_wall")), "trashed");
+        assert!(trashed.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+        assert!(trashed.corp.installed.iter().any(|ice| ice.card == id("enigma")));
+    }
+
+    #[test]
     fn cordyceps_may_spend_a_counter_once_a_turn_on_a_central_success_to_swap_its_ice_with_another() {
         let registry = registry();
         let mut state = runner_turn();

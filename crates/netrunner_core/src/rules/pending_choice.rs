@@ -443,6 +443,7 @@ fn instance_matches_filter(
         CardFilter::InLastRunServer => {
             corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.server == c.server))
         }
+        CardFilter::PassedDuringLastRun => corp_install.is_some_and(|c| passed_during_last_run(state, c.install_id)),
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
         CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
@@ -540,11 +541,19 @@ pub(crate) fn advanced_this_turn(state: &GameState, scored: &crate::rules::state
 /// (or one gone from both places), and an instance word under `AnyOf` or
 /// `Not` pass, as `EventFilter::Card` always let an instance word pass: the
 /// definition half is the rest of the answer.
+/// Whether the last run passed `install` (`CardFilter::PassedDuringLastRun`).
+fn passed_during_last_run(state: &GameState, install: InstallId) -> bool {
+    state.last_completed_run.as_ref().is_some_and(|run| run.passed.contains(&install))
+}
+
 pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, install: Option<InstallId>) -> bool {
     use crate::dsl::CardFilter;
     let Some(install) = install else { return true };
     if let CardFilter::LastEncounteredLastRun = filter {
         return state.last_completed_run.as_ref().and_then(|run| run.last_encountered) == Some(install);
+    }
+    if let CardFilter::PassedDuringLastRun = filter {
+        return passed_during_last_run(state, install);
     }
     if let CardFilter::BeingEncountered = filter {
         return state

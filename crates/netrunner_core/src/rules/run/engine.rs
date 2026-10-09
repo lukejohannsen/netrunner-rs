@@ -251,7 +251,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, ice_passed: 0, passed: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -424,6 +424,9 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
     let printed_broken_with = if run.phase == RunPhase::EncounterIce { run.this_encounter.printed_broken_with } else { Default::default() };
     events.push(GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking, rezzed_as, printed_broken_with, rezzed_bioroid });
     run.ice_passed += 1;
+    if let Some(ice) = run.ice.get(position).map(|ice| ice.install_id).filter(|ice| !run.passed.contains(ice)) {
+        run.passed.push(ice);
+    }
     enter_movement(run, position + 1);
     events
 }
