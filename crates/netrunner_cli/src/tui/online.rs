@@ -2320,13 +2320,29 @@ mod tests {
         assert!(rows_of(&organizer).contains(&TournamentRow::StandUp));
         assert!(drawn(&organizer).contains("waiting for your opponent"));
         act(&mut entrant, TournamentRow::Sit);
-        let organizer_seat = until_play(&mut organizer).await;
-        let entrant_seat = until_play(&mut entrant).await;
+        let mut organizer_seat = until_play(&mut organizer).await;
+        let mut entrant_seat = until_play(&mut entrant).await;
         let round = info_of(&organizer).unwrap().rounds[0].clone();
         let organizer_key = server_page_of(&organizer).unwrap().key.unwrap();
         let expected = if round.tables[0].corp == organizer_key { Side::Corp } else { Side::Runner };
         assert_eq!(organizer_seat.viewer, Viewer::Player(expected), "the pairing's side");
         assert_eq!(entrant_seat.viewer, Viewer::Player(expected.other()));
+        // Both seats' statements are signed before anyone concedes: the
+        // server asks for them ahead of the first board, and takes a
+        // signature only while the game runs, so a game conceded at once
+        // would keep no seat's word. Each seat waits for its first board —
+        // by then its driver has answered the request — and then makes a
+        // round trip on the same connection, which the server handles in
+        // order: a draw offered mid-game, refused because the game is
+        // under way. Without the wait, the entrant's signature lost that race
+        // once in CI.
+        let id = info_of(&organizer).unwrap().id;
+        for (screen, seat) in [(&mut organizer, &mut organizer_seat), (&mut entrant, &mut entrant_seat)] {
+            while !matches!(tokio::time::timeout(Duration::from_secs(10), seat.rx.recv()).await.expect("a first board in time"), Some(netrunner_server::protocol::ServerMessage::StateUpdate(_))) {}
+            screen.attached.as_ref().expect("attached through the game").offer_draw(id.clone());
+            until(screen, "the mid-game draw refused", |screen| screen.notice.as_deref().is_some_and(|notice| notice.contains("under way"))).await;
+            screen.notice = None;
+        }
 
         // The organizer concedes; both come back to the tournament's page
         // with the result drawn and the next round offered.
