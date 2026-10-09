@@ -99,6 +99,11 @@ pub enum RulesError {
     #[error("card {card:?} cannot be installed onto {host:?}")]
     CannotInstallOnto { card: CardId, host: crate::rules::state::InstallId },
 
+    /// `PlayerAction::InstallHardware` without a `host`, for a card that
+    /// installs only onto another card (`CardDefinition::installs_onto`).
+    #[error("card {0:?} is installed only onto another card")]
+    MustBeInstalledOnto(CardId),
+
     #[error("card {card:?} is already rezzed")]
     AlreadyRezzed { card: CardId },
 

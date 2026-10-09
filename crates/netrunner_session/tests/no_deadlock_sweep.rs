@@ -577,6 +577,16 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::IceSwapped { a_card, b_card, .. } = event {
             visible.extend(a_card.iter().chain(b_card.iter()).map(|c| c.0.as_str()));
         }
+        // …and the credits it gains for the swap name it too, in the same
+        // entry: the Runner passed it rezzed. The masking strikes the
+        // half by card id, so a facedown copy of the same ice elsewhere
+        // blanks it from `IceSwapped` (seed 117, Permafrost against Free
+        // Spirit, first reached on tranche 8 Stage 11p's branch).
+        if let GameEvent::AbilityGainedCredits { card, .. } = event
+            && entry.events.iter().any(|event| matches!(event, GameEvent::IceSwapped { .. }))
+        {
+            visible.insert(card.0.as_str());
+        }
         // A look is masked for everyone but the looker, so one left in
         // this seat's entry is theirs to know (Hiram's top of R&D).
         if let GameEvent::CardsLookedAt { cards, .. } = event {

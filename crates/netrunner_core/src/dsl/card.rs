@@ -616,6 +616,19 @@ pub struct CardDefinition {
     /// didn't work: a Trojan's host was every installed piece of ice.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub host_must_be_rezzed: bool,
+    /// "Install … only on an **icebreaker**" (The Personal Touch): a piece
+    /// of hardware installed onto an installed rig card this filter admits
+    /// (`InstalledRunnerCard::hosted_on_rig_card`), and never into the rig
+    /// on its own. The install restriction is the hosted card's, where
+    /// `ContinuousKind::MayHost` is the host's (Hackerspace), so both are
+    /// asked by `continuous::may_install_onto`. A field beside
+    /// `installs_on_ice` rather than a scope on the layer: it is not
+    /// something the card does while it is active, but where it may go.
+    /// An install by a card's text (Modded) does not offer it: no text in
+    /// the pool installs onto a host the Runner chooses, and it has
+    /// nowhere else to go.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installs_onto: Option<crate::dsl::CardFilter>,
     /// Cards hosted on this card may be played or installed through the
     /// ordinary grip actions — Bling's "you can play or install hosted
     /// cards as if they were in your grip". Seeded onto
@@ -1101,6 +1114,8 @@ pub enum PaysFor {
 pub enum CardValidationError {
     #[error("card {0:?}: \"install only on a rezzed piece of ice\" (`host_must_be_rezzed`) narrows a Trojan's hosts, and this card installs on none")]
     RezzedHostOffATrojan(CardId),
+    #[error("card {0:?}: \"install only on …\" (`installs_onto`) is honoured for hardware alone, and this card is not hardware")]
+    InstallsOntoOffHardware(CardId),
     #[error("card {0:?}: a static condition (`Trigger::WhileTrue`, CR 9.6.7) is its `requirement`, and a first time is a moment's — this one has none, or counts one")]
     StaticConditionWithoutACondition(CardId),
     #[error("card {0:?}: \"not trashed until your next turn begins\" is an operation's (a lockdown's, CR 3.5.1c); `engine::play_operation_card` is what reads it")]
@@ -1212,6 +1227,7 @@ impl Default for CardDefinition {
             memory_cost: None,
             installs_on_ice: false,
             host_must_be_rezzed: false,
+            installs_onto: None,
             hosted_cards_playable_from_grip: false,
             hosts_facedown: false,
             dividends: None,
@@ -1424,6 +1440,9 @@ impl CardDefinition {
         }
         if self.host_must_be_rezzed && !self.installs_on_ice {
             return Err(CardValidationError::RezzedHostOffATrojan(self.id.clone()));
+        }
+        if self.installs_onto.is_some() && self.card_type != CardType::Hardware {
+            return Err(CardValidationError::InstallsOntoOffHardware(self.id.clone()));
         }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));

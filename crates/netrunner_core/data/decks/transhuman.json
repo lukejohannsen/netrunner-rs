@@ -3,7 +3,7 @@
   "name": "Transhuman",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Rielle “Kit” Peddler: Transhuman, System Update 2021's Shaper identity, whose first piece of ice encountered each turn gains code gate for the rest of the run. On Safety Net's frame, its identity swapped, at nine influence of ten. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Cerberus \"Lady\" H1 for two World Tree, a fracter that spends a power counter to break two barrier subroutines. Safety Net keeps World Tree.",
+  "description": "Not a published list: built so the sweeps reach Rielle “Kit” Peddler: Transhuman, System Update 2021's Shaper identity, whose first piece of ice encountered each turn gains code gate for the rest of the run. On Safety Net's frame, its identity swapped, at nine influence of ten. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Cerberus \"Lady\" H1 for two World Tree, a fracter that spends a power counter to break two barrier subroutines. Safety Net keeps World Tree. Tranche 8 Stage 11p: two The Personal Touch for its two Simulchip, hardware for hardware, a mod installed only on an icebreaker; Level Pegging keeps Simulchip.",
   "style": [
     "rig"
   ],
@@ -86,10 +86,6 @@
       "count": 2
     },
     {
-      "card": "simulchip",
-      "count": 2
-    },
-    {
       "card": "cordyceps",
       "count": 2
     },
@@ -103,6 +99,10 @@
     },
     {
       "card": "professional_contacts",
+      "count": 2
+    },
+    {
+      "card": "the_personal_touch",
       "count": 2
     }
   ]
