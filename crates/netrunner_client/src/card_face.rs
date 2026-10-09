@@ -16,7 +16,7 @@
 //! but agendas and identities), 0 included, because the card does.
 
 use netrunner_core::card::Faction;
-use netrunner_core::dsl::{CardDefinition, CardType, ContinuousKind, Scope};
+use netrunner_core::dsl::{CardDefinition, CardSubtype, CardType, ContinuousKind, Scope};
 use netrunner_core::rules::Side;
 
 use crate::art::{ArtChoices, Picture};
@@ -34,6 +34,12 @@ pub enum Slot {
     /// (Blood in the Water's "X is equal to the number of cards in the
     /// Runner's grip").
     AdvancementX,
+    /// A strength printed as X, which the card's own text makes the
+    /// number (Surveyor's "X is twice the number of ice protecting this server", Darwin's
+    /// hosted virus counters). NetrunnerDB states it as -1 and the catalog reads
+    /// that as no strength; only a piece of ice or an icebreaker, which
+    /// always print one, is drawn with this.
+    StrengthX,
     AgendaPoints(u32),
     TrashCost(u32),
     Memory(u32),
@@ -55,7 +61,7 @@ impl Slot {
             Slot::Strength(n) => n.to_string(),
             Slot::InfluenceLimit(Some(n)) => n.to_string(),
             Slot::InfluenceLimit(None) => "∞".to_string(),
-            Slot::AdvancementX => "X".to_string(),
+            Slot::AdvancementX | Slot::StrengthX => "X".to_string(),
         }
     }
 
@@ -71,6 +77,7 @@ impl Slot {
             Slot::Strength(n) => format!("Strength {n}"),
             Slot::Advancement(n) => format!("Advancement {n}"),
             Slot::AdvancementX => "Advancement X".to_string(),
+            Slot::StrengthX => "Strength X".to_string(),
             Slot::AgendaPoints(n) => format!("{n} agenda point{}", if n == 1 { "" } else { "s" }),
             Slot::TrashCost(n) => format!("Trash {n}"),
             Slot::Memory(n) => format!("{n} MU"),
@@ -84,7 +91,7 @@ impl Slot {
     pub fn caption(self) -> &'static str {
         match self {
             Slot::Cost(_) => "cost",
-            Slot::Strength(_) => "strength",
+            Slot::Strength(_) | Slot::StrengthX => "strength",
             Slot::Advancement(_) | Slot::AdvancementX => "advance",
             Slot::AgendaPoints(_) => "points",
             Slot::TrashCost(_) => "trash",
@@ -161,7 +168,8 @@ impl Face {
         } else if is(CardType::Agenda) {
             card.agenda_points.map(Slot::AgendaPoints)
         } else if ice || is(CardType::Program) {
-            card.strength.map(Slot::Strength)
+            let prints_one = ice || card.subtypes.contains(&CardSubtype::Icebreaker);
+            card.strength.map(Slot::Strength).or(prints_one.then_some(Slot::StrengthX))
         } else {
             None
         };
@@ -397,8 +405,11 @@ mod tests {
                 CardType::Agenda => assert!(matches!(face.cost, Some(Slot::Advancement(_))), "{}", card.title),
                 _ => assert!(matches!(face.cost, Some(Slot::Cost(_))), "{}", card.title),
             }
-            if matches!(card.card_type, CardType::Ice(_)) {
-                assert!(matches!(face.bottom_left, Some(Slot::Strength(_))), "{} has no strength", card.title);
+            if matches!(card.card_type, CardType::Ice(_)) || card.subtypes.contains(&CardSubtype::Icebreaker) {
+                assert!(matches!(face.bottom_left, Some(Slot::Strength(_) | Slot::StrengthX)), "{} has no strength", card.title);
+            }
+            if face.bottom_left == Some(Slot::StrengthX) {
+                assert!(["surveyor", "darwin"].contains(&card.id.0.as_str()), "{} is not one of the two cards printed with a strength of X", card.title);
             }
             if card.card_type == CardType::Program {
                 assert!(face.bottom_right.iter().any(|slot| matches!(slot, Slot::Memory(_))), "{} has no MU", card.title);

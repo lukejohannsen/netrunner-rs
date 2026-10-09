@@ -1,0 +1,1329 @@
+{
+  "cards": [],
+  "id": "system_core_2019",
+  "printings": [
+    {
+      "card_id": "reina_roja_freedom_fighter",
+      "flavor": "\"Analyzing the board won't help. Your mistake was thinking we're playing the same game.\"",
+      "has_xlarge": false,
+      "id": "25001",
+      "illustrators": "Matt Zeilinger",
+      "position": 1,
+      "quantity": 1
+    },
+    {
+      "card_id": "quetzal_free_spirit",
+      "flavor": "\"Why should we be slaves to our genetic heritage?\"",
+      "has_xlarge": false,
+      "id": "25002",
+      "illustrators": "Matt Zeilinger",
+      "position": 2,
+      "quantity": 1
+    },
+    {
+      "card_id": "queens_gambit",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25003",
+      "illustrators": "Matt Zeilinger",
+      "position": 3,
+      "quantity": 1
+    },
+    {
+      "card_id": "quest_completed",
+      "flavor": "That moment of bliss. That feeling of accomplishment. That certainty of purpose.\nWhat's next?",
+      "has_xlarge": false,
+      "id": "25004",
+      "illustrators": "Gong Studios",
+      "position": 4,
+      "quantity": 1
+    },
+    {
+      "card_id": "retrieval_run",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25005",
+      "illustrators": "Outland Entertainment LLC",
+      "position": 5,
+      "quantity": 2
+    },
+    {
+      "card_id": "run_amok",
+      "flavor": "\"While there have been other anti-corporation movements before, like the Maroon Wave, this new one is different. It's organized.\" -Ramesh Gupta, One World Economy",
+      "has_xlarge": false,
+      "id": "25006",
+      "illustrators": "RC Torres",
+      "position": 6,
+      "quantity": 1
+    },
+    {
+      "card_id": "stimhack",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25007",
+      "illustrators": "Andreas Zafiratos",
+      "position": 7,
+      "quantity": 1
+    },
+    {
+      "card_id": "cyberfeeder",
+      "flavor": "I feel almost naked without it.",
+      "has_xlarge": false,
+      "id": "25008",
+      "illustrators": "Gong Studios",
+      "position": 8,
+      "quantity": 2
+    },
+    {
+      "card_id": "patchwork",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25009",
+      "illustrators": "Simon Boxer",
+      "position": 9,
+      "quantity": 2
+    },
+    {
+      "card_id": "corroder",
+      "flavor": "\"If at first you don't succeed, boost its strength and try again.\" -g00ru",
+      "has_xlarge": false,
+      "id": "25010",
+      "illustrators": "Mike Nesbitt",
+      "position": 10,
+      "quantity": 3
+    },
+    {
+      "card_id": "datasucker",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25011",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 11,
+      "quantity": 2
+    },
+    {
+      "card_id": "force_of_nature",
+      "flavor": "It always strikes twice.",
+      "has_xlarge": false,
+      "id": "25012",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 12,
+      "quantity": 2
+    },
+    {
+      "card_id": "imp",
+      "flavor": "Something wicked this way comes.",
+      "has_xlarge": false,
+      "id": "25013",
+      "illustrators": "Wen Xiaodong",
+      "position": 13,
+      "quantity": 2
+    },
+    {
+      "card_id": "lamprey",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25014",
+      "illustrators": "Smirtouille",
+      "position": 14,
+      "quantity": 2
+    },
+    {
+      "card_id": "mimic",
+      "flavor": "November 5th: the day when all would see the corrupt machinations of the corporate oligarchy.",
+      "has_xlarge": false,
+      "id": "25015",
+      "illustrators": "Matt Zeilinger",
+      "position": 15,
+      "quantity": 3
+    },
+    {
+      "card_id": "ice_carver",
+      "flavor": "In the public consciousness, there's a hard line between corp and runner. In the real world, things are a little more porous. The corps need the best hackers to run their networks, and some of the best hackers are ex-runners who like the idea of a regular paycheck. But sometimes things run the other way, and someone on the inside makes something like this.",
+      "has_xlarge": false,
+      "id": "25016",
+      "illustrators": "Adam S. Doyle",
+      "position": 16,
+      "quantity": 1
+    },
+    {
+      "card_id": "liberated_account",
+      "flavor": "It's easier to spend when it's not your money.",
+      "has_xlarge": false,
+      "id": "25017",
+      "illustrators": "Matt Zeilinger",
+      "position": 17,
+      "quantity": 2
+    },
+    {
+      "card_id": "scrubber",
+      "flavor": "\"They're mindless tools of destruction, good for little else. Nice guys, though. Some of my best friends are scrubbers.\" -Ji \"Noise\" Reilly",
+      "has_xlarge": false,
+      "id": "25018",
+      "illustrators": "Kate Laird",
+      "position": 18,
+      "quantity": 2
+    },
+    {
+      "card_id": "xanadu",
+      "flavor": "And all should cry, Beware! Beware!\nHis flashing eyes, his floating hair!\nWeave a circle round him thrice,\nAnd close your eyes with holy dread,\nFor he on honey-dew hath fed,\nAnd drunk the milk of Paradise.\n-Samuel Taylor Coleridge",
+      "has_xlarge": false,
+      "id": "25019",
+      "illustrators": "Andrew Mar",
+      "position": 19,
+      "quantity": 1
+    },
+    {
+      "card_id": "gabriel_santiago_consummate_professional",
+      "flavor": "\"Of course I steal from the rich. They're the ones with all the money.\"",
+      "has_xlarge": false,
+      "id": "25020",
+      "illustrators": "Matt Zeilinger",
+      "position": 20,
+      "quantity": 1
+    },
+    {
+      "card_id": "leela_patel_trained_pragmatist",
+      "flavor": "\"I'd say I do it for the challenge, but the truth is it's not that hard.\"",
+      "has_xlarge": false,
+      "id": "25021",
+      "illustrators": "Matt Zeilinger",
+      "position": 21,
+      "quantity": 1
+    },
+    {
+      "card_id": "career_fair",
+      "flavor": "\"You can help Jinteki shape the future. Your future.\"",
+      "has_xlarge": false,
+      "id": "25022",
+      "illustrators": "Dmitry Prosvirnin",
+      "position": 22,
+      "quantity": 1
+    },
+    {
+      "card_id": "easy_mark",
+      "flavor": "\"Hey kid, you fire that up now, bound to be vamped real bad. Some real pathetic individuals around here. But thankfully I got just the ticket…\"",
+      "has_xlarge": false,
+      "id": "25023",
+      "illustrators": "Matt Zeilinger",
+      "position": 23,
+      "quantity": 2
+    },
+    {
+      "card_id": "emergency_shutdown",
+      "flavor": "\"Think of it as a virtual shock collar for punishing corporate pets.\" -Andromeda",
+      "has_xlarge": false,
+      "id": "25024",
+      "illustrators": "Adam S. Doyle",
+      "position": 24,
+      "quantity": 1
+    },
+    {
+      "card_id": "hostage",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25025",
+      "illustrators": "Matt Zeilinger",
+      "position": 25,
+      "quantity": 1
+    },
+    {
+      "card_id": "inside_job",
+      "flavor": "\"Hey, listen, I'm not asking you to do anything dangerous. Just let me into the building. And tell me which room has the weakest security. And please don't say 'the bathroom' again.\"",
+      "has_xlarge": false,
+      "id": "25026",
+      "illustrators": "Clark Huggins",
+      "position": 26,
+      "quantity": 2
+    },
+    {
+      "card_id": "legwork",
+      "flavor": "\"I work by referral only, with an up-front fee. The fee is reasonable if you value results.\" -Silhouette",
+      "has_xlarge": false,
+      "id": "25027",
+      "illustrators": "Gong Studios",
+      "position": 27,
+      "quantity": 2
+    },
+    {
+      "card_id": "networking",
+      "flavor": "She preferred to do business in a club. Something about the lights and dancers clouded the judgment of the corporate simpletons she met there.",
+      "has_xlarge": false,
+      "id": "25028",
+      "illustrators": "Gong Studios",
+      "position": 28,
+      "quantity": 1
+    },
+    {
+      "card_id": "spear_phishing",
+      "flavor": "Targeted attacks make system breaches so much easier, especially if you can spoof an authorized user.",
+      "has_xlarge": false,
+      "id": "25029",
+      "illustrators": "Andreas Zafiratos",
+      "position": 29,
+      "quantity": 1
+    },
+    {
+      "card_id": "special_order",
+      "flavor": "Feverishly tracking its frustratingly slow progress across the Pacific, the package finally shows up hours later…",
+      "has_xlarge": false,
+      "id": "25030",
+      "illustrators": "Steve Hamilton",
+      "position": 30,
+      "quantity": 2
+    },
+    {
+      "card_id": "hq_interface",
+      "flavor": "If you don't have someone on the inside, find someone on the inside who's fond of desk ornaments.",
+      "has_xlarge": false,
+      "id": "25031",
+      "illustrators": "Robert Chew",
+      "position": 31,
+      "quantity": 1
+    },
+    {
+      "card_id": "paragon",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25032",
+      "illustrators": "Martin de Diego Sádaba",
+      "position": 32,
+      "quantity": 2
+    },
+    {
+      "card_id": "abagnale",
+      "flavor": "\"Technology breeds crime.\"",
+      "has_xlarge": false,
+      "id": "25033",
+      "illustrators": "BalanceSheet",
+      "position": 33,
+      "quantity": 3
+    },
+    {
+      "card_id": "demara",
+      "flavor": "\"It's a matter of 'acquiring' the right credentials.\"",
+      "has_xlarge": false,
+      "id": "25034",
+      "illustrators": "Mia Siergiejew",
+      "position": 34,
+      "quantity": 2
+    },
+    {
+      "card_id": "faerie",
+      "flavor": "Do you believe in faeries?",
+      "has_xlarge": false,
+      "id": "25035",
+      "illustrators": "Sara K. Diesel",
+      "position": 35,
+      "quantity": 2
+    },
+    {
+      "card_id": "femme_fatale",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25036",
+      "illustrators": "Anna Christenson",
+      "position": 36,
+      "quantity": 2
+    },
+    {
+      "card_id": "sneakdoor_beta",
+      "flavor": "\"The code isn't important. It's where the code takes you that is important.\" -g00ru",
+      "has_xlarge": false,
+      "id": "25037",
+      "illustrators": "Andrew Mar",
+      "position": 37,
+      "quantity": 2
+    },
+    {
+      "card_id": "bank_job",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25038",
+      "illustrators": "Kate Laird",
+      "position": 38,
+      "quantity": 2
+    },
+    {
+      "card_id": "data_dealer",
+      "flavor": "Shadier the dealer, better the price. Unless the dealer's too shady. Then there might be a hidden fee after they take your scrip.",
+      "has_xlarge": false,
+      "id": "25039",
+      "illustrators": "Mauricio Herrera",
+      "position": 39,
+      "quantity": 1
+    },
+    {
+      "card_id": "chaos_theory_wunderkind",
+      "flavor": "\"Have you met Dinosaurus?\"",
+      "has_xlarge": false,
+      "id": "25040",
+      "illustrators": "Matt Zeilinger",
+      "position": 40,
+      "quantity": 1
+    },
+    {
+      "card_id": "rielle_kit_peddler_transhuman",
+      "flavor": "\"I was not; I was; I am not; I am all.\"",
+      "has_xlarge": false,
+      "id": "25041",
+      "illustrators": "Matt Zeilinger",
+      "position": 41,
+      "quantity": 1
+    },
+    {
+      "card_id": "diesel",
+      "flavor": "Diesel gives you flames.",
+      "has_xlarge": false,
+      "id": "25042",
+      "illustrators": "Tim Durning",
+      "position": 42,
+      "quantity": 2
+    },
+    {
+      "card_id": "modded",
+      "flavor": "There's no replacement for a home-grown program. Fed on late nights, oaty bars, and single-minded determination. Cheaper, too.",
+      "has_xlarge": false,
+      "id": "25043",
+      "illustrators": "Kate Laird",
+      "position": 43,
+      "quantity": 2
+    },
+    {
+      "card_id": "notoriety",
+      "flavor": "When you're this good, it's hard not to grow a fan base.",
+      "has_xlarge": false,
+      "id": "25044",
+      "illustrators": "Matt Zeilinger",
+      "position": 44,
+      "quantity": 1
+    },
+    {
+      "card_id": "test_run",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25045",
+      "illustrators": "Kate Laird",
+      "position": 45,
+      "quantity": 1
+    },
+    {
+      "card_id": "the_makers_eye",
+      "flavor": "\"Some of the professionals have good instincts, but they can't see beyond the data. They can't see the matrix.\" -Ele \"Smoke\" Scovak",
+      "has_xlarge": false,
+      "id": "25046",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 46,
+      "quantity": 2
+    },
+    {
+      "card_id": "tinkering",
+      "flavor": "\"There's that moment, you know, when the whole world seems to fall away and it is only you and your mod, and the mod is the world.\"",
+      "has_xlarge": false,
+      "id": "25047",
+      "illustrators": "Christina Davis",
+      "position": 47,
+      "quantity": 2
+    },
+    {
+      "card_id": "akamatsu_mem_chip",
+      "flavor": "The Akamatsu company was founded on three principles: first, to make the fastest mem chips on the market, second, to turn a profit, and third, to serve as a front for the manufacture of illegal neural-stimulants. It is the last principle that perhaps explains their rabid brand loyalty.",
+      "has_xlarge": false,
+      "id": "25048",
+      "illustrators": "Outland Entertainment LLC",
+      "position": 48,
+      "quantity": 1
+    },
+    {
+      "card_id": "dinosaurus",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25049",
+      "illustrators": "Matt Zeilinger",
+      "position": 49,
+      "quantity": 2
+    },
+    {
+      "card_id": "r_d_interface",
+      "flavor": "Works best at your own desk.",
+      "has_xlarge": false,
+      "id": "25050",
+      "illustrators": "Reza Ilyasa",
+      "position": 50,
+      "quantity": 1
+    },
+    {
+      "card_id": "atman",
+      "flavor": "We are shaped by our thoughts; we become what we think.",
+      "has_xlarge": false,
+      "id": "25051",
+      "illustrators": "Diana Martinez",
+      "position": 51,
+      "quantity": 1
+    },
+    {
+      "card_id": "battering_ram",
+      "flavor": "\"It's called 'brute-forcing' and it's just as effective today as it was a hundred years ago.\" -Kate \"Mac\" McCaffrey",
+      "has_xlarge": false,
+      "id": "25052",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 52,
+      "quantity": 3
+    },
+    {
+      "card_id": "deus_x",
+      "flavor": "Didn't see that coming.",
+      "has_xlarge": false,
+      "id": "25053",
+      "illustrators": "Andrew Mar",
+      "position": 53,
+      "quantity": 1
+    },
+    {
+      "card_id": "gordian_blade",
+      "flavor": "It can slice through the thickest knots of data.",
+      "has_xlarge": false,
+      "id": "25054",
+      "illustrators": "Adam S. Doyle",
+      "position": 54,
+      "quantity": 3
+    },
+    {
+      "card_id": "pipeline",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25055",
+      "illustrators": "Ed Mattinian",
+      "position": 55,
+      "quantity": 2
+    },
+    {
+      "card_id": "aesops_pawnshop",
+      "flavor": "You didn't mention Aesop's arm unless you wanted an earful. Sometimes he talked about it in such a way that you wondered why he didn't laser his other arm off as well.",
+      "has_xlarge": false,
+      "id": "25056",
+      "illustrators": "Adam Schumpert",
+      "position": 56,
+      "quantity": 2
+    },
+    {
+      "card_id": "ice_analyzer",
+      "flavor": "\"If you know the source code you can write to beat it, or just rejigger it a little and make it yours. That works, too.\" -Exile",
+      "has_xlarge": false,
+      "id": "25057",
+      "illustrators": "Ed Mattinian",
+      "position": 57,
+      "quantity": 2
+    },
+    {
+      "card_id": "professional_contacts",
+      "flavor": "Sometimes it doesn't matter how expensive your rig is, or how many credits are in your account, or even your skill as a runner. Most of the time, a simple handshake and a name are all you need.",
+      "has_xlarge": false,
+      "id": "25058",
+      "illustrators": "Matt Zeilinger",
+      "position": 58,
+      "quantity": 2
+    },
+    {
+      "card_id": "sure_gamble",
+      "flavor": "Lady Luck took the form of a hifi quantum manipulation ring that she wore on her middle finger.",
+      "has_xlarge": false,
+      "id": "25059",
+      "illustrators": "Kate Niemczyk",
+      "position": 59,
+      "quantity": 3
+    },
+    {
+      "card_id": "dirty_laundry",
+      "flavor": "The data was better than she could have ever imagined. This Santiago fellow really knew what he was doing. She began to imagine the havoc she could wreak at the upcoming charity dinner…",
+      "has_xlarge": false,
+      "id": "25060",
+      "illustrators": "Christina Davis",
+      "position": 60,
+      "quantity": 2
+    },
+    {
+      "card_id": "crypsis",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25061",
+      "illustrators": "Adam S. Doyle",
+      "position": 61,
+      "quantity": 2
+    },
+    {
+      "card_id": "armitage_codebusting",
+      "flavor": "Drudge work, but it pays the bills.",
+      "has_xlarge": false,
+      "id": "25062",
+      "illustrators": "Dmitry Prosvirnin, Atha Kanaani",
+      "position": 62,
+      "quantity": 2
+    },
+    {
+      "card_id": "earthrise_hotel",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25063",
+      "illustrators": "Simon Boxer",
+      "position": 63,
+      "quantity": 2
+    },
+    {
+      "card_id": "john_masanori",
+      "flavor": "\"I've been logging online with babes all day. Don't worry, the connections are clean. I guarantee it.\"",
+      "has_xlarge": false,
+      "id": "25064",
+      "illustrators": "Zefanya Langkan Maega",
+      "position": 64,
+      "quantity": 2
+    },
+    {
+      "card_id": "kati_jones",
+      "flavor": "\"You aren't the only type of runner in New Angeles.\"",
+      "has_xlarge": false,
+      "id": "25065",
+      "illustrators": "Matt Zeilinger",
+      "position": 65,
+      "quantity": 2
+    },
+    {
+      "card_id": "haas_bioroid_stronger_together",
+      "flavor": "A Different Breed of Machine.",
+      "has_xlarge": false,
+      "id": "25066",
+      "illustrators": null,
+      "position": 66,
+      "quantity": 1
+    },
+    {
+      "card_id": "seidr_laboratories_destiny_defined",
+      "flavor": "Interweaving the Past and the Future.",
+      "has_xlarge": false,
+      "id": "25067",
+      "illustrators": "Emilio Rodríguez",
+      "position": 67,
+      "quantity": 1
+    },
+    {
+      "card_id": "project_vitruvius",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25068",
+      "illustrators": "Emilio Rodríguez",
+      "position": 68,
+      "quantity": 3
+    },
+    {
+      "card_id": "successful_field_test",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25069",
+      "illustrators": "Clark Huggins",
+      "position": 69,
+      "quantity": 2
+    },
+    {
+      "card_id": "adonis_campaign",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25070",
+      "illustrators": "Mark Anthony Taduran",
+      "position": 70,
+      "quantity": 3
+    },
+    {
+      "card_id": "aggressive_secretary",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25071",
+      "illustrators": "Julian Totino Tedesco",
+      "position": 71,
+      "quantity": 1
+    },
+    {
+      "card_id": "marilyn_campaign",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25072",
+      "illustrators": "Tim Durning",
+      "position": 72,
+      "quantity": 2
+    },
+    {
+      "card_id": "eli_1_0",
+      "flavor": "\"That's against the rules. The Creators will be angry.\"",
+      "has_xlarge": false,
+      "id": "25073",
+      "illustrators": "Sandara Tang",
+      "position": 73,
+      "quantity": 2
+    },
+    {
+      "card_id": "heimdall_1_0",
+      "flavor": "I hear the shift of every bit amid the flow of the datastream. I hear the whispers of my mothers, and their commands are law. The realm beyond is forbidden.",
+      "has_xlarge": false,
+      "id": "25074",
+      "illustrators": "Andreas Zafiratos",
+      "position": 74,
+      "quantity": 1
+    },
+    {
+      "card_id": "ichi_1_0",
+      "flavor": "My reputation would precede me, if any could speak of it.",
+      "has_xlarge": false,
+      "id": "25075",
+      "illustrators": "Andreas Zafiratos",
+      "position": 75,
+      "quantity": 2
+    },
+    {
+      "card_id": "rototurret",
+      "flavor": "Whrrrrr!",
+      "has_xlarge": false,
+      "id": "25076",
+      "illustrators": "Ed Mattinian",
+      "position": 76,
+      "quantity": 2
+    },
+    {
+      "card_id": "turing",
+      "flavor": "Alan Turing laid the foundation for artificial intelligence by suggesting that you could teach a computer to be human.",
+      "has_xlarge": false,
+      "id": "25077",
+      "illustrators": "Adam S. Doyle",
+      "position": 77,
+      "quantity": 1
+    },
+    {
+      "card_id": "viktor_1_0",
+      "flavor": "My name is Viktor. Nice to meet you. Would you like to play a game?",
+      "has_xlarge": false,
+      "id": "25078",
+      "illustrators": "Andreas Zafiratos",
+      "position": 78,
+      "quantity": 2
+    },
+    {
+      "card_id": "archived_memories",
+      "flavor": "\"Do you think they…feel it?\"",
+      "has_xlarge": false,
+      "id": "25079",
+      "illustrators": "Gong Studios",
+      "position": 79,
+      "quantity": 1
+    },
+    {
+      "card_id": "biotic_labor",
+      "flavor": "\"Why of course, we have six different Haas-Bioroid models serving in a variety of positions at this branch office alone. We here at Haas-Bioroid aren't going to shy away from practicing what we preach, and we pass the savings from increased efficiency on to our valued customers.\"",
+      "has_xlarge": false,
+      "id": "25080",
+      "illustrators": "Mark Anthony Taduran",
+      "position": 80,
+      "quantity": 2
+    },
+    {
+      "card_id": "blue_level_clearance",
+      "flavor": "Blue-one level clearance doesn't exist. And if it did exist, you wouldn't be cleared to know about it.",
+      "has_xlarge": false,
+      "id": "25081",
+      "illustrators": "Tim Durning",
+      "position": 81,
+      "quantity": 2
+    },
+    {
+      "card_id": "ash_2x3zb9cy",
+      "flavor": "\"Eyes forward, please.\"",
+      "has_xlarge": false,
+      "id": "25082",
+      "illustrators": "Antonio De Luca",
+      "position": 82,
+      "quantity": 2
+    },
+    {
+      "card_id": "mason_bellamy",
+      "flavor": "\"They say he is an ex-runner. I don't know if it is true, but he is chromed to the gills and seems to know all the runners' tricks.\"",
+      "has_xlarge": false,
+      "id": "25083",
+      "illustrators": "Matt Zeilinger",
+      "position": 83,
+      "quantity": 1
+    },
+    {
+      "card_id": "jinteki_personal_evolution",
+      "flavor": "When You Need the Human Touch.",
+      "has_xlarge": false,
+      "id": "25084",
+      "illustrators": null,
+      "position": 84,
+      "quantity": 1
+    },
+    {
+      "card_id": "jinteki_replicating_perfection",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25085",
+      "illustrators": null,
+      "position": 85,
+      "quantity": 1
+    },
+    {
+      "card_id": "fetal_ai",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25086",
+      "illustrators": "Eko Puteh",
+      "position": 86,
+      "quantity": 2
+    },
+    {
+      "card_id": "nisei_mk_ii",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25087",
+      "illustrators": "Alexandra Douglass",
+      "position": 87,
+      "quantity": 2
+    },
+    {
+      "card_id": "philotic_entanglement",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25088",
+      "illustrators": "Ed Mattinian",
+      "position": 88,
+      "quantity": 1
+    },
+    {
+      "card_id": "project_junebug",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25089",
+      "illustrators": "Drew Whitmore",
+      "position": 89,
+      "quantity": 2
+    },
+    {
+      "card_id": "ronin",
+      "flavor": "\"I will serve you…for a time.\"",
+      "has_xlarge": false,
+      "id": "25090",
+      "illustrators": "Adam S. Doyle",
+      "position": 90,
+      "quantity": 2
+    },
+    {
+      "card_id": "snare",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25091",
+      "illustrators": "Alice Duke",
+      "position": 91,
+      "quantity": 2
+    },
+    {
+      "card_id": "sundew",
+      "flavor": "As beautiful as it is dangerous. And it's plenty dangerous.",
+      "has_xlarge": false,
+      "id": "25092",
+      "illustrators": "Anna Ignatieva",
+      "position": 92,
+      "quantity": 1
+    },
+    {
+      "card_id": "himitsu_bako",
+      "flavor": "Himitsu-Bako is a simple ice barrier that appears as a digital puzzle box. What makes it special is the ease with which it can be uninstalled and installed in a different server, throwing up barriers in unexpected places and giving any intruder a curious feeling of déjà vu.",
+      "has_xlarge": false,
+      "id": "25093",
+      "illustrators": "Andrew Mar",
+      "position": 93,
+      "quantity": 1
+    },
+    {
+      "card_id": "lotus_field",
+      "flavor": "\"Chi resonance mapping has created a whole new field of network security. It is unassailable perfection.\" -Akitaro Watanabe",
+      "has_xlarge": false,
+      "id": "25094",
+      "illustrators": "Adam S. Doyle",
+      "position": 94,
+      "quantity": 1
+    },
+    {
+      "card_id": "neural_katana",
+      "flavor": "Forged by Ak.wa on 23.11.79-23. Filed 23.11.79-23.2 with #34k-lw3-21HH-4i.\n//Samurai included.",
+      "has_xlarge": false,
+      "id": "25095",
+      "illustrators": "Isuardi Therianto",
+      "position": 95,
+      "quantity": 2
+    },
+    {
+      "card_id": "swordsman",
+      "flavor": "Writing a program that can pass the Turing test is easy. The Gibson-Akamatsu test is a higher bar, and the only AIs to clear it thus far have been the androids. Even some humans have been known to fail.",
+      "has_xlarge": false,
+      "id": "25096",
+      "illustrators": "Adam S. Doyle",
+      "position": 96,
+      "quantity": 1
+    },
+    {
+      "card_id": "tsurugi",
+      "flavor": "\"It's ice so dangerous it has safety protocols. Think about that.\" -g00ru",
+      "has_xlarge": false,
+      "id": "25097",
+      "illustrators": "Adam S. Doyle",
+      "position": 97,
+      "quantity": 2
+    },
+    {
+      "card_id": "wall_of_thorns",
+      "flavor": "Most runners do their business in full-sim, with their rigs wired directly into their brains. The setup has a large number of advantages, with the runner able to process data and input commands far faster than a traditional meat-bound system. But it also means greater risk.",
+      "has_xlarge": false,
+      "id": "25098",
+      "illustrators": "Adam S. Doyle",
+      "position": 98,
+      "quantity": 1
+    },
+    {
+      "card_id": "yagura",
+      "flavor": "The 'cyber-war' is a war of information, and in a war of information, advance warning can be as good as a killing blow. -Michael Muhama, Musings on Cybercrime",
+      "has_xlarge": false,
+      "id": "25099",
+      "illustrators": "Andrew Mar",
+      "position": 99,
+      "quantity": 2
+    },
+    {
+      "card_id": "celebrity_gift",
+      "flavor": "When Miranda Rhapsody showed up with a teacup giraffe, suddenly everybody wanted one.",
+      "has_xlarge": false,
+      "id": "25100",
+      "illustrators": "Matt Zeilinger",
+      "position": 100,
+      "quantity": 2
+    },
+    {
+      "card_id": "neural_emp",
+      "flavor": "The trick isn't hitting the person you were aiming at. It's hitting <strong>only</strong> the person you were aiming at.",
+      "has_xlarge": false,
+      "id": "25101",
+      "illustrators": "Matt Zeilinger",
+      "position": 101,
+      "quantity": 2
+    },
+    {
+      "card_id": "trick_of_light",
+      "flavor": "Smoke and mirrors optional.",
+      "has_xlarge": false,
+      "id": "25102",
+      "illustrators": "Anna Ignatieva",
+      "position": 102,
+      "quantity": 1
+    },
+    {
+      "card_id": "hokusai_grid",
+      "flavor": "Despite its appearance, the Hokusai Grid is the most notorious research facility at Jinteki.",
+      "has_xlarge": false,
+      "id": "25103",
+      "illustrators": "Emilio Rodríguez",
+      "position": 103,
+      "quantity": 2
+    },
+    {
+      "card_id": "nbn_making_news",
+      "flavor": "Someone is Always Watching.",
+      "has_xlarge": false,
+      "id": "25104",
+      "illustrators": null,
+      "position": 104,
+      "quantity": 1
+    },
+    {
+      "card_id": "spark_agency_worldswide_reach",
+      "flavor": "We're ready to start the fire.",
+      "has_xlarge": false,
+      "id": "25105",
+      "illustrators": "Emilio Rodríguez",
+      "position": 105,
+      "quantity": 1
+    },
+    {
+      "card_id": "explode_a_palooza",
+      "flavor": "It's like Lethal Action 3, only with more explosions.",
+      "has_xlarge": false,
+      "id": "25106",
+      "illustrators": "Mike Nesbitt",
+      "position": 106,
+      "quantity": 2
+    },
+    {
+      "card_id": "project_beale",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25107",
+      "illustrators": "Matt Zeilinger",
+      "position": 107,
+      "quantity": 3
+    },
+    {
+      "card_id": "daily_business_show",
+      "flavor": "\"A new investment deal every morning! Grab the bull by the horns and take control of your future!\"",
+      "has_xlarge": false,
+      "id": "25108",
+      "illustrators": "Gong Studios",
+      "position": 108,
+      "quantity": 2
+    },
+    {
+      "card_id": "ghost_branch",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25109",
+      "illustrators": "Emilio Rodríguez",
+      "position": 109,
+      "quantity": 1
+    },
+    {
+      "card_id": "marked_accounts",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25110",
+      "illustrators": "Mauricio Herrera",
+      "position": 110,
+      "quantity": 2
+    },
+    {
+      "card_id": "reversed_accounts",
+      "flavor": "Making a name for yourself has its perks. But it also makes you a target.",
+      "has_xlarge": false,
+      "id": "25111",
+      "illustrators": "Antonio De Luca",
+      "position": 111,
+      "quantity": 1
+    },
+    {
+      "card_id": "data_raven",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25112",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 112,
+      "quantity": 2
+    },
+    {
+      "card_id": "flare",
+      "flavor": "A bright light blossomed, and then the console went dark. That's when she smelled smoke.",
+      "has_xlarge": false,
+      "id": "25113",
+      "illustrators": "Mike Nesbitt",
+      "position": 113,
+      "quantity": 1
+    },
+    {
+      "card_id": "pop_up_window",
+      "flavor": "\"Try to close it. Go on. See what it does.\" -Chaos Theory",
+      "has_xlarge": false,
+      "id": "25114",
+      "illustrators": "Christina Davis",
+      "position": 114,
+      "quantity": 3
+    },
+    {
+      "card_id": "tollbooth",
+      "flavor": "\"Ever heard of a catch-22?\"\n\"Remind me to forget it.\"",
+      "has_xlarge": false,
+      "id": "25115",
+      "illustrators": "Outland Entertainment LLC",
+      "position": 115,
+      "quantity": 2
+    },
+    {
+      "card_id": "wraparound",
+      "flavor": "\"It can make a real fine roller coaster, provided you're properly stimmed up.\" -Noise",
+      "has_xlarge": false,
+      "id": "25116",
+      "illustrators": "Ed Mattinian",
+      "position": 116,
+      "quantity": 1
+    },
+    {
+      "card_id": "closed_accounts",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25117",
+      "illustrators": "Mauricio Herrera",
+      "position": 117,
+      "quantity": 2
+    },
+    {
+      "card_id": "psychographics",
+      "flavor": "Access to the largest consumer database in the galaxy has its advantages.",
+      "has_xlarge": false,
+      "id": "25118",
+      "illustrators": "Kate Laird",
+      "position": 118,
+      "quantity": 1
+    },
+    {
+      "card_id": "sea_source",
+      "flavor": "\"The SEA tipped us off to some suspicious data spikes up by the Castle.\" -Jerome Lock, on-duty tech",
+      "has_xlarge": false,
+      "id": "25119",
+      "illustrators": "Dmitry Prosvirnin, Atha Kanaani",
+      "position": 119,
+      "quantity": 2
+    },
+    {
+      "card_id": "product_placement",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25120",
+      "illustrators": "Matt Zeilinger",
+      "position": 120,
+      "quantity": 2
+    },
+    {
+      "card_id": "red_herrings",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25121",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 121,
+      "quantity": 2
+    },
+    {
+      "card_id": "weyland_consortium_building_a_better_world",
+      "flavor": "Moving Upwards.",
+      "has_xlarge": false,
+      "id": "25122",
+      "illustrators": null,
+      "position": 122,
+      "quantity": 1
+    },
+    {
+      "card_id": "blue_sun_powering_the_future",
+      "flavor": "Unlimited Energy. Reasonable Prices.",
+      "has_xlarge": false,
+      "id": "25123",
+      "illustrators": "Emilio Rodríguez",
+      "position": 123,
+      "quantity": 1
+    },
+    {
+      "card_id": "hostile_takeover",
+      "flavor": "There are going to be some changes around here.",
+      "has_xlarge": false,
+      "id": "25124",
+      "illustrators": "Antonio De Luca",
+      "position": 124,
+      "quantity": 2
+    },
+    {
+      "card_id": "oaktown_renovation",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25125",
+      "illustrators": "Maciej Rebisz",
+      "position": 125,
+      "quantity": 1
+    },
+    {
+      "card_id": "project_atlas",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25126",
+      "illustrators": "Emilio Rodríguez",
+      "position": 126,
+      "quantity": 3
+    },
+    {
+      "card_id": "contract_killer",
+      "flavor": "\"You want no questions asked, hire someone else. I have two: who and how much?\"",
+      "has_xlarge": false,
+      "id": "25127",
+      "illustrators": "Clark Huggins",
+      "position": 127,
+      "quantity": 2
+    },
+    {
+      "card_id": "elizabeth_mills",
+      "flavor": "\"It's not personal. Urban renewal is a necessity of the modern world. It's always someone's home, yours is no different.\"",
+      "has_xlarge": false,
+      "id": "25128",
+      "illustrators": "Del Borovic",
+      "position": 128,
+      "quantity": 1
+    },
+    {
+      "card_id": "public_support",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25129",
+      "illustrators": "Wenjuinn Png",
+      "position": 129,
+      "quantity": 2
+    },
+    {
+      "card_id": "archer",
+      "flavor": "Next time, read the Terms of Service more carefully. Or you might find yourself in the danger zone.",
+      "has_xlarge": false,
+      "id": "25130",
+      "illustrators": "Mike Nesbitt",
+      "position": 130,
+      "quantity": 2
+    },
+    {
+      "card_id": "caduceus",
+      "flavor": "A symbol of commerce, but beware its bite.",
+      "has_xlarge": false,
+      "id": "25131",
+      "illustrators": "Christina Davis",
+      "position": 131,
+      "quantity": 2
+    },
+    {
+      "card_id": "hadrians_wall",
+      "flavor": "\"He had a bit of an ego, ol' Hadrian. His constructs live up to it though.\" -g00ru",
+      "has_xlarge": false,
+      "id": "25132",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 132,
+      "quantity": 1
+    },
+    {
+      "card_id": "hortum",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25133",
+      "illustrators": "Adam S. Doyle",
+      "position": 133,
+      "quantity": 1
+    },
+    {
+      "card_id": "ice_wall",
+      "flavor": "\"I asked for ice as impenetrable as a wall. I can't decide if someone down in R&D has a warped sense of humor or just a very literal mind.\" -Liz Campbell, VP Project Security",
+      "has_xlarge": false,
+      "id": "25134",
+      "illustrators": "Matt Zeilinger",
+      "position": 134,
+      "quantity": 2
+    },
+    {
+      "card_id": "spiderweb",
+      "flavor": "\"Let me tell you a secret. There's no such thing as impenetrable ice. It has to allow access, or else why is the server on the Network in the first place? But that doesn't mean they have to make it easy.\" -g00ru",
+      "has_xlarge": false,
+      "id": "25135",
+      "illustrators": "Laura Wilson",
+      "position": 135,
+      "quantity": 2
+    },
+    {
+      "card_id": "beanstalk_royalties",
+      "flavor": "The New Angeles Space Elevator, better known as the Beanstalk, is the single greatest triumph of human engineering and ingenuity in history. The Beanstalk makes Earth orbit accessible to everyone…for a small fee.",
+      "has_xlarge": false,
+      "id": "25136",
+      "illustrators": "Jonathan Lee",
+      "position": 136,
+      "quantity": 3
+    },
+    {
+      "card_id": "oversight_ai",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25137",
+      "illustrators": "Mark Anthony Taduran",
+      "position": 137,
+      "quantity": 2
+    },
+    {
+      "card_id": "punitive_counterstrike",
+      "flavor": "\"I'd say it's nothing personal, but corporations are people, too.\"",
+      "has_xlarge": false,
+      "id": "25138",
+      "illustrators": "Lorraine Schleter",
+      "position": 138,
+      "quantity": 2
+    },
+    {
+      "card_id": "crisium_grid",
+      "flavor": "Mars would never have been colonized if not for the Gagarin facilities at Promontorium Agarum.",
+      "has_xlarge": false,
+      "id": "25139",
+      "illustrators": "Camille Kuo",
+      "position": 139,
+      "quantity": 1
+    },
+    {
+      "card_id": "paper_trail",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25140",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 140,
+      "quantity": 2
+    },
+    {
+      "card_id": "priority_requisition",
+      "flavor": "\"If it isn't in my terminal by six p.m., heads are going to roll!\"",
+      "has_xlarge": false,
+      "id": "25141",
+      "illustrators": "Dmitry Prosvirnin, Atha Kanaani",
+      "position": 141,
+      "quantity": 2
+    },
+    {
+      "card_id": "pad_campaign",
+      "flavor": "It is just like the one you just bought, only better.",
+      "has_xlarge": false,
+      "id": "25142",
+      "illustrators": "Kate Laird",
+      "position": 142,
+      "quantity": 3
+    },
+    {
+      "card_id": "enigma",
+      "flavor": "\"Hey, hey! Wake up, man. You were under a long time. What'd you see?\"\n\"I…don't remember.\"",
+      "has_xlarge": false,
+      "id": "25143",
+      "illustrators": "Liiga Smilshkalne",
+      "position": 143,
+      "quantity": 3
+    },
+    {
+      "card_id": "hunter",
+      "flavor": ".//run/hunter-tr/return=true\nclient/sec256IPv7->confirm? /y\n3926:0HB7:1001:2NB1:1601:7784:ERROR",
+      "has_xlarge": false,
+      "id": "25144",
+      "illustrators": "Christina Davis",
+      "position": 144,
+      "quantity": 2
+    },
+    {
+      "card_id": "wall_of_static",
+      "flavor": "\"There's nothing worse than seeing that beautiful blue ball of data just out of reach as your connection derezzes. I think they do it just to taunt us.\" -Ele \"Smoke\" Scovak",
+      "has_xlarge": false,
+      "id": "25145",
+      "illustrators": "Adam S. Doyle",
+      "position": 145,
+      "quantity": 3
+    },
+    {
+      "card_id": "hedge_fund",
+      "flavor": "Hedge Fund. Noun. An ingenious device by which the rich get richer even while every other poor SOB is losing his shirt. -The Anarch's Dictionary, Volume Who's Counting?",
+      "has_xlarge": false,
+      "id": "25146",
+      "illustrators": "Mark Molnar",
+      "position": 146,
+      "quantity": 3
+    },
+    {
+      "card_id": "ipo",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "25147",
+      "illustrators": "Mark Molnar",
+      "position": 147,
+      "quantity": 2
+    }
+  ]
+}

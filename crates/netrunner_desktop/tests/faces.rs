@@ -36,7 +36,9 @@ fn every_catalog_card_draws_as_a_text_face_that_says_its_text() {
     app.update();
     // The body text under each face reads, span by span, as the face's
     // fallback rendering, its arrows drawn as the font can.
-    let mut bodies = app.world_mut().query_filtered::<(&ChildOf, &Children), With<BodyText>>();
+    // A body with no text has no spans, so no `Children`: Vanity Project
+    // (Old Hollywood) prints none.
+    let mut bodies = app.world_mut().query_filtered::<(&ChildOf, Option<&Children>), With<BodyText>>();
     let mut spans = app.world_mut().query::<&TextSpan>();
     let mut checked = 0;
     for (face, root) in &faces {
@@ -44,7 +46,7 @@ fn every_catalog_card_draws_as_a_text_face_that_says_its_text() {
         let found = bodies
             .iter(app.world())
             .find(|(parent, _)| ancestor_is(app.world(), parent.parent(), *root))
-            .map(|(_, children)| children.iter().filter_map(|child| spans.get(app.world(), child).ok()).map(|span| span.0.clone()).collect::<String>());
+            .map(|(_, children)| children.into_iter().flatten().filter_map(|child| spans.get(app.world(), *child).ok()).map(|span| span.0.clone()).collect::<String>());
         assert_eq!(found.as_deref(), Some(expected.as_str()), "{}", face.title);
         checked += 1;
     }

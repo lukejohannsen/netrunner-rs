@@ -199,7 +199,7 @@ mod tests {
     /// The sets behind a list of cards come newest first; a set none of
     /// them was printed in is not offered, and nor is one the format is
     /// not drawn from: the whole catalog is every set, Startup's pool is
-    /// its three though Hedge Fund in it was printed in the Core Set, and
+    /// its three though Hedge Fund in it was printed in all four core sets, and
     /// Casual, which lists no sets, is every set its cards were printed in.
     #[test]
     fn the_sets_of_a_pool_are_the_ones_its_cards_were_printed_in_newest_first() {
@@ -213,7 +213,11 @@ mod tests {
         let startup: Vec<&CardDefinition> = catalog.iter().filter(|card| legal_in(card, rules)).collect();
         assert!(startup.iter().any(|card| card.id.0 == "hedge_fund"));
         assert_eq!(sets_of(startup.iter().copied(), Some(rules)), vec!["vantage_point", "elevation", "system_gateway"]);
-        assert_eq!(sets_of(startup.iter().copied(), None), vec!["vantage_point", "elevation", "system_gateway", "core_set"], "with no format, the Core Set printed Hedge Fund");
+        assert_eq!(
+            sets_of(startup.iter().copied(), None),
+            vec!["vantage_point", "elevation", "system_gateway", "system_core_2019", "revised_core_set", "core_set"],
+            "with no format, every core set that printed Hedge Fund"
+        );
         assert_eq!(sets_of(catalog.iter(), Some(NsgFormat::Casual.rules())), every);
         assert!(sets_of(std::iter::empty(), None).is_empty());
     }

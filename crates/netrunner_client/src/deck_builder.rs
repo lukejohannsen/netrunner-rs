@@ -1094,7 +1094,14 @@ mod tests {
             for set in &eternal {
                 assert!(!pool(book, &PoolFilter { set: Some(set.clone()), ..PoolFilter::new(side, NsgFormat::Eternal) }).is_empty(), "{set} is offered with nothing behind it");
             }
-            assert_eq!(sets(book, side, NsgFormat::Casual), eternal, "Casual lists no pool, so it is every card");
+            // Casual lists no pool, so it is every card, and offers one set
+            // Eternal does not: Terminal Directive Cards, which no format's
+            // set list names, though its cards are in both pools by their
+            // other printings (FFG plan, Stage 0a-i).
+            let casual = sets(book, side, NsgFormat::Casual);
+            let beyond: Vec<&String> = casual.iter().filter(|set| !eternal.contains(set)).collect();
+            assert_eq!(beyond, [&"terminal_directive_cards".to_string()], "{side:?}: Casual is every card");
+            assert!(eternal.iter().all(|set| casual.contains(set)), "{side:?}: Casual is every card");
         }
     }
 

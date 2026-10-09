@@ -29,6 +29,7 @@
 
 use bevy::prelude::*;
 use netrunner_client::card_text::{segments, superscript, Segment};
+use netrunner_client::cards::faction_label;
 
 use crate::theme::Theme;
 
@@ -62,7 +63,7 @@ pub fn spans(theme: &Theme, words: &str, font: &TextFont) -> Option<Vec<(String,
         return None;
     }
     let segments = segments(words);
-    if !words.contains(ARROW) && !segments.iter().any(|segment| matches!(segment, Segment::Symbol(_))) {
+    if !words.contains(ARROW) && !segments.iter().any(|segment| matches!(segment, Segment::Symbol(_) | Segment::Faction(_))) {
         return None;
     }
     let mut out: Vec<(String, TextFont)> = Vec::new();
@@ -70,7 +71,14 @@ pub fn spans(theme: &Theme, words: &str, font: &TextFont) -> Option<Vec<(String,
         let plain = |text: String| (text, font.clone());
         out.push(match segment {
             Segment::Text(text) => plain(arrowless(&text)),
-            Segment::Superscript(n) => plain(superscript(n)),
+            Segment::Superscript(raised) => plain(superscript(&raised)),
+            Segment::Faction(faction) => match theme.faction_icon(faction, 0.0) {
+                Some((mark, mut face)) => {
+                    face.font_size = font.font_size;
+                    (mark, face)
+                }
+                None => plain(faction_label(faction).to_string()),
+            },
             Segment::Break => plain("\n".to_string()),
             Segment::Symbol(symbol) => {
                 let (glyph, mut face) = theme.symbol(symbol, 0.0);

@@ -81,6 +81,28 @@ SETS = [
     "vantage_point", "rebellion_without_rehearsal", "the_automata_initiative", "parhelion",
     "midnight_sun_booster_pack", "midnight_sun", "uprising_booster_pack", "uprising", "downfall",
     "system_update_2021", "salvaged_memories", "magnum_opus_reprint",
+    # The Fantasy Flight Games sets (docs/roadmap/ffg-card-pool.md, Stage
+    # 0a), in that plan's tranche order, F1 to F12.
+    "revised_core_set",
+    "reign_and_reverie",
+    "sovereign_sight", "down_the_white_nile", "council_of_the_crest", "the_devil_and_the_dragon",
+    "whispers_in_nalubaale", "kampala_ascendent",
+    "daedalus_complex", "station_one", "earths_scion", "blood_and_water", "free_mars", "crimson_dust",
+    "23_seconds", "blood_money", "escalation", "intervention", "martial_law", "quorum",
+    # Not in Eternal's or Snapshot's set lists, but 43 of its cards are in
+    # both pools (NetrunnerDB states the pool per card): the plan's table
+    # missed it, and the sync found it.
+    "terminal_directive_cards",
+    "kala_ghoda", "business_first", "democracy_and_dogma", "salsette_island", "the_liberated_mind",
+    "fear_the_masses", "data_and_destiny",
+    "the_valley", "breaker_bay", "chrome_city", "the_underway", "old_hollywood",
+    "the_universe_of_tomorrow", "order_and_chaos",
+    "upstalk", "the_spaces_between", "first_contact", "up_and_over", "all_that_remains", "the_source",
+    "honor_and_profit",
+    "creation_and_control",
+    "opening_moves", "second_thoughts", "mala_tempora", "true_colors", "fear_and_loathing", "double_time",
+    "what_lies_ahead", "trace_amount", "cyber_exodus", "a_study_in_static", "humanitys_shadow", "future_proof",
+    "napd_multiplayer", "magnum_opus", "system_core_2019",
 ]
 
 # What a card carries, by v3 attribute name. `text` is folded (above).

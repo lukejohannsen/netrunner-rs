@@ -120,7 +120,24 @@ No cards. Four parts, each its own PR.
     found a set the table above misses: **Terminal Directive Cards**
     (`terminal_directive_cards`, 57 printings), in neither format's set
     list but with 43 cards in both pools; it joins F5.
-  - **0a-ii**: the sync itself.
+  - **0a-ii closed** (9 October 2026): the sync itself. The catalog
+    embeds 73 sets, 2,423 printings of 2,017 cards (15 sets, 846
+    printings of 797 cards before), and every new set has its gate over
+    an `<SET>_UNIMPLEMENTED` list, 1,307 printings in all, which
+    `pool_status.py` reports per pack: 797 of Eternal's 2,017 cards are
+    built and 137 of Snapshot's 1,181. The embedded JSON grew from 0.8 MB
+    to 2.1 MB and `netrunner_core`'s debug rlib from 116 MB to 120 MB; a
+    rebuild of the crate took 21 s on both sides and a release build with
+    its dependencies 45 s, so the build's time did not move. Eternal bans
+    seven of the new cards (Aghora, Watch the World Burn and five more).
+    What the new text needed from the clients came with it: a faction's
+    mark inside rules text ("6 or more non-alliance [haas-bioroid]
+    cards", the eight Mumbad alliances) and a trace of X (Searchlight,
+    Surveyor and three more) are segments of their own
+    (`card_text::Segment::{Faction, Superscript}`), a strength of X on
+    ice or an icebreaker is drawn as X (`card_face::Slot::StrengthX`),
+    and NAPD Multiplayer is the one embedded set with no mark, because
+    NetrunnerDB's icon font draws none for its cycle.
 - **0b — the observation vocabulary, once.** `CARD_VOCAB` is 1,024: the
   legacy 184 slots and the NSG packs' blocks end at slot 758, and the Core
   Set's block after them at 871 (NSG tranche 8 Stage 10a), so 152 are

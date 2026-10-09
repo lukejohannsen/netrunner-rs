@@ -624,26 +624,28 @@ mod tests {
         assert_eq!(printing_id("not-a-code"), Err(CardConversionError::InvalidPrintingId("not-a-code".to_string())));
     }
 
-    /// Fifteen sets, 846 printings of 797 cards. Exact rather than a floor:
-    /// a set that failed to embed would have passed a floor for as long as
+    /// Seventy-three sets, 2,423 printings of 2,017 cards: the fifteen
+    /// Null Signal Games sets and the 58 Fantasy Flight Games sets the FFG
+    /// sync embedded (Stage 0a-ii; 846 printings of 797 cards before it). Exact rather than a floor: a
+    /// set that failed to embed would have passed a floor for as long as
     /// the others outnumbered it.
     #[test]
     fn the_embedded_catalog_holds_the_known_counts() {
-        assert_eq!(sets().len(), 15);
-        assert_eq!(printings().count(), 846);
-        assert_eq!(cards().len(), 797);
+        assert_eq!(sets().len(), 73);
+        assert_eq!(printings().count(), 2423);
+        assert_eq!(cards().len(), 2017);
         assert!(cards().iter().all(|card| printings_of(&card.id).next().is_some()), "every card has a printing");
     }
 
     /// A reprint is a printing of the same card: Hedge Fund is one card,
-    /// printed in System Gateway (30075) and the Core Set (01110), newest
-    /// first.
+    /// printed in System Gateway (30075), System Core 2019 (25146), the
+    /// Revised Core Set (20132) and the Core Set (01110), newest first.
     #[test]
     fn a_card_is_found_by_its_id_and_its_printings_newest_first() {
         let hedge_fund = CardId("hedge_fund".to_string());
         assert_eq!(cards().get(&hedge_fund).expect("Hedge Fund").title, "Hedge Fund");
         let codes: Vec<u32> = printings_of(&hedge_fund).map(|printing| printing.id.0).collect();
-        assert_eq!(codes, [30075, 1110]);
+        assert_eq!(codes, [30075, 25146, 20132, 1110]);
         assert_eq!(latest_printing(&hedge_fund).map(|printing| printing.set.as_str()), Some("system_gateway"));
         assert!(printed_in(&hedge_fund, "core_set"));
         let wildcat = printing(PrintingId(30002)).expect("Wildcat Strike's printing");
@@ -655,11 +657,20 @@ mod tests {
     }
 
     /// Newest first by release date, System Update 2021 ahead of System
-    /// Gateway on the day they share.
+    /// Gateway on the day they share, as NAPD Multiplayer is ahead of
+    /// Magnum Opus on theirs.
     #[test]
     fn sets_are_newest_first() {
         let order: Vec<&str> = sets().iter().map(|set| set.legacy_code.as_str()).collect();
-        assert_eq!(order, ["vp", "elev", "rwr", "tai", "ph", "ms", "msbp", "su21", "sg", "sm", "ur", "urbp", "mor", "df", "core"]);
+        assert_eq!(
+            order,
+            [
+                "vp", "elev", "rwr", "tai", "ph", "ms", "msbp", "su21", "sg", "sm", "ur", "urbp", "mor", "df", "sc19", "napd", "mo", "rar", "ka", "win", "tdatd",
+                "cotc", "dtwn", "ss", "core2", "cd", "fm", "baw", "eas", "td", "so", "dc", "qu", "ml", "in", "es", "bm", "23s", "ftm", "tlm", "si", "dag", "bf",
+                "kg", "dad", "uot", "oh", "uw", "cc", "bb", "val", "oac", "ts", "atr", "uao", "fc", "tsb", "up", "hap", "dt", "fal", "tc", "mt", "st", "om",
+                "cac", "fp", "hs", "asis", "ce", "ta", "wla", "core"
+            ]
+        );
         let sg = set("system_gateway").expect("System Gateway");
         assert_eq!((sg.name.as_str(), sg.cycle.as_str(), sg.first_printing), ("System Gateway", "system_gateway", PrintingId(30001)));
         assert!(set("sg").is_none(), "a set is found by its v3 id");

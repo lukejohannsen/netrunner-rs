@@ -17,6 +17,7 @@ use bevy::prelude::*;
 
 use netrunner_client::card_face::{Face, Slot};
 use netrunner_client::card_text::{superscript, Segment, Symbol};
+use netrunner_client::cards::faction_label;
 use netrunner_core::rules::Side;
 
 use crate::card_images::{picture, WantsImage};
@@ -166,9 +167,19 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
                                 let (glyph, font) = theme.symbol(*symbol, size.body());
                                 spans.spawn((TextSpan::new(glyph), font, TextColor(theme.accent)));
                             }
-                            Segment::Superscript(n) => {
-                                spans.spawn((TextSpan::new(superscript(*n)), theme.font(size.body()), TextColor(theme.text)));
+                            Segment::Superscript(raised) => {
+                                spans.spawn((TextSpan::new(superscript(raised)), theme.font(size.body()), TextColor(theme.text)));
                             }
+                            // The mark in the faction's colour, as the card
+                            // prints it; its name where no icon font is.
+                            Segment::Faction(faction) => match theme.faction_icon(*faction, size.body()) {
+                                Some((mark, font)) => {
+                                    spans.spawn((TextSpan::new(mark), font, TextColor(theme.faction(Some(*faction)))));
+                                }
+                                None => {
+                                    spans.spawn((TextSpan::new(faction_label(*faction)), theme.font(size.body()), TextColor(theme.text)));
+                                }
+                            },
                             Segment::Break => {
                                 spans.spawn((TextSpan::new("\n"), theme.font(size.body()), TextColor(theme.text)));
                             }
@@ -280,7 +291,7 @@ fn chip(theme: &Theme, faction: Color, slot: Slot, size: FaceSize) -> impl Bundl
     let (label, label_font) = match icon {
         Some(symbol) => theme.symbol(symbol, size.small()),
         None => match slot {
-            Slot::Strength(_) | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) | Slot::AdvancementX => (String::new(), theme.font(size.small())),
+            Slot::Strength(_) | Slot::StrengthX | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) | Slot::AdvancementX => (String::new(), theme.font(size.small())),
             _ => (slot.caption().to_string(), theme.font(size.small())),
         },
     };
