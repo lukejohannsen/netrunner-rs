@@ -29709,4 +29709,33 @@ mod reprints {
         assert_eq!(dealt.runner.resources.agenda_points, crate::rules::AgendaPoints(2), "the forfeited point goes with it");
         assert!(dealt.corp.removed_from_game.contains(&id("greenmail")));
     }
+
+    // ---- Stage 11m: a played event is trashed once it has resolved ----
+
+    #[test]
+    fn deja_vu_adds_one_card_or_up_to_two_virus_cards_from_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("deja_vu")];
+        state.runner.heap = vec![id("sure_gamble"), id("imp"), id("datasucker")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("deja_vu") }).expect("play");
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "one card, or viruses");
+        assert_eq!(asked.runner.play_area, [id("deja_vu")], "resolving, so not in the heap (CR 3.7.1)");
+
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("one card");
+        assert_eq!(runner_toggles(&one, &registry).len(), 3, "any card");
+        let (one, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Sure Gamble");
+        let (one, _) = apply_action(&one, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(one.runner.grip.contains(&id("sure_gamble")));
+        assert_eq!(one.runner.heap, [id("imp"), id("datasucker"), id("deja_vu")], "trashed once it has resolved");
+        assert!(one.runner.play_area.is_empty());
+
+        let (viruses, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("viruses");
+        assert_eq!(runner_toggles(&viruses, &registry), vec![1, 2], "only the virus cards");
+        let (viruses, _) = apply_action(&viruses, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Imp");
+        let (viruses, _) = apply_action(&viruses, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("Datasucker");
+        let (viruses, _) = apply_action(&viruses, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(viruses.runner.grip.contains(&id("imp")) && viruses.runner.grip.contains(&id("datasucker")));
+        assert!(viruses.runner.heap.contains(&id("sure_gamble")));
+    }
 }

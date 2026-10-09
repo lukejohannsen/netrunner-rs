@@ -495,6 +495,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let names: Vec<String> = view.runner.set_aside.iter().map(&title).collect();
             format!("set aside: {}", names.join(", "))
         }))
+        // An event still resolving (Déjà Vu while the Runner chooses from
+        // the heap): faceup in the play area, and in the heap once it has
+        // resolved (CR 3.7.1).
+        .chain(view.runner.play_area.iter().map(|played| format!("resolving: {}", title(played))))
         // The Corp's (Deep Dive's top 8 of R&D while the Runner accesses
         // them): faceup too, and the Corp's cards.
         .chain((!view.corp.set_aside.is_empty()).then(|| {

@@ -145,6 +145,24 @@ pub(crate) fn action_finished(
     announce(state, registry, events, Trigger::OnActionFinished, CardId(String::new()), event)
 }
 
+/// Trashes the Runner's event `card` as it finishes resolving (CR 3.7.1):
+/// into the heap and announced (Aniccam's "an event is trashed", heard
+/// with the card already there) at once when nothing waits, or held in
+/// the play area (`RunnerState::play_area`) behind what does — the queue
+/// is where the rest of a parked resolution is, as `finished_resolving`
+/// reads it. `fire_one` moves the card when the trash comes up. It was
+/// filed in the heap as it was played, so Déjà Vu, parked on its own
+/// choice, could return itself.
+pub(crate) fn event_trashed(state: &mut GameState, registry: &CardRegistry, events: &mut Vec<GameEvent>, side: Side, card: CardId) -> Result<(), RulesError> {
+    let trashed = GameEvent::CardTrashed { side, card: card.clone(), from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
+    if state.is_resolution_blocked() || !state.deferred_triggers.is_empty() {
+        state.runner.play_area.push(card.clone());
+    } else {
+        state.runner.heap.push(card.clone());
+    }
+    announce(state, registry, events, Trigger::OnCardTrashed, card, trashed)
+}
+
 /// `event` now when nothing waits, or queued behind what does
 /// (`DeferredTrigger::announce`).
 fn announce(
@@ -453,6 +471,15 @@ fn fire_one(
     // A moment queued to be announced once what was ahead of it has
     // resolved (`DeferredTrigger::announce`): announced now.
     if let Some(event) = &due.announce {
+        // An event held in the play area while its resolution was parked
+        // (`event_trashed`) reaches the heap as its trash is announced —
+        // unless its own text took it elsewhere (Networking's "add this
+        // event to your grip"), and then it was never trashed.
+        if let GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::PlayArea, .. } = event {
+            let Some(position) = state.runner.play_area.iter().position(|held| held == card) else { return Ok(Vec::new()) };
+            let held = state.runner.play_area.remove(position);
+            state.runner.heap.push(held);
+        }
         let mut events = Vec::new();
         emit(state, registry, &mut events, event.clone())?;
         return Ok(events);

@@ -334,6 +334,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.runner.heap.iter().cloned());
     ids.extend(view.runner.removed_from_game.iter().cloned());
     ids.extend(view.runner.set_aside.iter().cloned());
+    ids.extend(view.runner.play_area.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
     for rig_card in &view.runner.rig {
         ids.push(rig_card.card.clone());
@@ -397,6 +398,8 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.stack_count
                 + view.runner.heap.len()
                 + view.runner.removed_from_game.len()
+                + view.runner.set_aside.len()
+                + view.runner.play_area.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
         }
@@ -1054,6 +1057,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         heap: view.runner.heap.clone(),
         removed_from_game: view.runner.removed_from_game.clone(),
         set_aside: view.runner.set_aside.clone(),
+        play_area: view.runner.play_area.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         servers_run_successfully: view.runner.servers_run_successfully.clone(),
@@ -1452,6 +1456,7 @@ mod tests {
                 }],
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
+                play_area: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
