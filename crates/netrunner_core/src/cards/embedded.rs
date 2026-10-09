@@ -472,8 +472,13 @@ mod catalog_join_tests {
                     walk(on_match, out);
                     walk(on_differ, out);
                 }
-                Effect::EffectIf { effect, .. }
-                | Effect::Trace { on_success: effect, .. }
+                Effect::EffectIf { effect, otherwise, .. } => {
+                    walk(effect, out);
+                    if let Some(otherwise) = otherwise {
+                        walk(otherwise, out);
+                    }
+                }
+                Effect::Trace { on_success: effect, .. }
                 | Effect::SetAccessReplacement { effect, .. }
                 | Effect::SetRunEndedEffect(effect)
                 | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),

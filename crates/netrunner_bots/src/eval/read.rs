@@ -539,7 +539,7 @@ pub(super) fn host_derez(def: &CardDefinition) -> Option<HostDerez> {
         for effect in &trigger.effects {
             effect.for_each_effect(&mut |effect| match effect {
                 Effect::AddCounters(n) => counters += *n,
-                Effect::EffectIf { condition: EffectRequirement::ThisCardCountersAtLeast(n), effect } => {
+                Effect::EffectIf { condition: EffectRequirement::ThisCardCountersAtLeast(n), effect, .. } => {
                     let mut derezzes = false;
                     effect.for_each_effect(&mut |inner| derezzes |= matches!(inner, Effect::DerezCard(CardTarget::HostIce)));
                     if derezzes {
