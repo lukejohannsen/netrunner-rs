@@ -10112,3 +10112,34 @@ new `Effect`, and a Sweep deck.
   Corroder for 2[credit], hosted there, with Corroder 1 stronger.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 790 card files.
+
+#### Stage 11q — a breaker that pays for each encounter it broke in (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Crypsis (Core Set has 110 of 113 built).
+
+- **"Whenever an encounter ends, if you used this program to break a
+  subroutine during that encounter."** The encounter's tally keeps a set
+  of every install whose ability broke one of its subroutines
+  (`EncounterTally::breakers`), beside `broken_by`, which turns `Mixed`
+  at a second breaker and forgets the first. The set rides out of the
+  encounter on its end (`GameEvent::EncounterEnded::broken_with`), as
+  Virtual Service Agent's subtypes ride out on the pass, because the
+  triggers that hear the end resolve after the tally is reset. A new
+  `EffectRequirement::BrokeASubroutineThatEncounter` reads it off the
+  triggering event against the acting install, so a click's break or
+  another breaker's never counts.
+- **"Remove 1 hosted virus counter or trash this program."** A
+  `PresentChoice` behind Stage 11o's `EffectIf` with an `otherwise`: with
+  a counter the Runner chooses, with none it is trashed and nobody is
+  asked.
+- **Safety Net**, a Sweep deck, takes two for its two Cordyceps, a virus
+  program for a virus program; Transhuman and Level Pegging keep
+  Cordyceps.
+- **Tests.** Corroder's break leaves Crypsis untouched; after Crypsis
+  breaks, the end of the encounter offers a counter or the card, and
+  with no counter trashes it; its click places a counter. Crypsis joins
+  the purge test's virus roster.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 791 card files.

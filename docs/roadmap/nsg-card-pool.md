@@ -58,11 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 109 | 3, 0, 0, — | in progress: Stages 1a–11p; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 110 | 3, 0, 0, — | in progress: Stages 1a–11q; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 110
-`Effect` variants single-use, none unused, over 790 card files** (9 October
-2026, with tranche 8 Stage 11p, which added none and lets hardware be
+`Effect` variants single-use, none unused, over 791 card files** (9 October
+2026, with tranche 8 Stage 11q, which added none and lets a trigger ask
+whether its card broke a subroutine during the encounter that ended;
+Stage 11p, at 17 of 110 over 790, added none and lets hardware be
 installed onto another rig card; Stage 11o, at 17 of 110 over 789, added
 none and gives `EffectIf` an `otherwise`; Stage 11n, at 17 of 110 over 788, added none and lets a rez cost on ice
 be about the first rez each turn; Stage 11m, at 17 of 110 over 787, added none and keeps a played event
@@ -1204,6 +1206,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11n** — Reina Roja: Freedom Fighter, from System Update 2021: the first piece of ice the Corp rezzes each turn costs 1[credit] more, read off the turn log as an install discount is, and her Sweep deck, Rez Tax (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11o** — Accelerated Beta Test, from the Core Set: the Corp installs and rezzes any ice among the top 3 of R&D, ignoring all costs, and trashes the rest, with an `otherwise` branch on `EffectIf` (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11p** — The Personal Touch, from the Core Set: hardware that installs only onto an icebreaker, and gives it +1 strength (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11q** — Crypsis, from the Core Set: an AI breaker that spends a hosted virus counter, or is trashed, after each encounter it broke a subroutine in (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1320,6 +1323,9 @@ nine by kind):
     **11p closed**, The Personal Touch, with no new `Effect`: a piece of
     hardware can install only onto a rig card it names, and
     `InstallHardware` takes a host.
+    **11q closed**, Crypsis, with no new `Effect`: the end of an encounter
+    names every install that broke one of its subroutines, and a trigger
+    can ask whether its own card was one.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

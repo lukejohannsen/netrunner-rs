@@ -388,6 +388,14 @@ pub enum EffectRequirement {
     /// reset as the encounter ends. Composition didn't work:
     /// `SubroutineBrokenThisRun` reaches back to the run's earlier ice.
     SubroutineBrokenThisEncounter,
+    /// The acting install broke a subroutine during the encounter whose end
+    /// is being heard (`GameEvent::EncounterEnded::broken_with`) — Crypsis's
+    /// "Whenever an encounter ends, if you used this program to break a
+    /// subroutine during that encounter". False off any other event.
+    /// Composition didn't work: `SubroutineBrokenThisEncounter` asks the
+    /// live tally, which is reset by the time the end is heard, and asks
+    /// about any breaker rather than this one.
+    BrokeASubroutineThatEncounter,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.
