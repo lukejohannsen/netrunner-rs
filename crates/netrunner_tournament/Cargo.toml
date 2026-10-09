@@ -1,0 +1,22 @@
+[package]
+name = "netrunner_tournament"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+# Swiss rounds for a tournament (Phase 4 §7 stage 6b): the scoring, the
+# standings with their tiebreakers, and the next round's pairing with
+# its byes and side balancing, as Null Signal Games' Organized Play
+# Policies run a single-sided Swiss. Pure and engine-free, like
+# `netrunner_rating`: it knows nothing of keys, decks or sockets — an
+# entrant is whatever the caller names one by — and performs no I/O. Its
+# own crate because both ends need it: the server pairs with it, and a
+# client recomputes the standings from the rounds the server publishes,
+# so a disputed standing is a recomputation (the design's "standings a
+# fold").
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

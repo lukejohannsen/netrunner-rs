@@ -81,6 +81,7 @@ use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
+use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
@@ -454,6 +455,13 @@ struct Tournament {
     state: TournamentState,
     /// By the entrant's rating id, in registration order.
     entrants: Vec<Entry>,
+    /// The entrants' keys in the order the first round was paired from: a
+    /// shuffle off the daemon's seed when registration closed, which is
+    /// every "random" the policies ask for (`swiss`). Empty until then.
+    seeding: Vec<PublicKey>,
+    /// Every round paired so far, each table's result written as its
+    /// game ends or the organizer records one (Phase 4 §7 stage 6b).
+    rounds: Vec<swiss::Round<PublicKey>>,
 }
 
 /// One entrant's registration: the decks the server holds for them, the
@@ -469,6 +477,21 @@ struct Entry {
 }
 
 impl Tournament {
+    fn entry(&self, key: &PublicKey) -> Option<&Entry> {
+        self.entrants.iter().find(|entry| entry.key == *key)
+    }
+
+    /// The round being played, by its index into `rounds`.
+    fn current(&self) -> Option<(usize, &swiss::Round<PublicKey>)> {
+        match self.state {
+            TournamentState::Playing { round } => {
+                let index = round as usize - 1;
+                self.rounds.get(index).map(|current| (index, current))
+            }
+            TournamentState::Registering | TournamentState::Finished => None,
+        }
+    }
+
     /// The tournament as the wire reports it: the entrants by their
     /// commitments, never their lists.
     fn info(&self, id: &str) -> TournamentInfo {
@@ -478,6 +501,8 @@ impl Tournament {
             format: self.format,
             organizer: self.organizer,
             state: self.state,
+            seeding: self.seeding.clone(),
+            rounds: self.rounds.clone(),
             entrants: self
                 .entrants
                 .iter()
@@ -493,6 +518,46 @@ impl Tournament {
 /// Every tournament, by id.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Tournaments(std::collections::BTreeMap<String, Tournament>);
+
+/// One table of one round of one tournament: what a seat waits at and a
+/// match is played for.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TableRef {
+    tournament: String,
+    /// Into `Tournament::rounds`.
+    round: usize,
+    /// Into the round's tables.
+    table: usize,
+}
+
+/// Where a table stands between the pairing and its result: one player
+/// seated and waiting for the other, or the game under way.
+enum TableState {
+    Waiting(Seated),
+    Playing(Uuid),
+}
+
+/// A player who sat at their table first (`ClientMessage::Sit`), held
+/// until the opponent sits: the name `MatchList` will show, their key,
+/// the token `Queued` carried, the lobby they go back to, and the
+/// channels the match will play them through. Their deck is not here:
+/// it is the one they registered, read when the game starts.
+struct Seated {
+    token: Uuid,
+    key: PublicKey,
+    player_name: String,
+    lobby: String,
+    tx: mpsc::UnboundedSender<ServerMessage>,
+    slot: PlayerSlot,
+}
+
+/// An attached connection, as the daemon can reach it unasked: the key it
+/// proved and its outgoing channel. What a tournament's change is pushed
+/// through to the entrants and the organizer who are on.
+struct AttachedLink {
+    key: Option<PublicKey>,
+    tx: mpsc::UnboundedSender<ServerMessage>,
+}
 
 impl Tournaments {
     /// Oldest first.
@@ -558,6 +623,11 @@ struct Registry {
     members: HashMap<String, usize>,
     /// The tournaments the daemon holds; see `ServeOptions::data_dir`.
     tournaments: Tournaments,
+    /// Every attached connection, by a link id of its own, for what is
+    /// pushed unasked (`Shared::announce`).
+    attached: HashMap<Uuid, AttachedLink>,
+    /// A tournament table's seat waiting for its opponent, or its game.
+    tables: HashMap<TableRef, TableState>,
     /// Claimed by `allocate`, never reused: match `n` plays on
     /// `base_seed + n` whether or not match `n - 1` finished, so a
     /// `--seed` run is reproducible connection for connection.
@@ -820,6 +890,42 @@ impl Shared {
             Ok(()) => tracing::info!(%match_id, path = %path.display(), "match record kept"),
             Err(error) => tracing::warn!(%match_id, path = %path.display(), ?error, "could not keep the match record"),
         }
+    }
+
+    /// A tournament as it now stands, pushed to every attached entrant and
+    /// its organizer but the connection that asked (`except`, which gets
+    /// the same message as its answer): a player waiting on the page sees
+    /// the pairing when it is posted, and the organizer sees the entrants
+    /// arrive and the tables finish. Under the caller's registry lock.
+    fn announce(&self, registry: &Registry, id: &str, except: Option<Uuid>) {
+        let Some(tournament) = registry.tournaments.0.get(id) else { return };
+        let info = tournament.info(id);
+        for (link_id, link) in &registry.attached {
+            if Some(*link_id) == except {
+                continue;
+            }
+            let Some(key) = link.key else { continue };
+            if key == tournament.organizer || tournament.entry(&key).is_some() {
+                let _ = link.tx.send(ServerMessage::Tournament { tournament: info.clone() });
+            }
+        }
+    }
+
+    /// A table's game ended: its result is written into the round, the
+    /// table let go, the file rewritten and the change pushed. A result
+    /// the organizer already recorded (a game that ran past a recorded
+    /// no-show cannot happen, since recording refuses a playing table)
+    /// is kept; a table whose tournament has gone is nobody's.
+    fn table_ended(&self, table: TableRef, outcome: TableOutcome) {
+        let mut registry = self.lock();
+        registry.tables.remove(&table);
+        let Some(tournament) = registry.tournaments.0.get_mut(&table.tournament) else { return };
+        let Some(slot) = tournament.rounds.get_mut(table.round).and_then(|round| round.tables.get_mut(table.table)) else { return };
+        if slot.result.is_none() {
+            slot.result = Some(outcome);
+        }
+        self.save_tournaments(&registry);
+        self.announce(&registry, &table.tournament, None);
     }
 
     /// Rewrites the tournaments file after a change, under the caller's
@@ -1401,7 +1507,7 @@ fn seat_vs_bot(
         Side::Corp => (human, bot),
         Side::Runner => (bot, human),
     };
-    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false);
+    start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None);
 }
 
 /// `ServeBotKind::None`: pair with the first compatible waiter in the same
@@ -1430,7 +1536,7 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let rated_lobby = registry.lobby_info(&waiter.lobby, &shared.options).is_some_and(|lobby| lobby.rated);
     let (match_id, seed) = registry.allocate(shared.base_seed);
     let (corp, runner) = assign_sides(waiter, newcomer, seed);
-    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby);
+    start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None);
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -1444,7 +1550,7 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
 /// players met in rates its games (`LobbyInfo::rated`); a bot's seat
 /// never is.
 #[allow(clippy::too_many_arguments)]
-fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool) {
+fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer, rated_lobby: bool, table: Option<TableRef>) {
     let mut dealt = shared.decks_for(seed, format);
     // A brought deck replaces the deal for its side, pinned or rotating:
     // the player chose it, and the operator's pin is the default for a
@@ -1531,6 +1637,11 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             commitments,
         },
     );
+    // A tournament table's game: the table is playing until it ends, so
+    // the organizer cannot record over it and nobody sits at it again.
+    if let Some(table) = &table {
+        registry.tables.insert(table.clone(), TableState::Playing(match_id));
+    }
 
     let mut tokens = Vec::with_capacity(seats.len());
     for (side, session_token, tx, lobby) in seats {
@@ -1591,6 +1702,17 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         };
         let signed = shared.identity.sign(RECEIPT_TAG, serde_json::to_string(&receipt).expect("a receipt serializes"));
         shared.keep_record(match_id, &record, &signed, ended_at);
+        // A table's result is the game's: a win either way, and a stall
+        // nobody won is a tie (1.1.4). Its standings are the
+        // tournament's own; the game is not on the ladder.
+        if let Some(table) = table {
+            let result = match outcome {
+                Some((Side::Corp, _)) => TableOutcome::CorpWon,
+                Some((Side::Runner, _)) => TableOutcome::RunnerWon,
+                None => TableOutcome::Tie,
+            };
+            shared.table_ended(table, result);
+        }
         let ([Some(corp), Some(runner)], Some((winner, _))) = (keys, outcome) else { return };
         if !rated {
             return;

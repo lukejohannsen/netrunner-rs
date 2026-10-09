@@ -22,6 +22,10 @@ use netrunner_identity::{Nonce, PublicKey, Signature, Signed};
 /// without naming the rating crate: a rating is the server's, and the
 /// client only shows it (Phase 3 §2).
 pub use netrunner_rating::{Rating, Standing};
+/// Re-exported so a client can read a tournament's rounds and recompute
+/// its standings without naming the Swiss crate: the pairing is the
+/// server's, and the client only checks it (Phase 4 §7 stage 6b).
+pub use netrunner_tournament as swiss;
 
 pub mod statements;
 
@@ -165,6 +169,29 @@ pub enum ClientMessage {
     /// Withdraw from a tournament while registration is open. Answered
     /// with `Tournament` or `TournamentRefused`.
     Unregister { tournament: String },
+    /// The organizer begins the next round (Phase 4 §7 stage 6b): the
+    /// first closes registration — two entrants at least — and fixes the
+    /// seeding, a shuffle of the entrants off the match seed; every one
+    /// pairs single-sided Swiss over the rounds so far (`swiss::pair`),
+    /// and is refused while a table of the current round has no result.
+    /// Answered with `Tournament` to the organizer, and pushed to every
+    /// entrant attached, or `TournamentRefused`.
+    BeginRound { tournament: String },
+    /// The organizer ends the tournament after a round is complete: the
+    /// standings are final. Answered and pushed as `BeginRound` is.
+    FinishTournament { tournament: String },
+    /// Take the seat at this round's table: the game starts when the
+    /// opponent sits too, dealt from the two registered lists on the
+    /// sides the pairing gave. Answered with `Queued` while the opponent
+    /// is awaited — `CancelSeek` stands up again — then `MatchJoined`; or
+    /// `SeekRefused` for a key with no table this round, a table already
+    /// played or playing, or a connection already looking or playing.
+    Sit { tournament: String },
+    /// The organizer records a result for a table of the current round
+    /// that has none and no game under way — a no-show, or a result the
+    /// players agreed at the table (2.5.8). The organizer has the final
+    /// say (3.2.1). Answered and pushed as `BeginRound` is.
+    RecordResult { tournament: String, table: usize, outcome: swiss::Outcome },
 }
 
 /// Which chair a player looks for a game in, and the deck it needs: one
@@ -378,13 +405,17 @@ pub enum ServerMessage {
     BackInLobby { lobby: Option<LobbyInfo> },
     /// The reply to `ListTournaments`.
     Tournaments { tournaments: Vec<TournamentInfo> },
-    /// A tournament as it now stands, after `CreateTournament`, `Register`
-    /// or `Unregister` — the one the request named.
+    /// A tournament as it now stands: the answer to `CreateTournament`,
+    /// `Register`, `Unregister`, `BeginRound`, `FinishTournament` and
+    /// `RecordResult`, and **pushed unasked** to every attached entrant
+    /// and the organizer when a round begins, a table's game ends, a
+    /// result is recorded or the tournament finishes — so a player
+    /// waiting on the page sees the pairing when it is posted.
     Tournament { tournament: TournamentInfo },
-    /// `CreateTournament`, `Register` or `Unregister` refused, with the
-    /// reason: no key proved, a server that keeps nothing, no such
-    /// tournament, a statement that does not hold, a deck the format
-    /// refuses.
+    /// One of those refused, with the reason: no key proved, a server
+    /// that keeps nothing, no such tournament, a statement that does not
+    /// hold, a deck the format refuses, not the organizer, a round still
+    /// open.
     TournamentRefused { reason: String },
 }
 
@@ -404,14 +435,42 @@ pub struct TournamentInfo {
     pub state: TournamentState,
     /// In registration order.
     pub entrants: Vec<Entrant>,
+    /// The entrants in the order the first round was paired from: a
+    /// shuffle fixed when registration closed, which is every "random"
+    /// the policies ask for (`swiss`). Empty while registering.
+    pub seeding: Vec<PublicKey>,
+    /// Every round paired so far, the current one last, each table's
+    /// result filled in as its game ends. The standings are
+    /// `swiss::standings(&seeding, &rounds)`, on either end.
+    pub rounds: Vec<swiss::Round<PublicKey>>,
 }
 
-/// Where a tournament is. One variant today: the rounds are later stages,
-/// and an exhaustive match on this is what makes them add theirs.
+impl TournamentInfo {
+    /// The standings as they stand, best first.
+    pub fn standings(&self) -> Vec<swiss::Standing<PublicKey>> {
+        swiss::standings(&self.seeding, &self.rounds)
+    }
+
+    /// The round being played, if one is.
+    pub fn current_round(&self) -> Option<&swiss::Round<PublicKey>> {
+        match self.state {
+            TournamentState::Playing { round } => self.rounds.get(round as usize - 1),
+            TournamentState::Registering | TournamentState::Finished => None,
+        }
+    }
+}
+
+/// Where a tournament is. An exhaustive match on this is what makes a
+/// later stage (the cut) add its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TournamentState {
     /// Taking registrations.
     Registering,
+    /// Round `round` (from 1) is paired and being played; the next is
+    /// begun by the organizer once every table has a result.
+    Playing { round: u32 },
+    /// The organizer ended it: the standings are final.
+    Finished,
 }
 
 /// One entrant: who, and the commitment to the two decks the server holds

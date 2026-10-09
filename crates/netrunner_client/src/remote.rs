@@ -218,6 +218,28 @@ impl Attached {
         self.send(ClientMessage::Unregister { tournament });
     }
 
+    /// The organizer begins the next round (the first closes
+    /// registration). Answered with `Tournament` or `TournamentRefused`.
+    pub fn begin_round(&self, tournament: String) {
+        self.send(ClientMessage::BeginRound { tournament });
+    }
+
+    /// The organizer ends the tournament after a complete round.
+    pub fn finish_tournament(&self, tournament: String) {
+        self.send(ClientMessage::FinishTournament { tournament });
+    }
+
+    /// Take the seat at this round's table: `Queued` until the opponent
+    /// sits, then `Joined`; `cancel_seek` stands up again.
+    pub fn sit(&self, tournament: String) {
+        self.send(ClientMessage::Sit { tournament });
+    }
+
+    /// The organizer records a table's result where no game decided it.
+    pub fn record_result(&self, tournament: String, table: usize, outcome: netrunner_protocol::swiss::Outcome) {
+        self.send(ClientMessage::RecordResult { tournament, table, outcome });
+    }
+
     /// The machine refuses what makes no sense where the connection is
     /// (`connection::Connection::submit`), and the server refuses the
     /// rest with a reason that comes back as an event; a send into a

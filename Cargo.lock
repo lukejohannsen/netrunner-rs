@@ -5237,6 +5237,7 @@ dependencies = [
  "netrunner_identity",
  "netrunner_rating",
  "netrunner_session",
+ "netrunner_tournament",
  "serde",
  "serde_json",
  "uuid",
@@ -5305,6 +5306,14 @@ dependencies = [
  "netrunner_bots",
  "netrunner_core",
  "netrunner_session",
+]
+
+[[package]]
+name = "netrunner_tournament"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

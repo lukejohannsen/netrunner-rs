@@ -285,6 +285,121 @@ fn a_tournament_is_held_entered_and_left_from_the_pages() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
+/// The rounds from the pages (Phase 4 §7 stage 6b): the organizer, entered
+/// too, begins round 1 once a second entrant is in, which the entrant
+/// learns unasked; both sit at their table and the board opens for each;
+/// the organizer's concession is the table's result and leads back to
+/// the tournament's page, where the standings stand and the next round
+/// is offered; round 2 is recorded as a tie by the organizer and the
+/// tournament ended, its standings final.
+#[test]
+fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
+    use netrunner_server::protocol::swiss::Outcome;
+    use netrunner_server::protocol::TournamentState;
+    use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+    let data = std::env::temp_dir().join(format!("netrunner_desktop_rounds_daemon_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
+    let address = runtime.block_on(async {
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+        let address = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        address
+    });
+    let join = |app: &mut App| {
+        tap_control(app, Control::Open(Page::Join));
+        app.world_mut().resource_mut::<Model>().0.address = address.clone();
+        tap_control(app, Control::Go);
+        until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
+    };
+    let tournament = |app: &App| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.open_tournament().cloned());
+    let register = |app: &mut App, entrants: usize| {
+        until(app, "the decks legal in its format", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.tournament_decks.is_empty()));
+        tap_control(app, Control::Register);
+        until(app, "the entry", |app| tournament(app).is_some_and(|info| info.entrants.len() == entrants));
+    };
+
+    let (mut organizer, _dir) = headless_client("organizer");
+    join(&mut organizer);
+    tap_control(&mut organizer, Control::Open(Page::Tournaments));
+    tap_control(&mut organizer, Control::Open(Page::MakeTournament));
+    organizer.world_mut().resource_mut::<Model>().0.make_tournament.name = "Rounds".to_string();
+    tap_control(&mut organizer, Control::Go);
+    until(&mut organizer, "the tournament's page", |app| page(app) == Page::Tournament && tournament(app).is_some());
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::BeginRound).is_none(), "nobody to pair yet");
+    register(&mut organizer, 1);
+
+    let (mut entrant, _dir2) = headless_client("entrant");
+    join(&mut entrant);
+    tap_control(&mut entrant, Control::Open(Page::Tournaments));
+    until(&mut entrant, "the list with one", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.tournaments.len() == 1));
+    tap_control(&mut entrant, Control::OpenTournament(0));
+    register(&mut entrant, 2);
+    // The organizer is told unasked, and offered the first round.
+    until(&mut organizer, "the second entrant, pushed", |app| tournament(app).is_some_and(|info| info.entrants.len() == 2));
+    tap_control(&mut organizer, Control::BeginRound);
+    until(&mut organizer, "round 1", |app| tournament(app).is_some_and(|info| info.state == TournamentState::Playing { round: 1 }));
+    until(&mut entrant, "round 1, pushed", |app| tournament(app).is_some_and(|info| info.state == TournamentState::Playing { round: 1 }));
+    let round = tournament(&organizer).unwrap().rounds[0].clone();
+    assert_eq!((round.tables.len(), round.bye), (1, None));
+    let shown = texts(&mut organizer);
+    assert!(shown.iter().any(|text| text.starts_with("Round 1: you play")), "{shown:?}");
+    assert!(shown.iter().any(|text| text.starts_with("1. ")), "the standings stand where the entrants did: {shown:?}");
+
+    // Both sit; the board opens for each on the pairing's sides.
+    tap_control(&mut organizer, Control::Sit);
+    until(&mut organizer, "the organizer seated", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.seeking.is_some()));
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::CancelSeek).is_some(), "a seat is stood up from");
+    tap_control(&mut entrant, Control::Sit);
+    until(&mut organizer, "the organizer's board", |app| screen(app) == AppScreen::Game);
+    until(&mut entrant, "the entrant's board", |app| screen(app) == AppScreen::Game);
+    let organizer_key = organizer.world().resource::<Model>().0.server.as_ref().unwrap().key.unwrap();
+    let expected = if round.tables[0].corp == organizer_key { netrunner_core::rules::Side::Corp } else { netrunner_core::rules::Side::Runner };
+    assert_eq!(organizer.world().resource::<ActiveMatch>().handle.side(), expected, "the pairing's side");
+    until(&mut organizer, "the organizer's first view", |app| app.world().resource::<Board>().0.view.is_some());
+
+    // The organizer concedes: the table's result, and the tournament's
+    // page again with the next round offered.
+    press(&mut organizer, KeyCode::Escape, Key::Escape);
+    organizer.update();
+    let confirm = find::<Click>(&mut organizer, |c| matches!(c, Click::ConfirmQuit)).expect("leaving asks first");
+    tap(&mut organizer, confirm);
+    until(&mut organizer, "Play Online again", |app| screen(app) == AppScreen::Online);
+    assert_eq!(page(&organizer), Page::Tournament, "back from a tournament game, its page");
+    let winner = if expected == netrunner_core::rules::Side::Corp { Outcome::RunnerWon } else { Outcome::CorpWon };
+    until(&mut organizer, "the table's result", |app| tournament(app).is_some_and(|info| info.rounds[0].tables[0].result == Some(winner)));
+    until(&mut organizer, "the seat let go", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.seeking.is_none()));
+    let shown = texts(&mut organizer);
+    assert!(shown.iter().any(|text| text.contains("· 3 pts ·")), "{shown:?}");
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::BeginRound).is_some());
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::FinishTournament).is_some());
+
+    // Round 2 is recorded by the organizer as a tie and the tournament
+    // ended; the entrant, pumped, sees it all unasked.
+    tap_control(&mut organizer, Control::BeginRound);
+    until(&mut organizer, "round 2", |app| tournament(app).is_some_and(|info| info.state == TournamentState::Playing { round: 2 }));
+    assert!(find::<Control>(&mut organizer, |c| *c == Control::RecordResult(0, Outcome::Tie)).is_some());
+    tap_control(&mut organizer, Control::RecordResult(0, Outcome::Tie));
+    until(&mut organizer, "the tie", |app| tournament(app).is_some_and(|info| info.rounds[1].tables[0].result == Some(Outcome::Tie)));
+    tap_control(&mut organizer, Control::FinishTournament);
+    until(&mut organizer, "the end", |app| tournament(app).is_some_and(|info| info.state == TournamentState::Finished));
+    // An overline is drawn in capitals.
+    assert!(texts(&mut organizer).iter().any(|text| text == "FINAL STANDINGS"));
+    // The entrant is still on the board, which the push waits behind:
+    // the game over, Escape leads back to the tournament's page, where
+    // everything that happened since is read.
+    until(&mut entrant, "the entrant's game over", |app| app.world().resource::<Board>().0.over.is_some());
+    press(&mut entrant, KeyCode::Escape, Key::Escape);
+    entrant.update();
+    if let Some(confirm) = find::<Click>(&mut entrant, |c| matches!(c, Click::ConfirmQuit)) {
+        tap(&mut entrant, confirm);
+    }
+    until(&mut entrant, "the entrant back on the tournament's page", |app| screen(app) == AppScreen::Online && page(app) == Page::Tournament);
+    until(&mut entrant, "the entrant told of the end", |app| tournament(app).is_some_and(|info| info.state == TournamentState::Finished));
+    let _ = std::fs::remove_dir_all(&data);
+}
+
 /// A second client connects to the host by address: the host's one lobby
 /// is listed, a lobby of the guest's own is made and joined, the host's
 /// is joined back, and Escape disconnects.
