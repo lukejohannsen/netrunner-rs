@@ -240,6 +240,12 @@ impl Attached {
         self.send(ClientMessage::RecordResult { tournament, table, outcome });
     }
 
+    /// Offer the opponent at this round's table an intentional draw; the
+    /// opponent's offer back makes the table a tie.
+    pub fn offer_draw(&self, tournament: String) {
+        self.send(ClientMessage::OfferDraw { tournament });
+    }
+
     /// The machine refuses what makes no sense where the connection is
     /// (`connection::Connection::submit`), and the server refuses the
     /// rest with a reason that comes back as an event; a send into a

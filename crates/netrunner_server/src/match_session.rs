@@ -444,6 +444,7 @@ impl MatchSession {
                         | ClientMessage::ListTournaments
                         | ClientMessage::Register { .. }
                         | ClientMessage::Unregister { .. }
+                        | ClientMessage::OfferDraw { .. }
                         | ClientMessage::BeginRound { .. }
                         | ClientMessage::FinishTournament { .. }
                         | ClientMessage::Sit { .. }

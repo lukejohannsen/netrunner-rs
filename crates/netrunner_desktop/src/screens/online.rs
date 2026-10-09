@@ -234,6 +234,7 @@ pub enum Control {
     BeginRound,
     FinishTournament,
     RecordResult(usize, TableOutcome),
+    OfferDraw,
     Disconnect,
 }
 
@@ -382,6 +383,7 @@ fn controls(
             Control::BeginRound => Intent::BeginRound,
             Control::FinishTournament => Intent::FinishTournament,
             Control::RecordResult(table, outcome) => Intent::RecordResult(table, outcome),
+            Control::OfferDraw => Intent::OfferDraw,
             Control::Disconnect => Intent::Disconnect,
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
@@ -484,7 +486,8 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::Sit { .. }
             | Outcome::BeginRound { .. }
             | Outcome::FinishTournament { .. }
-            | Outcome::RecordResult { .. } => {
+            | Outcome::RecordResult { .. }
+            | Outcome::OfferDraw { .. } => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
             }
             Outcome::Nothing | Outcome::Redraw => {}
@@ -567,6 +570,7 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::BeginRound { tournament } => connected.attached.begin_round(tournament),
         Outcome::FinishTournament { tournament } => connected.attached.finish_tournament(tournament),
         Outcome::RecordResult { tournament, table, outcome } => connected.attached.record_result(tournament, table, outcome),
+        Outcome::OfferDraw { tournament } => connected.attached.offer_draw(tournament),
         _ => {}
     }
 }
@@ -1273,6 +1277,15 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
                             None => {
                                 row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Sit at your table", px(240), Control::Sit));
                             }
+                        });
+                    }
+                    // An intentional draw (2.5.8) is two offers: the
+                    // opponent's back is the agreement, and the table a
+                    // tie. The round line says when one stands.
+                    if server.may_offer_draw() {
+                        section.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Offer a draw", Val::Auto, Control::OfferDraw));
+                            row.spawn(widgets::dim(theme, "A tie if your opponent offers one too."));
                         });
                     }
                     // A drop is the same message as a withdrawal; the

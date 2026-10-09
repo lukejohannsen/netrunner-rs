@@ -393,6 +393,8 @@ enum TournamentRow {
     /// the opponent, stand up again.
     Sit,
     StandUp,
+    /// Offer the opponent an intentional draw; theirs back is the tie.
+    OfferDraw,
     /// Leave mid-event: the results stand, the key is paired no more.
     Drop,
     /// The organizer's: the next round, the end, a result for a table
@@ -428,6 +430,9 @@ impl TournamentPage {
             TournamentState::Playing { .. } => {
                 if tournament::my_table(info, key).is_some_and(|(_, _, table)| table.result.is_none()) {
                     rows.push(if seeking { TournamentRow::StandUp } else { TournamentRow::Sit });
+                }
+                if tournament::may_offer_draw(info, key) {
+                    rows.push(TournamentRow::OfferDraw);
                 }
                 if tournament::may_drop(info, key) {
                     rows.push(TournamentRow::Drop);
@@ -521,7 +526,9 @@ enum Mode {
     /// to.
     Tournaments { page: ServerPage, list: TournamentsPage },
     /// One tournament's page, under the list.
-    Tournament { page: ServerPage, list: TournamentsPage, tournament: TournamentPage },
+    /// Boxed: the page carries the tournament whole, and clippy's
+    /// `large_enum_variant` is right that the enum should not.
+    Tournament { page: ServerPage, list: TournamentsPage, tournament: Box<TournamentPage> },
     MakeTournament { page: ServerPage, list: TournamentsPage, form: MakeTournamentForm },
     /// A spectator waiting for a place.
     Waiting { connecting: Connecting, status: String, back: Box<Mode> },
@@ -840,7 +847,7 @@ impl OnlineScreen {
             Mode::MakeTournament { page, mut list, .. } => {
                 list.put(&info);
                 let decks = self.deck_choices(info.format);
-                self.mode = Mode::Tournament { page, list, tournament: TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 } };
+                self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 }) };
             }
             Mode::Tournament { page, mut list, mut tournament } => {
                 list.put(&info);
@@ -1246,7 +1253,7 @@ impl OnlineScreen {
                 TournamentsRow::Entry(index) => {
                     let info = list.list[index].clone();
                     let decks = self.deck_choices(info.format);
-                    self.mode = Mode::Tournament { page, list, tournament: TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 } };
+                    self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 }) };
                     return;
                 }
                 TournamentsRow::Refresh => attached.list_tournaments(),
@@ -1266,7 +1273,7 @@ impl OnlineScreen {
     }
 
     /// A key on a tournament's page.
-    fn tournament_key(&mut self, page: ServerPage, list: TournamentsPage, mut tournament: TournamentPage, key: KeyCode) {
+    fn tournament_key(&mut self, page: ServerPage, list: TournamentsPage, mut tournament: Box<TournamentPage>, key: KeyCode) {
         let rows = tournament.rows(page.key.as_ref(), page.seeking.is_some());
         let len = rows.len();
         tournament.cursor = tournament.cursor.min(len - 1);
@@ -1300,6 +1307,7 @@ impl OnlineScreen {
                 TournamentRow::Withdraw | TournamentRow::Drop => attached.unregister(tournament.info.id.clone()),
                 TournamentRow::Sit => attached.sit(tournament.info.id.clone()),
                 TournamentRow::StandUp => attached.cancel_seek(),
+                TournamentRow::OfferDraw => attached.offer_draw(tournament.info.id.clone()),
                 TournamentRow::BeginRound => attached.begin_round(tournament.info.id.clone()),
                 TournamentRow::Finish => attached.finish_tournament(tournament.info.id.clone()),
                 TournamentRow::Record(table, outcome) => attached.record_result(tournament.info.id.clone(), table, outcome),
@@ -1653,6 +1661,7 @@ impl OnlineScreen {
                 TournamentRow::Withdraw => "[ Withdraw ]".to_string(),
                 TournamentRow::Sit => "[ Sit at your table ]".to_string(),
                 TournamentRow::StandUp => "Seated — waiting for your opponent… (Enter stands up)".to_string(),
+                TournamentRow::OfferDraw => "[ Offer a draw — a tie if your opponent offers one too ]".to_string(),
                 TournamentRow::Drop => "[ Drop from the tournament — your results stand ]".to_string(),
                 TournamentRow::BeginRound => format!("[ Begin round {next_round} ]"),
                 TournamentRow::Finish => "[ End the tournament — the standings are final ]".to_string(),

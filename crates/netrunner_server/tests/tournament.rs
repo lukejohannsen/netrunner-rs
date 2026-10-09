@@ -18,7 +18,7 @@ use netrunner_identity::{Identity, PublicKey, Signed};
 use netrunner_server::protocol::statements::{deck_hash, RegistrationStatement, REGISTRATION_TAG};
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::{Outcome, Role};
-use netrunner_server::protocol::{TournamentInfo, TournamentState};
+use netrunner_server::protocol::{DrawOffer, TournamentInfo, TournamentState};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
@@ -520,5 +520,94 @@ async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
     send(&mut socket, ClientMessage::ListTournaments).await;
     let ServerMessage::Tournaments { tournaments } = next(&mut socket).await else { panic!() };
     assert_eq!(tournaments, vec![finished]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An intentional draw (Organized Play Policies 2.5.8) is two offers:
+/// the first is published to the table and waits, a second from the same
+/// key is refused, the opponent's is the agreement — the table is a tie
+/// and a player seated and waiting there is stood up and told — and a
+/// game under way takes no offer, an earlier one having lapsed when the
+/// game started.
+#[tokio::test]
+async fn an_intentional_draw_is_offered_by_both_players() {
+    let dir = scratch("draw");
+    let (url, server_key) = start(Some(dir.clone())).await;
+    let people = [player(1), player(2)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "Draws").await;
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+        next_tournament(&mut sockets[index]).await;
+    }
+    next_tournament(&mut sockets[0]).await;
+    send(&mut sockets[1], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[1]).await; assert!(reason.contains("no round"), "{reason}"); }
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = next_tournament(&mut sockets[0]).await;
+    assert_eq!(next_tournament(&mut sockets[1]).await, first);
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    let table = first.rounds[0].tables[0].clone();
+    let (corp_at, runner_at) = (index_of(&table.corp), index_of(&table.runner));
+
+    // The Corp offers, then sits and waits; the Corp cannot offer twice;
+    // the Runner's offer back is the tie, and the Corp is stood up.
+    send(&mut sockets[corp_at], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    let offered = next_tournament(&mut sockets[corp_at]).await;
+    assert_eq!(offered.draw_offers, vec![DrawOffer { table: 0, by: table.corp }]);
+    assert_eq!(offered.rounds[0].tables[0].result, None, "one offer is not a draw");
+    assert_eq!(next_tournament(&mut sockets[runner_at]).await, offered);
+    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    assert!(matches!(next(&mut sockets[corp_at]).await, ServerMessage::Queued { .. }));
+    send(&mut sockets[corp_at], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[corp_at]).await; assert!(reason.contains("offered a draw already"), "{reason}"); }
+    send(&mut sockets[runner_at], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    let agreed = next_tournament(&mut sockets[runner_at]).await;
+    assert_eq!(agreed.rounds[0].tables[0].result, Some(Outcome::Tie));
+    assert!(agreed.draw_offers.is_empty(), "the agreement empties the table's offers");
+    let (mut told, mut stood_up) = (None, None);
+    while told.is_none() || stood_up.is_none() {
+        match next(&mut sockets[corp_at]).await {
+            ServerMessage::Tournament { tournament } => told = Some(tournament),
+            ServerMessage::SeekRefused { reason } => stood_up = Some(reason),
+            _ => {}
+        }
+    }
+    assert_eq!(told, Some(agreed.clone()));
+    assert!(stood_up.as_deref().is_some_and(|reason| reason.contains("agreed a draw")), "{stood_up:?}");
+    send(&mut sockets[runner_at], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[runner_at]).await; assert!(reason.contains("has its result"), "{reason}"); }
+
+    // Round 2: an offer lapses when the game starts, and none is taken
+    // while it is under way.
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let second = next_tournament(&mut sockets[0]).await;
+    next_tournament(&mut sockets[1]).await;
+    let rematch = second.rounds[1].tables[0].clone();
+    let (corp2, runner2) = (index_of(&rematch.corp), index_of(&rematch.runner));
+    send(&mut sockets[corp2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    assert_eq!(next_tournament(&mut sockets[corp2]).await.draw_offers.len(), 1);
+    next_tournament(&mut sockets[runner2]).await;
+    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    assert!(matches!(next(&mut sockets[corp2]).await, ServerMessage::Queued { .. }));
+    send(&mut sockets[runner2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    next_joined(&mut sockets[runner2]).await;
+    next_joined(&mut sockets[corp2]).await;
+    send(&mut sockets[runner2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[runner2]).await; assert!(reason.contains("under way"), "{reason}"); }
+    send(&mut sockets[runner2], ClientMessage::ListTournaments).await;
+    let listed = loop {
+        match next(&mut sockets[runner2]).await {
+            ServerMessage::Tournaments { tournaments } => break tournaments,
+            _ => continue,
+        }
+    };
+    assert!(listed[0].draw_offers.is_empty(), "the offer lapsed when the game started");
     let _ = std::fs::remove_dir_all(&dir);
 }
