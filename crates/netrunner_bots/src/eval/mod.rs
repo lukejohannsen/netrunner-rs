@@ -1681,6 +1681,25 @@ mod tests {
         assert!(score(&paid) > score(&took), "paid {} against took {}", score(&paid), score(&took));
     }
 
+    /// A hand size the rig gives back is the core damage it answers, on
+    /// both chairs (§59): Marrow's "+3 maximum hand size" is worth more
+    /// than the core damage its install costs, where it was read as the
+    /// damage alone and never installed.
+    #[test]
+    fn a_hand_size_the_rig_gives_is_the_core_damage_it_answers() {
+        let w = crate::plans::Style::BALANCED.planned_weights(Side::Runner);
+        let registry = pool();
+        let mut bare = GameState::new(0);
+        bare.runner.grip = corp_cards("g", 4);
+        let mut marrow = bare.clone();
+        marrow.runner.rig.push(rig_card("marrow"));
+        marrow.runner.brain_damage = 1;
+        let runner = |state: &GameState| evaluate_state_with(state, Side::Runner, &registry, &w);
+        let corp = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &w);
+        assert!(runner(&marrow) > runner(&bare), "Marrow {} against none {}", runner(&marrow), runner(&bare));
+        assert!(corp(&marrow) < corp(&bare), "the Corp reads the same hand size the other way");
+    }
+
     #[test]
     fn the_default_weights_are_the_constants_and_score_identically() {
         let mut state = GameState::new(0);
