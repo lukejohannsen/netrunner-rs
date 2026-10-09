@@ -409,7 +409,7 @@ fn a_printing_pressed_in_the_browser_is_the_art_the_card_is_drawn_with() {
         found.sort();
         found
     };
-    assert_eq!(printings(&mut app), vec![PrintingId(1110), PrintingId(30075)], "both printings are in the strip");
+    assert_eq!(printings(&mut app), vec![PrintingId(1110), PrintingId(20132), PrintingId(25146), PrintingId(30075)], "every printing is in the strip, one per core set");
     let press_printing = |app: &mut App, printing: PrintingId| {
         let button = app.world_mut().query::<(Entity, &ArtButton)>().iter(app.world()).find(|(_, b)| b.printing == printing).map(|(e, _)| e).expect("the printing has a button");
         app.world_mut().entity_mut(button).insert(Interaction::Pressed);
@@ -423,7 +423,7 @@ fn a_printing_pressed_in_the_browser_is_the_art_the_card_is_drawn_with() {
     let saved = std::fs::read_to_string(core.settings_path.clone().unwrap()).unwrap();
     assert!(saved.contains("printing = 1110"), "kept in the file: {saved}");
     assert_eq!(drawn(&mut app), Some(Picture::Printing(PrintingId(1110))), "the grid draws the chosen printing");
-    assert_eq!(printings(&mut app).len(), 2, "the inspector was drawn again with its strip");
+    assert_eq!(printings(&mut app).len(), 4, "the inspector was drawn again with its strip");
 
     press_printing(&mut app, PrintingId(30075));
     assert!(app.world().resource::<ClientCore>().settings.art.is_empty(), "the newest is the default, so nothing is kept");

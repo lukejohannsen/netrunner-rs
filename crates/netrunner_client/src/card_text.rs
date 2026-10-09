@@ -161,8 +161,9 @@ pub fn set_icon(set: &str) -> Option<char> {
 /// at `ee095c6` spells them: the v3 id with `-` for `_`, except the three
 /// cores, which the site has always called `core`, `core2` and `sc-19`.
 /// Checked against v3's `card_cycles` on 30 September 2026: every cycle
-/// but Draft and NAPD Multiplayer has a glyph, and neither of those is a
-/// set a card pool names. The table is the font's, so a set a future sync
+/// but Draft and NAPD Multiplayer has a glyph. Draft is a set no card pool
+/// names; NAPD Multiplayer is Eternal's, embedded since the FFG sync (Stage
+/// 0a-ii), and wears no mark because the font draws none for it. The table is the font's, so a set a future sync
 /// embeds has its mark the day it lands, as long as its cycle is in the
 /// font; a cycle that is not reads as no mark, never a wrong one.
 pub fn cycle_icon(cycle: &str) -> Option<char> {
@@ -213,16 +214,42 @@ pub enum Segment {
     Text(String),
     Symbol(Symbol),
     /// A trace strength: NetrunnerDB writes `Trace[3]` for the raised
-    /// `³` the card prints after the word.
-    Superscript(u32),
+    /// `³` the card prints after the word, and `Trace[X]` for a strength
+    /// the card's text sets (Searchlight, Surveyor, Self-destruct, Kuwinda
+    /// K4H1U3, Amani Senai), kept as its digits or `X`.
+    Superscript(String),
+    /// A faction's mark inside the text: "6 or more non-alliance
+    /// [haas-bioroid] cards" (the Mumbad cycle's alliances, eight cards).
+    /// The card prints the faction's symbol; a face without the icon font
+    /// writes the faction's name.
+    Faction(Faction),
     Break,
 }
 
-/// The digits `0`–`9` raised, as a face draws a trace strength. `¹²³`
-/// are Latin-1 and the rest U+2074–2079; Noto Sans has them all.
-pub fn superscript(n: u32) -> String {
+/// A trace strength raised, as a face draws it: the digits `0`–`9`
+/// (`¹²³` are Latin-1 and the rest U+2074–2079) and `X` as `ˣ`
+/// (U+02E3); Noto Sans has them all.
+pub fn superscript(raised: &str) -> String {
     const DIGITS: [char; 10] = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
-    n.to_string().chars().map(|c| DIGITS[c.to_digit(10).unwrap_or(0) as usize]).collect()
+    raised.chars().map(|c| c.to_digit(10).map_or('ˣ', |d| DIGITS[d as usize])).collect()
+}
+
+/// The faction a `[token]` in printed text names, as NetrunnerDB spells
+/// it: the faction's id with `-` for `_`. Only the Corp's four appear in
+/// any card text on record, but the mark is the faction's, so a Runner
+/// token reads the same way.
+fn faction_from_token(token: &str) -> Option<Faction> {
+    let name = token.strip_prefix('[')?.strip_suffix(']')?;
+    Some(match name {
+        "anarch" => Faction::Anarch,
+        "criminal" => Faction::Criminal,
+        "shaper" => Faction::Shaper,
+        "haas-bioroid" => Faction::HaasBioroid,
+        "jinteki" => Faction::Jinteki,
+        "nbn" => Faction::Nbn,
+        "weyland-consortium" => Faction::WeylandConsortium,
+        _ => return None,
+    })
 }
 
 /// The printed text split at its symbols, trace strengths and line
@@ -266,12 +293,17 @@ pub fn segments(printed: &str) -> Vec<Segment> {
     out
 }
 
-/// A `[token]` as a segment: a symbol, or a trace strength's digits.
+/// A `[token]` as a segment: a symbol, a faction's mark, or a trace
+/// strength's digits or `X`.
 fn bracketed(token: &str) -> Option<Segment> {
     if let Some(symbol) = Symbol::from_token(token) {
         return Some(Segment::Symbol(symbol));
     }
-    token.strip_prefix('[').and_then(|t| t.strip_suffix(']')).and_then(|digits| digits.parse().ok()).map(Segment::Superscript)
+    if let Some(faction) = faction_from_token(token) {
+        return Some(Segment::Faction(faction));
+    }
+    let raised = token.strip_prefix('[')?.strip_suffix(']')?;
+    (raised == "X" || (!raised.is_empty() && raised.chars().all(|c| c.is_ascii_digit()))).then(|| Segment::Superscript(raised.to_string()))
 }
 
 /// The segments joined back into one string, each symbol as its glyph
@@ -284,7 +316,8 @@ pub fn render(segments: &[Segment], glyphs: bool) -> String {
         match segment {
             Segment::Text(text) => out.push_str(text),
             Segment::Symbol(symbol) => out.push_str(if glyphs { symbol.glyph() } else { symbol.fallback() }),
-            Segment::Superscript(n) => out.push_str(&superscript(*n)),
+            Segment::Superscript(raised) => out.push_str(&superscript(raised)),
+            Segment::Faction(faction) => out.push_str(crate::cards::faction_label(*faction)),
             Segment::Break => out.push('\n'),
         }
     }
@@ -319,10 +352,15 @@ mod tests {
 
     /// Every embedded set has a mark, its cycle's: the two Borealis sets
     /// share one, the Core Set's is `core`, and a set the catalog does not
-    /// know has none.
+    /// know has none. NAPD Multiplayer is the one embedded set the font
+    /// has no glyph for, so it is the one without a mark.
     #[test]
     fn every_embedded_set_has_its_cycles_mark() {
         for set in catalog::sets() {
+            if set.id == "napd_multiplayer" {
+                assert_eq!(set_icon(&set.id), None);
+                continue;
+            }
             assert!(set_icon(&set.id).is_some(), "{} ({}) has no mark", set.id, set.cycle);
             assert_eq!(set_icon(&set.id), cycle_icon(&set.cycle));
         }
@@ -359,9 +397,28 @@ mod tests {
     fn a_trace_strength_is_a_superscript() {
         let segments = segments("Trace[1]. If successful, do 1 core damage.");
         assert_eq!(segments[0], Segment::Text("Trace".to_string()));
-        assert_eq!(segments[1], Segment::Superscript(1));
+        assert_eq!(segments[1], Segment::Superscript("1".to_string()));
         assert_eq!(render(&segments, true), "Trace¹. If successful, do 1 core damage.");
-        assert_eq!(superscript(10), "¹⁰");
+        assert_eq!(superscript("10"), "¹⁰");
+    }
+
+    /// Searchlight: `Trace[X]` is a raised X, the strength its text sets.
+    #[test]
+    fn a_trace_of_x_is_a_raised_x() {
+        let segments = segments("[subroutine]Trace[X]. If successful, give the Runner 1 tag.");
+        assert_eq!(segments[2], Segment::Superscript("X".to_string()));
+        assert_eq!(render(&segments, true), "▸Traceˣ. If successful, give the Runner 1 tag.");
+    }
+
+    /// Product Recall: an alliance's faction is its mark in the text, and
+    /// its name where no icon font draws it. A bracketed word that is no
+    /// token stays as it was printed.
+    #[test]
+    fn a_faction_in_the_text_is_its_mark() {
+        let segments = segments("6 or more non-alliance [haas-bioroid] cards");
+        assert_eq!(segments[1], Segment::Faction(Faction::HaasBioroid));
+        assert_eq!(render(&segments, false), "6 or more non-alliance Haas-Bioroid cards");
+        assert_eq!(render(&super::segments("[homebrew] and [Y]"), true), "[homebrew] and [Y]");
     }
 
     #[test]

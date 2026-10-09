@@ -99,7 +99,7 @@ mod reprint_tests {
     use crate::dsl::CardId;
 
     /// A reprint is a printing, never a second card. Sure Gamble and Hedge
-    /// Fund are printed in the Core Set and System Gateway, and each is one
+    /// Fund are printed in all four core sets, and each is one
     /// entry in the catalog and one in the playable registry, under the same
     /// v3 id: the v2 catalog made one `nrdb_<code>` entry per printing, so
     /// the playable card sat beside two catalog copies of itself and a
@@ -108,7 +108,7 @@ mod reprint_tests {
     fn a_reprinted_card_is_one_card_with_several_printings() {
         let mut registry = CardRegistry::new();
         register_playable_cards(&mut registry);
-        for (id, printings) in [("hedge_fund", 2), ("sure_gamble", 2), ("cleaver", 1)] {
+        for (id, printings) in [("hedge_fund", 4), ("sure_gamble", 4), ("cleaver", 1)] {
             let id = CardId(id.to_string());
             assert!(registry.get(&id).is_some_and(|card| card.is_playable), "{} is playable", id.0);
             assert!(catalog::cards().get(&id).is_some_and(|card| !card.is_playable), "{} is in the catalog", id.0);

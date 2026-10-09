@@ -290,19 +290,22 @@ mod tests {
         assert_eq!(b.selected, None, "nothing visible, nothing open");
     }
 
-    /// The sets are listed newest first by release date, and a set filter
-    /// keeps only the cards it printed.
+    /// The sets are listed newest first by release date, every one the
+    /// catalog embeds, and a set filter keeps only the cards it printed.
     #[test]
     fn the_sets_are_newest_first_and_a_set_filter_keeps_only_its_cards() {
         let mut b = browser();
+        let newest_first: Vec<&str> = catalog::sets().iter().map(|set| set.id.as_str()).collect();
+        assert_eq!(b.sets(), newest_first);
         assert_eq!(
-            b.sets(),
-            vec![
+            b.sets()[..15],
+            [
                 "vantage_point", "elevation", "rebellion_without_rehearsal", "the_automata_initiative", "parhelion",
                 "midnight_sun", "midnight_sun_booster_pack", "system_update_2021", "system_gateway", "salvaged_memories",
-                "uprising", "uprising_booster_pack", "magnum_opus_reprint", "downfall", "core_set"
+                "uprising", "uprising_booster_pack", "magnum_opus_reprint", "downfall", "system_core_2019"
             ]
         );
+        assert_eq!(b.sets().last().map(String::as_str), Some("core_set"));
         assert!(b.apply(Intent::Set(Some("elevation".to_string()))));
         assert_eq!(b.visible().len(), 82, "one entry per card Elevation printed");
         assert!(b.visible().iter().all(|card| catalog::printed_in(&card.id, "elevation")));
@@ -326,8 +329,12 @@ mod tests {
         assert!(b.visible().iter().all(|card| rules.in_pool(&card.id)));
         assert!(b.visible().iter().any(|card| card.title == "Hedge Fund"));
         assert!(!b.visible().iter().any(|card| card.title == "Ice Wall"));
+        // Eternal's pool is every card, and it bans seven (Aghora,
+        // Watch the World Burn and five more of the FFG era).
         assert!(b.apply(Intent::Format(Some(NsgFormat::Eternal))));
-        assert_eq!(b.visible().len(), all, "Eternal is every card");
+        let eternal = NsgFormat::Eternal.rules();
+        assert_eq!(eternal.banned.len(), 7);
+        assert_eq!(b.visible().len(), all - eternal.banned.len(), "Eternal is every card it does not ban");
     }
 
     /// The format decides which sets are offered: Startup's are its three,
@@ -343,7 +350,10 @@ mod tests {
         assert!(b.apply(Intent::Set(Some("system_gateway".to_string()))));
         assert!(b.apply(Intent::Format(Some(NsgFormat::Eternal))));
         assert_eq!(b.set.as_deref(), Some("system_gateway"), "Eternal holds System Gateway too");
-        assert_eq!(b.sets().len(), catalog::sets().len());
+        // Every set but Terminal Directive Cards, which no format's set
+        // list names (FFG plan, Stage 0a-i).
+        assert_eq!(b.sets().len(), catalog::sets().len() - 1);
+        assert!(!b.sets().iter().any(|set| set == "terminal_directive_cards"));
         assert!(b.apply(Intent::Format(None)));
         assert_eq!(b.set.as_deref(), Some("system_gateway"));
     }

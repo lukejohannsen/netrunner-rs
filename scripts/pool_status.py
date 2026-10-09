@@ -49,8 +49,12 @@ FORMATS = ["startup", "standard", "eternal", "snapshot"]
 
 # The plan's order, then the sets that came before it, by v2 code.
 PACKS = ["sg", "core", "elev", "vp", "rwr", "tai", "ph", "msbp", "ms", "urbp", "ur", "df", "su21", "sm", "mor"]
+# The Fantasy Flight Games sets, in docs/roadmap/ffg-card-pool.md's tranche order.
+FFG_PACKS = ["core2", "rar", "ss", "dtwn", "cotc", "tdatd", "win", "ka", "dc", "so", "eas", "baw", "fm", "cd", "23s", "bm", "es", "in", "ml", "qu", "td", "kg", "bf", "dag", "si", "tlm", "ftm", "dad", "val", "bb", "cc", "uw", "oh", "uot", "oac", "up", "tsb", "fc", "uao", "atr", "ts", "hap", "cac", "om", "st", "mt", "tc", "fal", "dt", "wla", "ta", "ce", "asis", "hs", "fp", "napd", "mo", "sc19"]
+PACKS += FFG_PACKS
 GATED = {"sg": "SG", "elev": "ELEV", "vp": "VP", "rwr": "RWR", "tai": "TAI", "ph": "PH", "msbp": "MSBP", "ms": "MS",
          "urbp": "URBP", "ur": "UR", "df": "DF", "su21": "SU21", "sm": "SM", "mor": "MOR", "core": "CORE"}
+GATED.update({"core2": "CORE2", "rar": "RAR", "ss": "SS", "dtwn": "DTWN", "cotc": "COTC", "tdatd": "TDATD", "win": "WIN", "ka": "KA", "dc": "DC", "so": "SO", "eas": "EAS", "baw": "BAW", "fm": "FM", "cd": "CD", "23s": "S23S", "bm": "BM", "es": "ES", "in": "IN", "ml": "ML", "qu": "QU", "td": "TD", "kg": "KG", "bf": "BF", "dag": "DAG", "si": "SI", "tlm": "TLM", "ftm": "FTM", "dad": "DAD", "val": "VAL", "bb": "BB", "cc": "CC", "uw": "UW", "oh": "OH", "uot": "UOT", "oac": "OAC", "up": "UP", "tsb": "TSB", "fc": "FC", "uao": "UAO", "atr": "ATR", "ts": "TS", "hap": "HAP", "cac": "CAC", "om": "OM", "st": "ST", "mt": "MT", "tc": "TC", "fal": "FAL", "dt": "DT", "wla": "WLA", "ta": "TA", "ce": "CE", "asis": "ASIS", "hs": "HS", "fp": "FP", "napd": "NAPD", "mo": "MO", "sc19": "SC19"})
 
 
 def catalog() -> tuple[dict[str, str], dict[str, list[dict]], set[str]]:

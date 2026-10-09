@@ -1,0 +1,37 @@
+{
+  "cards": [
+    {
+      "advancement_requirement": null,
+      "agenda_points": null,
+      "base_link": null,
+      "card_type_id": "corp_identity",
+      "cost": null,
+      "deck_limit": 1,
+      "display_subtypes": "Police Department",
+      "faction_id": "neutral_corp",
+      "id": "cyber_bureau_keeping_the_peace",
+      "influence_cost": null,
+      "influence_limit": null,
+      "is_unique": false,
+      "memory_cost": null,
+      "minimum_deck_size": 40,
+      "side_id": "corp",
+      "strength": null,
+      "text": "You draw a starting hand of 10 cards.\nBefore taking your first turn, install up to 5 cards, ignoring all install costs. Rez any number of them, lowering the total rez cost among all cards by 20. Flip this identity.\nDetective's Bureau: Upholding the Law\nThe first time the Runner initiates a run each turn, force the Runner to lose 1[credit] for each agenda point in his or her score area, then you gain 1[credit] for each credit lost.\n[click]: Gain 3[credit] or draw 3 cards.",
+      "title": "Cyber Bureau: Keeping the Peace",
+      "trash_cost": null
+    }
+  ],
+  "id": "napd_multiplayer",
+  "printings": [
+    {
+      "card_id": "cyber_bureau_keeping_the_peace",
+      "flavor": null,
+      "has_xlarge": false,
+      "id": "24001",
+      "illustrators": "Amelie Hutt, Dmitry Burmak",
+      "position": 1,
+      "quantity": 1
+    }
+  ]
+}
