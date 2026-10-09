@@ -104,7 +104,8 @@ mod tests {
                 .map(|ability| &ability.effect)
                 .chain(card.triggers.iter().flat_map(|triggered| &triggered.effects))
                 .chain(card.subroutines.iter().map(|subroutine| &subroutine.effect))
-                .chain(card.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
+                .chain(card.interactive_on_access.iter().flat_map(|interactive| &interactive.effects))
+                .chain(card.before_starting_hand.iter());
             for root in roots {
                 root.for_each_effect(&mut |effect| {
                     // Daily Business Show's number is the draw it grew.
@@ -550,6 +551,7 @@ mod catalog_join_tests {
             card.triggers.iter().flat_map(|t| t.effects.iter()).for_each(|e| walk(e, &mut effects));
             card.abilities.iter().for_each(|a| walk(&a.effect, &mut effects));
             card.subroutines.iter().for_each(|s| walk(&s.effect, &mut effects));
+            card.before_starting_hand.iter().for_each(|e| walk(e, &mut effects));
             for effect in effects {
                 match effect {
                     Effect::PresentChoice { options, texts, .. } | Effect::ResolveSomeOf { options, texts, .. } => {

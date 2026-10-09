@@ -1,0 +1,109 @@
+{
+  "id": "simulant",
+  "name": "Simulant",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Ayla \"Bios\" Rahim: Simulant Specialist, System Update 2021's Shaper identity, who before drawing her starting hand sets aside the top 6 cards of her stack facedown, shuffles 2 of them back, and takes one of the rest into her grip for a click. On Safety Net's frame after Tranche 8 Stage 11q, its identity swapped, a Shaper for a Shaper at the same forty-five cards and fifteen influence. Tranche 8 Stage 11w.",
+  "style": [
+    "rig"
+  ],
+  "identity": "ayla_bios_rahim_simulant_specialist",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "the_artist",
+      "count": 2
+    },
+    {
+      "card": "joy_ride",
+      "count": 2
+    },
+    {
+      "card": "khusyuk",
+      "count": 2
+    },
+    {
+      "card": "world_tree",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "environmental_testing",
+      "count": 2
+    },
+    {
+      "card": "test_run",
+      "count": 2
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "chameleon",
+      "count": 2
+    },
+    {
+      "card": "mantle",
+      "count": 2
+    },
+    {
+      "card": "harmony_ar_therapy",
+      "count": 1
+    },
+    {
+      "card": "akamatsu_mem_chip",
+      "count": 1
+    },
+    {
+      "card": "magnum_opus",
+      "count": 2
+    },
+    {
+      "card": "pipeline",
+      "count": 2
+    },
+    {
+      "card": "modded",
+      "count": 2
+    },
+    {
+      "card": "rabbit_hole",
+      "count": 2
+    },
+    {
+      "card": "crypsis",
+      "count": 2
+    }
+  ]
+}

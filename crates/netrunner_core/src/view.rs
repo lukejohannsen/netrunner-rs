@@ -125,6 +125,15 @@ pub struct RunnerClientView {
     /// Public — see `RunnerState::set_aside`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
+    /// How many cards the Runner has set aside facedown
+    /// (`RunnerState::set_aside_facedown`, Ayla "Bios" Rahim's) — public,
+    /// as `grip_count` is.
+    #[serde(default)]
+    pub set_aside_facedown_count: usize,
+    /// Those cards, `Some` only when the viewer is the Runner, as
+    /// `grip_cards` is: "You may look at those cards at any time."
+    #[serde(default)]
+    pub set_aside_facedown_cards: Option<Vec<CardId>>,
     /// Public — see `RunnerState::play_area`: an event still resolving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -430,6 +439,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         heap: public.runner.heap,
         removed_from_game: public.runner.removed_from_game,
         set_aside: public.runner.set_aside,
+        set_aside_facedown_count: zone_count(&public.runner.set_aside_facedown),
+        set_aside_facedown_cards: zone_cards(&public.runner.set_aside_facedown),
         play_area: public.runner.play_area,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,

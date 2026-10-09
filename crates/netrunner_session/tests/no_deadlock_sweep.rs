@@ -382,6 +382,8 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(&runner.heap)
             .chain(&runner.removed_from_game)
             .chain(&runner.set_aside)
+            // Ayla's six, set aside facedown before her starting hand.
+            .chain(&runner.set_aside_facedown)
             // An event whose own choice is still open (CR 3.7.1: trashed
             // once it has fully resolved).
             .chain(&runner.play_area)

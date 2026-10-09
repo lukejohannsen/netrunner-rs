@@ -286,8 +286,11 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &Pla
 }
 
 /// A card's text can install a program out of the grip, the heap, the
-/// stack or a host's hosted cards, and the memory limit asks which programs
-/// go when two or more could and one of those programs does not fit.
+/// stack, the cards set aside (Gachapon) or a host's hosted cards, and the
+/// memory limit asks which programs go when two or more could and one of
+/// those programs does not fit. The set-aside cards were missing until a
+/// matchup sweep's Gachapon installed Audrey v2 over a full rig, which the
+/// debug assertion in `engine::apply_action` caught.
 fn memory_could_ask(state: &GameState, registry: &CardRegistry) -> bool {
     if installed_programs(state, registry).len() < 2 {
         return false;
@@ -300,6 +303,7 @@ fn memory_could_ask(state: &GameState, registry: &CardRegistry) -> bool {
         .iter()
         .chain(state.runner.heap.iter())
         .chain(state.runner.stack.iter())
+        .chain(state.runner.set_aside.iter())
         .chain(hosted)
         .filter_map(|card| registry.get(card))
         .any(|d| d.card_type == CardType::Program && d.memory_cost.unwrap_or(0) > free)

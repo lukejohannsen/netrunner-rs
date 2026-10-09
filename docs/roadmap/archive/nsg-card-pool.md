@@ -10301,3 +10301,49 @@ new `Effect`.
   Sure Gamble reaches the grip, and a second success on HQ asks nothing.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 796 card files.
+
+#### Stage 11w — the Runner's cards set aside facedown (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from System Update 2021, with no
+new `Effect`.
+- **Card:** Ayla "Bios" Rahim: Simulant Specialist. System Update 2021 is
+  complete, 82 of 82.
+
+- **"Before drawing your starting hand, set aside the top 6 cards of your
+  stack facedown."** An identity can print a step that resolves as the
+  game is set up, before its side draws (CR 1.6.1a):
+  `CardDefinition::before_starting_hand`, an `Effect` resolved with the
+  identity as the acting card, followed by the five-card draw in the same
+  `Sequence` so a choice it parks holds the draw back. `validate` refuses
+  it on anything but an identity. `SetAsideFromTopUntil` gained
+  `facedown`, which sets the cards into `RunnerState::set_aside_facedown`
+  and tells only the Runner what they are (`CardsLookedAt`) rather than
+  announcing them (`CardsSetAside`).
+- **"(You may look at those cards at any time.)"** The zone is masked like
+  the stack's top, by owner: the Runner's view carries the cards, the
+  Corp's a count (`set_aside_facedown_count`, `…_cards`), drawn in both
+  clients in the "in effect" line, the Corp's as "N cards". Bots
+  determinize it from the Runner's pool when hidden. A separate list was
+  chosen over a facedown flag on the public set-aside zone, which every
+  reader of that zone would have had to remember to mask.
+- **"Shuffle 2 of those cards into your stack."** A `PromptChooseCards`
+  from the new `OwnSetAsideFacedown` zone, exactly 2, into the stack,
+  shuffled after. The choice is parked at setup, ahead of the Corp's
+  mulligan.
+- **"[click]: Add 1 card set aside with this identity to your grip."** A
+  click ability, offered while the zone holds a card.
+- **Simulant**, a new Sweep deck: Safety Net's frame with Ayla for Kate, a
+  Shaper for a Shaper at forty-five cards and fifteen influence. Eternal
+  only, as Safety Net is.
+- **Tests.** Setup sets 6 aside with an empty grip and a Runner choice
+  parked; the Corp's view has a count of 6 and no cards; 2 chosen leave 4
+  set aside and a five-card grip; the click takes one into the grip.
+- **Found by the matchup sweep, fixed here:** `install_trash`'s memory
+  check did not look at the Runner's set-aside cards, so Gachapon
+  installing Audrey v2 over a full rig asked a question
+  `payment::could_ask` had said could not come, and the debug assertion
+  fired. The deck schedule moved under the bots' new determinized zone and
+  reached it. The client's "the catalog has cards still to build"
+  precondition is gone too: since this stage it has none.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 797 card files.

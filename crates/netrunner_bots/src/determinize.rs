@@ -334,6 +334,9 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.runner.heap.iter().cloned());
     ids.extend(view.runner.removed_from_game.iter().cloned());
     ids.extend(view.runner.set_aside.iter().cloned());
+    if let Some(cards) = &view.runner.set_aside_facedown_cards {
+        ids.extend(cards.iter().cloned());
+    }
     ids.extend(view.runner.play_area.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
     for rig_card in &view.runner.rig {
@@ -399,6 +402,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.heap.len()
                 + view.runner.removed_from_game.len()
                 + view.runner.set_aside.len()
+                + view.runner.set_aside_facedown_count
                 + view.runner.play_area.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
@@ -1059,6 +1063,10 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         heap: view.runner.heap.clone(),
         removed_from_game: view.runner.removed_from_game.clone(),
         set_aside: view.runner.set_aside.clone(),
+        // Ayla's facedown cards are hidden from the Corp as the grip is,
+        // and drawn from the same pool, after the stack so that a game
+        // without any draws exactly what it drew before.
+        set_aside_facedown: determinize_zone(&view.runner.set_aside_facedown_cards, view.runner.set_aside_facedown_count, &mut pools, Slot::RunnerAny),
         play_area: view.runner.play_area.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
@@ -1356,6 +1364,9 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
             installed.hosted_cards = pools.draw_n(Slot::RunnerAny, installed.hosted_cards.len());
         }
     }
+    if view.runner.set_aside_facedown_cards.is_none() && !state.runner.set_aside_facedown.is_empty() {
+        state.runner.set_aside_facedown = pools.draw_n(Slot::RunnerAny, state.runner.set_aside_facedown.len());
+    }
     seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
@@ -1458,6 +1469,7 @@ mod tests {
                 }],
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
+                set_aside_facedown: Vec::new(),
                 play_area: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,

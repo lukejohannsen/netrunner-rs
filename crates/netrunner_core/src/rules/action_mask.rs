@@ -1633,6 +1633,7 @@ mod tests {
             }
             effects.extend(card.triggers.iter().flat_map(|t| t.effects.iter().cloned()));
             effects.extend(card.subroutines.iter().map(|s| s.effect.clone()));
+            effects.extend(card.before_starting_hand.iter().cloned());
             if let Some(interactive) = &card.interactive_on_access {
                 effects.extend(interactive.effects.iter().cloned());
             }

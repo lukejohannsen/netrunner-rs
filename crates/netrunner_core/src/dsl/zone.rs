@@ -27,6 +27,12 @@ pub enum CardZoneRef {
     /// those 2 cards", chosen from what it set aside. Faceup, so a
     /// selection over it shows nothing new.
     OwnSetAside,
+    /// The Runner's own cards set aside facedown (`RunnerState::
+    /// set_aside_facedown`, CR 4.8.6) — Ayla "Bios" Rahim's "Shuffle 2 of
+    /// those cards into your stack" and "Add 1 card set aside with this
+    /// identity to your grip". The Runner may look at them, so a selection
+    /// over it shows the chooser nothing new; the Corp sees how many.
+    OwnSetAsideFacedown,
     /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
     /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
     /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
@@ -113,6 +119,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnGrip
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
@@ -138,6 +145,7 @@ impl CardZoneRef {
             CardZoneRef::OwnArchives
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource

@@ -861,6 +861,7 @@ fn priced_zone(source: &netrunner_core::dsl::CardZoneRef) -> bool {
             | CardZoneRef::OwnGrip
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OwnInstalled
             | CardZoneRef::HostedOnSource
             | CardZoneRef::TopOfOwnStack

@@ -935,6 +935,16 @@ pub struct CardDefinition {
     /// scan that reads it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub continuous: Vec<ContinuousEffect>,
+    /// What an identity does to setup "before drawing your starting hand"
+    /// (CR 1.6.1a: it is not active yet, but alters setup at the step its
+    /// text names) — Ayla "Bios" Rahim's "set aside the top 6 cards of your
+    /// stack facedown … Shuffle 2 of those cards into your stack". Run by
+    /// `GameState::setup` in place of that side's opening draw, which it
+    /// is followed by, so a choice it parks holds the draw back until the
+    /// choice is made. A field and not a `Trigger`: no event happens here
+    /// for a listener to hear, and the game has not begun (1.6.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_starting_hand: Option<Effect>,
 }
 
 /// One way of paying to rez a card — see
@@ -1136,6 +1146,8 @@ pub enum CardValidationError {
     AgendaHasSubroutines(CardId),
     #[error("card {0:?}: a deckbuilding rule (`deck_rules`) is printed on an identity, which leads the deck — CR 1.4.1")]
     DeckRuleOffAnIdentity(CardId),
+    #[error("card {0:?}: an ability that alters setup (`before_starting_hand`) is an identity's — CR 1.6.1a")]
+    SetupOffAnIdentity(CardId),
     #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
     HandAbilityNotAnAction(CardId),
     #[error("card {0:?}: ability {1} is `part_of` an ability that is not an earlier entry naming a `OncePerTurn`")]
@@ -1259,6 +1271,7 @@ impl Default for CardDefinition {
             is_playable: false,
             persistent_after_trash: false,
             continuous: Vec::new(),
+            before_starting_hand: None,
         }
     }
 }
@@ -1371,6 +1384,9 @@ impl CardDefinition {
         }
         if !self.deck_rules.is_empty() && self.card_type != CardType::Identity {
             return Err(CardValidationError::DeckRuleOffAnIdentity(self.id.clone()));
+        }
+        if self.before_starting_hand.is_some() && self.card_type != CardType::Identity {
+            return Err(CardValidationError::SetupOffAnIdentity(self.id.clone()));
         }
         if self.not_trashed_until_your_next_turn && self.card_type != CardType::Operation {
             return Err(CardValidationError::NotTrashedOffAnOperation(self.id.clone()));
@@ -1672,7 +1688,8 @@ impl CardDefinition {
             .map(|ability| &ability.effect)
             .chain(self.triggers.iter().flat_map(|triggered| &triggered.effects))
             .chain(self.subroutines.iter().map(|subroutine| &subroutine.effect))
-            .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
+            .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects))
+            .chain(self.before_starting_hand.iter());
         // A random reveal resolves its `then` once per card with nothing to
         // wait on, so a `then` must be one that never parks.
         let mut revealed_cards_wait = false;

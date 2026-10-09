@@ -495,6 +495,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let names: Vec<String> = view.runner.set_aside.iter().map(&title).collect();
             format!("set aside: {}", names.join(", "))
         }))
+        // The Runner's facedown group (Ayla "Bios" Rahim's six): named to
+        // the Runner, who may look at them at any time, and counted for the
+        // Corp, as the grip is.
+        .chain((view.runner.set_aside_facedown_count > 0).then(|| match &view.runner.set_aside_facedown_cards {
+            Some(cards) => format!("set aside facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
+            None => format!("set aside facedown: {} {}", view.runner.set_aside_facedown_count, if view.runner.set_aside_facedown_count == 1 { "card" } else { "cards" }),
+        }))
         // An event still resolving (Déjà Vu while the Runner chooses from
         // the heap): faceup in the play area, and in the heap once it has
         // resolved (CR 3.7.1).
@@ -895,6 +902,12 @@ mod tests {
         view.runner.set_aside = vec![CardId("sure_gamble".into()), CardId("corroder".into())];
         assert_eq!(in_effect(&view, &registry), ["set aside: Sure Gamble, Corroder"]);
         view.runner.set_aside.clear();
+        view.runner.set_aside_facedown_count = 2;
+        view.runner.set_aside_facedown_cards = Some(vec![CardId("sure_gamble".into()), CardId("corroder".into())]);
+        assert_eq!(in_effect(&view, &registry), ["set aside facedown: Sure Gamble, Corroder"], "the Runner may look at them");
+        view.runner.set_aside_facedown_cards = None;
+        assert_eq!(in_effect(&view, &registry), ["set aside facedown: 2 cards"], "the Corp counts them");
+        view.runner.set_aside_facedown_count = 0;
         view.corp.set_aside = vec![CardId("hedge_fund".into()), CardId("ice_wall".into())];
         assert_eq!(in_effect(&view, &registry), ["set aside from R&D: Hedge Fund, Ice Wall"]);
     }

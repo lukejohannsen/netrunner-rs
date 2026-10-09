@@ -889,7 +889,8 @@ pub fn evaluate_effect(
 
         // Read down the stack from its top (the end of the `Vec`) until
         // enough match; each card goes faceup into the set-aside zone.
-        Effect::SetAsideFromTopUntil { filter, count, deck } => {
+        Effect::SetAsideFromTopUntil { filter, count, deck, facedown } => {
+            let facedown = *facedown && *deck == Side::Runner;
             let mut matched = 0;
             let mut cards = Vec::new();
             while matched < *count {
@@ -902,6 +903,7 @@ pub fn evaluate_effect(
                     matched += 1;
                 }
                 match deck {
+                    Side::Runner if facedown => state.runner.set_aside_facedown.push(card.clone()),
                     Side::Runner => state.runner.set_aside.push(card.clone()),
                     Side::Corp => state.corp.set_aside.push(card.clone()),
                 }
@@ -909,6 +911,9 @@ pub fn evaluate_effect(
             }
             if cards.is_empty() {
                 return Ok(Vec::new());
+            }
+            if facedown {
+                return Ok(vec![GameEvent::CardsLookedAt { side: Side::Runner, deck: Side::Runner, cards }]);
             }
             Ok(vec![GameEvent::CardsSetAside { side: *deck, cards }])
         }

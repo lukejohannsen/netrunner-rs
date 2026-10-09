@@ -146,6 +146,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnGrip => "the grip",
         CardZoneRef::OwnHeap => "the heap",
         CardZoneRef::OwnSetAside => "the cards set aside",
+        CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown",
         CardZoneRef::OpponentSetAside => "the opponent's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
@@ -428,8 +429,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("install a card from {}, paying 1 less for each of {}", describe_zone(from), describe_amount(amount))
         }
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Surcharge(n) } => format!("install a card from {}, paying {n} more", describe_zone(from)),
-        Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
-        Effect::SetAsideFromTopUntil { filter, count, deck } => {
+        Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp, .. } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
+        Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Runner, facedown: true } => format!("set aside the top {count} cards of the stack facedown"),
+        Effect::SetAsideFromTopUntil { filter, count, deck, .. } => {
             let from = if *deck == Side::Corp { "R&D" } else { "the stack" };
             format!("set aside cards from the top of {from} until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
         }
