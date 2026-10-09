@@ -50,7 +50,7 @@ FORMATS = ["startup", "standard", "eternal", "snapshot"]
 # The plan's order, then the sets that came before it, by v2 code.
 PACKS = ["sg", "core", "elev", "vp", "rwr", "tai", "ph", "msbp", "ms", "urbp", "ur", "df", "su21", "sm", "mor"]
 GATED = {"sg": "SG", "elev": "ELEV", "vp": "VP", "rwr": "RWR", "tai": "TAI", "ph": "PH", "msbp": "MSBP", "ms": "MS",
-         "urbp": "URBP", "ur": "UR", "df": "DF", "su21": "SU21", "sm": "SM", "mor": "MOR"}
+         "urbp": "URBP", "ur": "UR", "df": "DF", "su21": "SU21", "sm": "SM", "mor": "MOR", "core": "CORE"}
 
 
 def catalog() -> tuple[dict[str, str], dict[str, list[dict]], set[str]]:

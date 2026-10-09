@@ -423,6 +423,7 @@ mod catalog_join_tests {
             ("system_update_2021", "System Update 2021", 82, SU21_UNIMPLEMENTED),
             ("salvaged_memories", "Salvaged Memories", 18, SM_UNIMPLEMENTED),
             ("magnum_opus_reprint", "Magnum Opus Reprint", 6, MOR_UNIMPLEMENTED),
+            ("core_set", "Core Set", 113, CORE_UNIMPLEMENTED),
         ] {
             assert_set_accounted_for(set_id, set_name, printed, exceptions);
         }
