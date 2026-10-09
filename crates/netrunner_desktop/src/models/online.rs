@@ -39,7 +39,13 @@
 //! Register, or Withdraw — and one held from a form of its own by the key
 //! this connection proved. The registration's statement and salt are the
 //! connection driver's (`remote::Attached::register`); this form chooses
-//! the decks, from those legal in the tournament's format.
+//! the decks, from those legal in the tournament's format. **The rounds
+//! are the same page**: once the organizer has begun one, the standings
+//! replace the entrants, each table is a line with its result, a paired
+//! player sits at their table from here (a seek, under the same `seeking`
+//! as a lobby's), and the organizer's buttons — the next round, a result
+//! for a table nobody played, the end — are drawn for the key that holds
+//! it and nobody else, though the server is what refuses anyone else.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
 use netrunner_client::identity::{PublicKey, StandingHere};
@@ -47,6 +53,7 @@ use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
+use netrunner_server::protocol::swiss::Outcome as TableOutcome;
 use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
 use netrunner_server::MatchSummary;
 
@@ -165,6 +172,12 @@ pub enum Intent {
     OpenTournament(usize),
     Register,
     Unregister,
+    /// A tournament's rounds: a paired player's seat at their table, and
+    /// the organizer's next round, recorded result and end.
+    Sit,
+    BeginRound,
+    FinishTournament,
+    RecordResult(usize, TableOutcome),
     Disconnect,
     /// The screen has started what `Go` or `Watch` asked for; this is its
     /// first line.
@@ -234,6 +247,10 @@ pub enum Outcome {
     /// The open tournament's format: the screen reads the decks legal in
     /// it and hands them to [`OnlineForm::set_tournament_decks`].
     TournamentDecks(NsgFormat),
+    Sit { tournament: String },
+    BeginRound { tournament: String },
+    FinishTournament { tournament: String },
+    RecordResult { tournament: String, table: usize, outcome: TableOutcome },
 }
 
 /// The connection, as the page draws it.
@@ -314,6 +331,50 @@ impl ServerState {
     /// Whether this key is entered in the open tournament.
     pub fn is_entered(&self) -> bool {
         self.open_tournament().is_some_and(|info| tournament::entry_of(info, self.key.as_ref()).is_some())
+    }
+
+    /// Whether this key holds the open tournament.
+    pub fn is_organizer(&self) -> bool {
+        self.open_tournament().is_some_and(|info| tournament::is_organizer(info, self.key.as_ref()))
+    }
+
+    /// The round the organizer may begin now, as its button reads: the
+    /// first once two have entered, the next once every table of the
+    /// current one has a result. `None` for anyone else, and between.
+    pub fn next_round(&self) -> Option<String> {
+        if !self.is_organizer() {
+            return None;
+        }
+        let info = self.open_tournament()?;
+        match info.state {
+            TournamentState::Registering if info.entrants.len() >= 2 => Some("Begin round 1".to_string()),
+            TournamentState::Registering | TournamentState::Finished => None,
+            TournamentState::Playing { round } => info.current_round().filter(|current| current.complete()).map(|_| format!("Begin round {}", round + 1)),
+        }
+    }
+
+    /// Whether the organizer may end the tournament now: a round is
+    /// being played and complete.
+    pub fn may_finish(&self) -> bool {
+        self.is_organizer() && self.open_tournament().and_then(TournamentInfo::current_round).is_some_and(|current| current.complete())
+    }
+
+    /// Whether this key has a table this round whose game is still to
+    /// be played, so the seat is offered.
+    pub fn may_sit(&self) -> bool {
+        self.open_tournament().and_then(|info| tournament::my_table(info, self.key.as_ref())).is_some_and(|(_, _, table)| table.result.is_none())
+    }
+
+    /// The tables of the current round the organizer may record a result
+    /// for: those with none.
+    pub fn tables_to_record(&self) -> Vec<usize> {
+        if !self.is_organizer() {
+            return Vec::new();
+        }
+        self.open_tournament()
+            .and_then(TournamentInfo::current_round)
+            .map(|current| current.tables.iter().enumerate().filter(|(_, table)| table.result.is_none()).map(|(index, _)| index).collect())
+            .unwrap_or_default()
     }
 
     pub fn tournament_side_decks(&self, side: Side) -> Vec<&DeckFile> {
@@ -447,7 +508,12 @@ impl OnlineForm {
     pub fn reopen(&mut self, attached: bool) {
         self.notice = None;
         if attached && self.server.is_some() {
-            self.page = Page::Server;
+            // Back from a tournament game, its page: the result is there
+            // and the next round will be.
+            let on_tournament = self.page == Page::Tournament && self.server.as_ref().is_some_and(|server| server.tournament.is_some());
+            if !on_tournament {
+                self.page = Page::Server;
+            }
         } else {
             self.server = None;
             self.page = Page::Home;
@@ -739,6 +805,34 @@ impl OnlineForm {
                 Some(server) if self.page == Page::Tournament && server.is_entered() && server.may_register() => Outcome::Unregister { tournament: server.tournament.clone().expect("entered in the open tournament") },
                 _ => Outcome::Nothing,
             },
+            Intent::Sit => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.may_sit() && server.seeking.is_none() => {
+                    self.notice = None;
+                    Outcome::Sit { tournament: server.tournament.clone().expect("a table in the open tournament") }
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::BeginRound => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.next_round().is_some() => {
+                    self.notice = None;
+                    Outcome::BeginRound { tournament: server.tournament.clone().expect("the open tournament") }
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::FinishTournament => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.may_finish() => {
+                    self.notice = None;
+                    Outcome::FinishTournament { tournament: server.tournament.clone().expect("the open tournament") }
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::RecordResult(table, outcome) => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.tables_to_record().contains(&table) => {
+                    self.notice = None;
+                    Outcome::RecordResult { tournament: server.tournament.clone().expect("the open tournament"), table, outcome }
+                }
+                _ => Outcome::Nothing,
+            },
             Intent::Disconnect => self.disconnect(),
             Intent::Waiting(status) => {
                 if self.page != Page::Waiting {
@@ -866,9 +960,13 @@ impl OnlineForm {
                 let Some(server) = &mut self.server else { return Outcome::Nothing };
                 let format = info.format;
                 let id = info.id.clone();
+                // The form's answer is a tournament the list has never
+                // seen; a push about another, while the form is up, is
+                // put in the list and leaves the form alone.
+                let new = !server.tournaments.iter().any(|listed| listed.id == id);
                 server.put_tournament(info);
                 self.notice = None;
-                if self.page == Page::MakeTournament {
+                if self.page == Page::MakeTournament && new {
                     server.tournament = Some(id);
                     self.page = Page::Tournament;
                     return Outcome::TournamentDecks(format);
@@ -1227,7 +1325,7 @@ mod tests {
     }
 
     fn tournament_info(id: &str, organizer: PublicKey, entrants: Vec<netrunner_server::protocol::Entrant>) -> TournamentInfo {
-        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants }
+        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new() }
     }
 
     fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
@@ -1332,6 +1430,88 @@ mod tests {
         form.apply(Intent::Open(Page::MakeTournament));
         assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
         assert_eq!(form.page, Page::Tournaments);
+    }
+
+    /// A tournament in its rounds: a paired key is offered its seat and the
+    /// bye is not; a seat taken is a seek, stood up from; the organizer
+    /// alone is offered the next round once every table has a result, a
+    /// result for a table nobody played, and the end; back from the game,
+    /// the page is the tournament's.
+    #[test]
+    fn a_round_is_sat_at_by_the_paired_and_run_by_the_organizer() {
+        use netrunner_server::protocol::swiss::{Round, Table};
+        let (ann, bo, cy) = (key(1), key(2), key(3));
+        let mut playing = tournament_info("K7M2QX", ann, vec![entrant(1), entrant(2), entrant(3)]);
+        playing.seeding = vec![bo, ann, cy];
+        playing.rounds = vec![Round { tables: vec![Table { corp: ann, runner: bo, result: None }], bye: Some(cy) }];
+        playing.state = TournamentState::Playing { round: 1 };
+
+        // bo, paired: the seat, and nothing of the organizer's.
+        let mut form = attached();
+        form.apply(Intent::Standing { key: Some(bo), standing: StandingHere::Unrated });
+        form.apply(Intent::Open(Page::Tournaments));
+        form.apply(Intent::Tournaments(vec![playing.clone()]));
+        form.apply(Intent::OpenTournament(0));
+        let server = form.server.as_ref().unwrap();
+        assert!(server.may_sit() && !server.may_register() && server.next_round().is_none() && !server.may_finish() && server.tables_to_record().is_empty());
+        assert_eq!(form.apply(Intent::BeginRound), Outcome::Nothing);
+        assert_eq!(form.apply(Intent::Sit), Outcome::Sit { tournament: "K7M2QX".into() });
+        form.apply(Intent::Queued(1));
+        assert_eq!(form.apply(Intent::Sit), Outcome::Nothing, "seated already");
+        assert_eq!(form.apply(Intent::CancelSeek), Outcome::CancelSeek);
+        form.apply(Intent::SeekCancelled);
+        form.reopen(true);
+        assert_eq!(form.page, Page::Tournament, "back from the game, the tournament's page");
+
+        // cy, the bye: no seat.
+        let mut bye = attached();
+        bye.apply(Intent::Standing { key: Some(cy), standing: StandingHere::Unrated });
+        bye.apply(Intent::Open(Page::Tournaments));
+        bye.apply(Intent::Tournaments(vec![playing.clone()]));
+        bye.apply(Intent::OpenTournament(0));
+        assert_eq!(bye.apply(Intent::Sit), Outcome::Nothing);
+
+        // ann, the organizer and a player: the seat, and once the table
+        // has its result the next round or the end; a result recorded
+        // only for a table that has none.
+        let mut organizer = attached();
+        organizer.apply(Intent::Standing { key: Some(ann), standing: StandingHere::Unrated });
+        organizer.apply(Intent::Open(Page::Tournaments));
+        organizer.apply(Intent::Tournaments(vec![playing.clone()]));
+        organizer.apply(Intent::OpenTournament(0));
+        assert!(organizer.server.as_ref().unwrap().may_sit());
+        assert_eq!(organizer.server.as_ref().unwrap().next_round(), None, "a table is open");
+        assert_eq!(organizer.server.as_ref().unwrap().tables_to_record(), vec![0]);
+        assert_eq!(organizer.apply(Intent::RecordResult(1, TableOutcome::Tie)), Outcome::Nothing, "no such table");
+        assert_eq!(organizer.apply(Intent::RecordResult(0, TableOutcome::Tie)), Outcome::RecordResult { tournament: "K7M2QX".into(), table: 0, outcome: TableOutcome::Tie });
+        let mut done = playing.clone();
+        done.rounds[0].tables[0].result = Some(TableOutcome::Tie);
+        assert_eq!(organizer.apply(Intent::Tournament(done.clone())), Outcome::Redraw, "pushed, not the form's");
+        let server = organizer.server.as_ref().unwrap();
+        assert!(!server.may_sit() && server.tables_to_record().is_empty() && server.may_finish());
+        assert_eq!(server.next_round().as_deref(), Some("Begin round 2"));
+        assert_eq!(organizer.apply(Intent::BeginRound), Outcome::BeginRound { tournament: "K7M2QX".into() });
+        assert_eq!(organizer.apply(Intent::FinishTournament), Outcome::FinishTournament { tournament: "K7M2QX".into() });
+        let mut finished = done.clone();
+        finished.state = TournamentState::Finished;
+        organizer.apply(Intent::Tournament(finished));
+        let server = organizer.server.as_ref().unwrap();
+        assert!(server.next_round().is_none() && !server.may_finish() && !server.may_sit() && !server.may_register());
+
+        // Before any round, two entrants let the organizer begin.
+        let mut fresh = attached();
+        fresh.apply(Intent::Standing { key: Some(ann), standing: StandingHere::Unrated });
+        fresh.apply(Intent::Open(Page::Tournaments));
+        fresh.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", ann, vec![entrant(1)])]));
+        fresh.apply(Intent::OpenTournament(0));
+        assert_eq!(fresh.server.as_ref().unwrap().next_round(), None, "one entrant pairs nobody");
+        fresh.apply(Intent::Tournament(tournament_info("K7M2QX", ann, vec![entrant(1), entrant(2)])));
+        assert_eq!(fresh.server.as_ref().unwrap().next_round().as_deref(), Some("Begin round 1"));
+        // A push about another tournament while the form is up leaves the
+        // form alone.
+        fresh.apply(Intent::Open(Page::MakeTournament));
+        assert_eq!(fresh.apply(Intent::Tournament(tournament_info("K7M2QX", ann, vec![entrant(1), entrant(2), entrant(3)]))), Outcome::Redraw);
+        assert_eq!(fresh.page, Page::MakeTournament);
     }
 
     /// Back from the board the Server page is up, still attached; after a

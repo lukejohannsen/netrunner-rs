@@ -63,7 +63,8 @@ use netrunner_client::remote::{self, Attached, AttachedEvent, ConnectEvent, Conn
 use netrunner_client::settings::{format_name, FORMATS};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_server::protocol::LobbyInfo;
+use netrunner_server::protocol::swiss::Outcome as TableOutcome;
+use netrunner_server::protocol::{LobbyInfo, TournamentState};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
@@ -227,6 +228,12 @@ pub enum Control {
     OpenTournament(usize),
     Register,
     Unregister,
+    /// A tournament's rounds: the seat at one's table, and the
+    /// organizer's next round, recorded result and end.
+    Sit,
+    BeginRound,
+    FinishTournament,
+    RecordResult(usize, TableOutcome),
     Disconnect,
 }
 
@@ -371,6 +378,10 @@ fn controls(
             Control::OpenTournament(index) => Intent::OpenTournament(index),
             Control::Register => Intent::Register,
             Control::Unregister => Intent::Unregister,
+            Control::Sit => Intent::Sit,
+            Control::BeginRound => Intent::BeginRound,
+            Control::FinishTournament => Intent::FinishTournament,
+            Control::RecordResult(table, outcome) => Intent::RecordResult(table, outcome),
             Control::Disconnect => Intent::Disconnect,
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
@@ -469,7 +480,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::ListTournaments
             | Outcome::CreateTournament { .. }
             | Outcome::Register { .. }
-            | Outcome::Unregister { .. } => {
+            | Outcome::Unregister { .. }
+            | Outcome::Sit { .. }
+            | Outcome::BeginRound { .. }
+            | Outcome::FinishTournament { .. }
+            | Outcome::RecordResult { .. } => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
             }
             Outcome::Nothing | Outcome::Redraw => {}
@@ -548,6 +563,10 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::CreateTournament { name, format } => connected.attached.create_tournament(name, format),
         Outcome::Register { tournament, corp, runner } => connected.attached.register(tournament, *corp, *runner),
         Outcome::Unregister { tournament } => connected.attached.unregister(tournament),
+        Outcome::Sit { tournament } => connected.attached.sit(tournament),
+        Outcome::BeginRound { tournament } => connected.attached.begin_round(tournament),
+        Outcome::FinishTournament { tournament } => connected.attached.finish_tournament(tournament),
+        Outcome::RecordResult { tournament, table, outcome } => connected.attached.record_result(tournament, table, outcome),
         _ => {}
     }
 }
@@ -1206,14 +1225,73 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
     parent.spawn(widgets::dim(theme, format!("Code {} · {} · {}", info.id, capitalised(format_name(info.format)), tournament::state_label(info.state))));
     parent.spawn(widgets::dim(theme, format!("Held by {}", info.organizer.fingerprint())));
     parent.spawn((widgets::dim(theme, tournament::standing_line(info, server.key.as_ref())), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    section(parent, theme, if info.entrants.is_empty() { "Entered".to_string() } else { format!("Entered ({})", info.entrants.len()) }, |section| {
-        if info.entrants.is_empty() {
-            section.spawn(widgets::dim(theme, "Nobody has entered yet."));
+    match info.state {
+        TournamentState::Registering => {
+            section(parent, theme, if info.entrants.is_empty() { "Entered".to_string() } else { format!("Entered ({})", info.entrants.len()) }, |section| {
+                if info.entrants.is_empty() {
+                    section.spawn(widgets::dim(theme, "Nobody has entered yet."));
+                }
+                for entrant in &info.entrants {
+                    section.spawn(widgets::label(theme, tournament::entrant_line(entrant)));
+                }
+            });
         }
-        for entrant in &info.entrants {
-            section.spawn(widgets::label(theme, tournament::entrant_line(entrant)));
+        // In the rounds the standings stand where the entrants did: they
+        // fold off the rounds the server published (`swiss::standings`),
+        // so what is drawn here is what anyone holding them would compute.
+        TournamentState::Playing { .. } | TournamentState::Finished => {
+            section(parent, theme, if info.state == TournamentState::Finished { "Final standings" } else { "Standings" }, |section| {
+                for (index, standing) in info.standings().iter().enumerate() {
+                    section.spawn(widgets::label(theme, tournament::standing_row(info, index + 1, standing)));
+                }
+            });
+            if let Some(current) = info.current_round() {
+                section(parent, theme, format!("Round {}", info.rounds.len()), |section| {
+                    if let Some(line) = tournament::round_line(info, server.key.as_ref()) {
+                        section.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
+                    for (index, table) in current.tables.iter().enumerate() {
+                        section.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn((widgets::label(theme, tournament::table_line(info, index, table)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+                            // The organizer records a table nobody played.
+                            if server.tables_to_record().contains(&index) {
+                                for (outcome, label) in [(TableOutcome::CorpWon, "Corp won"), (TableOutcome::RunnerWon, "Runner won"), (TableOutcome::Tie, "Tie")] {
+                                    row.spawn(widgets::small_button(theme, ButtonKind::Secondary, label, Control::RecordResult(index, outcome)));
+                                }
+                            }
+                        });
+                    }
+                    if let Some(bye) = tournament::bye_line(info, current) {
+                        section.spawn(widgets::dim(theme, bye));
+                    }
+                    if server.may_sit() {
+                        section.spawn(widgets::row(12.0)).with_children(|row| match server.seeking {
+                            Some(_) => {
+                                row.spawn(widgets::dim(theme, "Seated — waiting for your opponent to sit…"));
+                                row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stand up", Val::Auto, Control::CancelSeek));
+                            }
+                            None => {
+                                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Sit at your table", px(240), Control::Sit));
+                            }
+                        });
+                    }
+                });
+            }
         }
-    });
+    }
+    if server.is_organizer() && (server.next_round().is_some() || server.may_finish()) {
+        section(parent, theme, "Organizer", |section| {
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                if let Some(label) = server.next_round() {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Primary, label, Val::Auto, Control::BeginRound));
+                }
+                if server.may_finish() {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "End the tournament", Val::Auto, Control::FinishTournament));
+                }
+            });
+            section.spawn(widgets::dim(theme, if info.state == TournamentState::Registering { "Beginning the first round closes registration and pairs everyone entered." } else { "The next round pairs by the standings; ending it makes them final." }));
+        });
+    }
     if server.may_register() {
         section(parent, theme, "Your entry", |section| {
             section.spawn((widgets::dim(theme, "The two decks you play for the whole event. The server checks them against the format and publishes a commitment to them, never the lists."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));

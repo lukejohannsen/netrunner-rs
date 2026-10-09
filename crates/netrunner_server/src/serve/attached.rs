@@ -39,6 +39,9 @@ pub(super) struct Playing {
 /// Where a connection is.
 struct Attached {
     shared: Shared,
+    /// This connection in `Registry::attached`, for what is pushed to it
+    /// unasked and for leaving its own answer out of a push.
+    link: Uuid,
     player_name: String,
     /// The key this socket proved before attaching, if it did.
     key: Option<PublicKey>,
@@ -74,7 +77,9 @@ pub(super) async fn run(
     mut rx: mpsc::UnboundedReceiver<ClientMessage>,
     resumed: Option<Playing>,
 ) {
-    let mut conn = Attached { shared, player_name, key, tx, lobby: None, in_match: resumed.is_some() };
+    let link = Uuid::new_v4();
+    shared.lock().attached.insert(link, AttachedLink { key, tx: tx.clone() });
+    let mut conn = Attached { shared, link, player_name, key, tx, lobby: None, in_match: resumed.is_some() };
     let mut playing = resumed;
     match &playing {
         Some(seat) => {
@@ -108,6 +113,7 @@ pub(super) async fn run(
         conn.withdraw(seek.token);
     }
     conn.leave_lobby();
+    conn.shared.lock().attached.remove(&conn.link);
 }
 
 impl Attached {
@@ -202,6 +208,29 @@ impl Attached {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
             },
+            // The rounds (Phase 4 §7 stage 6b): the organizer's to begin,
+            // record and end; a table's seat anyone paired may take.
+            ClientMessage::BeginRound { tournament } => match self.begin_round(&tournament) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
+            ClientMessage::FinishTournament { tournament } => match self.finish_tournament(&tournament) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
+            ClientMessage::RecordResult { tournament, table, outcome } => match self.record_result(&tournament, table, outcome) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
+            ClientMessage::Sit { tournament } => {
+                if playing.is_some() {
+                    return self.send(ServerMessage::SeekRefused { reason: "already looking for a game, or playing one: cancel first".into() });
+                }
+                match self.sit(&tournament) {
+                    Ok(seat) => *playing = Some(seat),
+                    Err(reason) => self.send(ServerMessage::SeekRefused { reason }),
+                }
+            }
             // A key is proved before attaching, never after.
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }
@@ -301,10 +330,12 @@ impl Attached {
         Ok(Playing { token, out, into, lobby })
     }
 
-    /// Takes this connection's seek off its lobby's queue.
+    /// Takes this connection's seek off its lobby's queue — or its seat
+    /// off the tournament table it was waiting at.
     fn withdraw(&self, token: Uuid) {
         let mut registry = self.shared.lock();
         registry.lobby.retain(|waiter| waiter.token != token);
+        registry.tables.retain(|_, state| !matches!(state, TableState::Waiting(seated) if seated.token == token));
         if let Some(id) = &self.lobby {
             registry.forget_if_empty(id);
         }
@@ -403,7 +434,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new() };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new() };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id, tournament);
         self.shared.save_tournaments(&registry);
@@ -455,6 +486,7 @@ impl Attached {
         }
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
 
@@ -473,7 +505,188 @@ impl Attached {
         }
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
+    }
+
+    /// The tournament `id`, for this key as its organizer, under the
+    /// registry lock the caller holds.
+    fn held<'a>(&self, registry: &'a mut Registry, id: &str) -> Result<&'a mut Tournament, String> {
+        let key = self.key.ok_or("a tournament is run by a key: prove one before attaching")?;
+        let tournament = registry.tournaments.0.get_mut(id).ok_or("no such tournament")?;
+        if tournament.organizer != key {
+            return Err("only the organizer may do that".into());
+        }
+        Ok(tournament)
+    }
+
+    /// The organizer begins the next round. The first closes
+    /// registration — two entrants at least, or there is nobody to pair
+    /// — and fixes the seeding, a shuffle of the entrants off the
+    /// daemon's seed and the tournament's age, so a `--seed` daemon seeds
+    /// the same way every run and any other at random; each round after
+    /// needs the one before complete, since a table with no result has
+    /// no points to pair by.
+    fn begin_round(&self, id: &str) -> Result<TournamentInfo, String> {
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let seed = self.shared.base_seed;
+        let tournament = self.held(&mut registry, &id)?;
+        match tournament.state {
+            TournamentState::Registering => {
+                if tournament.entrants.len() < 2 {
+                    return Err("a round needs two entrants at least".into());
+                }
+                use rand::seq::SliceRandom;
+                use rand::SeedableRng;
+                let mut seeding: Vec<PublicKey> = tournament.entrants.iter().map(|entry| entry.key).collect();
+                seeding.shuffle(&mut rand::rngs::StdRng::seed_from_u64(seed.wrapping_add(tournament.created_at)));
+                tournament.seeding = seeding;
+            }
+            TournamentState::Playing { .. } => {
+                let (_, current) = tournament.current().ok_or("the round being played is missing")?;
+                if !current.complete() {
+                    return Err("a table of this round has no result yet".into());
+                }
+            }
+            TournamentState::Finished => return Err("the tournament is over".into()),
+        }
+        let next = swiss::pair(&tournament.seeding, &tournament.rounds);
+        tournament.rounds.push(next);
+        tournament.state = TournamentState::Playing { round: tournament.rounds.len() as u32 };
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
+    }
+
+    /// The organizer ends the tournament, once the round being played is
+    /// complete: the standings are final.
+    fn finish_tournament(&self, id: &str) -> Result<TournamentInfo, String> {
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let tournament = self.held(&mut registry, &id)?;
+        match tournament.state {
+            TournamentState::Registering => return Err("nothing has been played yet: begin a round, or leave it".into()),
+            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Playing { .. } => {
+                let (_, current) = tournament.current().ok_or("the round being played is missing")?;
+                if !current.complete() {
+                    return Err("a table of this round has no result yet".into());
+                }
+            }
+        }
+        tournament.state = TournamentState::Finished;
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
+    }
+
+    /// The organizer records a result for a table of the round being
+    /// played that has none — a no-show, or what the players agreed —
+    /// and not for one whose game is under way, which decides itself. A
+    /// player waiting at it is stood up, told why.
+    fn record_result(&self, id: &str, table: usize, outcome: TableOutcome) -> Result<TournamentInfo, String> {
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let round = {
+            let tournament = self.held(&mut registry, &id)?;
+            let (round, current) = tournament.current().ok_or("no round is being played")?;
+            let slot = current.tables.get(table).ok_or("no such table this round")?;
+            if slot.result.is_some() {
+                return Err("that table has its result".into());
+            }
+            round
+        };
+        let table_ref = TableRef { tournament: id.clone(), round, table };
+        match registry.tables.remove(&table_ref) {
+            Some(TableState::Playing(match_id)) => {
+                registry.tables.insert(table_ref, TableState::Playing(match_id));
+                return Err("that table's game is being played: it decides itself".into());
+            }
+            Some(TableState::Waiting(seated)) => refuse(&seated.tx, "the organizer recorded this table's result"),
+            None => {}
+        }
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        tournament.rounds[round].tables[table].result = Some(outcome);
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
+    }
+
+    /// This key takes its seat at this round's table. The first to sit
+    /// waits, as a seek does; the second starts the game, dealt from the
+    /// two registered lists on the sides the pairing gave — nothing is
+    /// brought, because everything was locked at registration.
+    fn sit(&mut self, id: &str) -> Result<Playing, String> {
+        let key = self.key.ok_or("a seat is a key's: prove one before attaching")?;
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let (round, table, format, mine, theirs) = {
+            let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
+            let (round, current) = tournament.current().ok_or("no round is being played")?;
+            let (table, slot) = current.table_of(&key).ok_or("you have no table this round")?;
+            if slot.result.is_some() {
+                return Err("that table has its result".into());
+            }
+            let role = slot.role_of(&key).expect("table_of found this key");
+            let opponent = *slot.opponent_of(&key).expect("a table has two seats");
+            let deck_for = |entry: &Entry, role: TableRole| match role {
+                TableRole::Corp => Box::new(entry.corp.clone()),
+                TableRole::Runner => Box::new(entry.runner.clone()),
+            };
+            let mine = deck_for(tournament.entry(&key).ok_or("you are not entered")?, role);
+            let other_role = match role {
+                TableRole::Corp => TableRole::Runner,
+                TableRole::Runner => TableRole::Corp,
+            };
+            let theirs = deck_for(tournament.entry(&opponent).ok_or("your opponent is not entered")?, other_role);
+            (round, table, tournament.format, (role, mine), theirs)
+        };
+        let table_ref = TableRef { tournament: id.clone(), round, table };
+        let (out_tx, out) = mpsc::unbounded_channel::<ServerMessage>();
+        let (into, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
+        let slot = PlayerSlot::Channel { tx: out_tx.clone(), rx: into_rx };
+        let token = Uuid::new_v4();
+        let lobby = self.lobby.clone().unwrap_or_default();
+        let (role, deck) = mine;
+        match registry.tables.remove(&table_ref) {
+            Some(TableState::Playing(match_id)) => {
+                registry.tables.insert(table_ref, TableState::Playing(match_id));
+                Err("that table's game is being played".into())
+            }
+            Some(TableState::Waiting(seated)) if seated.key == key => {
+                // The same key twice — a second client, or a reconnect that
+                // sat again: the newer seat replaces the older, which is
+                // told so.
+                refuse(&seated.tx, "you sat at this table again from another connection");
+                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
+                let _ = out_tx.send(ServerMessage::Queued { session_token: token, position: 1 });
+                Ok(Playing { token, out, into, lobby })
+            }
+            Some(TableState::Waiting(seated)) => {
+                if registry.at_cap(&self.shared.options) {
+                    registry.tables.insert(table_ref, TableState::Waiting(seated));
+                    return Err(AT_CAP.into());
+                }
+                let (match_id, seed) = registry.allocate(self.shared.base_seed);
+                let me = SeatedPlayer { name: self.player_name.clone(), key: Some(key), token, slot, deck: Some(deck), lobby: Some(lobby.clone()), bot: None };
+                let them = SeatedPlayer { name: seated.player_name, key: Some(seated.key), token: seated.token, slot: seated.slot, deck: Some(theirs), lobby: Some(seated.lobby), bot: None };
+                let (corp, runner) = match role {
+                    TableRole::Corp => (me, them),
+                    TableRole::Runner => (them, me),
+                };
+                start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(table_ref));
+                Ok(Playing { token, out, into, lobby })
+            }
+            None => {
+                registry.tables.insert(table_ref, TableState::Waiting(Seated { token, key, player_name: self.player_name.clone(), lobby: lobby.clone(), tx: out_tx.clone(), slot }));
+                let _ = out_tx.send(ServerMessage::Queued { session_token: token, position: 1 });
+                Ok(Playing { token, out, into, lobby })
+            }
+        }
     }
 }
 

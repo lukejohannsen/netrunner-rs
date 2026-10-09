@@ -443,7 +443,11 @@ impl MatchSession {
                         | ClientMessage::CreateTournament { .. }
                         | ClientMessage::ListTournaments
                         | ClientMessage::Register { .. }
-                        | ClientMessage::Unregister { .. } => continue,
+                        | ClientMessage::Unregister { .. }
+                        | ClientMessage::BeginRound { .. }
+                        | ClientMessage::FinishTournament { .. }
+                        | ClientMessage::Sit { .. }
+                        | ClientMessage::RecordResult { .. } => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {

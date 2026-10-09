@@ -27,7 +27,12 @@
 //! to lock in and Register, or Withdraw — and one held from a form of its
 //! own, by the key this connection proved. The statement a registration
 //! signs and the salt it is kept under are the connection driver's
-//! (`remote::Attached::register`); this screen chooses the decks.
+//! (`remote::Attached::register`); this screen chooses the decks. **The
+//! rounds are the same page**: once begun, the standings stand where the
+//! entrants did, each table is a line with its result, a paired player
+//! sits at their table from a row (a seek, under the Server page's
+//! `seeking`), and the organizer's rows — the next round, a result for a
+//! table nobody played, the end — are drawn for the key that holds it.
 //!
 //! **Nothing here waits on the network with the keyboard dead.** The
 //! connection runs as a task (`remote::spawn`) that the menu polls every
@@ -53,6 +58,7 @@ use ratatui::Frame;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
+use netrunner_server::protocol::swiss::Outcome as TableOutcome;
 use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
@@ -383,19 +389,56 @@ enum TournamentRow {
     /// Register, or register again with the decks shown.
     Register,
     Withdraw,
+    /// Take the seat at this round's table — or, seated and waiting for
+    /// the opponent, stand up again.
+    Sit,
+    StandUp,
+    /// The organizer's: the next round, the end, a result for a table
+    /// nobody played.
+    BeginRound,
+    Finish,
+    Record(usize, TableOutcome),
     Refresh,
 }
 
 impl TournamentPage {
     /// The rows a key can act on: a registration's rows only while the
-    /// tournament takes them and this client has a key to sign one with.
-    fn rows(&self, key: Option<&PublicKey>) -> Vec<TournamentRow> {
+    /// tournament takes them and this client has a key to sign one with;
+    /// in the rounds, the seat for a key paired this round, and the
+    /// organizer's rows for the key that holds it (`seeking` is the Server
+    /// page's: a seat taken is a seek).
+    fn rows(&self, key: Option<&PublicKey>, seeking: bool) -> Vec<TournamentRow> {
+        let info = &self.info;
         let mut rows = Vec::new();
-        if key.is_some() && self.info.state == TournamentState::Registering {
-            rows.extend([TournamentRow::CorpDeck, TournamentRow::RunnerDeck, TournamentRow::Register]);
-            if tournament::entry_of(&self.info, key).is_some() {
-                rows.push(TournamentRow::Withdraw);
+        let organizer = tournament::is_organizer(info, key);
+        match info.state {
+            TournamentState::Registering => {
+                if key.is_some() {
+                    rows.extend([TournamentRow::CorpDeck, TournamentRow::RunnerDeck, TournamentRow::Register]);
+                    if tournament::entry_of(info, key).is_some() {
+                        rows.push(TournamentRow::Withdraw);
+                    }
+                }
+                if organizer && info.entrants.len() >= 2 {
+                    rows.push(TournamentRow::BeginRound);
+                }
             }
+            TournamentState::Playing { .. } => {
+                if tournament::my_table(info, key).is_some_and(|(_, _, table)| table.result.is_none()) {
+                    rows.push(if seeking { TournamentRow::StandUp } else { TournamentRow::Sit });
+                }
+                if let Some(current) = info.current_round().filter(|_| organizer) {
+                    if current.complete() {
+                        rows.extend([TournamentRow::BeginRound, TournamentRow::Finish]);
+                    }
+                    for (index, table) in current.tables.iter().enumerate() {
+                        if table.result.is_none() {
+                            rows.extend([TableOutcome::CorpWon, TableOutcome::RunnerWon, TableOutcome::Tie].map(|outcome| TournamentRow::Record(index, outcome)));
+                        }
+                    }
+                }
+            }
+            TournamentState::Finished => {}
         }
         rows.push(TournamentRow::Refresh);
         rows
@@ -577,7 +620,7 @@ impl OnlineScreen {
     /// otherwise.
     pub fn returned(&mut self) {
         if self.attached.is_some()
-            && let Mode::Server(_) = self.mode
+            && let Mode::Server(_) | Mode::Tournament { .. } = self.mode
         {
             return;
         }
@@ -782,6 +825,13 @@ impl OnlineScreen {
     fn tournament_answered(&mut self, info: TournamentInfo) {
         self.notice = None;
         match std::mem::replace(&mut self.mode, Mode::Home { cursor: 0 }) {
+            // The form's answer is a tournament the list has never seen; a
+            // push about another, while the form is up, is put in the list
+            // and leaves the form alone.
+            Mode::MakeTournament { page, mut list, form } if list.list.iter().any(|listed| listed.id == info.id) => {
+                list.put(&info);
+                self.mode = Mode::MakeTournament { page, list, form };
+            }
             Mode::MakeTournament { page, mut list, .. } => {
                 list.put(&info);
                 let decks = self.deck_choices(info.format);
@@ -1212,7 +1262,7 @@ impl OnlineScreen {
 
     /// A key on a tournament's page.
     fn tournament_key(&mut self, page: ServerPage, list: TournamentsPage, mut tournament: TournamentPage, key: KeyCode) {
-        let rows = tournament.rows(page.key.as_ref());
+        let rows = tournament.rows(page.key.as_ref(), page.seeking.is_some());
         let len = rows.len();
         tournament.cursor = tournament.cursor.min(len - 1);
         let row = rows[tournament.cursor];
@@ -1243,6 +1293,11 @@ impl OnlineScreen {
                     (_, None) => self.notice = Some(format!("No Runner deck is legal in {}: build one under Decks", format_name(tournament.info.format))),
                 },
                 TournamentRow::Withdraw => attached.unregister(tournament.info.id.clone()),
+                TournamentRow::Sit => attached.sit(tournament.info.id.clone()),
+                TournamentRow::StandUp => attached.cancel_seek(),
+                TournamentRow::BeginRound => attached.begin_round(tournament.info.id.clone()),
+                TournamentRow::Finish => attached.finish_tournament(tournament.info.id.clone()),
+                TournamentRow::Record(table, outcome) => attached.record_result(tournament.info.id.clone(), table, outcome),
                 TournamentRow::Refresh => attached.list_tournaments(),
             },
             _ => {}
@@ -1399,8 +1454,11 @@ impl OnlineScreen {
             }
             Mode::Tournament { page, tournament, .. } => {
                 self.draw_tournament(frame, body, page, tournament);
-                if tournament.rows(page.key.as_ref()).iter().any(|row| matches!(row, TournamentRow::CorpDeck)) {
+                let rows = tournament.rows(page.key.as_ref(), page.seeking.is_some());
+                if rows.iter().any(|row| matches!(row, TournamentRow::CorpDeck)) {
                     "Up/Down choose · Left/Right steps a deck · Enter registers or withdraws · r reads again · Esc back"
+                } else if rows.len() > 1 {
+                    "Up/Down choose · Enter does it · r reads again · Esc back"
                 } else {
                     "r reads again · Esc back"
                 }
@@ -1541,31 +1599,76 @@ impl OnlineScreen {
     /// and the list read again.
     fn draw_tournament(&self, frame: &mut Frame, area: Rect, page: &ServerPage, tournament: &TournamentPage) {
         let info = &tournament.info;
+        let bold = |text: String| Line::from(Span::styled(text, Style::default().add_modifier(Modifier::BOLD)));
         let mut head = vec![
             Line::from(format!("Code {} · {} · {}", info.id, capitalised(format_name(info.format)), tournament::state_label(info.state))),
             Line::from(format!("Held by {}", info.organizer.fingerprint())),
             Line::from(tournament::standing_line(info, page.key.as_ref())),
-            Line::from(""),
-            Line::from(Span::styled(if info.entrants.is_empty() { "Nobody has entered yet.".to_string() } else { format!("Entered ({}):", info.entrants.len()) }, Style::default().add_modifier(Modifier::BOLD))),
         ];
-        head.extend(info.entrants.iter().map(|entrant| Line::from(format!("  {}", tournament::entrant_line(entrant)))));
-        let [top, list] = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(head.len() as u16 + 2), Constraint::Min(0)]).areas(area);
+        if let Some(line) = tournament::round_line(info, page.key.as_ref()) {
+            head.push(Line::from(line));
+        }
+        if page.seeking.is_some() && matches!(info.state, TournamentState::Playing { .. }) {
+            head.push(Line::from(Span::styled("Seated — waiting for your opponent to sit…", Style::default().fg(Color::Yellow))));
+        }
+        head.push(Line::from(""));
+        match info.state {
+            TournamentState::Registering => {
+                head.push(bold(if info.entrants.is_empty() { "Nobody has entered yet.".to_string() } else { format!("Entered ({}):", info.entrants.len()) }));
+                head.extend(info.entrants.iter().map(|entrant| Line::from(format!("  {}", tournament::entrant_line(entrant)))));
+            }
+            TournamentState::Playing { .. } | TournamentState::Finished => {
+                head.push(bold(if info.state == TournamentState::Finished { "Final standings:".to_string() } else { "Standings:".to_string() }));
+                head.extend(info.standings().iter().enumerate().map(|(index, standing)| Line::from(format!("  {}", tournament::standing_row(info, index + 1, standing)))));
+                if let Some(current) = info.current_round() {
+                    head.push(Line::from(""));
+                    head.push(bold(format!("Round {}:", info.rounds.len())));
+                    head.extend(current.tables.iter().enumerate().map(|(index, table)| Line::from(format!("  {}", tournament::table_line(info, index, table)))));
+                    if let Some(bye) = tournament::bye_line(info, current) {
+                        head.push(Line::from(format!("  {bye}")));
+                    }
+                }
+            }
+        }
+        // The rows keep at least a few lines; a long head is cut, not the
+        // rows, because the rows are what a key acts on.
+        let head_height = (head.len() as u16 + 2).min(area.height.saturating_sub(6));
+        let [top, list] = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(head_height), Constraint::Min(0)]).areas(area);
         frame.render_widget(Paragraph::new(head).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(info.name.clone())), top);
         let deck = |side: Side| tournament.chosen(side).map(online::label).unwrap_or_else(|| format!("none legal in {}", format_name(info.format)));
         let entered = tournament::entry_of(info, page.key.as_ref()).is_some();
-        let rows: Vec<String> = tournament
-            .rows(page.key.as_ref())
-            .into_iter()
-            .map(|row| match row {
+        let page_rows = tournament.rows(page.key.as_ref(), page.seeking.is_some());
+        let next_round = info.rounds.len() + 1;
+        let rows: Vec<String> = page_rows
+            .iter()
+            .map(|row| match *row {
                 TournamentRow::CorpDeck => format!("Corp deck        ‹ {} ›", deck(Side::Corp)),
                 TournamentRow::RunnerDeck => format!("Runner deck      ‹ {} ›", deck(Side::Runner)),
                 TournamentRow::Register => if entered { "[ Register again with these decks ]".to_string() } else { "[ Register ]".to_string() },
                 TournamentRow::Withdraw => "[ Withdraw ]".to_string(),
+                TournamentRow::Sit => "[ Sit at your table ]".to_string(),
+                TournamentRow::StandUp => "Seated — waiting for your opponent… (Enter stands up)".to_string(),
+                TournamentRow::BeginRound => format!("[ Begin round {next_round} ]"),
+                TournamentRow::Finish => "[ End the tournament — the standings are final ]".to_string(),
+                TournamentRow::Record(table, outcome) => format!(
+                    "Record table {}: {}",
+                    table + 1,
+                    match outcome {
+                        TableOutcome::CorpWon => "the Corp won",
+                        TableOutcome::RunnerWon => "the Runner won",
+                        TableOutcome::Tie => "a tie",
+                    }
+                ),
                 TournamentRow::Refresh => "Read it again".to_string(),
             })
             .collect();
         let items = rows.into_iter().map(ListItem::new).collect();
-        draw_list(frame, list, "Your entry", items, Some(tournament.cursor.min(tournament.rows(page.key.as_ref()).len() - 1)));
+        let title = match info.state {
+            TournamentState::Registering => "Your entry",
+            TournamentState::Playing { .. } => "This round",
+            TournamentState::Finished => "Over",
+        };
+        draw_list(frame, list, title, items, Some(tournament.cursor.min(page_rows.len() - 1)));
     }
 }
 
@@ -2101,9 +2204,134 @@ mod tests {
         // Down from the last row wraps to the first: the tournament.
         press(&mut keyless, &[KeyCode::Down, KeyCode::Enter]);
         let Mode::Tournament { tournament, page, .. } = &keyless.mode else { panic!() };
-        assert_eq!(tournament.rows(page.key.as_ref()), vec![TournamentRow::Refresh], "nothing to register with");
+        assert_eq!(tournament.rows(page.key.as_ref(), false), vec![TournamentRow::Refresh], "nothing to register with");
         assert!(drawn(&keyless).contains("This client has no key, so it cannot enter."));
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// The rounds from the pages (Phase 4 §7 stage 6b): the organizer,
+    /// entered too, begins round 1 once a second entrant is in, which the
+    /// entrant learns unasked; both sit at their table from its row and
+    /// are seated on the pairing's sides; a concession is the table's
+    /// result and both come back to the tournament's page, where the
+    /// standings are drawn and the next round offered; round 2 is
+    /// recorded as a tie and the tournament ended, its standings final.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
+        use ratatui::backend::TestBackend;
+        let data = std::env::temp_dir().join(format!("netrunner_online_rounds_daemon_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+        let address = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        let drawn = |screen: &OnlineScreen| {
+            let mut terminal = ratatui::Terminal::new(TestBackend::new(140, 40)).unwrap();
+            terminal.draw(|frame| screen.draw(frame, frame.area())).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n")
+        };
+        let info_of = |screen: &OnlineScreen| match &screen.mode {
+            Mode::Tournament { tournament, .. } => Some(tournament.info.clone()),
+            _ => None,
+        };
+        let rows_of = |screen: &OnlineScreen| match &screen.mode {
+            Mode::Tournament { tournament, page, .. } => tournament.rows(page.key.as_ref(), page.seeking.is_some()),
+            _ => Vec::new(),
+        };
+        /// Puts the cursor on `row` and presses Enter.
+        fn act(screen: &mut OnlineScreen, row: TournamentRow) {
+            let Mode::Tournament { tournament, page, .. } = &mut screen.mode else { panic!("the tournament's page") };
+            let rows = tournament.rows(page.key.as_ref(), page.seeking.is_some());
+            tournament.cursor = rows.iter().position(|r| *r == row).unwrap_or_else(|| panic!("no {row:?} among {rows:?}"));
+            screen.key(KeyCode::Enter);
+        }
+
+        let (mut organizer, _) = screen("rounds_organizer");
+        join(&mut organizer, &address).await;
+        until(&mut organizer, "the key", |screen| server_page(screen).is_some_and(|page| page.key.is_some())).await;
+        let Mode::Server(page) = &mut organizer.mode else { panic!() };
+        page.rest_on(Row::Tournaments);
+        organizer.key(KeyCode::Enter);
+        until(&mut organizer, "the list", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed)).await;
+        press(&mut organizer, &[KeyCode::Up, KeyCode::Enter, KeyCode::Enter]);
+        type_text(&mut organizer, "Rounds");
+        press(&mut organizer, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        until(&mut organizer, "the tournament's page", |screen| info_of(screen).is_some()).await;
+        assert!(!rows_of(&organizer).contains(&TournamentRow::BeginRound), "nobody to pair yet");
+        act(&mut organizer, TournamentRow::Register);
+        until(&mut organizer, "the organizer's entry", |screen| info_of(screen).is_some_and(|info| info.entrants.len() == 1)).await;
+
+        let (mut entrant, _) = screen("rounds_entrant");
+        join(&mut entrant, &address).await;
+        until(&mut entrant, "the key", |screen| server_page(screen).is_some_and(|page| page.key.is_some())).await;
+        let Mode::Server(page) = &mut entrant.mode else { panic!() };
+        page.rest_on(Row::Tournaments);
+        entrant.key(KeyCode::Enter);
+        until(&mut entrant, "the list with one", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed && list.list.len() == 1)).await;
+        entrant.key(KeyCode::Enter);
+        act(&mut entrant, TournamentRow::Register);
+        until(&mut entrant, "the entrant's entry", |screen| info_of(screen).is_some_and(|info| info.entrants.len() == 2)).await;
+        until(&mut organizer, "the second entrant, pushed", |screen| info_of(screen).is_some_and(|info| info.entrants.len() == 2)).await;
+        assert!(drawn(&organizer).contains("[ Begin round 1 ]"));
+        act(&mut organizer, TournamentRow::BeginRound);
+        until(&mut organizer, "round 1", |screen| info_of(screen).is_some_and(|info| info.state == TournamentState::Playing { round: 1 })).await;
+        until(&mut entrant, "round 1, pushed", |screen| info_of(screen).is_some_and(|info| info.state == TournamentState::Playing { round: 1 })).await;
+        let text = drawn(&organizer);
+        for wanted in ["Standings:", "1. ", "Round 1:", "Table 1 · ", "· not played yet", "[ Sit at your table ]", "Round 1: you play"] {
+            assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
+        }
+
+        // Both sit: the first waits, the second starts the game.
+        act(&mut organizer, TournamentRow::Sit);
+        until(&mut organizer, "the organizer seated", |screen| server_page_of(screen).is_some_and(|page| page.seeking.is_some())).await;
+        assert!(rows_of(&organizer).contains(&TournamentRow::StandUp));
+        assert!(drawn(&organizer).contains("waiting for your opponent"));
+        act(&mut entrant, TournamentRow::Sit);
+        let organizer_seat = until_play(&mut organizer).await;
+        let entrant_seat = until_play(&mut entrant).await;
+        let round = info_of(&organizer).unwrap().rounds[0].clone();
+        let organizer_key = server_page_of(&organizer).unwrap().key.unwrap();
+        let expected = if round.tables[0].corp == organizer_key { Side::Corp } else { Side::Runner };
+        assert_eq!(organizer_seat.viewer, Viewer::Player(expected), "the pairing's side");
+        assert_eq!(entrant_seat.viewer, Viewer::Player(expected.other()));
+
+        // The organizer concedes; both come back to the tournament's page
+        // with the result drawn and the next round offered.
+        drop(organizer_seat);
+        organizer.returned();
+        entrant.returned();
+        assert!(matches!(organizer.mode, Mode::Tournament { .. }) && matches!(entrant.mode, Mode::Tournament { .. }), "back from a tournament game, its page");
+        let winner = if expected == Side::Corp { TableOutcome::RunnerWon } else { TableOutcome::CorpWon };
+        until(&mut organizer, "the table's result", |screen| info_of(screen).is_some_and(|info| info.rounds[0].tables[0].result == Some(winner))).await;
+        until(&mut organizer, "the seat let go", |screen| server_page_of(screen).is_some_and(|page| page.seeking.is_none())).await;
+        drop(entrant_seat);
+        until(&mut entrant, "the result, pushed", |screen| info_of(screen).is_some_and(|info| info.rounds[0].tables[0].result == Some(winner))).await;
+        let text = drawn(&organizer);
+        for wanted in ["· 3 pts ·", "· 0 pts ·", " won", "[ Begin round 2 ]", "[ End the tournament"] {
+            assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
+        }
+        assert!(!rows_of(&entrant).contains(&TournamentRow::BeginRound), "the entrant is offered nothing of the organizer's");
+
+        // Round 2 recorded as a tie, and the end.
+        act(&mut organizer, TournamentRow::BeginRound);
+        until(&mut organizer, "round 2", |screen| info_of(screen).is_some_and(|info| info.state == TournamentState::Playing { round: 2 })).await;
+        assert!(drawn(&organizer).contains("Record table 1: a tie"));
+        act(&mut organizer, TournamentRow::Record(0, TableOutcome::Tie));
+        until(&mut organizer, "the tie", |screen| info_of(screen).is_some_and(|info| info.rounds[1].tables[0].result == Some(TableOutcome::Tie))).await;
+        act(&mut organizer, TournamentRow::Finish);
+        until(&mut organizer, "the end", |screen| info_of(screen).is_some_and(|info| info.state == TournamentState::Finished)).await;
+        let text = drawn(&organizer);
+        assert!(text.contains("Final standings:") && text.contains("· 4 pts ·") && text.contains("· 1 pts ·"), "{text}");
+        assert_eq!(rows_of(&organizer), vec![TournamentRow::Refresh]);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    fn server_page_of(screen: &OnlineScreen) -> Option<&ServerPage> {
+        match &screen.mode {
+            Mode::Server(page) | Mode::Tournaments { page, .. } | Mode::Tournament { page, .. } | Mode::MakeTournament { page, .. } => Some(page),
+            _ => None,
+        }
     }
 
     /// A player who stops looking leaves the lobby: the next to arrive

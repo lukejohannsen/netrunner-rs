@@ -8,16 +8,94 @@
 //! is under and what a state means. A client only shows it.
 
 use netrunner_identity::PublicKey;
+use netrunner_protocol::swiss::{Outcome, Role, Round, Standing, Table};
 use netrunner_protocol::{Entrant, TournamentInfo, TournamentState};
 
 use crate::settings::format_label;
 
 /// A tournament's state in a phrase, for its row and its page.
-/// Exhaustive, so the rounds' stages add their words here.
-pub fn state_label(state: TournamentState) -> &'static str {
+/// Exhaustive, so a later stage (the cut) adds its words here.
+pub fn state_label(state: TournamentState) -> String {
     match state {
-        TournamentState::Registering => "taking registrations",
+        TournamentState::Registering => "taking registrations".to_string(),
+        TournamentState::Playing { round } => format!("round {round}"),
+        TournamentState::Finished => "finished".to_string(),
     }
+}
+
+/// An entrant's name by their key — the label they attached with — or the
+/// key's fingerprint for a key the tournament does not list.
+pub fn name_of(info: &TournamentInfo, key: &PublicKey) -> String {
+    info.entrants.iter().find(|entrant| entrant.key == *key).map_or_else(|| key.fingerprint(), |entrant| entrant.name.clone())
+}
+
+/// One table of a round as a line names it: who sits where, and how it
+/// ended — "Table 1 · ann (Corp) vs bo (Runner) · ann won".
+pub fn table_line(info: &TournamentInfo, index: usize, table: &Table<PublicKey>) -> String {
+    let (corp, runner) = (name_of(info, &table.corp), name_of(info, &table.runner));
+    let result = match table.result {
+        None => "not played yet".to_string(),
+        Some(Outcome::CorpWon) => format!("{corp} won"),
+        Some(Outcome::RunnerWon) => format!("{runner} won"),
+        Some(Outcome::Tie) => "a tie".to_string(),
+    };
+    format!("Table {} · {corp} (Corp) vs {runner} (Runner) · {result}", index + 1)
+}
+
+/// The bye's line, when the round has one.
+pub fn bye_line(info: &TournamentInfo, round: &Round<PublicKey>) -> Option<String> {
+    round.bye.as_ref().map(|key| format!("{} sits this round out with a bye", name_of(info, key)))
+}
+
+/// One row of the standings: rank, name, points, the record as
+/// wins–ties–losses with byes noted, and the two tiebreakers to two
+/// places — "1. ann · 6 pts · 2–0–0 · SoS 1.50 · ESoS 1.25".
+pub fn standing_row(info: &TournamentInfo, rank: usize, standing: &Standing<PublicKey>) -> String {
+    let byes = match standing.byes {
+        0 => String::new(),
+        1 => " (a bye)".to_string(),
+        n => format!(" ({n} byes)"),
+    };
+    format!(
+        "{rank}. {} · {} pts · {}–{}–{}{byes} · SoS {:.2} · ESoS {:.2}",
+        name_of(info, &standing.key),
+        standing.points,
+        standing.wins + standing.byes,
+        standing.ties,
+        standing.losses,
+        standing.sos,
+        standing.esos
+    )
+}
+
+/// This key's place in the round being played: the table's index, the
+/// chair, and the opponent — or `None` for the bye and for a key not in
+/// the tournament.
+pub fn my_table<'a>(info: &'a TournamentInfo, key: Option<&PublicKey>) -> Option<(usize, Role, &'a Table<PublicKey>)> {
+    let key = key?;
+    let (index, table) = info.current_round()?.table_of(key)?;
+    Some((index, table.role_of(key)?, table))
+}
+
+/// What the page says about the round for this key: their table and
+/// chair, their bye, or that the round is being played without them.
+pub fn round_line(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<String> {
+    let round = info.current_round()?;
+    let number = match info.state {
+        TournamentState::Playing { round } => round,
+        _ => return None,
+    };
+    Some(match (my_table(info, key), key) {
+        (Some((index, role, table)), Some(my_key)) => {
+            let opponent = table.opponent_of(my_key).map_or_else(String::new, |opponent| name_of(info, opponent));
+            match table.result {
+                None => format!("Round {number}: you play {role:?} against {opponent} at table {}.", index + 1),
+                Some(_) => format!("Round {number}: your game against {opponent} at table {} is over.", index + 1),
+            }
+        }
+        (None, Some(my_key)) if round.bye.as_ref() == Some(my_key) => format!("Round {number}: you sit this one out with a bye, which counts as a win."),
+        _ => format!("Round {number} is being played."),
+    })
 }
 
 /// A tournament as a list names it: its name, its format, how many have
@@ -77,7 +155,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new() }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -104,5 +182,37 @@ mod tests {
         assert!(entry_of(&info, Some(&bo)).is_some() && entry_of(&info, Some(&cy)).is_none() && entry_of(&info, None).is_none());
         assert!(is_organizer(&info, Some(&ann)) && !is_organizer(&info, Some(&bo)));
         assert!(entrant_line(&entrant(2, "bo")).starts_with("bo · "));
+    }
+
+    /// The round's words: each table by its names and result, the bye,
+    /// a standing's row, and what this key is told about its own table.
+    #[test]
+    fn a_round_is_told_by_names_and_this_key_by_its_table() {
+        let (ann, bo, cy) = (Identity::from_secret([2; 32]).public_key(), Identity::from_secret([3; 32]).public_key(), Identity::from_secret([4; 32]).public_key());
+        let mut info = info(vec![entrant(2, "ann"), entrant(3, "bo"), entrant(4, "cy")]);
+        info.seeding = vec![ann, bo, cy];
+        info.rounds = vec![Round { tables: vec![Table { corp: bo, runner: ann, result: None }], bye: Some(cy) }];
+        info.state = TournamentState::Playing { round: 1 };
+        assert_eq!(state_label(info.state), "round 1");
+        assert_eq!(line(&info), "Friday Night · Startup · 3 entered · round 1");
+        assert_eq!(table_line(&info, 0, &info.rounds[0].tables[0]), "Table 1 · bo (Corp) vs ann (Runner) · not played yet");
+        assert_eq!(bye_line(&info, &info.rounds[0]).as_deref(), Some("cy sits this round out with a bye"));
+        assert_eq!(round_line(&info, Some(&ann)).as_deref(), Some("Round 1: you play Runner against bo at table 1."));
+        assert_eq!(round_line(&info, Some(&cy)).as_deref(), Some("Round 1: you sit this one out with a bye, which counts as a win."));
+        assert_eq!(round_line(&info, None).as_deref(), Some("Round 1 is being played."));
+        assert_eq!(my_table(&info, Some(&bo)).map(|(index, role, _)| (index, role)), Some((0, Role::Corp)));
+        info.rounds[0].tables[0].result = Some(Outcome::RunnerWon);
+        assert_eq!(table_line(&info, 0, &info.rounds[0].tables[0]), "Table 1 · bo (Corp) vs ann (Runner) · ann won");
+        assert_eq!(round_line(&info, Some(&bo)).as_deref(), Some("Round 1: your game against ann at table 1 is over."));
+        let rows = info.standings();
+        // ann's one opponent, bo, has 0 points; bo's one opponent is ann at
+        // 3 per round, so bo's Strength of Schedule is 3 and ann's
+        // Extended one is too.
+        assert_eq!(standing_row(&info, 1, &rows[0]), "1. ann · 3 pts · 1–0–0 · SoS 0.00 · ESoS 3.00");
+        assert_eq!(standing_row(&info, 2, &rows[1]), "2. cy · 3 pts · 1–0–0 (a bye) · SoS 0.00 · ESoS 0.00");
+        info.state = TournamentState::Finished;
+        assert_eq!(round_line(&info, Some(&ann)), None);
+        assert_eq!(standing_line(&info, Some(&ann)), "You are entered, with the two decks you committed to.");
+        assert_eq!(standing_line(&info, Some(&Identity::from_secret([9; 32]).public_key())), "Not entered.");
     }
 }

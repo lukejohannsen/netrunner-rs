@@ -594,13 +594,19 @@ impl Connection {
             ClientMessage::SubmitAction(_) | ClientMessage::Surrender | ClientMessage::TakeBack | ClientMessage::SeatSigned { .. } => self.phase == Phase::Joined,
             ClientMessage::JoinLobby { .. } | ClientMessage::CreateLobby { .. } | ClientMessage::LeaveLobby | ClientMessage::Seek { .. } => self.phase == Phase::Attached,
             ClientMessage::CancelSeek => self.phase == Phase::Queued,
+            // A seat at one's table is a seek: taken while attached and
+            // not looking, stood up from with `CancelSeek`.
+            ClientMessage::Sit { .. } => self.phase == Phase::Attached,
             ClientMessage::ListLobbies
             | ClientMessage::ListMatches
             | ClientMessage::MyStanding
             | ClientMessage::CreateTournament { .. }
             | ClientMessage::ListTournaments
             | ClientMessage::Register { .. }
-            | ClientMessage::Unregister { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
+            | ClientMessage::Unregister { .. }
+            | ClientMessage::BeginRound { .. }
+            | ClientMessage::FinishTournament { .. }
+            | ClientMessage::RecordResult { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => false,
         };
         if !allowed {
@@ -609,6 +615,9 @@ impl Connection {
         match &message {
             ClientMessage::JoinLobby { password, .. } | ClientMessage::CreateLobby { password, .. } => self.asked = Some(password.clone()),
             ClientMessage::Seek { chair } => self.seeking = Some(chair.clone()),
+            // A `Sit` is not put back after a drop: the table is the
+            // server's, and `Queued` for it is answered afresh by sitting
+            // again — a player back from a drop reads the page first.
             _ => {}
         }
         self.outbox.push_back(message);
@@ -1283,7 +1292,7 @@ mod tests {
         let payload = statement.verify(REGISTRATION_TAG).expect("signed by this key");
         assert_eq!(serde_json::from_str::<RegistrationStatement>(payload).unwrap(), said);
 
-        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![] };
+        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![] };
         conn.on_message(ServerMessage::Tournament { tournament: info.clone() }, t0);
         conn.on_message(ServerMessage::TournamentRefused { reason: "no such tournament".into() }, t0);
         conn.on_message(ServerMessage::Tournaments { tournaments: vec![info.clone()] }, t0);
