@@ -122,27 +122,75 @@ pub(super) fn fresh_stock(state: &GameState) -> Stock {
 /// as it costs nothing in a run, which is the same optimism `run_is_
 /// breakable` has and the same reason: a rez is the Corp's to make.
 pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> Option<u32> {
-    use netrunner_core::rules::{EncounteredSubroutine, InstallSlot, RunIce};
+    use netrunner_core::rules::InstallSlot;
     let mut total = 0;
     let mut stock = fresh_stock(state);
     for installed in state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice && c.rezzed) {
         let def = registry.get(&installed.card)?;
-        let CardType::Ice(ice_type) = def.card_type else { continue };
-        let ice = RunIce {
-            card_id: installed.card.clone(),
-            install_id: installed.install_id,
-            ice_type,
-            subroutines: def
-                .subroutines
-                .iter()
-                .enumerate()
-                .map(|(id, definition)| EncounteredSubroutine { id, definition: definition.clone(), status: SubroutineStatus::Pending, gained: false })
-                .collect(),
-            rezzed: true,
-        };
+        let Some(ice) = as_first_met(installed, def) else { continue };
         total += cheapest_break_cost(state, &ice, registry, &mut stock)?;
     }
     Some(total)
+}
+
+/// `installed` as a run first meets it — rezzed, every printed
+/// subroutine pending, nothing gained — or `None` for a card that is no
+/// piece of ice.
+fn as_first_met(installed: &InstalledCard, def: &CardDefinition) -> Option<netrunner_core::rules::RunIce> {
+    use netrunner_core::rules::{EncounteredSubroutine, RunIce};
+    let CardType::Ice(ice_type) = def.card_type else { return None };
+    Some(RunIce {
+        card_id: installed.card.clone(),
+        install_id: installed.install_id,
+        ice_type,
+        subroutines: def
+            .subroutines
+            .iter()
+            .enumerate()
+            .map(|(id, definition)| EncounteredSubroutine { id, definition: definition.clone(), status: SubroutineStatus::Pending, gained: false })
+            .collect(),
+        rezzed: true,
+    })
+}
+
+/// What the advancement tokens on a piece of ice add to the rig's price
+/// of breaking it (Phase 5 §63) — Ice Wall's, Hadrian's Wall's, Shadow's
+/// and Colossus's "+1 strength for each advancement token", which the
+/// rig pays to pump past. Read as the cheapest break with the tokens
+/// against the same break with none, by the rig on the table, so a token
+/// is worth what this Runner pays for it and nothing against a rig that
+/// cannot break the piece at all (the subtype term already prices that).
+/// `Unbreakable` when the tokens carry it past every breaker that could
+/// break it bare: a fixed-strength breaker's ceiling.
+///
+/// **Only strength.** Colossus's and Hortum's "if there are 3 or more
+/// hosted advancement counters" change the subroutines rather than the
+/// price, and are not read here.
+pub(super) fn advancement_tax(state: &GameState, installed: &InstalledCard, registry: &CardRegistry) -> AdvancementTax {
+    if installed.advancement_tokens == 0 || state.runner.rig.is_empty() {
+        return AdvancementTax::Credits(0);
+    }
+    let Some(ice) = registry.get(&installed.card).and_then(|def| as_first_met(installed, def)) else { return AdvancementTax::Credits(0) };
+    let mut bare = state.clone();
+    if let Some(card) = bare.corp.installed.iter_mut().find(|card| card.install_id == installed.install_id) {
+        card.advancement_tokens = 0;
+    }
+    let with = cheapest_break_cost(state, &ice, registry, &mut fresh_stock(state));
+    let without = cheapest_break_cost(&bare, &ice, registry, &mut fresh_stock(&bare));
+    match (without, with) {
+        (Some(without), Some(with)) => AdvancementTax::Credits(with.saturating_sub(without)),
+        (Some(_), None) => AdvancementTax::Unbreakable,
+        (None, _) => AdvancementTax::Credits(0),
+    }
+}
+
+/// What `advancement_tax` reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AdvancementTax {
+    /// The credits a break costs more than it would bare.
+    Credits(u32),
+    /// No breaker in the rig reaches the strength the tokens give.
+    Unbreakable,
 }
 
 /// The damage a known trap would do if accessed now: its fixed damage,
