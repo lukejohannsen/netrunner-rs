@@ -368,6 +368,27 @@ pub(super) fn runner_hand_size_lost(state: &GameState, registry: &CardRegistry) 
     f64::from(state.runner.brain_damage as i32 - continuous::hand_size(state, registry, Side::Runner))
 }
 
+/// The cards a sabotage parked on the Corp will take from them (Phase 5
+/// §60): `Effect::Sabotage` parks the Corp's choice from HQ with the rest
+/// to come off R&D (`Mill` of `RemainingAfterSelection`), and the count is
+/// that `then`'s. Read only while it is parked, because a line that
+/// sabotages ends there — the Corp's selection is not one the planner
+/// answers — and the cards it takes are read by nothing once they are
+/// gone: the Runner's evaluator holds no count of the Corp's cards.
+///
+/// **Why.** Nga and Cacophony offered a sabotage the planner was asked to
+/// pay hosted counters for and saw nothing come of it, so it declined; and
+/// installed neither, since no card's sabotage was worth anything.
+pub(super) fn parked_sabotage(state: &GameState) -> u32 {
+    match &state.pending_decision {
+        Some(PendingDecision::ChooseCards { side: Side::Corp, then: Some(then), .. }) => match then.as_ref() {
+            Effect::Mill { deck: Side::Corp, amount: Amount::RemainingAfterSelection(count), .. } => *count,
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

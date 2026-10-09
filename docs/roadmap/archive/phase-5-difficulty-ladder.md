@@ -3732,3 +3732,24 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Pooled +53 / −40, **z +1.35**, inside the band: seed 2's move was that seed's trajectory.
 
 **Verified.** `a_hand_size_the_rig_gives_is_the_core_damage_it_answers` holds that a Marrow in the rig is worth more to the Runner than none, and less to the Corp, and fails with the damage read alone. Engine behaviour untouched (one function made public); `netrunner_bots` only.
+
+## 60. A sabotage is read: Cacophony is installed and cashed — DONE (`claude/bot-blindness-sabotage`, 9 October 2026)
+
+**The debt.** The third mechanism of §57's list over the Sweep decks. Cacophony (random seats 9, the planner 0) places a power counter the first time each turn the Runner trashes an accessed card and the first time each turn it steals an agenda, and "when your action phase ends, you may remove 2 hosted power counters to sabotage 3". Nga (11 / 4) loads 3 counters and spends one to sabotage 1 on the turn's first successful run.
+
+**Why.** `Effect::Sabotage` parks the Corp's choice of cards from HQ, the rest to come off R&D, and that selection is not one the planner answers (`opponents_answer` answers a yes-or-no and a choice of effects). So a line that sabotaged ended at a leaf where the Corp still held every card, the counters the offer took were gone, and the Runner declined; and `declared_income` read no sabotage, so the card was its price and nothing else.
+
+**What is read now.**
+
+- `fundamentals::parked_sabotage`: a Corp selection whose `then` mills the rest of a sabotage is the cards it will take, read off that `Mill`'s count, and the Runner credits them at `click_weight` — a card is a click of the Corp's, the guide's rate, and zero at the reference's weights. Read only while parked: the Runner's evaluator holds no count of the Corp's cards, so the cards are read where the line ends.
+- `read::Income` reads a sabotage on a trigger that comes once a turn — a turn's beginning, its action phase's end, every successful run — with the hosted counters a use removes (an `OfferPaidChoice` costing `RemoveCounters`) and the counters the card places on itself a turn from a first-time trigger that is not its arrival (one a turn however many it prints). `read::sabotaged` is the uses over the horizon, bounded by the counters, times the cards; `future_credits` adds them at a credit a card, so the install and the rig read them at `future_credit_weight`. Marrow's sabotage on the Corp's score and Avgustina Ivanovskaya's on a virus install are not a turn's and are read as nothing, the cheaper direction.
+
+**Nga is not paid.** Three sabotages at a credit each and `future_credit_weight` are less than a 2[credit] program's price and its memory, so it is installed about as seldom as before (4 → 3, 2 → 1); a sabotaged card is worth more than a credit to the Runner that holds the Corp short, and that rate is the next thing to read if Nga is to be played.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games:
+
+- Seed 2 (`main` at #444): **Cacophony 0 → 14**, Avgustina Ivanovskaya 1 → 3; Corp share 0.471 → 0.476 (+8 / −5), the discordant games in Bowel Movements, Side Quest and Burn Rate.
+- Seed 3 (`main` at §59): **Cacophony 0 → 14**, Avgustina Ivanovskaya 1 → 4; Corp share 0.514 → 0.521 (+12 / −8), the same three decks.
+- Pooled +20 / −13, **z +1.22**, inside the band.
+
+**Verified.** `a_sabotage_a_turn_is_read_as_the_cards_its_counters_buy` holds the income reading (Nga's three, Cacophony's three a use at two counters, Marrow's none) and `a_parked_sabotage_is_the_cards_it_takes` the parked one, at the guide's rate and not at the reference's. Engine untouched; `netrunner_bots` only.
