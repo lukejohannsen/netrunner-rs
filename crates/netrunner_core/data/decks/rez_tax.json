@@ -3,7 +3,7 @@
   "name": "Rez Tax",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n.",
+  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n. Tranche 8 Stage 11r: two Stimhack for its two Katorga Breakout, a run event for a run event, run on nine hosted credits and ended in core damage nobody can prevent; Side Quest, Free Spirit and Pay as You Go keep Katorga Breakout.",
   "style": [
     "rig",
     "dismantle"
@@ -67,10 +67,6 @@
       "count": 2
     },
     {
-      "card": "katorga_breakout",
-      "count": 2
-    },
-    {
       "card": "the_nihilist",
       "count": 2
     },
@@ -108,6 +104,10 @@
     },
     {
       "card": "xanadu",
+      "count": 2
+    },
+    {
+      "card": "stimhack",
       "count": 2
     }
   ]

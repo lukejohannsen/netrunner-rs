@@ -1,0 +1,31 @@
+{
+  "id": "stimhack",
+  "title": "Stimhack",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 9,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "Unpreventable": {
+                  "DealDamage": ["Brain", 1]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 1004,
+  "is_playable": true
+}

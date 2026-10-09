@@ -19210,6 +19210,40 @@ mod parhelion {
     }
 
     #[test]
+    fn stimhack_runs_on_nine_hosted_credits_and_ends_in_core_damage_nobody_can_prevent() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(0);
+        state.runner.grip = vec![id("stimhack"), id("sure_gamble"), id("sure_gamble")];
+        let (choosing, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("stimhack") }).expect("play for 0");
+        let (running, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("run Archives");
+        let run = running.active_run.as_ref().expect("a run");
+        assert_eq!(run.bonus_run_credits, 9, "9[credit] to spend during that run");
+        let (ended, _) = apply_action(&running, &registry, PlayerAction::JackOut).or_else(|_| {
+            let (moved, _) = crate::rules::test_support::through_movement(&running, &registry)?;
+            apply_action(&moved, &registry, PlayerAction::CompleteRun)
+        }).expect("the run ends");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none());
+        assert_eq!(ended.runner.brain_damage, 1, "1 core damage");
+        assert_eq!(ended.runner.grip.len(), 1, "a card discarded with it");
+
+        // "This damage cannot be prevented": Net Shield is not asked about
+        // net damage dealt so either.
+        let mut shielded = base_state();
+        shielded.phase = GamePhase::Action(Side::Runner);
+        shielded.runner.resources.credits = Credits(5);
+        shielded.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        shielded.runner.rig = vec![in_rig("net_shield", 0, 0)];
+        let unpreventable = crate::dsl::Effect::Unpreventable(Box::new(crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)));
+        let source = id("stimhack");
+        let mut ctx = crate::rules::ResolutionContext::for_card(Some(&source));
+        crate::rules::evaluate_effect(&mut shielded, &unpreventable, &mut ctx, &registry).expect("damage");
+        assert!(shielded.pending_paid_choice.is_none() && shielded.pending_prevention.is_none(), "nobody is asked");
+        assert_eq!(shielded.runner.grip.len(), 1, "the net damage was suffered");
+    }
+
+    #[test]
     fn wake_implant_counts_hq_runs_and_spends_up_to_three_counters_on_r_and_d() {
         let registry = registry();
         let mut state = runner_turn();

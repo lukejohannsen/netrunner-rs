@@ -1000,6 +1000,15 @@ pub enum Effect {
     /// didn't work: the one redirect moved the run as it approached, which
     /// skips the approach of Archives the card prints.
     RedirectRunOnSuccess(ServerId),
+    /// What the wrapped effect would make happen cannot be prevented —
+    /// Stimhack's "When that run ends, suffer 1 core damage. This damage
+    /// cannot be prevented." A restriction (CR 9.3.3g), carried on the
+    /// resolution (`ResolutionContext::unpreventable`) to the one door,
+    /// `prevention::would`, which then opens no window and announces
+    /// nothing, as a cost's damage does (1.16.1a). Composition didn't work:
+    /// `DealDamage` is a tuple every card file writes, and a cost is paid
+    /// before what it pays for, where this is the run's last word.
+    Unpreventable(Box<Effect>),
     /// Registers `Effect` to resolve as the parking card when the active
     /// run ends, however it ends (`RunState::on_end`, evaluated by
     /// the `OnRunEnded` dispatch) — Charm Offensive's "When that run ends,
@@ -3086,6 +3095,7 @@ impl Effect {
             }
             Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
+            | Effect::Unpreventable(effect)
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::ChooseCardName { then: effect, .. }
