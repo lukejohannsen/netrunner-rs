@@ -253,6 +253,11 @@ impl Theme {
             Some(Faction::Jinteki) => Color::srgb(0.85, 0.20, 0.30),
             Some(Faction::Nbn) => Color::srgb(0.95, 0.75, 0.15),
             Some(Faction::WeylandConsortium) => Color::srgb(0.25, 0.60, 0.50),
+            // NetrunnerDB's colours for the mini-factions, but for Apex's
+            // black, which the board's dark glass would swallow: a deep red.
+            Some(Faction::Adam) => Color::srgb(0.66, 0.61, 0.20),
+            Some(Faction::Apex) => Color::srgb(0.55, 0.15, 0.15),
+            Some(Faction::SunnyLebeau) => Color::srgb(0.40, 0.41, 0.42),
             Some(Faction::NeutralCorp | Faction::NeutralRunner) | None => self.text_dim,
         }
     }

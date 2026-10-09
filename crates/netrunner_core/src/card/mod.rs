@@ -17,4 +17,12 @@ pub enum Faction {
     WeylandConsortium,
     NeutralCorp,
     NeutralRunner,
+    /// The three Runner mini-factions of the Fantasy Flight Games era,
+    /// each an identity and a handful of cards (NetrunnerDB's `adam`,
+    /// `apex`, `sunny_lebeau`). A faction like any other to deckbuilding:
+    /// their cards are in-faction only for their own identity. Appended,
+    /// so no serialized faction moves.
+    Adam,
+    Apex,
+    SunnyLebeau,
 }

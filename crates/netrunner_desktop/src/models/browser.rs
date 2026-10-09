@@ -200,7 +200,7 @@ fn is_neutral(faction: Faction) -> bool {
 
 pub fn faction_side(faction: Faction) -> Side {
     match faction {
-        Faction::Anarch | Faction::Criminal | Faction::Shaper | Faction::NeutralRunner => Side::Runner,
+        Faction::Anarch | Faction::Criminal | Faction::Shaper | Faction::NeutralRunner | Faction::Adam | Faction::Apex | Faction::SunnyLebeau => Side::Runner,
         Faction::HaasBioroid | Faction::Jinteki | Faction::Nbn | Faction::WeylandConsortium | Faction::NeutralCorp => Side::Corp,
     }
 }

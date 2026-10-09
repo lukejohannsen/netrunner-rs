@@ -108,6 +108,19 @@ No cards. Four parts, each its own PR.
   **The sync needs `api.netrunnerdb.com`, which this cloud environment's
   network policy refuses**: it is run on the person's machine, or after
   the host is added to the environment's allowed domains.
+  **0a is two PRs.** A trial sync found what the engine could not read,
+  and that lands first, on its own:
+  - **0a-i closed** (9 October 2026): the three Runner mini-factions,
+    `Faction::{Adam, Apex, SunnyLebeau}` (appended, so no serialized
+    faction moves), with their NetrunnerDB marks (`e91d`, `e91e`,
+    `e91c`) and colours in both clients, and no plan of their own for
+    the bots; and v3's strength of -1, which is a printed X (Darwin,
+    Surveyor), read as no number, as a cost of "X" is. Every printed
+    subtype in the FFG sets is already a `CardSubtype`. The trial also
+    found a set the table above misses: **Terminal Directive Cards**
+    (`terminal_directive_cards`, 57 printings), in neither format's set
+    list but with 43 cards in both pools; it joins F5.
+  - **0a-ii**: the sync itself.
 - **0b — the observation vocabulary, once.** `CARD_VOCAB` is 1,024: the
   legacy 184 slots and the NSG packs' blocks end at slot 758, and the Core
   Set's block after them at 871 (NSG tranche 8 Stage 10a), so 152 are

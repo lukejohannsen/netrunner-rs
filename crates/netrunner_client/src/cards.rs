@@ -130,6 +130,9 @@ pub fn faction_label(faction: Faction) -> &'static str {
         Faction::Nbn => "NBN",
         Faction::WeylandConsortium => "Weyland",
         Faction::NeutralCorp | Faction::NeutralRunner => "Neutral",
+        Faction::Adam => "Adam",
+        Faction::Apex => "Apex",
+        Faction::SunnyLebeau => "Sunny Lebeau",
     }
 }
 
@@ -140,7 +143,8 @@ pub fn faction_order(faction: Option<Faction>) -> u8 {
         Some(Faction::HaasBioroid) | Some(Faction::Anarch) => 0,
         Some(Faction::Jinteki) | Some(Faction::Criminal) => 1,
         Some(Faction::Nbn) | Some(Faction::Shaper) => 2,
-        Some(Faction::WeylandConsortium) => 3,
+        // The mini-factions sit beside the Corp's fourth, as the Runner's.
+        Some(Faction::WeylandConsortium) | Some(Faction::Adam) | Some(Faction::Apex) | Some(Faction::SunnyLebeau) => 3,
         Some(Faction::NeutralCorp) | Some(Faction::NeutralRunner) => 4,
         None => 5,
     }

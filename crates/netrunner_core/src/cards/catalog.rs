@@ -152,6 +152,16 @@ fn printing_id(text: &str) -> Result<PrintingId, CardConversionError> {
     text.parse().map(PrintingId).map_err(|_| CardConversionError::InvalidPrintingId(text.to_string()))
 }
 
+/// A strength as v3 states it: a number, or -1 for a strength printed as X
+/// (Darwin, Surveyor), which, like a cost of "X", is no number until the
+/// card's own text makes it one. Any other negative is refused.
+fn printed_strength(value: Option<i64>) -> Result<Option<u32>, CardConversionError> {
+    match value {
+        Some(-1) => Ok(None),
+        other => number("strength", other),
+    }
+}
+
 fn number(field: &'static str, value: Option<i64>) -> Result<Option<u32>, CardConversionError> {
     value
         .map(|v| u32::try_from(v).map_err(|_| CardConversionError::NotANumber { field, value: v.to_string() }))
@@ -178,6 +188,9 @@ fn parse_faction(faction_id: &str) -> Result<Faction, CardConversionError> {
         "weyland_consortium" => Ok(Faction::WeylandConsortium),
         "neutral_corp" => Ok(Faction::NeutralCorp),
         "neutral_runner" => Ok(Faction::NeutralRunner),
+        "adam" => Ok(Faction::Adam),
+        "apex" => Ok(Faction::Apex),
+        "sunny_lebeau" => Ok(Faction::SunnyLebeau),
         other => Err(CardConversionError::UnknownFaction(other.to_string())),
     }
 }
@@ -308,7 +321,7 @@ fn convert_card(dto: CardDto) -> Result<CardDefinition, CardConversionError> {
         advancement_requirement: printed_number("advancement_requirement", dto.advancement_requirement.as_deref())?,
         agenda_points: number("agenda_points", dto.agenda_points)?,
         min_deck_size: number("minimum_deck_size", dto.minimum_deck_size)?,
-        strength: number("strength", dto.strength)?.map(|v| v as i32),
+        strength: printed_strength(dto.strength)?.map(|v| v as i32),
         // Every subtype is one the rules list
         // (`every_catalog_keyword_is_a_subtype_the_rules_list`).
         subtypes: keywords.iter().filter_map(|keyword| CardSubtype::from_printed(keyword)).collect(),
@@ -586,6 +599,9 @@ mod tests {
         let mut dto = base_dto();
         dto.cost = Some("many".to_string());
         assert_eq!(convert_card(dto), Err(CardConversionError::NotANumber { field: "cost", value: "many".to_string() }));
+        let mut dto = base_dto();
+        dto.strength = Some(-1);
+        assert_eq!(convert_card(dto).expect("a strength of X").strength, None, "v3's -1 is a printed X");
     }
 
     #[test]
@@ -594,14 +610,17 @@ mod tests {
         dto.card_type_id = "vehicle".to_string();
         assert_eq!(convert_card(dto), Err(CardConversionError::UnknownCardType("vehicle".to_string())));
         let mut dto = base_dto();
+        dto.faction_id = "sunrise".to_string();
+        assert_eq!(convert_card(dto), Err(CardConversionError::UnknownFaction("sunrise".to_string())));
+        let mut dto = base_dto();
         dto.faction_id = "apex".to_string();
-        assert_eq!(convert_card(dto), Err(CardConversionError::UnknownFaction("apex".to_string())));
+        assert_eq!(convert_card(dto).expect("a mini-faction").faction, Some(Faction::Apex));
         let mut dto = base_dto();
         dto.side_id = "both".to_string();
         assert_eq!(convert_card(dto), Err(CardConversionError::UnknownSide("both".to_string())));
         let mut dto = base_dto();
-        dto.strength = Some(-1);
-        assert_eq!(convert_card(dto), Err(CardConversionError::NotANumber { field: "strength", value: "-1".to_string() }));
+        dto.strength = Some(-2);
+        assert_eq!(convert_card(dto), Err(CardConversionError::NotANumber { field: "strength", value: "-2".to_string() }));
         assert_eq!(printing_id("not-a-code"), Err(CardConversionError::InvalidPrintingId("not-a-code".to_string())));
     }
 
