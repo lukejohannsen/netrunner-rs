@@ -439,7 +439,23 @@ pub enum Effect {
     /// OncePerTurn`) `condition` is checked against is resolved from
     /// `acting_card`'s own registry `side` — see `evaluate_effect`'s
     /// `EffectIf` arm.
-    EffectIf { condition: EffectRequirement, effect: Box<Effect> },
+    ///
+    /// `otherwise` resolves when `condition` does not hold — Accelerated
+    /// Beta Test's "if any of those cards are ice, you may install and rez
+    /// them … Trash the rest": with no ice left among the cards looked at,
+    /// the rest are trashed, and with some, the choice comes first. Two
+    /// `EffectIf`s with opposite conditions are not that sentence, because
+    /// the second is asked after the first has resolved: the trash moves
+    /// unseen cards to the top of R&D, which the choice would then offer,
+    /// and the choice, put first, leaves unseen cards on top for the trash
+    /// to take. A field rather than a variant: it is the same branch with
+    /// its other half said.
+    EffectIf {
+        condition: EffectRequirement,
+        effect: Box<Effect>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        otherwise: Option<Box<Effect>>,
+    },
     /// Offers `side` a choice: pay `cost` (resolving `if_paid`), or don't
     /// (resolving `if_declined`) — e.g. Funhouse's subroutine ("give the
     /// Runner 1 tag unless they pay 4 credits") or Anoetic Void ("the Corp
@@ -2768,7 +2784,7 @@ impl Effect {
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_those_trashed(cards)) },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)), otherwise: otherwise.map(|e| Box::new(e.with_those_trashed(cards))) },
             other => other,
         }
     }
@@ -2801,7 +2817,7 @@ impl Effect {
             Effect::DerezCard(t) => Effect::DerezCard(target(t)),
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
@@ -2823,7 +2839,7 @@ impl Effect {
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             other => other,
         }
     }
@@ -2858,7 +2874,7 @@ impl Effect {
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_name(card), effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition: condition.with_chosen_name(card), effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
@@ -2892,7 +2908,7 @@ impl Effect {
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
@@ -2956,7 +2972,7 @@ impl Effect {
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times: amount(times), effect: boxed(effect) },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
@@ -2990,7 +3006,7 @@ impl Effect {
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
@@ -3030,7 +3046,7 @@ impl Effect {
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
-            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             other => other,
         }
     }
@@ -3062,8 +3078,13 @@ impl Effect {
                     effect.for_each_effect(f);
                 }
             }
-            Effect::EffectIf { effect, .. }
-            | Effect::Trace { on_success: effect, .. }
+            Effect::EffectIf { effect, otherwise, .. } => {
+                effect.for_each_effect(f);
+                if let Some(otherwise) = otherwise {
+                    otherwise.for_each_effect(f);
+                }
+            }
+            Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
@@ -3393,6 +3414,7 @@ mod tests {
                     text: None,
                     if_able: false,
                 }),
+                otherwise: Some(Box::new(Effect::GainClicks(Side::Runner, 1))),
             },
             Effect::PresentChoice {
                 chooser: Side::Corp,
@@ -3414,6 +3436,7 @@ mod tests {
                 "OfferPaidChoice",
                 "GainCredits",
                 "EndTheRun",
+                "GainClicks",
                 "PresentChoice",
                 "Trace",
                 "GiveTags",

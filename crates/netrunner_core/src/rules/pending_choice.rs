@@ -1094,7 +1094,7 @@ pub(crate) fn resolve_choose_card_name(state: &mut GameState, registry: &CardReg
     };
     let named = then.with_chosen_name(&card);
     let resolved = match again_if {
-        Some(again) => Effect::Sequence(vec![named, Effect::EffectIf { condition: again.with_chosen_name(&card), effect }]),
+        Some(again) => Effect::Sequence(vec![named, Effect::EffectIf { condition: again.with_chosen_name(&card), effect, otherwise: None }]),
         None => named,
     };
     let mut events = vec![GameEvent::CardNameChosen { chooser, card }];
@@ -1714,9 +1714,10 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
         Effect::Sequence(effects) => {
             Effect::Sequence(effects.into_iter().map(|e| substitute_chosen_server(e, server)).collect())
         }
-        Effect::EffectIf { condition, effect } => Effect::EffectIf {
+        Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf {
             condition,
             effect: Box::new(substitute_chosen_server(*effect, server)),
+            otherwise: otherwise.map(|otherwise| Box::new(substitute_chosen_server(*otherwise, server))),
         },
         other => other,
     }

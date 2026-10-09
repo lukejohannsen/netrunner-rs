@@ -362,7 +362,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::HostedCounters) => "remove all its counters".to_string(),
         Effect::RemoveCounters(amount) => format!("remove counters equal to {}", describe_amount(amount)),
-        Effect::EffectIf { condition, effect } => format!("if {}: {}", humanize(format!("{condition:?}")), describe_effect(effect, registry)),
+        Effect::EffectIf { condition, effect, otherwise: None } => format!("if {}: {}", humanize(format!("{condition:?}")), describe_effect(effect, registry)),
+        Effect::EffectIf { condition, effect, otherwise: Some(otherwise) } => format!(
+            "if {}: {}; otherwise {}",
+            humanize(format!("{condition:?}")),
+            describe_effect(effect, registry),
+            describe_effect(otherwise, registry)
+        ),
         Effect::OfferPaidChoice { side, cost, if_paid, if_declined, .. } => format!(
             "{} may pay {} to {}; otherwise {}",
             who(*side),
@@ -1091,7 +1097,7 @@ mod tests {
             "the Runner may pay 8 credits to do nothing; otherwise give the Runner 1 tag"
         );
         assert_eq!(
-            d(&Effect::EffectIf { condition: EffectRequirement::IsTagged, effect: Box::new(Effect::DealDamage(DamageType::Meat, 4)) }),
+            d(&Effect::EffectIf { condition: EffectRequirement::IsTagged, effect: Box::new(Effect::DealDamage(DamageType::Meat, 4)), otherwise: None }),
             "if is tagged: do 4 meat damage"
         );
         assert_eq!(describe_cost(&Cost::AnyOf(vec![Cost::Credits(2), Cost::TrashSelf])), "2 credits or trash this card");

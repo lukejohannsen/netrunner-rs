@@ -58,11 +58,12 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 107 | 3, 0, 0, — | in progress: Stages 1a–11n; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 108 | 3, 0, 0, — | in progress: Stages 1a–11o; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 110
-`Effect` variants single-use, none unused, over 788 card files** (9 October
-2026, with tranche 8 Stage 11n, which added none and lets a rez cost on ice
+`Effect` variants single-use, none unused, over 789 card files** (9 October
+2026, with tranche 8 Stage 11o, which added none and gives `EffectIf` an
+`otherwise`; Stage 11n, at 17 of 110 over 788, added none and lets a rez cost on ice
 be about the first rez each turn; Stage 11m, at 17 of 110 over 787, added none and keeps a played event
 out of the heap until it has resolved; Stage 11l, at 17 of 110 over 786, added none and lets the Runner pay
 `Cost::Forfeit`; Stage 11k, at 17 of 110 over 785, added none and asks an install's
@@ -1200,6 +1201,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11l** — Data Dealer, from the Core Set: the Runner forfeits an agenda from their own score area, and a forfeit says whose it was, so a stolen Greenmail pays the Corp nothing (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11m** — Déjà Vu, from the Core Set: a played event whose own choice is parked waits in the play area, shown in both clients, and reaches the heap once it has resolved, so Déjà Vu cannot return itself and Networking returns only itself (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11n** — Reina Roja: Freedom Fighter, from System Update 2021: the first piece of ice the Corp rezzes each turn costs 1[credit] more, read off the turn log as an install discount is, and her Sweep deck, Rez Tax (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11o** — Accelerated Beta Test, from the Core Set: the Corp installs and rezzes any ice among the top 3 of R&D, ignoring all costs, and trashes the rest, with an `otherwise` branch on `EffectIf` (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1311,6 +1313,8 @@ nine by kind):
     **11n closed**, Reina Roja: Freedom Fighter, with no new `Effect`: a
     rez cost on ice can be about the first piece the Corp rezzes each
     turn, and she has a Sweep deck, Rez Tax.
+    **11o closed**, Accelerated Beta Test, with no new `Effect`: an
+    `EffectIf` can say what happens when its condition does not hold.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

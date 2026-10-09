@@ -25231,6 +25231,45 @@ mod downfall {
     }
 
     #[test]
+    fn accelerated_beta_test_installs_and_rezzes_any_ice_of_the_top_three_and_trashes_the_rest() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("accelerated_beta_test", 0) }];
+        // The top of R&D is the end of the list: Ice Wall, Hedge Fund and Enigma are the three looked at.
+        state.corp.r_and_d = vec![id("hedge_fund"), id("pad_campaign"), id("enigma"), id("hedge_fund"), id("ice_wall")];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "accelerated_beta_test") }).expect("score");
+        let (looked, events) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("you may look");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsLookedAt { .. })), "look at the top 3 cards");
+        assert_eq!(toggles(&looked, &registry, Side::Corp), vec![2, 4], "Enigma and Ice Wall; PAD Campaign is fourth from the top");
+        let (choosing_server, _) = pick(&looked, &registry, 4);
+        let (first, _) = apply_action(&choosing_server, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        assert_eq!(toggles(&first, &registry, Side::Corp), vec![2], "Enigma, still among the cards looked at");
+        let (choosing_server, _) = pick(&first, &registry, 2);
+        let (second, _) = apply_action(&choosing_server, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("protect R&D");
+        for ice in ["ice_wall", "enigma"] {
+            assert!(second.corp.installed.iter().find(|card| card.card == id(ice)).expect("installed").rezzed, "{ice} installed and rezzed");
+        }
+        assert_eq!(second.corp.resources.credits, Credits(10), "ignoring all costs");
+        assert_eq!(second.corp.r_and_d, vec![id("hedge_fund"), id("pad_campaign")], "the Hedge Fund looked at is trashed, and nothing below it");
+        assert_eq!(second.corp.archives.len(), 1);
+
+        let (declined, _) = apply_action(&looked, &registry, PlayerAction::ConfirmCardSelection).expect("install none");
+        assert_eq!(declined.corp.r_and_d.len(), 2, "all three looked at are trashed");
+        assert_eq!(declined.corp.archives.len(), 3);
+
+        let (no_look, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("you may not");
+        assert_eq!(no_look.corp.r_and_d.len(), 5, "nothing looked at, nothing trashed");
+
+        // No ice among the three: nothing to choose, and all three are trashed.
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("hedge_fund")];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "accelerated_beta_test") }).expect("score");
+        let (looked, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("you may look");
+        assert!(looked.pending_decision.is_none(), "no choice to make");
+        assert_eq!(looked.corp.r_and_d, vec![id("ice_wall")], "the Ice Wall fourth from the top was not looked at");
+        assert_eq!(looked.corp.archives.len(), 3);
+    }
+
+    #[test]
     fn sandstone_loses_a_strength_each_encounter_until_a_purge() {
         let registry = registry();
         let mut state = runner_turn();

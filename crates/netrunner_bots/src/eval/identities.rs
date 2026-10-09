@@ -373,7 +373,8 @@ fn paid(state: &GameState, registry: &CardRegistry, side: Side, ctx: &Resolution
         Effect::DealDamage(_, n) => Pays { damage: *n as u32, ..Pays::default() },
         Effect::GiveTags(Amount::Fixed(n)) => Pays { tags: *n, ..Pays::default() },
         Effect::Sequence(effects) => effects.iter().fold(Pays::default(), |sum, effect| sum.add(paid(state, registry, side, ctx, effect, at))),
-        Effect::EffectIf { condition, effect } if met(state, registry, side, ctx, condition, at) => paid(state, registry, side, ctx, effect, at),
+        Effect::EffectIf { condition, effect, .. } if met(state, registry, side, ctx, condition, at) => paid(state, registry, side, ctx, effect, at),
+        Effect::EffectIf { otherwise: Some(otherwise), .. } => paid(state, registry, side, ctx, otherwise, at),
         Effect::PresentChoice { chooser, options, .. } => options
             .iter()
             .map(|option| paid(state, registry, side, ctx, option, at))

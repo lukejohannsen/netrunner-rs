@@ -1985,6 +1985,7 @@ mod tests {
         let red_team = Effect::EffectIf {
             condition: EffectRequirement::ThisCardIsInstalled,
             effect: Box::new(Effect::Sequence(vec![Effect::RemoveCounters(Amount::Fixed(3)), Effect::GainCredits(Side::Runner, 3)])),
+            otherwise: None,
         };
         let team = with_run(&paid, RunState { on_success_effect: Some(Box::new(red_team)), ..hq(vec![wall.clone()]) });
         assert!((score(&team) - score(&plain) - 3.0 * w.own_credit_weight).abs() < 1e-9);

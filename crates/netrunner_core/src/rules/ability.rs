@@ -1985,10 +1985,12 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::EffectIf { condition, effect } => {
+        Effect::EffectIf { condition, effect, otherwise } => {
             let side = acting_side(acting_card, registry);
             if check_requirement(state, condition, side, ctx, registry).is_ok() {
                 evaluate_effect(state, effect, ctx, registry)
+            } else if let Some(otherwise) = otherwise {
+                evaluate_effect(state, otherwise, ctx, registry)
             } else {
                 Ok(Vec::new())
             }
@@ -6996,6 +6998,7 @@ mod tests {
         let effect = Effect::EffectIf {
             condition: EffectRequirement::IsTagged,
             effect: Box::new(Effect::GainCredits(Side::Runner, 3)),
+            otherwise: None,
         };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
@@ -7010,12 +7013,29 @@ mod tests {
         let effect = Effect::EffectIf {
             condition: EffectRequirement::IsTagged,
             effect: Box::new(Effect::GainCredits(Side::Runner, 3)),
+            otherwise: None,
         };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(5), "no credits gained — condition wasn't met");
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn effect_if_resolves_its_otherwise_when_the_condition_fails_and_only_then() {
+        let effect = Effect::EffectIf {
+            condition: EffectRequirement::IsTagged,
+            effect: Box::new(Effect::GainCredits(Side::Runner, 3)),
+            otherwise: Some(Box::new(Effect::GainCredits(Side::Runner, 1))),
+        };
+        let mut untagged = game_state();
+        evaluate_effect(&mut untagged, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        assert_eq!(untagged.runner.resources.credits, Credits(6), "otherwise");
+        let mut tagged = game_state();
+        tagged.runner.tags = 1;
+        evaluate_effect(&mut tagged, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        assert_eq!(tagged.runner.resources.credits, Credits(8), "the effect alone");
     }
 
     #[test]

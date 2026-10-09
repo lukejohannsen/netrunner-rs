@@ -10042,3 +10042,36 @@ new `Effect`, and a Sweep deck.
   not the second.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 788 card files.
+
+#### Stage 11o — install the ice looked at, trash the rest (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Accelerated Beta Test (Core Set has 108 of 113 built).
+
+- **"Look at the top 3 cards of R&D. If any of those cards are ice, you
+  may install and rez them, ignoring all costs. Trash the rest of the
+  cards you looked at."** Architect Deployment Test's install and rez
+  from R&D, once for each card: a choice of the ice among the top 3, then
+  among the top 2 once one is installed, then the top card, since the
+  cards installed leave R&D and the rest keep their order. Whenever the
+  Corp declines, or no ice is left among the cards looked at, the rest
+  are trashed (`Mill`).
+- **`EffectIf` has an `otherwise`.** A selection with nothing eligible
+  parks nothing and runs no `then`, so the trash has to sit beside the
+  choice, and two `EffectIf`s with opposite conditions are not that
+  sentence: the second is asked once the first has resolved. Trashed
+  first, the rest put unseen cards on top for the choice to offer; chosen
+  first, the choice leaves unseen cards on top for the trash to take. A
+  field rather than a variant, since it is the same branch with its other
+  half said, read by every walk over effects (`for_each_effect`, the
+  clause walk, the substitutions, the bots' pricing, the prose).
+- **Retirement Package**, a Sweep deck, takes two Accelerated Beta Test
+  for its two Midnight-3 Arcology, point for point.
+- **Tests.** Both Ice Wall and Enigma installed and rezzed for nothing
+  and the Hedge Fund between them trashed; every card looked at trashed
+  when none is installed; nothing looked at when the Corp declines; no
+  choice, and all three trashed, when none of them is ice; and
+  `otherwise` resolving only when its condition fails.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 789 card files.
