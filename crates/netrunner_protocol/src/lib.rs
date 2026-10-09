@@ -382,7 +382,16 @@ pub enum ServerMessage {
     /// engine's, and `netrunner_core` knows no wall clock. One message per
     /// decision rather than ticks: the client can count down by itself.
     DecisionClock { side: Side, remaining: Duration },
-    GameEnded { winner: Side, reason: GameEndReason },
+    /// Time was called on the tournament round this game is played in
+    /// (Organized Play Policies 1.1.5.3), during turn `turn`: that turn
+    /// is finished, the other side takes one more, and then the game
+    /// ends on agenda points (`GameEnded` with `GameEndReason::TimeCalled`,
+    /// and no winner when they are even). Sent to both seats and the
+    /// spectators once; never in a game outside a round.
+    TimeCalled { turn: u32 },
+    /// The game is over. `winner` is `None` only for a tie: time called
+    /// on a tournament round with the agenda points even.
+    GameEnded { winner: Option<Side>, reason: GameEndReason },
     /// What this seat's `TakeBack` would do now: `Free` or `Undo`
     /// (`netrunner_session::Rewind`), or `None` when there is no move of
     /// this seat's to take back — or the one there is would be an undo
@@ -467,6 +476,29 @@ pub struct TournamentInfo {
     /// yet answered (`ClientMessage::OfferDraw`); the second offer at a
     /// table is the tie, and empties it. Nothing from an earlier round.
     pub draw_offers: Vec<DrawOffer>,
+    /// The current round's clock (Organized Play Policies 1.1.5.2: forty
+    /// minutes for single-sided Swiss, the daemon's `--round-minutes`),
+    /// set when the round begins. `None` while registering and after
+    /// the end. A client counts down from it by its own clock; the
+    /// server is what refuses a seat once time is called and runs the
+    /// end-of-round rule inside each game.
+    pub clock: Option<RoundClock>,
+}
+
+/// When a round began and how long it runs, in seconds since the Unix
+/// epoch and in seconds, so a client can say what is left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoundClock {
+    pub began_at: u64,
+    pub seconds: u64,
+}
+
+impl RoundClock {
+    /// Seconds left at `now`, `None` once time is called.
+    pub fn remaining(self, now: u64) -> Option<u64> {
+        let ends = self.began_at + self.seconds;
+        (now < ends).then(|| ends - now)
+    }
 }
 
 /// One player's standing offer of an intentional draw at a table of the

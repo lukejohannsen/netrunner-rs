@@ -1621,6 +1621,9 @@ impl OnlineScreen {
         if let Some(line) = tournament::round_line(info, page.key.as_ref()) {
             head.push(Line::from(line));
         }
+        if let Some(line) = tournament::clock_line(info, unix_now()) {
+            head.push(Line::from(Span::styled(line, Style::default().fg(Color::Yellow))));
+        }
         if page.seeking.is_some() && matches!(info.state, TournamentState::Playing { .. }) {
             head.push(Line::from(Span::styled("Seated — waiting for your opponent to sit…", Style::default().fg(Color::Yellow))));
         }
@@ -1685,6 +1688,12 @@ impl OnlineScreen {
         };
         draw_list(frame, list, title, items, Some(tournament.cursor.min(page_rows.len() - 1)));
     }
+}
+
+/// Seconds since the Unix epoch, the client's own clock, for the round's
+/// countdown (`tournament::clock_line`).
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
 /// A lobby as a line names it: a player's lobby by its name and format,

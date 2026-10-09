@@ -22,6 +22,10 @@
 
 use super::*;
 
+/// Organized Play Policies 2.5.8: an intentional draw is agreed within five
+/// minutes of the round starting.
+const DRAW_WINDOW: u64 = 5 * 60;
+
 /// A seek or a seat: the channels the lobby's slot, and then the match,
 /// talks through.
 pub(super) struct Playing {
@@ -438,7 +442,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new() };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id, tournament);
         self.shared.save_tournaments(&registry);
@@ -604,6 +608,7 @@ impl Attached {
         let next = swiss::pair(&tournament.seeding, &tournament.rounds, &tournament.dropped);
         tournament.rounds.push(next);
         tournament.draw_offers.clear();
+        tournament.clock = Some(RoundClock { began_at: unix_now(), seconds: self.shared.options.round_length.as_secs() });
         tournament.state = TournamentState::Playing { round: tournament.rounds.len() as u32 };
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
@@ -673,9 +678,10 @@ impl Attached {
     /// second — the opponent's — is the agreement, and the table's result
     /// is a tie, with whoever was seated and waiting stood up and told.
     /// Not while the game is under way: a game that has started decides
-    /// itself, and an offer made before it lapsed when it started. The
-    /// policies' five-minute window is the round clock's to keep, which
-    /// is not built yet.
+    /// itself, and an offer made before it lapsed when it started. And
+    /// only within the policies' five minutes of the round starting
+    /// (`DRAW_WINDOW`, or the whole of a shorter round): a draw agreed
+    /// late is agreed knowing the other tables.
     fn offer_draw(&self, id: &str) -> Result<TournamentInfo, String> {
         let key = self.key.ok_or("a draw is offered by a key: prove one before attaching")?;
         let id = id.trim().to_uppercase();
@@ -689,6 +695,9 @@ impl Attached {
             }
             if tournament.draw_offers.iter().any(|offer| offer.table == table && offer.by == key) {
                 return Err("you have offered a draw already; it stands until your opponent answers or the game starts".into());
+            }
+            if tournament.clock.is_some_and(|clock| clock.remaining(unix_now()).is_none_or(|left| left + DRAW_WINDOW.min(clock.seconds) <= clock.seconds)) {
+                return Err("an intentional draw is agreed within five minutes of the round starting (2.5.8)".into());
             }
             let opponent = *slot.opponent_of(&key).expect("a table has two seats");
             (round, table, opponent)
@@ -722,12 +731,15 @@ impl Attached {
         let key = self.key.ok_or("a seat is a key's: prove one before attaching")?;
         let id = id.trim().to_uppercase();
         let mut registry = self.shared.lock();
-        let (round, table, format, mine, theirs) = {
+        let (round, table, format, mine, theirs, round_end) = {
             let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
             let (round, current) = tournament.current().ok_or("no round is being played")?;
             let (table, slot) = current.table_of(&key).ok_or("you have no table this round")?;
             if slot.result.is_some() {
                 return Err("that table has its result".into());
+            }
+            if tournament.time_called() {
+                return Err("time is called for this round: the organizer records the table".into());
             }
             let role = slot.role_of(&key).expect("table_of found this key");
             let opponent = *slot.opponent_of(&key).expect("a table has two seats");
@@ -741,7 +753,7 @@ impl Attached {
                 TableRole::Runner => TableRole::Corp,
             };
             let theirs = deck_for(tournament.entry(&opponent).ok_or("your opponent is not entered")?, other_role);
-            (round, table, tournament.format, (role, mine), theirs)
+            (round, table, tournament.format, (role, mine), theirs, tournament.round_end())
         };
         let table_ref = TableRef { tournament: id.clone(), round, table };
         let (out_tx, out) = mpsc::unbounded_channel::<ServerMessage>();
@@ -781,7 +793,7 @@ impl Attached {
                 if let Some(tournament) = registry.tournaments.0.get_mut(&id) {
                     tournament.draw_offers.retain(|offer| offer.table != table);
                 }
-                start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(table_ref));
+                start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(table_ref), round_end);
                 Ok(Playing { token, out, into, lobby })
             }
             None => {

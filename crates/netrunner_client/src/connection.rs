@@ -878,7 +878,7 @@ mod tests {
     fn the_next_game_is_looked_for_on_the_same_connection() {
         let t0 = Instant::now();
         let mut conn = seated(t0, Uuid::new_v4());
-        conn.on_message(ServerMessage::GameEnded { winner: Side::Corp, reason: GameEndReason::AgendaThreshold }, t0);
+        conn.on_message(ServerMessage::GameEnded { winner: Some(Side::Corp), reason: GameEndReason::AgendaThreshold }, t0);
         conn.on_message(ServerMessage::BackInLobby { lobby: Some(lobby()) }, t0);
         assert!(matches!(&events(&mut conn)[..], [Event::Message(ServerMessage::GameEnded { .. }), Event::BackInLobby(Some(_))]));
         assert!(!conn.poll_dial(), "no new connection");
@@ -1195,12 +1195,12 @@ mod tests {
         watcher.poll_dial();
         watcher.on_open(t0);
         watcher.on_message(ServerMessage::Spectating { match_id: Uuid::nil() }, t0);
-        watcher.on_message(ServerMessage::GameEnded { winner: Side::Corp, reason: GameEndReason::AgendaThreshold }, t0);
+        watcher.on_message(ServerMessage::GameEnded { winner: Some(Side::Corp), reason: GameEndReason::AgendaThreshold }, t0);
         watcher.on_closed(Closed::Dropped, t0);
         assert!(watcher.is_done() && !watcher.poll_dial());
 
         let mut conn = seated(t0, Uuid::new_v4());
-        conn.on_message(ServerMessage::GameEnded { winner: Side::Corp, reason: GameEndReason::AgendaThreshold }, t0);
+        conn.on_message(ServerMessage::GameEnded { winner: Some(Side::Corp), reason: GameEndReason::AgendaThreshold }, t0);
         conn.on_closed(Closed::Dropped, t0);
         assert!(!conn.is_done());
         assert!(matches!(&events(&mut conn)[..], [Event::Message(ServerMessage::GameEnded { .. }), Event::BackInLobby(None), Event::Link(Link::Reconnecting { .. })]));
@@ -1293,7 +1293,7 @@ mod tests {
         let payload = statement.verify(REGISTRATION_TAG).expect("signed by this key");
         assert_eq!(serde_json::from_str::<RegistrationStatement>(payload).unwrap(), said);
 
-        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![], draw_offers: vec![] };
+        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![], draw_offers: vec![], clock: None };
         conn.on_message(ServerMessage::Tournament { tournament: info.clone() }, t0);
         conn.on_message(ServerMessage::TournamentRefused { reason: "no such tournament".into() }, t0);
         conn.on_message(ServerMessage::Tournaments { tournaments: vec![info.clone()] }, t0);

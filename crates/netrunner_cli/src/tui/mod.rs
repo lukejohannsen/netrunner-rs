@@ -373,7 +373,7 @@ fn run_lesson(
             LessonStep::Ended { winner, reason } => {
                 ui.finish(session.session().view_for(lesson.side));
                 ui.coaching = None;
-                show_game_over(terminal, &ui, winner, reason, None)?;
+                show_game_over(terminal, &ui, Some(winner), reason, None)?;
                 return Ok(LessonOutcome::Stopped);
             }
             LessonStep::Stalled(reason) => return Err(stall_message(reason).into()),
@@ -596,7 +596,7 @@ fn drive_local(
                     Some(seat) => Some(seat.finish(record::outcome_of(winner))?.lines().join("\n")),
                     None => None,
                 };
-                return show_game_over(terminal, ui, winner, reason, report);
+                return show_game_over(terminal, ui, Some(winner), reason, report);
             }
             SessionStep::Stalled(reason) => return Err(stall_message(reason).into()),
             SessionStep::Applied { .. } => unreachable!("the inner loop only breaks once it can no longer apply"),
@@ -742,7 +742,7 @@ fn prompt_human(
 fn show_game_over(
     terminal: &mut ratatui::DefaultTerminal,
     ui: &LocalUiState,
-    winner: Side,
+    winner: Option<Side>,
     reason: GameEndReason,
     note: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1116,7 +1116,7 @@ fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Res
 /// three-region `build_layout` purely because it had no log to show; now
 /// that `ServerMessage::ActionLog` feeds `App::action_log`, both sides
 /// render the same four regions.
-fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Side, GameEndReason, Option<&str>)>) {
+fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Option<Side>, GameEndReason, Option<&str>)>) {
     let regions = layout::build_layout(frame.area(), ui.coaching().is_some());
     draw_header(frame, regions.header, ui);
     draw_board(frame, regions.board, ui);
@@ -1140,9 +1140,15 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
         draw_card(frame, regions.board, &face, &title, &[]);
     }
     if let Some((winner, reason, note)) = game_over {
+        // A tie is the one end with no winner: time called on a
+        // tournament round with the agenda points even (1.1.5.3).
+        let verdict = match winner {
+            Some(winner) => format!("{winner:?} wins! ({reason:?})"),
+            None => "A tie: time was called with the agenda points even.".to_string(),
+        };
         let body = match note {
-            Some(note) => format!("{winner:?} wins! ({reason:?})\n\n{note}"),
-            None => format!("{winner:?} wins! ({reason:?})"),
+            Some(note) => format!("{verdict}\n\n{note}"),
+            None => verdict,
         };
         draw_modal(frame, &Modal::new("Game over", &body, "Press q or Esc to leave the table."));
     } else if let Some(modal) = ui.modal() {

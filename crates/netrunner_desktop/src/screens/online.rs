@@ -86,7 +86,7 @@ impl Plugin for OnlinePlugin {
         app.add_systems(OnEnter(AppScreen::Online), spawn)
             .add_systems(OnExit(AppScreen::Online), leave)
             .add_systems(Update, escape.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::Online)))
-            .add_systems(Update, (dev_page, controls, fields, net, refresh).chain().run_if(in_state(AppScreen::Online)));
+            .add_systems(Update, (dev_page, controls, fields, net, round_clock_ticks, refresh).chain().run_if(in_state(AppScreen::Online)));
     }
 }
 
@@ -924,6 +924,23 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
     }
 }
 
+/// A tournament page with a round clock is redrawn every half minute,
+/// so its countdown (`tournament::clock_line`, to the minute) moves while
+/// nobody presses anything. The page is otherwise redrawn only on a
+/// change, and a clock is the one thing on it that changes by itself.
+fn round_clock_ticks(time: Res<Time>, mut since: Local<f32>, model: Res<Model>, mut dirty: ResMut<Dirty>) {
+    let ticking = model.0.page == Page::Tournament && model.0.server.as_ref().and_then(ServerState::open_tournament).is_some_and(|info| info.clock.is_some());
+    if !ticking {
+        *since = 0.0;
+        return;
+    }
+    *since += time.delta_secs();
+    if *since >= 30.0 {
+        *since = 0.0;
+        dirty.0 = true;
+    }
+}
+
 fn refresh(mut commands: Commands, mut dirty: ResMut<Dirty>, root: Query<Entity, With<FormRoot>>, theme: Res<Theme>, model: Res<Model>, net: Res<Net>) {
     if !std::mem::take(&mut dirty.0) {
         return;
@@ -1254,6 +1271,9 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
                     if let Some(line) = tournament::round_line(info, server.key.as_ref()) {
                         section.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                     }
+                    if let Some(line) = tournament::clock_line(info, unix_now()) {
+                        section.spawn((widgets::label(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
                     for (index, table) in current.tables.iter().enumerate() {
                         section.spawn(widgets::row(12.0)).with_children(|row| {
                             row.spawn((widgets::label(theme, tournament::table_line(info, index, table)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
@@ -1332,6 +1352,12 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
     });
+}
+
+/// Seconds since the Unix epoch, this machine's clock, for the round's
+/// countdown.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
 fn spawn_make_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {

@@ -193,7 +193,7 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
         })
         .await
     });
-    assert_eq!(ended.expect("the guest heard in time"), Some((host_side.other(), GameEndReason::Surrender)));
+    assert_eq!(ended.expect("the guest heard in time"), Some((Some(host_side.other()), GameEndReason::Surrender)));
 
     // Back on the Server page, attached still, in the lobby and not
     // looking: the next game is a press away.

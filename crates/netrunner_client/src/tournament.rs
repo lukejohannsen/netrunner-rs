@@ -131,6 +131,24 @@ pub fn round_line(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<Stri
     })
 }
 
+/// The round's clock at `now` (seconds since the Unix epoch, the
+/// client's own): what is left, to the minute, or that time is called
+/// and what that means (Organized Play Policies 1.1.5.3). `None` outside
+/// a round. The server's clock and the client's may differ by a little,
+/// which a minute swallows; the server is what refuses a seat.
+pub fn clock_line(info: &TournamentInfo, now: u64) -> Option<String> {
+    let TournamentState::Playing { round } = info.state else { return None };
+    let clock = info.clock?;
+    Some(match clock.remaining(now) {
+        Some(left) if left >= 60 => match left.div_ceil(60) {
+            1 => format!("Round {round}: 1 minute left."),
+            minutes => format!("Round {round}: {minutes} minutes left."),
+        },
+        Some(_) => format!("Round {round}: under a minute left."),
+        None => format!("Round {round}: time is called. A game under way finishes the turn in play and one more, then agenda points decide; a table not yet played is the organizer's to record."),
+    })
+}
+
 /// A tournament as a list names it: its name, its format, how many have
 /// entered and where it stands — "Friday Night · Startup · 4 entered ·
 /// taking registrations". The code is not here: it is the page's heading,
@@ -202,7 +220,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new() }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -277,7 +295,17 @@ mod tests {
         assert_eq!(round_line(&info, Some(&cy)).as_deref(), Some("Round 2 is being played; you have dropped."));
         info.rounds.pop();
         info.dropped.clear();
+        info.state = TournamentState::Playing { round: 1 };
+        // The clock, read by the client's own time.
+        assert_eq!(clock_line(&info, 0), None, "no clock, no line");
+        info.clock = Some(netrunner_protocol::RoundClock { began_at: 1_000, seconds: 40 * 60 });
+        assert_eq!(clock_line(&info, 1_000).as_deref(), Some("Round 1: 40 minutes left."));
+        assert_eq!(clock_line(&info, 1_000 + 38 * 60 + 30).as_deref(), Some("Round 1: 2 minutes left."), "ninety seconds round up");
+        assert_eq!(clock_line(&info, 1_000 + 39 * 60).as_deref(), Some("Round 1: 1 minute left."));
+        assert_eq!(clock_line(&info, 1_000 + 40 * 60 - 30).as_deref(), Some("Round 1: under a minute left."));
+        assert!(clock_line(&info, 1_000 + 40 * 60).is_some_and(|line| line.starts_with("Round 1: time is called.")));
         info.state = TournamentState::Finished;
+        assert_eq!(clock_line(&info, 1_000), None, "no round, no line");
         assert!(!may_drop(&info, Some(&ann)), "nothing to drop from once it is over");
         assert_eq!(round_line(&info, Some(&ann)), None);
         assert_eq!(standing_line(&info, Some(&ann)), "You are entered, with the two decks you committed to.");

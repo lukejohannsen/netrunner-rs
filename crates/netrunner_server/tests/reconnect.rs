@@ -157,7 +157,7 @@ async fn a_client_that_sits_on_its_mulligan_is_timed_out() {
     let (_, _, token) = joined(next(&mut idle).await);
     assert!(matches!(next(&mut idle).await, ServerMessage::StateUpdate(_)));
     assert!(matches!(next(&mut idle).await, ServerMessage::DecisionClock { side: Side::Corp, .. }));
-    assert!(matches!(next(&mut idle).await, ServerMessage::GameEnded { winner: Side::Runner, reason: GameEndReason::TimedOut }));
+    assert!(matches!(next(&mut idle).await, ServerMessage::GameEnded { winner: Some(Side::Runner), reason: GameEndReason::TimedOut }));
 
     let mut late = open(&url, ClientMessage::Resume { session_token: token }).await;
     assert!(matches!(next(&mut late).await, ServerMessage::ResumeRejected { .. }), "the ticket went with the match");

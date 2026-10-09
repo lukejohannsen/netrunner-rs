@@ -846,7 +846,7 @@ mod tests {
         }
     }
 
-    async fn ended(rx: &mut mpsc::UnboundedReceiver<ServerMessage>) -> (Side, GameEndReason) {
+    async fn ended(rx: &mut mpsc::UnboundedReceiver<ServerMessage>) -> (Option<Side>, GameEndReason) {
         loop {
             match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await.expect("the game ends in time") {
                 Some(ServerMessage::GameEnded { winner, reason }) => return (winner, reason),
@@ -934,8 +934,8 @@ mod tests {
         next_view(&mut first.rx).await;
         next_view(&mut second.rx).await;
         first.tx.send(ClientMessage::Surrender).unwrap();
-        assert_eq!(ended(&mut first.rx).await, (Side::Runner, GameEndReason::Surrender));
-        assert_eq!(ended(&mut second.rx).await, (Side::Runner, GameEndReason::Surrender));
+        assert_eq!(ended(&mut first.rx).await, (Some(Side::Runner), GameEndReason::Surrender));
+        assert_eq!(ended(&mut second.rx).await, (Some(Side::Runner), GameEndReason::Surrender));
         let back = |event| match event {
             AttachedEvent::BackInLobby(lobby) => Some(lobby),
             _ => None,
@@ -976,7 +976,7 @@ mod tests {
         let mut second = next_where(&mut two, joined).await;
         next_view(&mut second.rx).await;
         drop(first);
-        assert_eq!(ended(&mut second.rx).await, (Side::Runner, GameEndReason::Surrender));
+        assert_eq!(ended(&mut second.rx).await, (Some(Side::Runner), GameEndReason::Surrender));
         next_where(&mut one, |event| matches!(event, AttachedEvent::BackInLobby(_)).then_some(())).await;
         assert_eq!(one.link(), Link::Up, "the connection stays");
     }

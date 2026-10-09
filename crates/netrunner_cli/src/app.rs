@@ -42,7 +42,8 @@ pub struct App {
     pub selected: usize,
     pub should_quit: bool,
     pub last_rejection: Option<String>,
-    pub game_ended: Option<(Side, GameEndReason)>,
+    /// Who won and why; the winner is `None` for a tie on time.
+    pub game_ended: Option<(Option<Side>, GameEndReason)>,
     /// What the server said the game did to this seat's rating
     /// (`ServerMessage::Rated`), shown under the result.
     pub rated: Option<String>,
@@ -261,6 +262,11 @@ impl App {
                 ServerMessage::GameEnded { winner, reason } => {
                     self.game_ended = Some((winner, reason));
                     self.decision_clock = None;
+                }
+                // The round's time: a line in the log, where both chairs
+                // read what happens next (Organized Play Policies 1.1.5.3).
+                ServerMessage::TimeCalled { turn } => {
+                    self.action_log.push(format!("           Time is called in turn {turn}: this turn is finished, the other side takes one more, then agenda points decide."));
                 }
                 ServerMessage::DecisionClock { side, remaining } => self.decision_clock = Some((side, Instant::now() + remaining)),
                 // Handshake replies, consumed in `remote` before the
