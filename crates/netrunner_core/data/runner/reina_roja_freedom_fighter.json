@@ -1,0 +1,26 @@
+{
+  "id": "reina_roja_freedom_fighter",
+  "title": "Reina Roja: Freedom Fighter",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "first_each_turn": true,
+      "text": "The first piece of ice the Corp rezzes each turn costs 1[credit] more to rez."
+    }
+  ],
+  "triggers": [],
+  "built_from": 31002,
+  "is_playable": true
+}

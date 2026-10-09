@@ -205,6 +205,9 @@ fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEf
     let occurrences = match (&effect.applies_to, &effect.kind) {
         (Scope::Installing(filter), _) => turn_log::Occurrences::installs(filter, source.side),
         (Scope::Playing(filter), _) => turn_log::Occurrences::plays(filter, source.side),
+        // "The first piece of ice the Corp rezzes each turn costs 1[c]
+        // more": a rez is priced before it happens, so none counted yet.
+        (Scope::Ice(filter), ContinuousKind::RezCost(_)) => turn_log::Occurrences::ice_rezzes(filter, source.side),
         // "The first run each turn cannot be made…": asked before the run
         // is announced, so none counted yet.
         (Scope::Player(_), ContinuousKind::Cannot(what)) => match what.counted_as() {

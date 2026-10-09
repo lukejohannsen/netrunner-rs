@@ -571,6 +571,12 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardAddedToHand { card: Some(card), faceup: true, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // A piece of ice swapped into HQ (Tatu-Bola's "swap this ice with
+        // a piece of ice in HQ"): the masking names only a half the viewer
+        // has seen rezzed, and they watched that half leave the table.
+        if let GameEvent::IceSwapped { a_card, b_card, .. } = event {
+            visible.extend(a_card.iter().chain(b_card.iter()).map(|c| c.0.as_str()));
+        }
         // A look is masked for everyone but the looker, so one left in
         // this seat's entry is theirs to know (Hiram's top of R&D).
         if let GameEvent::CardsLookedAt { cards, .. } = event {
