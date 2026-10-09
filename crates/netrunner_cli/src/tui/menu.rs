@@ -975,6 +975,8 @@ mod tests {
         press(&mut menu, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
         assert_eq!(menu.base.server, "ws://127.0.0.1:1", "this session's next form starts there");
         assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().server.as_deref(), Some("ws://127.0.0.1:1"), "and so does the next session's");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     /// The relay row takes off, a URL or nothing and saves it, and refuses
     /// anything else with the reason, leaving the row open to mend (Phase
