@@ -396,6 +396,13 @@ pub enum EffectRequirement {
     /// live tally, which is reset by the time the end is heard, and asks
     /// about any breaker rather than this one.
     BrokeASubroutineThatEncounter,
+    /// The ice whose encounter just ended was fully broken during it
+    /// (`GameEvent::EncounterEnded::fully_broken`) — Chum's "When that
+    /// encounter ends, if the Runner did not fully break that ice", under a
+    /// `Not`. False off any other event. Composition didn't work:
+    /// `RunState::fully_broken` is reset as the next encounter begins, and
+    /// the run may be over by the time the end is heard.
+    IceFullyBrokenThatEncounter,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.

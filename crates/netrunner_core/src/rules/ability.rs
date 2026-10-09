@@ -4882,6 +4882,10 @@ pub fn check_requirement(
             let had_none = matches!(ctx.triggering_event, Some(GameEvent::TagsGiven { side: Side::Runner, had: 0, .. }));
             if had_none { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::IceFullyBrokenThatEncounter => {
+            let broke = matches!(ctx.triggering_event, Some(GameEvent::EncounterEnded { fully_broken: true, .. }));
+            if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::BrokeASubroutineThatEncounter => {
             // Off the end, as `BrokePrintedSubroutineWith` is off the pass:
             // the encounter's tally is gone by the time the end is heard.
@@ -5516,6 +5520,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::HadNoTags
         | EffectRequirement::BrokePrintedSubroutineWith(_)
         | EffectRequirement::BrokeASubroutineThatEncounter
+        | EffectRequirement::IceFullyBrokenThatEncounter
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
@@ -6028,7 +6033,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new() },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

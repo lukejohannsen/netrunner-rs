@@ -1,0 +1,47 @@
+{
+  "id": "chum",
+  "title": "Chum",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "The next piece of ice the Runner encounters during this run gets +2 strength. When that encounter ends, if the Runner did not fully break that ice, do 3 net damage.",
+      "effect": {
+        "LaterThisTurn": {
+          "when": "OnEncounter",
+          "this_run": true,
+          "effect": {
+            "Sequence": [
+              {
+                "ModifyStrength": {
+                  "delta": 2,
+                  "ice": "Encountered",
+                  "duration": "Encounter"
+                }
+              },
+              {
+                "LaterThisTurn": {
+                  "when": "OnEncounterEnded",
+                  "this_run": true,
+                  "effect": {
+                    "EffectIf": {
+                      "condition": { "Not": "IceFullyBrokenThatEncounter" },
+                      "effect": { "DealDamage": ["Net", 3] }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 1075,
+  "is_playable": true
+}

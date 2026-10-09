@@ -58,11 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 111 | 3, 0, 0, — | in progress: Stages 1a–11r; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 112 | 3, 0, 0, — | in progress: Stages 1a–11s; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **18 of 111
-`Effect` variants single-use, none unused, over 792 card files** (9 October
-2026, with tranche 8 Stage 11r, which added `Unpreventable`, single-use,
+`Effect` variants single-use, none unused, over 793 card files** (9 October
+2026, with tranche 8 Stage 11s, which added none and lets the end of an
+encounter say whether the ice was fully broken; Stage 11r, at 18 of 111
+over 792, added `Unpreventable`, single-use,
 for damage that cannot be prevented; Stage 11q, at 17 of 110 over 791, added none and lets a trigger ask
 whether its card broke a subroutine during the encounter that ended;
 Stage 11p, at 17 of 110 over 790, added none and lets hardware be
@@ -1209,6 +1211,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11p** — The Personal Touch, from the Core Set: hardware that installs only onto an icebreaker, and gives it +1 strength (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11q** — Crypsis, from the Core Set: an AI breaker that spends a hosted virus counter, or is trashed, after each encounter it broke a subroutine in (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11r** — Stimhack, from the Core Set: a run on nine hosted credits that ends in core damage nobody can prevent (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11s** — Chum, from the Core Set: a code gate whose subroutine makes the next ice stronger and does net damage when that encounter ends unless the ice was fully broken (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1331,6 +1334,9 @@ nine by kind):
     **11r closed**, Stimhack, with one new `Effect`, `Unpreventable`:
     what the wrapped effect would make happen cannot be prevented (CR
     9.3.3g).
+    **11s closed**, Chum, with no new `Effect`: the end of an encounter
+    says whether the ice was fully broken, and a delayed ability waiting
+    for it outlasts a run that ends in that encounter.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

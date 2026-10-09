@@ -19244,6 +19244,53 @@ mod parhelion {
     }
 
     #[test]
+    fn chum_makes_the_next_ice_stronger_and_does_net_damage_unless_it_is_fully_broken() {
+        let registry = registry();
+        let mut state = runner_turn();
+        // Outermost first: Chum, then Ice Wall.
+        state.corp.installed = vec![ice_at_hq("chum"), ice_at_hq("ice_wall")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.rig = vec![in_rig("corroder", 2, 0)];
+        state.runner.resources.credits = Credits(20);
+        let at_chum = encounter(&state, &registry);
+        assert_eq!(at_chum.active_run.as_ref().unwrap().ice[at_chum.active_run.as_ref().unwrap().position].card_id, id("chum"));
+        // Let Chum's subroutine resolve, then go on to Ice Wall.
+        let step = |state: &GameState| -> GameState {
+            let legal = crate::rules::legal_actions(state, &registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .unwrap_or_else(|| panic!("a way on: {legal:?}"));
+            apply_action(state, &registry, next).expect("on").0
+        };
+        let mut at_wall = at_chum.clone();
+        while at_wall.active_run.as_ref().is_some_and(|run| !(run.phase == crate::rules::RunPhase::EncounterIce && run.ice[run.position].card_id == id("ice_wall"))) {
+            at_wall = step(&at_wall);
+        }
+        let run = at_wall.active_run.as_ref().unwrap();
+        let wall = &run.ice[run.position];
+        assert_eq!(crate::rules::continuous::ice_strength(&at_wall, &registry, wall), 3, "Ice Wall's 1, +2");
+
+        // Not fully broken: Ice Wall ends the run, and the encounter's end does 3 net damage.
+        let mut ended = at_wall.clone();
+        while ended.active_run.is_some() {
+            ended = step(&ended);
+        }
+        assert_eq!(ended.runner.grip.len(), 2, "3 net damage");
+
+        // Fully broken by Corroder, pumped to 3: no damage.
+        let pumped = use_ability(&at_wall, &registry, "corroder", 0).expect("+1 strength");
+        let broken_through = use_ability(&pumped, &registry, "corroder", 1).expect("break the barrier subroutine");
+        let mut passed = broken_through;
+        while passed.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+            passed = step(&passed);
+        }
+        assert_eq!(passed.runner.grip.len(), 5, "fully broken: no damage");
+    }
+
+    #[test]
     fn wake_implant_counts_hq_runs_and_spends_up_to_three_counters_on_r_and_d() {
         let registry = registry();
         let mut state = runner_turn();
