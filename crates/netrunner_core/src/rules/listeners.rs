@@ -305,7 +305,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
         // About the ice by its install, which the event carries: an
         // encounter "end the run" ended is heard after the run is gone.
-        GameEvent::EncounterEnded { card_id, install } => {
+        GameEvent::EncounterEnded { card_id, install, .. } => {
             vec![moment(Trigger::OnEncounterEnded, &card(card_id, Some(*install)), Some(Side::Runner))]
         }
         // Only the Runner's spending is anyone's trigger, and only during a

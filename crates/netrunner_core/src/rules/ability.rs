@@ -4869,6 +4869,12 @@ pub fn check_requirement(
             let had_none = matches!(ctx.triggering_event, Some(GameEvent::TagsGiven { side: Side::Runner, had: 0, .. }));
             if had_none { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::BrokeASubroutineThatEncounter => {
+            // Off the end, as `BrokePrintedSubroutineWith` is off the pass:
+            // the encounter's tally is gone by the time the end is heard.
+            let broke = matches!(ctx.triggering_event, Some(GameEvent::EncounterEnded { broken_with, .. }) if ctx.acting_install.is_some_and(|install| broken_with.contains(&install)));
+            if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::BrokePrintedSubroutineWith(subtype) => {
             // Off the pass, as `HadNoTags` is off its event: the encounter's
             // own tally went as the movement phase began.
@@ -5496,6 +5502,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::HadNoTags
         | EffectRequirement::BrokePrintedSubroutineWith(_)
+        | EffectRequirement::BrokeASubroutineThatEncounter
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
@@ -6008,7 +6015,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new() },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

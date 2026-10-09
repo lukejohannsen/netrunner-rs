@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "datasucker", "fermenter", "hantu", "imp", "leech", "medium", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "crypsis", "datasucker", "fermenter", "hantu", "imp", "leech", "medium", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -19162,6 +19162,51 @@ mod parhelion {
         let last = use_ability(&last, &registry, "poison_vial", 0).expect("the last counter");
         assert!(!last.runner.rig.iter().any(|card| card.card == id("poison_vial")), "empty, so trashed");
         assert!(last.runner.heap.contains(&id("poison_vial")));
+    }
+
+    #[test]
+    fn crypsis_spends_a_virus_counter_or_is_trashed_after_an_encounter_it_broke_in() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        state.runner.rig = vec![in_rig("crypsis", 0, 2), in_rig("corroder", 2, 0)];
+        state.runner.resources.credits = Credits(20);
+        let state = encounter(&state, &registry);
+        let ends = |state: &GameState| {
+            pass_until(state.clone(), &registry, |state| state.pending_decision.is_some() || state.active_run.as_ref().is_none_or(|run| run.phase != crate::rules::RunPhase::EncounterIce))
+        };
+        let crypsis = |state: &GameState| state.runner.rig.iter().find(|card| card.card == id("crypsis")).map(|card| card.counters);
+
+        // Broken by Corroder alone: Crypsis hears the end and does nothing.
+        let by_corroder = use_ability(&state, &registry, "corroder", 1).expect("Corroder breaks the barrier subroutine");
+        let passed = ends(&by_corroder);
+        assert!(passed.pending_decision.is_none(), "nobody is asked");
+        assert_eq!(crypsis(&passed), Some(2));
+
+        // Broken by Crypsis: remove 1 hosted virus counter or trash it.
+        let pumped = use_ability(&state, &registry, "crypsis", 1).expect("+1 strength");
+        let by_crypsis = use_ability(&pumped, &registry, "crypsis", 0).expect("Crypsis breaks the subroutine");
+        let asked = ends(&by_crypsis);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "{:?}", asked.pending_decision);
+        let (spent, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove a counter");
+        assert_eq!(crypsis(&spent), Some(1));
+        let (trashed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("trash it");
+        assert_eq!(crypsis(&trashed), None);
+        assert!(trashed.runner.heap.contains(&id("crypsis")));
+
+        // No counter to remove: trashed, nobody asked.
+        let mut empty = by_crypsis.clone();
+        empty.runner.rig[0].counters = 0;
+        let trashed = ends(&empty);
+        assert!(trashed.pending_decision.is_none());
+        assert_eq!(crypsis(&trashed), None, "trashed");
+
+        // [click]: Place 1 virus counter on this program.
+        let mut idle = runner_turn();
+        idle.runner.rig = vec![in_rig("crypsis", 0, 0)];
+        let (loaded, _) = apply_action(&idle, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("crypsis"), ability_index: 2 }).expect("a click");
+        assert_eq!(crypsis(&loaded), Some(1));
+        assert_eq!(loaded.runner.resources.clicks.0, idle.runner.resources.clicks.0 - 1);
     }
 
     #[test]

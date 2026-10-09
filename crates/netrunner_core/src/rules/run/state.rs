@@ -113,6 +113,15 @@ pub struct EncounterTally {
     /// one question is whether every break was one install's.
     #[serde(default, skip_serializing_if = "BrokenBy::is_nothing")]
     pub broken_by: BrokenBy,
+    /// Every install whose ability broke a subroutine this encounter —
+    /// Crypsis's "if you used this program to break a subroutine during
+    /// that encounter". A set beside `broken_by`, because that tally is
+    /// `Mixed` as soon as a second object breaks and forgets who the first
+    /// was. Carried out of the encounter on its end
+    /// (`GameEvent::EncounterEnded::broken_with`), because the triggers that
+    /// hear the end resolve after the tally is reset.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub breakers: std::collections::BTreeSet<InstallId>,
     /// Which kinds of icebreaker broke one of the ice's *printed*
     /// subroutines this encounter — Virtual Service Agent's "if they did
     /// not break its printed subroutine with a **decoder** during that

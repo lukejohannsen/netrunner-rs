@@ -1,0 +1,60 @@
+{
+  "id": "crypsis",
+  "title": "Crypsis",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "requirement": "BrokeASubroutineThatEncounter",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": { "ThisCardCountersAtLeast": 1 },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  { "RemoveCounters": { "Fixed": 1 } },
+                  { "TrashCard": "ThisCard" }
+                ],
+                "texts": ["remove 1 hosted virus counter", "trash this program"]
+              }
+            },
+            "otherwise": { "TrashCard": "ThisCard" }
+          }
+        }
+      ],
+      "text": "Whenever an encounter ends, if you used this program to break a subroutine during that encounter, remove 1 hosted virus counter or trash this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine.",
+      "cost": { "Credits": 1 },
+      "effect": { "BreakSubroutines": { "count": { "Fixed": 1 } } },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": { "Credits": 1 },
+      "effect": { "BoostStrength": { "amount": 1, "duration": "Encounter" } },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "[click]: Place 1 virus counter on this program.",
+      "cost": { "Clicks": 1 },
+      "effect": { "AddCounters": 1 }
+    }
+  ],
+  "built_from": 1051,
+  "is_playable": true
+}

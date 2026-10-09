@@ -112,7 +112,18 @@ pub enum GameEvent {
     /// Knowledge Seeker's "whenever an encounter with this ice ends" hears
     /// it. The install is carried because the run may be over by the time
     /// anybody listens, and with it the run's list of ice.
-    EncounterEnded { card_id: CardId, install: crate::rules::state::InstallId },
+    ///
+    /// `broken_with` is every install whose ability broke one of its
+    /// subroutines during the encounter (`EncounterTally::breakers`) —
+    /// Crypsis's "if you used this program to break a subroutine during that
+    /// encounter" (`EffectRequirement::BrokeASubroutineThatEncounter`).
+    /// Public: both players watched each break.
+    EncounterEnded {
+        card_id: CardId,
+        install: crate::rules::state::InstallId,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        broken_with: Vec<crate::rules::state::InstallId>,
+    },
     /// `card`, `side`'s, is shown to both players and goes back to where it
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
     /// accessing it in R&D (`ContinuousKind::RevealedWhileAccessed`), which
