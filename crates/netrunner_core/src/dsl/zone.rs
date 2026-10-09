@@ -489,6 +489,12 @@ pub enum CardFilter {
     /// last run. Instance-level: a handle, not a card, so a second copy of
     /// the same ice is not it.
     LastEncounteredLastRun,
+    /// A piece of ice the Runner passed during the last run
+    /// (`CompletedRun::passed`) — En Passant's "Trash 1 unrezzed piece of
+    /// ice you passed during your last run". Instance-level, a handle, as
+    /// `LastEncounteredLastRun` is: a second copy of the same ice that the
+    /// run never reached is not it, and neither is ice installed since.
+    PassedDuringLastRun,
     /// The piece of ice the Runner is encountering right now — Ice
     /// Carver's "While you are encountering a piece of ice, **it** gets −1
     /// strength", as the filter of a `Scope::Ice`. Instance-level: a
@@ -625,6 +631,7 @@ impl CardFilter {
                 | CardFilter::Facedown
                 | CardFilter::Faceup
                 | CardFilter::AccessedDuringLastRun
+                | CardFilter::PassedDuringLastRun
                 | CardFilter::InAttackedServer
                 | CardFilter::InLastRunServer
                 | CardFilter::InRootOfThisServer
@@ -763,6 +770,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName => false,
         CardFilter::LastEncounteredLastRun => true,
+        CardFilter::PassedDuringLastRun => true,
         CardFilter::BeingEncountered => true,
         CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {

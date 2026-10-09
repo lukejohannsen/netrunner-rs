@@ -58,12 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 113 | 3, 0, 0, — | in progress: Stages 1a–11t; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026), the Core Set built (113 of 113, 9 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 80, 18, 6, 113 | 2, 0, 0, — | in progress: Stages 1a–11u; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026), the Core Set built (113 of 113, 9 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **18 of 111
-`Effect` variants single-use, none unused, over 794 card files** (9 October
-2026, with tranche 8 Stage 11t, which added none and lets a program host
-programs outside the memory limit; Stage 11s, at 18 of 111 over 793, added
+`Effect` variants single-use, none unused, over 795 card files** (9 October
+2026, with tranche 8 Stage 11u, which added none and remembers which ice the
+last run passed; Stage 11t, at 18 of 111 over 794, added none and lets a
+program host programs outside the memory limit; Stage 11s, at 18 of 111 over 793, added
 none and lets the end of an encounter say whether the ice was fully broken;
 Stage 11r, at 18 of 111
 over 792, added `Unpreventable`, single-use,
@@ -1215,6 +1216,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11r** — Stimhack, from the Core Set: a run on nine hosted credits that ends in core damage nobody can prevent (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11s** — Chum, from the Core Set: a code gate whose subroutine makes the next ice stronger and does net damage when that encounter ends unless the ice was fully broken (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11t** — Djinn, from the Core Set, the last of it: a program that hosts up to 3[mu] of non-icebreaker programs outside the memory limit and tutors a virus (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11u** — En Passant, from System Update 2021: after a successful run, trash an unrezzed piece of ice the last run passed (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1344,6 +1346,9 @@ nine by kind):
     programs whose memory counts against what it hosts rather than the
     limit (`ContinuousKind::HostsMemory`), and `InstallProgram` takes a
     host. The Core Set is built, 113 of 113.
+    **11u closed**, En Passant, from System Update 2021, with no new
+    `Effect`: the last run remembers which ice it passed
+    (`CardFilter::PassedDuringLastRun`).
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

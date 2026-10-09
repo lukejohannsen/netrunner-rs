@@ -1363,7 +1363,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
-            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, last_encountered: None,
+            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, passed: Vec::new(), last_encountered: None,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

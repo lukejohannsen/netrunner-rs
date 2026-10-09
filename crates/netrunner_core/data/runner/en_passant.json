@@ -1,0 +1,45 @@
+{
+  "id": "en_passant",
+  "title": "En Passant",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurn": "OnSuccessfulRun"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": {
+              "All": [
+                "UnrezzedIce",
+                "PassedDuringLastRun"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "Trash 1 unrezzed piece of ice you passed during your last run."
+    }
+  ],
+  "built_from": 31003,
+  "is_playable": true
+}

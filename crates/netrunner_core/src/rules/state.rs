@@ -1547,6 +1547,10 @@ pub struct CompletedRun {
     /// ice you passed during that run" (`Amount::IcePassedLastRun`).
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub ice_passed: u32,
+    /// `RunState::passed` at conclusion — En Passant's "1 unrezzed piece of
+    /// ice you passed during your last run" (`CardFilter::PassedDuringLastRun`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passed: Vec<InstallId>,
     /// `RunState::last_encountered` at conclusion — Always Have a Backup
     /// Plan's "the last piece of ice you encountered during the first run"
     /// (`CardFilter::LastEncounteredLastRun`).
@@ -1574,6 +1578,7 @@ impl CompletedRun {
             initiated_by: run.initiated_by.clone(),
             event_counters: run.event_counters,
             ice_passed: run.ice_passed,
+            passed: run.passed.clone(),
             last_encountered: run.last_encountered,
         }
     }
