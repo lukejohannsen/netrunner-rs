@@ -1700,6 +1700,39 @@ mod tests {
         assert!(corp(&marrow) < corp(&bare), "the Corp reads the same hand size the other way");
     }
 
+    /// A sabotage parked on the Corp is the cards it will take, to the
+    /// Runner, at a click each (§60) — and nothing at the reference's
+    /// weights, where `click_weight` is zero.
+    #[test]
+    fn a_parked_sabotage_is_the_cards_it_takes() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+        let w = crate::plans::Style::BALANCED.planned_weights(Side::Runner);
+        let mut quiet = GameState::new(0);
+        quiet.runner.grip = corp_cards("g", 4);
+        quiet.corp.hq = corp_cards("h", 4);
+        let mut parked = quiet.clone();
+        parked.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnHq,
+            filter: CardFilter::Any,
+            min: 0,
+            max: 3,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OwnArchives),
+            then: Some(Box::new(Effect::Mill { deck: Side::Corp, amount: Amount::RemainingAfterSelection(3), then: None })),
+            selected: Vec::new(),
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let runner = |state: &GameState, w: &Weights| evaluate_state_with(state, Side::Runner, &empty(), w);
+        assert!((runner(&parked, &w) - runner(&quiet, &w) - 3.0 * w.click_weight).abs() < 1e-9);
+        assert_eq!(runner(&parked, &Weights::default()), runner(&quiet, &Weights::default()));
+    }
+
     #[test]
     fn the_default_weights_are_the_constants_and_score_identically() {
         let mut state = GameState::new(0);

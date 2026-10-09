@@ -641,6 +641,7 @@ pub(super) fn shut_doors(state: &GameState, registry: &CardRegistry, w: &Weights
 pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32, score: &mut f64) {
     *score -= state.runner.tags as f64 * w.tag_weight;
     *score -= runner_hand_size_lost(state, registry) * w.core_damage_weight;
+    *score += f64::from(parked_sabotage(state)) * w.click_weight;
     *score += state.runner.rig.len() as f64 * w.board_presence_weight;
     *score += state.runner.memory_units.0 as f64 * w.memory_weight;
     *score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;

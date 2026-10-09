@@ -767,6 +767,24 @@ pub(super) struct Income {
     /// `printed_stock` is what the card places on itself when it arrives.
     pub stocked: bool,
     pub printed_stock: u32,
+    /// Cards a use of the card's sabotage takes from the Corp (Phase 5
+    /// §60), at a use a turn: Nga's "the first time each turn you make a
+    /// successful run, you may remove 1 hosted power counter to sabotage
+    /// 1", Cacophony's "when your action phase ends, … remove 2 hosted
+    /// power counters to sabotage 3". Read only off a trigger that comes
+    /// once a turn — a turn's beginning, its action phase's end, every
+    /// successful run — so Marrow's "whenever the Corp scores an agenda"
+    /// and Avgustina Ivanovskaya's virus install are nothing here, the
+    /// cheaper direction.
+    pub sabotage: u32,
+    /// The hosted counters a use of the sabotage removes; zero when it
+    /// costs none.
+    pub sabotage_counters: u32,
+    /// Counters the card places on itself a turn from a trigger that is
+    /// not its arrival — Cacophony's "the first time each turn you trash a
+    /// card … or steal an agenda, place 1 power counter": one a turn
+    /// however many such triggers it prints, since neither is promised.
+    pub counters_per_turn: u32,
 }
 
 /// What one effect adds up to for `side`: credits, cards, clicks and
@@ -958,7 +976,20 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 income.run_cards += sum.cards.max(0) as u32;
                 run_counters += sum.counters.max(0) as u32;
             }
+            Trigger::OnTrashedFromAccess | Trigger::OnAgendaStolen if sum.counters > 0 => income.counters_per_turn = 1,
             _ => {}
+        }
+        if matches!(trigger.trigger, Trigger::OnTurnStart | Trigger::OnActionPhaseEnd)
+            || (trigger.trigger == Trigger::OnSuccessfulRun && about_every_run(trigger))
+        {
+            for effect in &trigger.effects {
+                if let Some((cards, counters)) = sabotage_use(effect)
+                    && cards > income.sabotage
+                {
+                    income.sabotage = cards;
+                    income.sabotage_counters = counters;
+                }
+            }
         }
     }
     income.turn_credits += def.recurring_credits.unwrap_or(0);
@@ -999,6 +1030,24 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
     }
     income.run_credits += run_counters * income.cashout_per_counter;
     income
+}
+
+/// The cards one use of `effect` sabotages and the hosted counters it
+/// removes to do it: a bare `Sabotage`, or the Runner's offer to pay
+/// counters for one (Nga, Cacophony). `None` for anything else.
+fn sabotage_use(effect: &Effect) -> Option<(u32, u32)> {
+    match effect {
+        Effect::Sabotage(n) => Some((*n, 0)),
+        Effect::Sequence(effects) => effects.iter().find_map(sabotage_use),
+        Effect::OfferPaidChoice { side: Side::Runner, cost, if_paid, .. } => {
+            let counters = match cost {
+                Cost::RemoveCounters(n) => *n,
+                _ => return None,
+            };
+            sabotage_use(if_paid).map(|(cards, _)| (cards, counters))
+        }
+        _ => None,
+    }
 }
 
 /// Whether a trigger on a successful run pays a run a turn: any run's, on
@@ -1075,7 +1124,22 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
         0
     };
     let cashout = income.cashout_per_counter * hosted.unwrap_or(income.printed_stock);
-    f64::from(turn + run + click + cashout)
+    f64::from(turn + run + click + cashout + sabotaged(income, hosted, horizon))
+}
+
+/// The cards the card's sabotage will take from the Corp over `horizon`
+/// more turns, a card at a credit as a draw is (Phase 5 §60): a use a
+/// turn, bounded by the counters the uses remove — what it hosts (or
+/// prints, for a card not yet on the table) and what it gains a turn.
+pub(super) fn sabotaged(income: &Income, hosted: Option<u32>, horizon: u32) -> u32 {
+    if income.sabotage == 0 {
+        return 0;
+    }
+    let uses = match income.sabotage_counters {
+        0 => horizon,
+        per_use => horizon.min((hosted.unwrap_or(income.printed_stock) + income.counters_per_turn * horizon) / per_use),
+    };
+    uses * income.sabotage
 }
 
 /// What a Corp card's turn trigger saves in installs from HQ over
@@ -1934,6 +1998,22 @@ mod tests {
     /// choose (§43): Mercia B4LL4RD's piece of ice at 1[c] less, Warm
     /// Reception's card at no discount. A card with no such trigger
     /// saves nothing.
+    /// A sabotage a turn is cards off the Corp, bounded by the counters
+    /// its uses remove (§60): Nga's three, Cacophony's one a turn at two a
+    /// use; Marrow's, on the Corp's score, is not a turn's and reads as
+    /// nothing.
+    #[test]
+    fn a_sabotage_a_turn_is_read_as_the_cards_its_counters_buy() {
+        let pool = pool();
+        let income = |id: &str| declared_income(&printed(&pool, id));
+        assert_eq!(sabotaged(&income("nga"), None, 5), 3, "three counters, a sabotage 1 each");
+        assert_eq!(sabotaged(&income("nga"), Some(1), 5), 1);
+        assert_eq!(sabotaged(&income("cacophony"), None, 4), 6, "a counter a turn, two a sabotage 3");
+        assert_eq!(sabotaged(&income("cacophony"), Some(2), 1), 3, "two hosted pay for one now");
+        assert_eq!(sabotaged(&income("marrow"), None, 5), 0);
+        assert!(future_credits(&income("cacophony"), None, 4) > 0.0, "the install is worth something");
+    }
+
     #[test]
     fn a_turn_trigger_that_installs_from_hq_saves_a_click_and_its_discount() {
         let pool = pool();
