@@ -82,6 +82,7 @@ use netrunner_session::{MatchRecordHeader, RecordedBot};
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
+use crate::protocol::DrawOffer;
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
@@ -466,6 +467,10 @@ struct Tournament {
     /// paired no more. A drop's entry stays because the standings need
     /// its name and its opponents' tiebreakers need its games.
     dropped: Vec<PublicKey>,
+    /// Intentional draws offered at the current round's tables and not
+    /// yet matched: cleared for a table when its result is written, and
+    /// whole when a round begins.
+    draw_offers: Vec<DrawOffer>,
 }
 
 /// One entrant's registration: the decks the server holds for them, the
@@ -508,6 +513,7 @@ impl Tournament {
             seeding: self.seeding.clone(),
             rounds: self.rounds.clone(),
             dropped: self.dropped.clone(),
+            draw_offers: self.draw_offers.clone(),
             entrants: self
                 .entrants
                 .iter()
@@ -929,6 +935,7 @@ impl Shared {
         if slot.result.is_none() {
             slot.result = Some(outcome);
         }
+        tournament.draw_offers.retain(|offer| offer.table != table.table);
         self.save_tournaments(&registry);
         self.announce(&registry, &table.tournament, None);
     }

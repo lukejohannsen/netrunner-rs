@@ -198,6 +198,15 @@ pub enum ClientMessage {
     /// players agreed at the table (2.5.8). The organizer has the final
     /// say (3.2.1). Answered and pushed as `BeginRound` is.
     RecordResult { tournament: String, table: usize, outcome: swiss::Outcome },
+    /// Offer the opponent at this round's table an intentional draw
+    /// (Organized Play Policies 2.5.8): the offer is published to the
+    /// table (`TournamentInfo::draw_offers`), and when both have offered
+    /// the table's result is a tie, with a player waiting at it stood
+    /// up. Refused for a key with no table this round, a table played or
+    /// playing, or an offer already made; an offer lapses when the game
+    /// starts, when a result is recorded and with the round. Answered
+    /// and pushed as `BeginRound` is.
+    OfferDraw { tournament: String },
 }
 
 /// Which chair a player looks for a game in, and the deck it needs: one
@@ -415,9 +424,9 @@ pub enum ServerMessage {
     /// `Register`, `Unregister`, `BeginRound`, `FinishTournament` and
     /// `RecordResult`, and **pushed unasked** to every attached entrant
     /// and the organizer when a round begins, a table's game ends, a
-    /// result is recorded, a player drops or the tournament finishes —
-    /// so a player waiting on the page sees the pairing when it is
-    /// posted.
+    /// result is recorded, a draw is offered, a player drops or the
+    /// tournament finishes — so a player waiting on the page sees the
+    /// pairing when it is posted.
     Tournament { tournament: TournamentInfo },
     /// One of those refused, with the reason: no key proved, a server
     /// that keeps nothing, no such tournament, a statement that does not
@@ -454,6 +463,19 @@ pub struct TournamentInfo {
     /// rounds): still entrants, still in the standings with every result
     /// they have, paired no more. In the order they left.
     pub dropped: Vec<PublicKey>,
+    /// Intentional draws offered at the current round's tables and not
+    /// yet answered (`ClientMessage::OfferDraw`); the second offer at a
+    /// table is the tie, and empties it. Nothing from an earlier round.
+    pub draw_offers: Vec<DrawOffer>,
+}
+
+/// One player's standing offer of an intentional draw at a table of the
+/// current round (Organized Play Policies 2.5.8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DrawOffer {
+    /// Into the current round's tables.
+    pub table: usize,
+    pub by: PublicKey,
 }
 
 impl TournamentInfo {

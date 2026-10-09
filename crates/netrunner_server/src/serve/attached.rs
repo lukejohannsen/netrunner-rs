@@ -218,6 +218,10 @@ impl Attached {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
             },
+            ClientMessage::OfferDraw { tournament } => match self.offer_draw(&tournament) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
             ClientMessage::RecordResult { tournament, table, outcome } => match self.record_result(&tournament, table, outcome) {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
@@ -434,7 +438,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new() };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id, tournament);
         self.shared.save_tournaments(&registry);
@@ -543,6 +547,7 @@ impl Attached {
             tournament.dropped.push(key);
             if let Some((table_ref, outcome)) = forfeit {
                 tournament.rounds[table_ref.round].tables[table_ref.table].result = Some(outcome);
+                tournament.draw_offers.retain(|offer| offer.table != table_ref.table);
             }
         }
         let info = tournament.info(&id);
@@ -598,6 +603,7 @@ impl Attached {
         }
         let next = swiss::pair(&tournament.seeding, &tournament.rounds, &tournament.dropped);
         tournament.rounds.push(next);
+        tournament.draw_offers.clear();
         tournament.state = TournamentState::Playing { round: tournament.rounds.len() as u32 };
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
@@ -655,6 +661,53 @@ impl Attached {
         }
         let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
         tournament.rounds[round].tables[table].result = Some(outcome);
+        tournament.draw_offers.retain(|offer| offer.table != table);
+        let info = tournament.info(&id);
+        self.shared.save_tournaments(&registry);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
+    }
+
+    /// This key offers the opponent at its table an intentional draw
+    /// (2.5.8). The first offer is published to the table and waits; the
+    /// second — the opponent's — is the agreement, and the table's result
+    /// is a tie, with whoever was seated and waiting stood up and told.
+    /// Not while the game is under way: a game that has started decides
+    /// itself, and an offer made before it lapsed when it started. The
+    /// policies' five-minute window is the round clock's to keep, which
+    /// is not built yet.
+    fn offer_draw(&self, id: &str) -> Result<TournamentInfo, String> {
+        let key = self.key.ok_or("a draw is offered by a key: prove one before attaching")?;
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let (round, table, opponent) = {
+            let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
+            let (round, current) = tournament.current().ok_or("no round is being played")?;
+            let (table, slot) = current.table_of(&key).ok_or("you have no table this round")?;
+            if slot.result.is_some() {
+                return Err("that table has its result".into());
+            }
+            if tournament.draw_offers.iter().any(|offer| offer.table == table && offer.by == key) {
+                return Err("you have offered a draw already; it stands until your opponent answers or the game starts".into());
+            }
+            let opponent = *slot.opponent_of(&key).expect("a table has two seats");
+            (round, table, opponent)
+        };
+        let table_ref = TableRef { tournament: id.clone(), round, table };
+        if matches!(registry.tables.get(&table_ref), Some(TableState::Playing(_))) {
+            return Err("your game is under way: it decides itself".into());
+        }
+        let agreed = registry.tournaments.0.get(&id).is_some_and(|tournament| tournament.draw_offers.iter().any(|offer| offer.table == table && offer.by == opponent));
+        if let Some(TableState::Waiting(seated)) = agreed.then(|| registry.tables.remove(&table_ref)).flatten() {
+            refuse(&seated.tx, "you agreed a draw: the table's result is a tie");
+        }
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        if agreed {
+            tournament.rounds[round].tables[table].result = Some(TableOutcome::Tie);
+            tournament.draw_offers.retain(|offer| offer.table != table);
+        } else {
+            tournament.draw_offers.push(DrawOffer { table, by: key });
+        }
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
         self.shared.announce(&registry, &id, Some(self.link));
@@ -723,6 +776,11 @@ impl Attached {
                     TableRole::Corp => (me, them),
                     TableRole::Runner => (them, me),
                 };
+                // A game under way is the table's answer: an offer made
+                // before it lapses, as it would at a table in person.
+                if let Some(tournament) = registry.tournaments.0.get_mut(&id) {
+                    tournament.draw_offers.retain(|offer| offer.table != table);
+                }
                 start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(table_ref));
                 Ok(Playing { token, out, into, lobby })
             }

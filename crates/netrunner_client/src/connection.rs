@@ -606,7 +606,8 @@ impl Connection {
             | ClientMessage::Unregister { .. }
             | ClientMessage::BeginRound { .. }
             | ClientMessage::FinishTournament { .. }
-            | ClientMessage::RecordResult { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
+            | ClientMessage::RecordResult { .. }
+            | ClientMessage::OfferDraw { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => false,
         };
         if !allowed {
@@ -1292,7 +1293,7 @@ mod tests {
         let payload = statement.verify(REGISTRATION_TAG).expect("signed by this key");
         assert_eq!(serde_json::from_str::<RegistrationStatement>(payload).unwrap(), said);
 
-        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![] };
+        let info = TournamentInfo { id: "K7M2QX".into(), name: "Friday".into(), format: NsgFormat::Startup, organizer: me, state: netrunner_protocol::TournamentState::Registering, entrants: vec![], seeding: vec![], rounds: vec![], dropped: vec![], draw_offers: vec![] };
         conn.on_message(ServerMessage::Tournament { tournament: info.clone() }, t0);
         conn.on_message(ServerMessage::TournamentRefused { reason: "no such tournament".into() }, t0);
         conn.on_message(ServerMessage::Tournaments { tournaments: vec![info.clone()] }, t0);

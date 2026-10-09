@@ -9,7 +9,7 @@
 
 use netrunner_identity::PublicKey;
 use netrunner_protocol::swiss::{Outcome, Role, Round, Standing, Table};
-use netrunner_protocol::{Entrant, TournamentInfo, TournamentState};
+use netrunner_protocol::{DrawOffer, Entrant, TournamentInfo, TournamentState};
 
 use crate::settings::format_label;
 
@@ -29,17 +29,39 @@ pub fn name_of(info: &TournamentInfo, key: &PublicKey) -> String {
     info.entrants.iter().find(|entrant| entrant.key == *key).map_or_else(|| key.fingerprint(), |entrant| entrant.name.clone())
 }
 
-/// One table of a round as a line names it: who sits where, and how it
-/// ended — "Table 1 · ann (Corp) vs bo (Runner) · ann won".
+/// One table of a round as a line names it: who sits where, how it
+/// ended — "Table 1 · ann (Corp) vs bo (Runner) · ann won" — and, while
+/// it has not, who has offered a draw there.
 pub fn table_line(info: &TournamentInfo, index: usize, table: &Table<PublicKey>) -> String {
     let (corp, runner) = (name_of(info, &table.corp), name_of(info, &table.runner));
     let result = match table.result {
-        None => "not played yet".to_string(),
+        None => {
+            let offers: Vec<String> = draw_offers_at(info, index).map(|key| name_of(info, key)).collect();
+            if offers.is_empty() { "not played yet".to_string() } else { format!("not played yet · {} offers a draw", offers.join(" and ")) }
+        }
         Some(Outcome::CorpWon) => format!("{corp} won"),
         Some(Outcome::RunnerWon) => format!("{runner} won"),
         Some(Outcome::Tie) => "a tie".to_string(),
     };
     format!("Table {} · {corp} (Corp) vs {runner} (Runner) · {result}", index + 1)
+}
+
+/// Who has offered an intentional draw at table `index` of the current
+/// round and not been answered (Organized Play Policies 2.5.8).
+pub fn draw_offers_at(info: &TournamentInfo, index: usize) -> impl Iterator<Item = &PublicKey> {
+    info.draw_offers.iter().filter(move |offer| offer.table == index).map(|offer: &DrawOffer| &offer.by)
+}
+
+/// Whether this key has a draw offer standing at its table this round.
+pub fn has_offered_draw(info: &TournamentInfo, key: Option<&PublicKey>) -> bool {
+    key.is_some_and(|key| my_table(info, Some(key)).is_some_and(|(index, _, _)| draw_offers_at(info, index).any(|by| by == key)))
+}
+
+/// Whether this key may offer a draw: a table this round with no result,
+/// and no offer of theirs standing there. The server refuses one while
+/// the game is under way; the page shows the button and lets it say so.
+pub fn may_offer_draw(info: &TournamentInfo, key: Option<&PublicKey>) -> bool {
+    my_table(info, key).is_some_and(|(_, _, table)| table.result.is_none()) && !has_offered_draw(info, key)
 }
 
 /// The bye's line, when the round has one.
@@ -91,7 +113,15 @@ pub fn round_line(info: &TournamentInfo, key: Option<&PublicKey>) -> Option<Stri
         (Some((index, role, table)), Some(my_key)) => {
             let opponent = table.opponent_of(my_key).map_or_else(String::new, |opponent| name_of(info, opponent));
             match table.result {
-                None => format!("Round {number}: you play {role:?} against {opponent} at table {}.", index + 1),
+                None => {
+                    let mut line = format!("Round {number}: you play {role:?} against {opponent} at table {}.", index + 1);
+                    if has_offered_draw(info, key) {
+                        line.push_str(" You have offered a draw; the table is a tie if they offer one too.");
+                    } else if draw_offers_at(info, index).next().is_some() {
+                        line.push_str(&format!(" {opponent} offers a draw: offer one back to agree."));
+                    }
+                    line
+                }
                 Some(_) => format!("Round {number}: your game against {opponent} at table {} is over.", index + 1),
             }
         }
@@ -172,7 +202,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new() }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -218,7 +248,17 @@ mod tests {
         assert_eq!(round_line(&info, Some(&cy)).as_deref(), Some("Round 1: you sit this one out with a bye, which counts as a win."));
         assert_eq!(round_line(&info, None).as_deref(), Some("Round 1 is being played."));
         assert_eq!(my_table(&info, Some(&bo)).map(|(index, role, _)| (index, role)), Some((0, Role::Corp)));
+        // bo offers a draw: the table and ann's line say so, bo's own
+        // line says it stands, and only ann may offer one now.
+        info.draw_offers = vec![DrawOffer { table: 0, by: bo }];
+        assert_eq!(table_line(&info, 0, &info.rounds[0].tables[0]), "Table 1 · bo (Corp) vs ann (Runner) · not played yet · bo offers a draw");
+        assert_eq!(round_line(&info, Some(&ann)).as_deref(), Some("Round 1: you play Runner against bo at table 1. bo offers a draw: offer one back to agree."));
+        assert_eq!(round_line(&info, Some(&bo)).as_deref(), Some("Round 1: you play Corp against ann at table 1. You have offered a draw; the table is a tie if they offer one too."));
+        assert!(may_offer_draw(&info, Some(&ann)) && !may_offer_draw(&info, Some(&bo)) && !may_offer_draw(&info, Some(&cy)) && !may_offer_draw(&info, None));
+        assert!(has_offered_draw(&info, Some(&bo)) && !has_offered_draw(&info, Some(&ann)));
+        info.draw_offers.clear();
         info.rounds[0].tables[0].result = Some(Outcome::RunnerWon);
+        assert!(!may_offer_draw(&info, Some(&ann)), "a played table takes no offer");
         assert_eq!(table_line(&info, 0, &info.rounds[0].tables[0]), "Table 1 · bo (Corp) vs ann (Runner) · ann won");
         assert_eq!(round_line(&info, Some(&bo)).as_deref(), Some("Round 1: your game against ann at table 1 is over."));
         let rows = info.standings();

@@ -178,6 +178,8 @@ pub enum Intent {
     BeginRound,
     FinishTournament,
     RecordResult(usize, TableOutcome),
+    /// Offer the opponent at this round's table an intentional draw.
+    OfferDraw,
     Disconnect,
     /// The screen has started what `Go` or `Watch` asked for; this is its
     /// first line.
@@ -251,6 +253,7 @@ pub enum Outcome {
     BeginRound { tournament: String },
     FinishTournament { tournament: String },
     RecordResult { tournament: String, table: usize, outcome: TableOutcome },
+    OfferDraw { tournament: String },
 }
 
 /// The connection, as the page draws it.
@@ -342,6 +345,12 @@ impl ServerState {
     /// the rounds, not dropped already (`tournament::may_drop`).
     pub fn may_drop(&self) -> bool {
         self.open_tournament().is_some_and(|info| tournament::may_drop(info, self.key.as_ref()))
+    }
+
+    /// Whether this key may offer a draw at its table this round
+    /// (`tournament::may_offer_draw`).
+    pub fn may_offer_draw(&self) -> bool {
+        self.open_tournament().is_some_and(|info| tournament::may_offer_draw(info, self.key.as_ref()))
     }
 
     /// The round the organizer may begin now, as its button reads: the
@@ -819,6 +828,13 @@ impl OnlineForm {
                 Some(server) if self.page == Page::Tournament && server.may_sit() && server.seeking.is_none() => {
                     self.notice = None;
                     Outcome::Sit { tournament: server.tournament.clone().expect("a table in the open tournament") }
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::OfferDraw => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.may_offer_draw() => {
+                    self.notice = None;
+                    Outcome::OfferDraw { tournament: server.tournament.clone().expect("a table in the open tournament") }
                 }
                 _ => Outcome::Nothing,
             },
@@ -1335,7 +1351,7 @@ mod tests {
     }
 
     fn tournament_info(id: &str, organizer: PublicKey, entrants: Vec<netrunner_server::protocol::Entrant>) -> TournamentInfo {
-        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() }
+        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new() }
     }
 
     fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
@@ -1472,6 +1488,13 @@ mod tests {
         form.apply(Intent::SeekCancelled);
         form.reopen(true);
         assert_eq!(form.page, Page::Tournament, "back from the game, the tournament's page");
+        // bo may offer a draw once; with the offer standing, not again.
+        assert_eq!(form.apply(Intent::OfferDraw), Outcome::OfferDraw { tournament: "K7M2QX".into() });
+        let mut offered = playing.clone();
+        offered.draw_offers = vec![netrunner_server::protocol::DrawOffer { table: 0, by: bo }];
+        form.apply(Intent::Tournament(offered));
+        assert_eq!(form.apply(Intent::OfferDraw), Outcome::Nothing, "offered already");
+        assert!(form.server.as_ref().unwrap().may_sit(), "an offer is not a seat");
         // bo may drop; dropped (and forfeit), bo has no seat and nothing
         // more to drop from.
         assert!(form.server.as_ref().unwrap().may_drop());
@@ -1491,6 +1514,7 @@ mod tests {
         bye.apply(Intent::Tournaments(vec![playing.clone()]));
         bye.apply(Intent::OpenTournament(0));
         assert_eq!(bye.apply(Intent::Sit), Outcome::Nothing);
+        assert_eq!(bye.apply(Intent::OfferDraw), Outcome::Nothing, "no table, no draw");
 
         // ann, the organizer and a player: the seat, and once the table
         // has its result the next round or the end; a result recorded
