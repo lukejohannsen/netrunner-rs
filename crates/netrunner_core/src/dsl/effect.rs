@@ -965,11 +965,19 @@ pub enum Effect {
     /// to: the Runner's by default, the Corp's for Deep Dive's "The Corp
     /// must set aside the top 8 cards of R&D faceup" (`filter: Any`, `count:
     /// 8`, `CorpState::set_aside`) — the top N being "until N of any card".
+    ///
+    /// `facedown` sets the Runner's cards aside facedown instead (CR
+    /// 4.8.6), as their own group (`RunnerState::set_aside_facedown`, 4.8.7)
+    /// — Ayla "Bios" Rahim's "set aside the top 6 cards of your stack
+    /// facedown. (You may look at those cards at any time.)". Looked at by
+    /// the Runner (`GameEvent::CardsLookedAt`) rather than shown to both.
     SetAsideFromTopUntil {
         filter: crate::dsl::CardFilter,
         count: u32,
         #[serde(default = "crate::dsl::effect::the_runner", skip_serializing_if = "crate::dsl::effect::is_the_runner")]
         deck: crate::rules::Side,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        facedown: bool,
     },
     /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
     /// "install up to 3 cards from your grip, paying 1[c] less for each".

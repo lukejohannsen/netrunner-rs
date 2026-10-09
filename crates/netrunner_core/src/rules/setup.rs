@@ -87,18 +87,20 @@ impl GameState {
             }
         }
 
-        events.extend(ability::evaluate_effect(
-            &mut state,
-            &Effect::DrawCards(Side::Corp, OPENING_HAND_SIZE),
-            &mut ability::ResolutionContext::default(),
-            registry,
-        )?);
-        events.extend(ability::evaluate_effect(
-            &mut state,
-            &Effect::DrawCards(Side::Runner, OPENING_HAND_SIZE),
-            &mut ability::ResolutionContext::default(),
-            registry,
-        )?);
+        // Each side draws its starting hand (CR 1.6.6), the Corp first. An
+        // identity that alters setup "before drawing your starting hand"
+        // (1.6.1a, Ayla "Bios" Rahim) does so here, its effect ahead of
+        // the draw in one sequence: a choice it parks holds the draw back
+        // until it is made, and the game waits on that choice before either
+        // mulligan, since a parked decision is answered before the phase.
+        for (side, identity) in [(Side::Corp, &corp_deck.identity), (Side::Runner, &runner_deck.identity)] {
+            let draw = Effect::DrawCards(side, OPENING_HAND_SIZE);
+            let (effect, mut ctx) = match registry.get(identity).and_then(|definition| definition.before_starting_hand.clone()) {
+                Some(setup) => (Effect::Sequence(vec![setup, draw]), ability::ResolutionContext::for_card(Some(identity))),
+                None => (draw, ability::ResolutionContext::default()),
+            };
+            events.extend(ability::evaluate_effect(&mut state, &effect, &mut ctx, registry)?);
+        }
 
         // An identity is active from the start of the game, so the
         // recurring credits it prints are placed now (Comprehensive Rules

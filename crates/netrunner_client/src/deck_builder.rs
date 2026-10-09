@@ -1048,14 +1048,15 @@ mod tests {
     }
 
     /// The pool is what a match can deal: never a card the engine does not
-    /// play, in any format, on either side — the catalog holds plenty
-    /// (Midnight Sun's, most of Parhelion's), and none of them is offered.
+    /// play, in any format, on either side. Every card of the embedded
+    /// catalog is built since System Update 2021 closed (tranche 8 Stage
+    /// 11w), so today this holds trivially; it stops doing so the day a
+    /// catalog sync brings in sets still to build, which is when it matters.
     #[test]
     fn the_pool_never_offers_a_card_the_engine_does_not_play() {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        assert!(catalog.iter().any(|card| !card.is_playable), "the catalog has cards still to build");
         for format in NsgFormat::ALL {
             for side in [Side::Corp, Side::Runner] {
                 let offered = pool(book, &PoolFilter::new(side, format));

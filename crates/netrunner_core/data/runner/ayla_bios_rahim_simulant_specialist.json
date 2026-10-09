@@ -1,0 +1,61 @@
+{
+  "id": "ayla_bios_rahim_simulant_specialist",
+  "title": "Ayla “Bios” Rahim: Simulant Specialist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "before_starting_hand": {
+    "Sequence": [
+      {
+        "SetAsideFromTopUntil": {
+          "filter": "Any",
+          "count": 6,
+          "facedown": true
+        }
+      },
+      {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnSetAsideFacedown",
+          "filter": "Any",
+          "min": 2,
+          "max": 2,
+          "reveal": false,
+          "shuffle_after": true,
+          "destination": "OwnStack"
+        }
+      }
+    ]
+  },
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": { "Clicks": 1 },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnSetAsideFacedown",
+          "count": 1,
+          "filter": "Any"
+        }
+      },
+      "text": "[click]: Add 1 card set aside with this identity to your grip.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnSetAsideFacedown",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnGrip"
+        }
+      }
+    }
+  ],
+  "built_from": 31025,
+  "is_playable": true
+}

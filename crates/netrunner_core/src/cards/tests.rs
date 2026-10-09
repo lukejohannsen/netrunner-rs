@@ -23727,6 +23727,53 @@ mod uprising {
     }
 
     #[test]
+    fn ayla_sets_aside_six_facedown_before_her_starting_hand_and_takes_one_back_for_a_click() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("simulant").expect("Ayla's deck").to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        assert_eq!(state.runner.set_aside_facedown.len(), 6, "the top 6 cards of your stack, set aside facedown");
+        assert!(state.runner.grip.is_empty(), "before drawing your starting hand");
+        assert!(choosing_cards(&state), "shuffle 2 of those cards into your stack");
+        let candidates = toggles(&state, &registry, Side::Runner);
+        assert_eq!(candidates.len(), 6, "any of the six");
+        assert!(toggles(&state, &registry, Side::Corp).is_empty(), "the Runner's choice");
+        let corp_view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(corp_view.runner.set_aside_facedown_count, 6);
+        assert!(corp_view.runner.set_aside_facedown_cards.is_none(), "facedown: the Corp does not see them");
+        let runner_view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(runner_view.runner.set_aside_facedown_cards.as_ref().map(Vec::len), Some(6), "you may look at those cards at any time");
+
+        let stack_before = state.runner.stack.len();
+        let mut chosen = state.clone();
+        for position in [candidates[0], candidates[1]] {
+            chosen = apply_action(&chosen, &registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        let (chosen, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm 2");
+        assert_eq!(chosen.runner.set_aside_facedown.len(), 4, "4 stay set aside");
+        assert_eq!(chosen.runner.grip.len(), 5, "then the starting hand");
+        assert_eq!(chosen.runner.stack.len(), stack_before + 2 - 5);
+        assert_eq!(chosen.corp.hq.len(), 5);
+
+        let mut turn = chosen.clone();
+        turn.phase = GamePhase::Action(Side::Runner);
+        turn.runner.resources.clicks = Clicks(4);
+        let take = crate::rules::legal_actions_for(&turn, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { .. }))
+            .expect("[click]: add 1 card set aside with this identity to your grip");
+        let (taking, _) = apply_action(&turn, &registry, take).expect("Ayla");
+        assert_eq!(taking.runner.resources.clicks, Clicks(3));
+        let set_aside = toggles(&taking, &registry, Side::Runner);
+        assert_eq!(set_aside.len(), 4);
+        let card = taking.runner.set_aside_facedown[0].clone();
+        let taken = pick(&taking, &registry, set_aside[0]);
+        assert_eq!(taken.runner.set_aside_facedown.len(), 3);
+        assert_eq!(taken.runner.grip.len(), 6);
+        assert!(taken.runner.grip.contains(&card));
+    }
+
+    #[test]
     fn cordyceps_may_spend_a_counter_once_a_turn_on_a_central_success_to_swap_its_ice_with_another() {
         let registry = registry();
         let mut state = runner_turn();

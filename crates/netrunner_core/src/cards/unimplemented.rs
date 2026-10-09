@@ -57,7 +57,6 @@ pub(crate) const DF_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *System Update 2021* (`system_update_2021`): tranche 8 of the NSG plan.
 pub(crate) const SU21_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("ayla_bios_rahim_simulant_specialist", "Ayla “Bios” Rahim: Simulant Specialist"),
 ];
 
 /// *Salvaged Memories* (`salvaged_memories`): tranche 8 of the NSG plan.

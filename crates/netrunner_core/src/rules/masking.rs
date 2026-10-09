@@ -20,6 +20,14 @@ pub enum MaskedZone {
     Hidden { count: u32 },
 }
 
+impl MaskedZone {
+    /// No cards, seen or not — the default for a zone a recorded view
+    /// predates (`PublicRunnerState::set_aside_facedown`).
+    pub fn empty() -> Self {
+        MaskedZone::Hidden { count: 0 }
+    }
+}
+
 /// An installed card as seen by a particular viewer: presence, server, and
 /// rez status are always public, but an unrezzed card's identity is `None`
 /// unless the viewer is its owner.
@@ -254,6 +262,11 @@ pub struct PublicRunnerState {
     /// Never masked: faceup (`RunnerState::set_aside`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
+    /// `RunnerState::set_aside_facedown`, masked as the grip is: the
+    /// Runner may look at those cards at any time (Ayla "Bios" Rahim); the
+    /// Corp sees how many.
+    #[serde(default = "MaskedZone::empty")]
+    pub set_aside_facedown: MaskedZone,
     /// Never masked: faceup (`RunnerState::play_area`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -1556,6 +1569,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         heap: runner.heap.clone(),
         removed_from_game: runner.removed_from_game.clone(),
         set_aside: runner.set_aside.clone(),
+        set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
         play_area: runner.play_area.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the

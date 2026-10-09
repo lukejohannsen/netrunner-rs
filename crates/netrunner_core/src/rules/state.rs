@@ -723,6 +723,17 @@ pub struct RunnerState {
     /// emptied by the same resolution, which shuffles the rest back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
+    /// The Runner's cards set aside **facedown** (CR 4.8.6), kept as one
+    /// group apart from the faceup ones (4.8.7) — Ayla "Bios" Rahim's "set
+    /// aside the top 6 cards of your stack facedown. (You may look at
+    /// those cards at any time.)", left there for the game and taken back
+    /// one at a time by her "[click]: Add 1 card set aside with this
+    /// identity to your grip". Hidden from the Corp as the grip is
+    /// (`masking`); the Runner sees them. A list of its own rather than a
+    /// facedown flag on `set_aside`, because the faceup zone is public
+    /// whole and every reader of it would have had to learn to mask.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside_facedown: Vec<CardId>,
     /// The Runner's events played and not yet fully resolved, because a
     /// choice their text parked is still open: "once those abilities are
     /// fully resolved the event is trashed" (CR 3.7.1). Déjà Vu's "from

@@ -58,12 +58,14 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 81, 18, 6, 113 | 1, 0, 0, — | in progress: Stages 1a–11v; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026), the Core Set built (113 of 113, 9 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 82, 18, 6, 113 | 0, 0, 0, — | in progress: Stages 1a–11w; System Update 2021 complete (9 October 2026), Salvaged Memories and Magnum Opus Reprint complete (8 October 2026), the Core Set built (113 of 113, 9 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **18 of 111
-`Effect` variants single-use, none unused, over 796 card files** (9 October
-2026, with tranche 8 Stage 11v, which added none and lets the Corp choose
-among the Runner's set-aside cards; Stage 11u, at 18 of 111 over 795, added
+`Effect` variants single-use, none unused, over 797 card files** (9 October
+2026, with tranche 8 Stage 11w, which added none and hides the Runner's
+cards set aside facedown from the Corp; Stage 11v, at 18 of 111 over 796,
+added none and lets the Corp choose among the Runner's set-aside cards;
+Stage 11u, at 18 of 111 over 795, added
 none and remembers which ice the last run passed; Stage 11t, at 18 of 111 over 794, added none and lets a
 program host programs outside the memory limit; Stage 11s, at 18 of 111 over 793, added
 none and lets the end of an encounter say whether the ice was fully broken;
@@ -1219,6 +1221,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11t** — Djinn, from the Core Set, the last of it: a program that hosts up to 3[mu] of non-icebreaker programs outside the memory limit and tutors a virus (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11u** — En Passant, from System Update 2021: after a successful run, trash an unrezzed piece of ice the last run passed (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11v** — Steve Cambridge: Master Grifter, from System Update 2021: the first successful run on HQ each turn offers 2 heap cards, the Corp removes 1 from the game and the Runner takes the other, with a Sweep deck, Cold Reading (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11w** — Ayla "Bios" Rahim: Simulant Specialist, from System Update 2021, the last of it: before her starting hand she sets aside the top 6 cards of her stack facedown, hidden from the Corp, shuffles 2 back and takes one of the rest for a click, with a Sweep deck, Simulant (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1355,6 +1358,11 @@ nine by kind):
     heap cards are set aside for the Corp to choose from
     (`OpponentSetAside` is the other player's from either chair), on a new
     Sweep deck, Cold Reading.
+    **11w closed**, Ayla "Bios" Rahim, with no new `Effect`: an identity
+    can print a step before its starting hand (`before_starting_hand`,
+    CR 1.6.1a), and the Runner's cards set aside facedown are a zone of
+    their own, a count to the Corp; on a new Sweep deck, Simulant. System
+    Update 2021 is complete, 82 of 82.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and
