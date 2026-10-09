@@ -71,6 +71,24 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
         let etr = def.subroutines.iter().filter(|sub| sub.effect.can_end_the_run()).count();
         value += etr as f64 * w.etr_subroutine_weight;
     }
+    // The tokens on a piece of ice that grows with them (§63): what they
+    // add to the rig's break, at the future-credit rate for each run
+    // through the piece over the horizon, or the unbreakable term where
+    // they carry it past the rig. **A run a turn, shared by the servers**
+    // (`servers_on_the_table`): read as a run a turn through this piece
+    // alone — a run's credits' reading, `Income::run_credits` — a token
+    // on an Ice Wall was 2.25 early, above an agenda's own 1.5, and the
+    // planner advanced the wall three times beside an agenda it could
+    // have scored. Read face down too: the Corp knows its own ice, and
+    // the token is placed before the rez. Before this a token on ice was
+    // worth nothing, so the Corp never advanced one, and Shipment from
+    // Kaguya's second token never had a target.
+    if w.future_credit_weight != 0.0 && installed.advancement_tokens > 0 && def.is_some_and(|def| matches!(def.card_type, CardType::Ice(_))) {
+        value += match read::advancement_tax(state, installed, registry) {
+            read::AdvancementTax::Credits(tax) => f64::from(tax * horizon) / servers_on_the_table(state) as f64 * w.future_credit_weight,
+            read::AdvancementTax::Unbreakable => w.unbreakable_ice_weight,
+        };
+    }
     // The requirement as the table stands (Ontological Dependence lowers
     // its own), never below 0: a token past it counts for nothing here.
     if let Some(required) = continuous::advancement_requirement(state, registry, installed.install_id).map(|required| required.max(0) as u32) {
@@ -113,6 +131,18 @@ pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, r
         }
     }
     value
+}
+
+/// The servers a Runner could run on: the three centrals and every
+/// remote with a card in it.
+fn servers_on_the_table(state: &GameState) -> usize {
+    let mut remotes: Vec<netrunner_core::rules::ServerId> = Vec::new();
+    for card in &state.corp.installed {
+        if matches!(card.server, netrunner_core::rules::ServerId::Remote(_)) && !remotes.contains(&card.server) {
+            remotes.push(card.server);
+        }
+    }
+    3 + remotes.len()
 }
 
 /// What the run in progress costs the Corp in `score`: the flat term,
@@ -810,6 +840,31 @@ pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A token on a piece of ice that grows with it is the break it adds
+    /// for the rig on the table (Phase 5 §63): Ice Wall (strength 1)
+    /// against Corroder (2, 1[credit] a strength) is free at one token and
+    /// a credit a token after; against a rig that cannot break a barrier
+    /// it is nothing, since the subtype term prices that already.
+    #[test]
+    fn a_token_on_ice_is_the_break_it_adds() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(20);
+        let wall = |tokens| InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, advancement_tokens: tokens, ..Default::default() };
+        state.corp.installed = vec![wall(0)];
+        let tax = |state: &GameState| read::advancement_tax(state, &state.corp.installed[0], &pool);
+        assert_eq!(tax(&state), read::AdvancementTax::Credits(0), "no rig");
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() });
+        for (tokens, credits) in [(0, 0), (1, 0), (2, 1), (3, 2)] {
+            state.corp.installed[0] = wall(tokens);
+            assert_eq!(tax(&state), read::AdvancementTax::Credits(credits), "{tokens} tokens");
+        }
+        state.runner.rig[0] = InstalledRunnerCard { card: CardId("gordian_blade".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() };
+        assert_eq!(tax(&state), read::AdvancementTax::Credits(0), "a code gate breaker does not break it bare");
+    }
 
     /// A trojan on the Corp's ice costs it the host's rez for every turn
     /// its count is ripe within one count's length (Phase 5 §55):

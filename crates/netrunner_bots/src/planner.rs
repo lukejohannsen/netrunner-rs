@@ -769,8 +769,17 @@ impl Search<'_> {
     /// nothing, and an installed agenda is a card or two. The line is not
     /// moved: the score is still a step of its own at the next ply, and a
     /// finished line is scored where it ends.
+    ///
+    /// **A line parked on the seat's own decision is judged by its best
+    /// answer** (Phase 5 §63), the one-ply reading (`one_ply_score`,
+    /// `OWN_DECISIONS_LOOKED_THROUGH` deep). Where it stands it carries
+    /// the evaluator's charge for a parked decision and nothing the
+    /// answer delivers, so of the lines an operation's selection opens
+    /// the one that declined it judged best and was the one the beam
+    /// kept: Shipment from Kaguya's two tokens were never placed in a
+    /// line, and it was never played with a click to spare.
     fn judged(&mut self, state: &GameState) -> f64 {
-        let standing = self.score(state);
+        let standing = self.answered(state).unwrap_or_else(|| self.score(state));
         if self.side != Side::Corp {
             return standing;
         }
@@ -789,6 +798,22 @@ impl Search<'_> {
             }
         }
         best
+    }
+
+    /// The seat's best answer to its own decision parked on `state`,
+    /// scored as one ply scores it, or `None` when nothing of the seat's
+    /// is parked. See `judged`.
+    fn answered(&mut self, state: &GameState) -> Option<f64> {
+        if current_actor(state) != Some(self.side) || !state.is_resolution_blocked() {
+            return None;
+        }
+        let answers = netrunner_core::rules::legal_actions_for(state, self.registry, self.side);
+        self.applications += answers.len();
+        answers
+            .iter()
+            .filter(|answer| !is_regressive(answer, state.pending_decision.as_ref()))
+            .filter_map(|answer| one_ply_score(state, answer, self.registry, self.side, self.weights, OWN_DECISIONS_LOOKED_THROUGH))
+            .max_by(f64::total_cmp)
     }
 
     /// The score where a line stands, plus the floor for the clicks it
@@ -2174,6 +2199,50 @@ mod positions {
         assert_eq!(chosen, Some(ServerId::Remote(0)), "{played:?}");
     }
 
+    /// Shipment from Kaguya is played when it saves a click: an agenda
+    /// three from scoring behind an Ice Wall a Corroder pumps past, three
+    /// clicks — the operation's two tokens (the agenda and the wall) and
+    /// two advances score it and leave the wall a credit dearer to break
+    /// (Phase 5 §63). Before, a token on ice was worth nothing, the
+    /// operation was a click for the one token an advance buys, and the
+    /// planner never played it on a pass of the pool.
+    #[test]
+    fn plays_kaguya_on_the_agenda_and_the_ice_in_front_of_it() {
+        use netrunner_core::rules::{InstallSlot, InstalledRunnerCard};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.runner.resources.credits = Credits(6);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() }];
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.hq = vec![CardId("shipment_from_kaguya".to_string())];
+        state.corp.hq.extend(vec![CardId("hedge_fund".to_string()); 4]);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 5];
+        state.corp.installed.push(InstalledCard {
+            card: CardId("ice_wall".to_string()),
+            install_id: InstallId(2),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            advancement_tokens: 1,
+            ..Default::default()
+        });
+        state.corp.installed.push(InstalledCard {
+            card: CardId("astroscript_pilot_program".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        });
+        let mut agent = PlanningAgent::new(Side::Corp, 1);
+        let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+        assert!(played.contains(&PlayerAction::PlayOperation { card_id: CardId("shipment_from_kaguya".to_string()) }), "{played:?}");
+        assert_eq!(after.corp.resources.agenda_points.0, 2, "scored: {played:?}");
+    }
+
     /// The Runner-side counterpart: a rezzed ICE the rig cannot break
     /// makes a run worth less than a credit, and an unrezzed one does not
     /// (ROADMAP Phase 2 §5's eagerness item).
@@ -2611,7 +2680,11 @@ mod positions {
         }
         assert_eq!(actions.first(), Some(&play), "should play Overclock: {actions:?}");
         let run = state.active_run.as_ref().expect("and run on it");
-        assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
+        // HQ and R&D hold the same three walls behind the same wall, so
+        // which of the two is a tie the jitter breaks: over eight seeds
+        // it ran each (Phase 5 §63, when the beam's draws moved). The
+        // point is the run on Overclock's credits, not the server.
+        assert!(matches!(run.server, ServerId::Hq | ServerId::RnD) && run.bonus_run_credits == 5, "{actions:?}");
     }
 
     /// The Corp purges a ripe trojan off its dear ice (Phase 5 §55):
