@@ -5199,6 +5199,7 @@ dependencies = [
  "netrunner_card_sync",
  "netrunner_client",
  "netrunner_core",
+ "netrunner_identity",
  "netrunner_server",
  "rfd",
  "tokio",

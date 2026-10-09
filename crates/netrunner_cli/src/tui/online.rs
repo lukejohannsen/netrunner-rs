@@ -21,6 +21,14 @@
 //! the lobby's format and refuses an illegal one. There is no "let the
 //! host deal": a server deals nobody a deck (Phase 4 §7 stage 3).
 //!
+//! **Tournaments are rows under the Server page** (Phase 4 §7 stage 6b):
+//! the server's tournaments listed, one opened to its page — its code,
+//! its entrants by name and key, and for a key that has one the two decks
+//! to lock in and Register, or Withdraw — and one held from a form of its
+//! own, by the key this connection proved. The statement a registration
+//! signs and the salt it is kept under are the connection driver's
+//! (`remote::Attached::register`); this screen chooses the decks.
+//!
 //! **Nothing here waits on the network with the keyboard dead.** The
 //! connection runs as a task (`remote::spawn`) that the menu polls every
 //! frame (`tick`), so every wait draws a line and Esc abandons it — which
@@ -45,14 +53,15 @@ use ratatui::Frame;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
-use netrunner_server::protocol::{Chair, LobbyInfo};
+use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
-use netrunner_client::identity::StandingHere;
+use netrunner_client::identity::{PublicKey, StandingHere};
 use netrunner_client::online;
+use netrunner_client::tournament;
 use netrunner_client::remote::{Attached, AttachedEvent};
 use netrunner_client::settings::format_name;
 use netrunner_core::decks::DeckFile;
@@ -162,6 +171,8 @@ enum Row {
     Code,
     CodePassword,
     JoinByCode,
+    /// The server's tournaments, on a page of their own.
+    Tournaments,
     Chair,
     CorpDeck,
     RunnerDeck,
@@ -202,6 +213,9 @@ struct ServerPage {
     /// This person's standing at the server, as it last answered: asked
     /// on attaching and after every game.
     standing: StandingHere,
+    /// The key this connection proved, as the server named it in that
+    /// answer: whose a tournament entry is, and who may hold one.
+    key: Option<PublicKey>,
 }
 
 impl ServerPage {
@@ -221,12 +235,13 @@ impl ServerPage {
             editing: None,
             link: None,
             standing: StandingHere::Unasked,
+            key: None,
         }
     }
 
     fn rows(&self) -> Vec<Row> {
         let mut rows: Vec<Row> = (0..self.lobbies.len()).map(Row::Lobby).collect();
-        rows.extend([Row::Refresh, Row::Make, Row::Code, Row::CodePassword, Row::JoinByCode]);
+        rows.extend([Row::Refresh, Row::Make, Row::Code, Row::CodePassword, Row::JoinByCode, Row::Tournaments]);
         if self.lobby.is_some() {
             rows.push(Row::Chair);
             if self.chair != ChairChoice::Runner {
@@ -306,6 +321,125 @@ impl MakeForm {
     const PASSWORD: usize = 4;
 }
 
+/// The server's tournaments, listed (Phase 4 §7 stage 6b).
+#[derive(Debug, Clone)]
+struct TournamentsPage {
+    list: Vec<TournamentInfo>,
+    /// Whether the list is the server's answer, so an empty one can say
+    /// "none" rather than nothing while the answer is on its way.
+    listed: bool,
+    cursor: usize,
+}
+
+/// A row of the tournaments page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TournamentsRow {
+    Entry(usize),
+    Refresh,
+    Hold,
+}
+
+impl TournamentsPage {
+    fn rows(&self) -> Vec<TournamentsRow> {
+        let mut rows: Vec<TournamentsRow> = (0..self.list.len()).map(TournamentsRow::Entry).collect();
+        rows.extend([TournamentsRow::Refresh, TournamentsRow::Hold]);
+        rows
+    }
+
+    /// The server's list, read afresh: the cursor stays on its row.
+    fn set(&mut self, list: Vec<TournamentInfo>) {
+        self.list = list;
+        self.listed = true;
+        self.cursor = self.cursor.min(self.rows().len() - 1);
+    }
+
+    /// One tournament as the server now reports it, into the list — in
+    /// its place if it is listed, at the end if it is new.
+    fn put(&mut self, info: &TournamentInfo) {
+        match self.list.iter_mut().find(|listed| listed.id == info.id) {
+            Some(listed) => *listed = info.clone(),
+            None => self.list.push(info.clone()),
+        }
+    }
+}
+
+/// One tournament's page: the two decks this player would lock in, from
+/// those legal in its format, and the rows under them.
+#[derive(Debug, Clone)]
+struct TournamentPage {
+    info: TournamentInfo,
+    /// The decks legal in the tournament's format, both sides.
+    decks: Vec<DeckFile>,
+    corp_deck: usize,
+    runner_deck: usize,
+    cursor: usize,
+}
+
+/// A row of a tournament's page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TournamentRow {
+    CorpDeck,
+    RunnerDeck,
+    /// Register, or register again with the decks shown.
+    Register,
+    Withdraw,
+    Refresh,
+}
+
+impl TournamentPage {
+    /// The rows a key can act on: a registration's rows only while the
+    /// tournament takes them and this client has a key to sign one with.
+    fn rows(&self, key: Option<&PublicKey>) -> Vec<TournamentRow> {
+        let mut rows = Vec::new();
+        if key.is_some() && self.info.state == TournamentState::Registering {
+            rows.extend([TournamentRow::CorpDeck, TournamentRow::RunnerDeck, TournamentRow::Register]);
+            if tournament::entry_of(&self.info, key).is_some() {
+                rows.push(TournamentRow::Withdraw);
+            }
+        }
+        rows.push(TournamentRow::Refresh);
+        rows
+    }
+
+    fn side_decks(&self, side: Side) -> Vec<&DeckFile> {
+        self.decks.iter().filter(|deck| deck.side == side).collect()
+    }
+
+    fn chosen(&self, side: Side) -> Option<&DeckFile> {
+        match side {
+            Side::Corp => self.side_decks(Side::Corp).get(self.corp_deck).copied(),
+            Side::Runner => self.side_decks(Side::Runner).get(self.runner_deck).copied(),
+        }
+    }
+
+    /// Steps the chosen deck for `side`, round the list.
+    fn step(&mut self, side: Side, back: bool) {
+        let len = self.side_decks(side).len();
+        if len == 0 {
+            return;
+        }
+        let at = match side {
+            Side::Corp => &mut self.corp_deck,
+            Side::Runner => &mut self.runner_deck,
+        };
+        *at = if back { (*at + len - 1) % len } else { (*at + 1) % len };
+    }
+}
+
+/// The form for a tournament of this key's own: a name and a format.
+#[derive(Debug, Clone)]
+struct MakeTournamentForm {
+    name: String,
+    format: NsgFormat,
+    cursor: usize,
+    editing: bool,
+}
+
+impl MakeTournamentForm {
+    /// Name, format, Hold.
+    const ROWS: usize = 3;
+}
+
 /// The in-process server while this player hosts, and what it gives out.
 /// Dropping it stops the server — the match, if one is running, ends with
 /// it — releases the router's mapping and closes the ticket's endpoint.
@@ -335,6 +469,12 @@ enum Mode {
     Server(ServerPage),
     MakeLobby { page: ServerPage, form: MakeForm },
     PickDeck { page: ServerPage, side: Side, cursor: usize },
+    /// The server's tournaments, under the Server page, which Esc returns
+    /// to.
+    Tournaments { page: ServerPage, list: TournamentsPage },
+    /// One tournament's page, under the list.
+    Tournament { page: ServerPage, list: TournamentsPage, tournament: TournamentPage },
+    MakeTournament { page: ServerPage, list: TournamentsPage, form: MakeTournamentForm },
     /// A spectator waiting for a place.
     Waiting { connecting: Connecting, status: String, back: Box<Mode> },
     Watch { address: String, editing: bool, matches: Vec<MatchSummary>, cursor: usize },
@@ -510,7 +650,12 @@ impl OnlineScreen {
                     self.attached.as_ref()?.standing();
                     match &mut self.mode {
                         // A reattach: the list is fresh, the rest stands.
-                        Mode::Server(page) | Mode::MakeLobby { page, .. } | Mode::PickDeck { page, .. } => page.lobbies = lobbies,
+                        Mode::Server(page)
+                        | Mode::MakeLobby { page, .. }
+                        | Mode::PickDeck { page, .. }
+                        | Mode::Tournaments { page, .. }
+                        | Mode::Tournament { page, .. }
+                        | Mode::MakeTournament { page, .. } => page.lobbies = lobbies,
                         _ => {
                             let page = ServerPage::new(hosting, lobbies);
                             // A hosted server has one lobby, the format the
@@ -529,9 +674,9 @@ impl OnlineScreen {
                         page.lobbies = lobbies;
                     }
                 }
-                // Tournaments have no page yet (Phase 4 §7 stage 6a is the
-                // server and the client core; the pages are a later stage).
-                AttachedEvent::Tournaments(_) | AttachedEvent::Tournament(_) | AttachedEvent::TournamentRefused(_) => {}
+                AttachedEvent::Tournaments(tournaments) => self.tournaments_listed(tournaments),
+                AttachedEvent::Tournament(info) => self.tournament_answered(info),
+                AttachedEvent::TournamentRefused(reason) => self.notice = Some(reason),
                 AttachedEvent::LobbyJoined(lobby) => {
                     let decks = self.deck_choices(lobby.format);
                     if let Mode::MakeLobby { page, .. } = &mut self.mode {
@@ -579,6 +724,7 @@ impl OnlineScreen {
                 }
                 AttachedEvent::Standing { key, standing } => {
                     if let Some(page) = self.page_mut() {
+                        page.key = key;
                         page.standing = StandingHere::from_reply(key, standing);
                     }
                 }
@@ -604,8 +750,55 @@ impl OnlineScreen {
 
     fn page_mut(&mut self) -> Option<&mut ServerPage> {
         match &mut self.mode {
-            Mode::Server(page) | Mode::MakeLobby { page, .. } | Mode::PickDeck { page, .. } => Some(page),
+            Mode::Server(page)
+            | Mode::MakeLobby { page, .. }
+            | Mode::PickDeck { page, .. }
+            | Mode::Tournaments { page, .. }
+            | Mode::Tournament { page, .. }
+            | Mode::MakeTournament { page, .. } => Some(page),
             _ => None,
+        }
+    }
+
+    /// The server's list of tournaments: read into whichever of the
+    /// tournament pages is up, and the open tournament brought level with
+    /// its entry in it.
+    fn tournaments_listed(&mut self, tournaments: Vec<TournamentInfo>) {
+        match &mut self.mode {
+            Mode::Tournaments { list, .. } | Mode::MakeTournament { list, .. } => list.set(tournaments),
+            Mode::Tournament { list, tournament, .. } => {
+                if let Some(info) = tournaments.iter().find(|info| info.id == tournament.info.id) {
+                    tournament.info = info.clone();
+                }
+                list.set(tournaments);
+            }
+            _ => {}
+        }
+    }
+
+    /// One tournament as the server now reports it, after making,
+    /// entering or leaving one: the one just made opens its page; the one
+    /// open is brought level; the list learns it either way.
+    fn tournament_answered(&mut self, info: TournamentInfo) {
+        self.notice = None;
+        match std::mem::replace(&mut self.mode, Mode::Home { cursor: 0 }) {
+            Mode::MakeTournament { page, mut list, .. } => {
+                list.put(&info);
+                let decks = self.deck_choices(info.format);
+                self.mode = Mode::Tournament { page, list, tournament: TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 } };
+            }
+            Mode::Tournament { page, mut list, mut tournament } => {
+                list.put(&info);
+                if tournament.info.id == info.id {
+                    tournament.info = info;
+                }
+                self.mode = Mode::Tournament { page, list, tournament };
+            }
+            Mode::Tournaments { page, mut list } => {
+                list.put(&info);
+                self.mode = Mode::Tournaments { page, list };
+            }
+            other => self.mode = other,
         }
     }
 
@@ -641,6 +834,9 @@ impl OnlineScreen {
             }
             Mode::Server(page) => self.server_key(page, key),
             Mode::MakeLobby { page, form } => self.make_key(page, form, key),
+            Mode::Tournaments { page, list } => self.tournaments_key(page, list, key),
+            Mode::Tournament { page, list, tournament } => self.tournament_key(page, list, tournament, key),
+            Mode::MakeTournament { page, list, form } => self.make_tournament_key(page, list, form, key),
             Mode::PickDeck { mut page, side, mut cursor } => {
                 let len = page.side_decks(side).len().max(1);
                 match key {
@@ -873,6 +1069,11 @@ impl OnlineScreen {
                         attached.join_lobby(page.code.trim().to_string(), Some(page.code_password.clone()).filter(|password| !password.is_empty()));
                     }
                 }
+                Row::Tournaments => {
+                    attached.list_tournaments();
+                    self.mode = Mode::Tournaments { page, list: TournamentsPage { list: Vec::new(), listed: false, cursor: 0 } };
+                    return;
+                }
                 Row::Chair => {
                     if page.seeking.is_none() {
                         page.chair = page.chair.step(false);
@@ -968,6 +1169,131 @@ impl OnlineScreen {
         self.mode = Mode::MakeLobby { page, form };
     }
 
+    /// A key on the tournaments page.
+    fn tournaments_key(&mut self, page: ServerPage, mut list: TournamentsPage, key: KeyCode) {
+        let rows = list.rows();
+        let len = rows.len();
+        list.cursor = list.cursor.min(len - 1);
+        let Some(attached) = &self.attached else {
+            self.disconnect();
+            self.mode = Mode::Home { cursor: 0 };
+            return;
+        };
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Server(page);
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => list.cursor = (list.cursor + len - 1) % len,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => list.cursor = (list.cursor + 1) % len,
+            KeyCode::Char('r') => attached.list_tournaments(),
+            KeyCode::Enter => match rows[list.cursor] {
+                TournamentsRow::Entry(index) => {
+                    let info = list.list[index].clone();
+                    let decks = self.deck_choices(info.format);
+                    self.mode = Mode::Tournament { page, list, tournament: TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 } };
+                    return;
+                }
+                TournamentsRow::Refresh => attached.list_tournaments(),
+                TournamentsRow::Hold => {
+                    if page.key.is_none() {
+                        self.notice = Some("A tournament is held by a key, and this client has none: connect with one first".to_string());
+                    } else {
+                        let format = page.lobby.as_ref().map_or(self.format, |lobby| lobby.format);
+                        self.mode = Mode::MakeTournament { page, list, form: MakeTournamentForm { name: String::new(), format, cursor: 0, editing: false } };
+                        return;
+                    }
+                }
+            },
+            _ => {}
+        }
+        self.mode = Mode::Tournaments { page, list };
+    }
+
+    /// A key on a tournament's page.
+    fn tournament_key(&mut self, page: ServerPage, list: TournamentsPage, mut tournament: TournamentPage, key: KeyCode) {
+        let rows = tournament.rows(page.key.as_ref());
+        let len = rows.len();
+        tournament.cursor = tournament.cursor.min(len - 1);
+        let row = rows[tournament.cursor];
+        let Some(attached) = &self.attached else {
+            self.disconnect();
+            self.mode = Mode::Home { cursor: 0 };
+            return;
+        };
+        let side_of = |row: TournamentRow| match row {
+            TournamentRow::CorpDeck => Some(Side::Corp),
+            TournamentRow::RunnerDeck => Some(Side::Runner),
+            _ => None,
+        };
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Tournaments { page, list };
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => tournament.cursor = (tournament.cursor + len - 1) % len,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => tournament.cursor = (tournament.cursor + 1) % len,
+            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if side_of(row).is_some() => tournament.step(side_of(row).expect("a deck row"), key == KeyCode::Left),
+            KeyCode::Char('r') => attached.list_tournaments(),
+            KeyCode::Enter => match row {
+                TournamentRow::CorpDeck | TournamentRow::RunnerDeck => tournament.step(side_of(row).expect("a deck row"), false),
+                TournamentRow::Register => match (tournament.chosen(Side::Corp), tournament.chosen(Side::Runner)) {
+                    (Some(corp), Some(runner)) => attached.register(tournament.info.id.clone(), corp.clone(), runner.clone()),
+                    (None, _) => self.notice = Some(format!("No Corp deck is legal in {}: build one under Decks", format_name(tournament.info.format))),
+                    (_, None) => self.notice = Some(format!("No Runner deck is legal in {}: build one under Decks", format_name(tournament.info.format))),
+                },
+                TournamentRow::Withdraw => attached.unregister(tournament.info.id.clone()),
+                TournamentRow::Refresh => attached.list_tournaments(),
+            },
+            _ => {}
+        }
+        self.mode = Mode::Tournament { page, list, tournament };
+    }
+
+    /// A key on the Hold a tournament form.
+    fn make_tournament_key(&mut self, page: ServerPage, list: TournamentsPage, mut form: MakeTournamentForm, key: KeyCode) {
+        if form.editing {
+            match key {
+                KeyCode::Char(c) if !c.is_control() => form.name.push(c),
+                KeyCode::Backspace => {
+                    form.name.pop();
+                }
+                KeyCode::Enter | KeyCode::Esc | KeyCode::Tab | KeyCode::Down => {
+                    form.editing = false;
+                    if matches!(key, KeyCode::Tab | KeyCode::Down) {
+                        form.cursor = (form.cursor + 1) % MakeTournamentForm::ROWS;
+                    }
+                }
+                _ => {}
+            }
+            self.mode = Mode::MakeTournament { page, list, form };
+            return;
+        }
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Tournaments { page, list };
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => form.cursor = (form.cursor + MakeTournamentForm::ROWS - 1) % MakeTournamentForm::ROWS,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => form.cursor = (form.cursor + 1) % MakeTournamentForm::ROWS,
+            KeyCode::Left if form.cursor == 1 => form.format = step_format(form.format, true),
+            KeyCode::Right | KeyCode::Char(' ') if form.cursor == 1 => form.format = step_format(form.format, false),
+            KeyCode::Enter => match form.cursor {
+                0 => form.editing = true,
+                1 => form.format = step_format(form.format, false),
+                _ => {
+                    if form.name.trim().is_empty() {
+                        self.notice = Some("Give the tournament a name".to_string());
+                    } else if let Some(attached) = &self.attached {
+                        attached.create_tournament(form.name.trim().to_string(), form.format);
+                    }
+                }
+            },
+            _ => {}
+        }
+        self.mode = Mode::MakeTournament { page, list, form };
+    }
+
     fn fetch_matches(&mut self, address: String) -> OnlineStep {
         let url = normalize_address(&address);
         self.used(&url);
@@ -1051,6 +1377,43 @@ impl OnlineScreen {
                 let items = page.side_decks(*side).into_iter().map(|deck| ListItem::new(online::label(deck))).collect();
                 draw_list(frame, body, &format!("Your {side:?} deck"), items, Some(*cursor));
                 "Up/Down choose · Enter picks · Esc keeps the old choice"
+            }
+            Mode::Tournaments { list, .. } => {
+                let rows: Vec<String> = list
+                    .rows()
+                    .into_iter()
+                    .map(|row| match row {
+                        TournamentsRow::Entry(index) => tournament::line(&list.list[index]),
+                        TournamentsRow::Refresh => "List the tournaments again".to_string(),
+                        TournamentsRow::Hold => "Hold a tournament…".to_string(),
+                    })
+                    .collect();
+                let items = rows.into_iter().map(ListItem::new).collect();
+                let title = match (list.listed, list.list.is_empty()) {
+                    (false, _) => "Tournaments — asking the server…",
+                    (true, true) => "Tournaments — this server holds none",
+                    (true, false) => "Tournaments — Enter opens one",
+                };
+                draw_list(frame, body, title, items, Some(list.cursor.min(list.rows().len() - 1)));
+                "Up/Down choose · Enter opens or holds · r lists again · Esc back"
+            }
+            Mode::Tournament { page, tournament, .. } => {
+                self.draw_tournament(frame, body, page, tournament);
+                if tournament.rows(page.key.as_ref()).iter().any(|row| matches!(row, TournamentRow::CorpDeck)) {
+                    "Up/Down choose · Left/Right steps a deck · Enter registers or withdraws · r reads again · Esc back"
+                } else {
+                    "r reads again · Esc back"
+                }
+            }
+            Mode::MakeTournament { form, .. } => {
+                let rows = [
+                    format!("Name             {}", if form.editing { format!("{}▏", form.name) } else { form.name.clone() }),
+                    format!("Format           ‹ {} ›", capitalised(format_name(form.format))),
+                    "[ Hold ]".to_string(),
+                ];
+                let items = rows.into_iter().map(ListItem::new).collect();
+                draw_list(frame, body, "Hold a tournament — run as Null Signal Games run theirs: two decks locked per entrant, Swiss rounds", items, Some(form.cursor));
+                if form.editing { "Type · Enter or Tab finishes" } else { "Up/Down choose · Enter edits, steps or holds · Esc back" }
             }
             Mode::Watch { address, editing, matches, cursor } => {
                 let [top, list] =
@@ -1150,6 +1513,7 @@ impl OnlineScreen {
                 Row::Code => format!("A closed lobby's code   {}", text(ServerField::Code, &page.code, "(type it)")),
                 Row::CodePassword => format!("Its password            {}", text(ServerField::CodePassword, &page.code_password, "(none)")),
                 Row::JoinByCode => "[ Join by code ]".to_string(),
+                Row::Tournaments => "Tournaments…".to_string(),
                 Row::Chair => format!("Chair            ‹ {} ›", page.chair.label()),
                 Row::CorpDeck => format!("Corp deck        {}", page.chosen(Side::Corp).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
                 Row::RunnerDeck => format!("Runner deck      {}", page.chosen(Side::Runner).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
@@ -1167,6 +1531,41 @@ impl OnlineScreen {
             None => "Lobbies — join one to look for a game".to_string(),
         };
         draw_list(frame, list, &title, items, Some(page.cursor.min(page.rows().len() - 1)));
+    }
+}
+
+impl OnlineScreen {
+    /// A tournament's page: its code, format and state, who holds it and
+    /// where this key stands in it, its entrants, and under them the rows
+    /// — the two decks to lock in and Register, Withdraw for an entrant,
+    /// and the list read again.
+    fn draw_tournament(&self, frame: &mut Frame, area: Rect, page: &ServerPage, tournament: &TournamentPage) {
+        let info = &tournament.info;
+        let mut head = vec![
+            Line::from(format!("Code {} · {} · {}", info.id, capitalised(format_name(info.format)), tournament::state_label(info.state))),
+            Line::from(format!("Held by {}", info.organizer.fingerprint())),
+            Line::from(tournament::standing_line(info, page.key.as_ref())),
+            Line::from(""),
+            Line::from(Span::styled(if info.entrants.is_empty() { "Nobody has entered yet.".to_string() } else { format!("Entered ({}):", info.entrants.len()) }, Style::default().add_modifier(Modifier::BOLD))),
+        ];
+        head.extend(info.entrants.iter().map(|entrant| Line::from(format!("  {}", tournament::entrant_line(entrant)))));
+        let [top, list] = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(head.len() as u16 + 2), Constraint::Min(0)]).areas(area);
+        frame.render_widget(Paragraph::new(head).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(info.name.clone())), top);
+        let deck = |side: Side| tournament.chosen(side).map(online::label).unwrap_or_else(|| format!("none legal in {}", format_name(info.format)));
+        let entered = tournament::entry_of(info, page.key.as_ref()).is_some();
+        let rows: Vec<String> = tournament
+            .rows(page.key.as_ref())
+            .into_iter()
+            .map(|row| match row {
+                TournamentRow::CorpDeck => format!("Corp deck        ‹ {} ›", deck(Side::Corp)),
+                TournamentRow::RunnerDeck => format!("Runner deck      ‹ {} ›", deck(Side::Runner)),
+                TournamentRow::Register => if entered { "[ Register again with these decks ]".to_string() } else { "[ Register ]".to_string() },
+                TournamentRow::Withdraw => "[ Withdraw ]".to_string(),
+                TournamentRow::Refresh => "Read it again".to_string(),
+            })
+            .collect();
+        let items = rows.into_iter().map(ListItem::new).collect();
+        draw_list(frame, list, "Your entry", items, Some(tournament.cursor.min(tournament.rows(page.key.as_ref()).len() - 1)));
     }
 }
 
@@ -1590,6 +1989,121 @@ mod tests {
         let text = drawn(&host);
         assert!(text.contains("Looking for a game — 1 waiting in this lobby… (Enter stops)"), "{text}");
         assert!(text.contains("Runner deck      Runner ·") && text.contains("Corp deck        Corp ·"), "either chair draws both decks:\n{text}");
+    }
+
+    /// Tournaments, from the pages (Phase 4 §7 stage 6b), over a daemon
+    /// that keeps things: one screen holds a tournament from the form and
+    /// lands on its page; another opens it from the list, locks in the two
+    /// decks shown and registers, is drawn as entered, and withdraws; the
+    /// organizer reads the list again and sees both. A screen with no key
+    /// is told it cannot hold one.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_tournament_is_held_entered_and_left_from_the_pages() {
+        use ratatui::backend::TestBackend;
+        let data = std::env::temp_dir().join(format!("netrunner_online_tournament_daemon_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+        let address = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        let drawn = |screen: &OnlineScreen| {
+            let mut terminal = ratatui::Terminal::new(TestBackend::new(120, 40)).unwrap();
+            terminal.draw(|frame| screen.draw(frame, frame.area())).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n")
+        };
+        let open_tournaments = |screen: &mut OnlineScreen| {
+            let Mode::Server(page) = &mut screen.mode else { panic!("the Server page: {:?}", screen.notice) };
+            page.rest_on(Row::Tournaments);
+            screen.key(KeyCode::Enter);
+            assert!(matches!(screen.mode, Mode::Tournaments { .. }));
+        };
+
+        let (mut organizer, _) = screen("organizer");
+        join(&mut organizer, &address).await;
+        until(&mut organizer, "the key", |screen| server_page(screen).is_some_and(|page| page.key.is_some())).await;
+        assert!(drawn(&organizer).contains("Tournaments…"), "the Server page offers the tournaments");
+        open_tournaments(&mut organizer);
+        until(&mut organizer, "the list", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed)).await;
+        assert!(drawn(&organizer).contains("this server holds none"));
+        // Hold a tournament…: the last row, one Up from the first; the
+        // name typed, the format left, Hold.
+        press(&mut organizer, &[KeyCode::Up, KeyCode::Enter]);
+        assert!(matches!(organizer.mode, Mode::MakeTournament { .. }), "{:?}", organizer.notice);
+        press(&mut organizer, &[KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        assert!(organizer.notice.as_deref().is_some_and(|notice| notice.contains("name")), "a tournament needs a name: {:?}", organizer.notice);
+        press(&mut organizer, &[KeyCode::Up, KeyCode::Up, KeyCode::Enter]);
+        type_text(&mut organizer, "Friday");
+        press(&mut organizer, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        until(&mut organizer, "the tournament's page", |screen| matches!(&screen.mode, Mode::Tournament { tournament, .. } if tournament.info.name == "Friday")).await;
+        let (code, organizer_key) = match &organizer.mode {
+            Mode::Tournament { tournament, page, .. } => (tournament.info.id.clone(), page.key.unwrap()),
+            _ => unreachable!(),
+        };
+        assert_eq!(code.len(), 6);
+        let text = drawn(&organizer);
+        for wanted in [&format!("Code {code} · Startup · taking registrations")[..], "You hold this tournament. Not entered yet.", "Nobody has entered yet.", "[ Register ]", "Read it again"] {
+            assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
+        }
+
+        // An entrant opens it from the list and registers with the decks
+        // shown — the first Corp deck stepped once, the first Runner deck.
+        let (mut entrant, _) = screen("entrant");
+        join(&mut entrant, &address).await;
+        until(&mut entrant, "the key", |screen| server_page(screen).is_some_and(|page| page.key.is_some())).await;
+        open_tournaments(&mut entrant);
+        until(&mut entrant, "the list with one", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed && list.list.len() == 1)).await;
+        assert!(drawn(&entrant).contains("Friday · Startup · 0 entered · taking registrations"));
+        entrant.key(KeyCode::Enter);
+        let Mode::Tournament { tournament, .. } = &entrant.mode else { panic!("the tournament's page") };
+        assert!(!tournament.decks.is_empty(), "the decks legal in its format");
+        entrant.key(KeyCode::Right);
+        let Mode::Tournament { tournament, .. } = &entrant.mode else { panic!() };
+        assert_eq!(tournament.corp_deck, 1, "Right steps the Corp deck");
+        let expected = (tournament.chosen(Side::Corp).unwrap().id.clone(), tournament.chosen(Side::Runner).unwrap().id.clone());
+        press(&mut entrant, &[KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        until(&mut entrant, "the entry", |screen| matches!(&screen.mode, Mode::Tournament { tournament, .. } if tournament.info.entrants.len() == 1)).await;
+        let text = drawn(&entrant);
+        for wanted in ["You are entered, with the two decks you committed to.", "Entered (1):", "  entrant · ", "[ Register again with these decks ]", "[ Withdraw ]"] {
+            assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
+        }
+        // The registration the driver kept names the decks the page chose.
+        let kept = std::fs::read_to_string(entrant.identity_dir.as_ref().unwrap().join(netrunner_client::identity::REGISTRATIONS_FILE)).expect("the registration is kept beside the key");
+        let registration: netrunner_client::identity::Registration = serde_json::from_str(kept.lines().last().unwrap()).unwrap();
+        assert_eq!((registration.corp, registration.runner), expected);
+
+        // The organizer reads it again and sees the entrant.
+        organizer.key(KeyCode::Char('r'));
+        until(&mut organizer, "the entrant", |screen| matches!(&screen.mode, Mode::Tournament { tournament, .. } if tournament.info.entrants.len() == 1)).await;
+        assert!(drawn(&organizer).contains("Entered (1):"));
+
+        // Withdrawn: the row after Register.
+        press(&mut entrant, &[KeyCode::Down, KeyCode::Enter]);
+        until(&mut entrant, "the withdrawal", |screen| matches!(&screen.mode, Mode::Tournament { tournament, .. } if tournament.info.entrants.is_empty())).await;
+        assert!(drawn(&entrant).contains("Not entered yet."));
+        // Esc walks back: the list, with the tournament brought level,
+        // then the Server page.
+        entrant.key(KeyCode::Esc);
+        assert!(matches!(&entrant.mode, Mode::Tournaments { list, .. } if list.list[0].entrants.is_empty() && list.list[0].organizer == organizer_key));
+        entrant.key(KeyCode::Esc);
+        assert!(matches!(entrant.mode, Mode::Server(_)));
+
+        // No key, no tournament to hold.
+        let keyless_dir = std::env::temp_dir().join(format!("netrunner_online_keyless_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&keyless_dir);
+        let mut keyless = OnlineScreen::open(&keyless_dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, "keyless".to_string(), "ws://127.0.0.1:8080".into(), Ok(Relay::Off)).unwrap();
+        join(&mut keyless, &address).await;
+        until(&mut keyless, "the standing", |screen| server_page(screen).is_some_and(|page| page.standing != StandingHere::Unasked)).await;
+        open_tournaments(&mut keyless);
+        until(&mut keyless, "the list", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed)).await;
+        press(&mut keyless, &[KeyCode::Up, KeyCode::Enter]);
+        assert!(matches!(keyless.mode, Mode::Tournaments { .. }) && keyless.notice.as_deref().is_some_and(|notice| notice.contains("no")), "{:?}", keyless.notice);
+        // Down from the last row wraps to the first: the tournament.
+        press(&mut keyless, &[KeyCode::Down, KeyCode::Enter]);
+        let Mode::Tournament { tournament, page, .. } = &keyless.mode else { panic!() };
+        assert_eq!(tournament.rows(page.key.as_ref()), vec![TournamentRow::Refresh], "nothing to register with");
+        assert!(drawn(&keyless).contains("This client has no key, so it cannot enter."));
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     /// A player who stops looking leaves the lobby: the next to arrive

@@ -32,13 +32,22 @@
 //! anything is bound, Escape walks back one page, a failed dial reopens
 //! the form it came from with the reason, a chair with no legal deck is
 //! not looked for — is tested without a socket.
+//!
+//! **Tournaments are pages under the Server page** (Phase 4 §7 stage 6b):
+//! the server's tournaments listed, one opened to its page — its code, its
+//! entrants, and for a key that has one the two decks to lock in and
+//! Register, or Withdraw — and one held from a form of its own by the key
+//! this connection proved. The registration's statement and salt are the
+//! connection driver's (`remote::Attached::register`); this form chooses
+//! the decks, from those legal in the tournament's format.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
-use netrunner_client::identity::StandingHere;
+use netrunner_client::identity::{PublicKey, StandingHere};
+use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
-use netrunner_server::protocol::{Chair, LobbyInfo};
+use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
 use netrunner_server::MatchSummary;
 
 /// The page up.
@@ -57,6 +66,12 @@ pub enum Page {
     Server,
     /// The form for a lobby of the person's own.
     MakeLobby,
+    /// Attached: the server's tournaments.
+    Tournaments,
+    /// One tournament: its entrants, and this key's entry.
+    Tournament,
+    /// The form for a tournament of this key's own.
+    MakeTournament,
 }
 
 /// A line the person types into.
@@ -72,6 +87,8 @@ pub enum Field {
     /// Make a lobby's.
     LobbyName,
     LobbyPassword,
+    /// Hold a tournament's.
+    TournamentName,
 }
 
 impl Field {
@@ -83,7 +100,7 @@ impl Field {
             Field::Lobby => 16,
             Field::Password | Field::LobbyPassword => 64,
             Field::Port => 5,
-            Field::LobbyName => 40,
+            Field::LobbyName | Field::TournamentName => 40,
         }
     }
 }
@@ -143,6 +160,11 @@ pub enum Intent {
     /// Look for a game in the chair chosen, and stop looking.
     Seek,
     CancelSeek,
+    /// The tournaments page: one opened by its row; its page: entered
+    /// with the decks chosen, or left.
+    OpenTournament(usize),
+    Register,
+    Unregister,
     Disconnect,
     /// The screen has started what `Go` or `Watch` asked for; this is its
     /// first line.
@@ -165,8 +187,13 @@ pub enum Intent {
     SeekCancelled,
     /// The game is over and the connection is back in its lobby.
     BackInLobby(Option<LobbyInfo>),
-    /// The server's answer about this connection's standing there.
-    Standing(StandingHere),
+    /// The server's answer about this connection's standing there, and
+    /// the key it proved — whose a tournament entry is.
+    Standing { key: Option<PublicKey>, standing: StandingHere },
+    /// The server's tournaments, and one as it now stands after making,
+    /// entering or leaving it. A refusal is a `Refused`.
+    Tournaments(Vec<TournamentInfo>),
+    Tournament(TournamentInfo),
     /// The attached connection's link: its status line while it is down,
     /// `None` when it is up again.
     Link(Option<String>),
@@ -198,6 +225,15 @@ pub enum Outcome {
     CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool },
     Seek(Chair),
     CancelSeek,
+    ListTournaments,
+    CreateTournament { name: String, format: NsgFormat },
+    /// Enter the tournament with these two decks; the driver signs the
+    /// commitment and keeps the salt.
+    Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile> },
+    Unregister { tournament: String },
+    /// The open tournament's format: the screen reads the decks legal in
+    /// it and hands them to [`OnlineForm::set_tournament_decks`].
+    TournamentDecks(NsgFormat),
 }
 
 /// The connection, as the page draws it.
@@ -224,11 +260,81 @@ pub struct ServerState {
     /// This person's standing at the server, as it last answered: asked
     /// on attaching and after every game.
     pub standing: StandingHere,
+    /// The key this connection proved, as that answer named it.
+    pub key: Option<PublicKey>,
+    /// The server's tournaments, as last listed, and whether the list is
+    /// an answer yet.
+    pub tournaments: Vec<TournamentInfo>,
+    pub tournaments_listed: bool,
+    /// The tournament whose page is open, by id.
+    pub tournament: Option<String>,
+    /// The decks legal in the open tournament's format, both sides, and
+    /// which of each side's this player would lock in.
+    pub tournament_decks: Vec<DeckFile>,
+    pub tournament_corp: usize,
+    pub tournament_runner: usize,
 }
 
 impl ServerState {
     fn new(address: String, hosting: bool, lobbies: Vec<LobbyInfo>) -> Self {
-        ServerState { address, hosting, lobbies, lobby: None, seeking: None, decks: Vec::new(), chair: ChairChoice::Corp, corp_deck: 0, runner_deck: 0, link: None, standing: StandingHere::Unasked }
+        ServerState {
+            address,
+            hosting,
+            lobbies,
+            lobby: None,
+            seeking: None,
+            decks: Vec::new(),
+            chair: ChairChoice::Corp,
+            corp_deck: 0,
+            runner_deck: 0,
+            link: None,
+            standing: StandingHere::Unasked,
+            key: None,
+            tournaments: Vec::new(),
+            tournaments_listed: false,
+            tournament: None,
+            tournament_decks: Vec::new(),
+            tournament_corp: 0,
+            tournament_runner: 0,
+        }
+    }
+
+    /// The tournament whose page is open, as the list last had it.
+    pub fn open_tournament(&self) -> Option<&TournamentInfo> {
+        let id = self.tournament.as_deref()?;
+        self.tournaments.iter().find(|info| info.id == id)
+    }
+
+    /// Whether this key may register in the open tournament: it has a key
+    /// and the tournament takes registrations.
+    pub fn may_register(&self) -> bool {
+        self.key.is_some() && self.open_tournament().is_some_and(|info| info.state == TournamentState::Registering)
+    }
+
+    /// Whether this key is entered in the open tournament.
+    pub fn is_entered(&self) -> bool {
+        self.open_tournament().is_some_and(|info| tournament::entry_of(info, self.key.as_ref()).is_some())
+    }
+
+    pub fn tournament_side_decks(&self, side: Side) -> Vec<&DeckFile> {
+        self.tournament_decks.iter().filter(|deck| deck.side == side).collect()
+    }
+
+    /// The deck this player would lock in for `side`, if any is legal.
+    pub fn tournament_chosen(&self, side: Side) -> Option<&DeckFile> {
+        match side {
+            Side::Corp => self.tournament_side_decks(Side::Corp).get(self.tournament_corp).copied(),
+            Side::Runner => self.tournament_side_decks(Side::Runner).get(self.tournament_runner).copied(),
+        }
+    }
+
+    /// One tournament as the server now reports it, into the list — in
+    /// its place, or at the end if it is new.
+    fn put_tournament(&mut self, info: TournamentInfo) {
+        match self.tournaments.iter_mut().find(|listed| listed.id == info.id) {
+            Some(listed) => *listed = info,
+            None => self.tournaments.push(info),
+        }
     }
 
     /// The line over Find a game: what the lobby offers and what this
@@ -276,6 +382,13 @@ pub struct MakeLobby {
     pub casual: bool,
 }
 
+/// The tournament being held.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeTournament {
+    pub name: String,
+    pub format: NsgFormat,
+}
+
 #[derive(Debug, Clone)]
 pub struct OnlineForm {
     pub page: Page,
@@ -290,6 +403,7 @@ pub struct OnlineForm {
     /// The format a hosted game offers.
     pub format: NsgFormat,
     pub make: MakeLobby,
+    pub make_tournament: MakeTournament,
     pub watch_from: Side,
     pub matches: Vec<MatchSummary>,
     /// Whether Watch's list is an answer from the address shown, so an
@@ -317,6 +431,7 @@ impl OnlineForm {
             reach: Reach::Network,
             format,
             make: MakeLobby { name: String::new(), format, closed: false, password: String::new(), casual: false },
+            make_tournament: MakeTournament { name: String::new(), format },
             watch_from: Side::Corp,
             matches: Vec::new(),
             listed: false,
@@ -355,6 +470,21 @@ impl OnlineForm {
         server.runner_deck = runner;
     }
 
+    /// The decks legal in the open tournament's format, read afresh: each
+    /// side's chosen deck stays chosen if it is still among them.
+    pub fn set_tournament_decks(&mut self, decks: Vec<DeckFile>) {
+        let Some(server) = &mut self.server else { return };
+        let keep = |chosen: Option<&DeckFile>, side: Side| {
+            let id = chosen.map(|deck| deck.id.clone());
+            let among: Vec<&DeckFile> = decks.iter().filter(|deck| deck.side == side).collect();
+            id.and_then(|id| among.iter().position(|deck| deck.id == id)).unwrap_or(0)
+        };
+        let (corp, runner) = (keep(server.tournament_chosen(Side::Corp), Side::Corp), keep(server.tournament_chosen(Side::Runner), Side::Runner));
+        server.tournament_decks = decks;
+        server.tournament_corp = corp;
+        server.tournament_runner = runner;
+    }
+
     pub fn apply(&mut self, intent: Intent) -> Outcome {
         match intent {
             Intent::Open(Page::MakeLobby) => {
@@ -366,6 +496,26 @@ impl OnlineForm {
                 if let Some(server) = &self.server {
                     self.make.format = server.lobby.as_ref().or(server.lobbies.first()).map_or(self.make.format, |lobby| lobby.format);
                 }
+                Outcome::Redraw
+            }
+            // The list is asked for each time the page opens: a tournament
+            // moves while nobody is looking.
+            Intent::Open(Page::Tournaments) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                self.notice = None;
+                self.page = Page::Tournaments;
+                server.tournaments_listed = false;
+                Outcome::ListTournaments
+            }
+            Intent::Open(Page::MakeTournament) => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                if server.key.is_none() {
+                    self.notice = Some("A tournament is held by a key, and this client has none: connect with one first".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                self.page = Page::MakeTournament;
+                self.make_tournament.format = server.lobby.as_ref().map_or(self.make_tournament.format, |lobby| lobby.format);
                 Outcome::Redraw
             }
             Intent::Open(page) => {
@@ -381,8 +531,13 @@ impl OnlineForm {
                     Outcome::Stop
                 }
                 Page::Server => self.disconnect(),
-                Page::MakeLobby => {
+                Page::MakeLobby | Page::Tournaments => {
                     self.page = Page::Server;
+                    self.notice = None;
+                    Outcome::Redraw
+                }
+                Page::Tournament | Page::MakeTournament => {
+                    self.page = Page::Tournaments;
                     self.notice = None;
                     Outcome::Redraw
                 }
@@ -409,6 +564,7 @@ impl OnlineForm {
                     Field::Port => self.port = text.chars().filter(char::is_ascii_digit).collect(),
                     Field::LobbyName => self.make.name = text,
                     Field::LobbyPassword => self.make.password = text,
+                    Field::TournamentName => self.make_tournament.name = text,
                 }
                 Outcome::Redraw
             }
@@ -419,6 +575,7 @@ impl OnlineForm {
             Intent::SetFormat(format) => {
                 match self.page {
                     Page::MakeLobby => self.make.format = format,
+                    Page::MakeTournament => self.make_tournament.format = format,
                     _ => self.format = format,
                 }
                 Outcome::Redraw
@@ -481,11 +638,29 @@ impl OnlineForm {
                 if self.server.is_none() {
                     return Outcome::Nothing;
                 }
-                Outcome::ListLobbies
+                match self.page {
+                    Page::Tournaments | Page::Tournament | Page::MakeTournament => Outcome::ListTournaments,
+                    _ => Outcome::ListLobbies,
+                }
             }
             Intent::SetChair(chair) => match &mut self.server {
                 Some(server) if server.seeking.is_none() => {
                     server.chair = chair;
+                    Outcome::Redraw
+                }
+                _ => Outcome::Nothing,
+            },
+            // On a tournament's page the deck drop-downs are the entry's.
+            Intent::SetCorpDeck(index) if self.page == Page::Tournament => match &mut self.server {
+                Some(server) if index < server.tournament_side_decks(Side::Corp).len() => {
+                    server.tournament_corp = index;
+                    Outcome::Redraw
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::SetRunnerDeck(index) if self.page == Page::Tournament => match &mut self.server {
+                Some(server) if index < server.tournament_side_decks(Side::Runner).len() => {
+                    server.tournament_runner = index;
                     Outcome::Redraw
                 }
                 _ => Outcome::Nothing,
@@ -528,6 +703,42 @@ impl OnlineForm {
                 Some(server) if server.seeking.is_some() => Outcome::CancelSeek,
                 _ => Outcome::Nothing,
             },
+            Intent::OpenTournament(index) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                let Some(info) = server.tournaments.get(index) else { return Outcome::Nothing };
+                let format = info.format;
+                server.tournament = Some(info.id.clone());
+                self.page = Page::Tournament;
+                self.notice = None;
+                Outcome::TournamentDecks(format)
+            }
+            Intent::Register => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                let Some(info) = server.open_tournament().filter(|_| self.page == Page::Tournament) else { return Outcome::Nothing };
+                if !server.may_register() {
+                    return Outcome::Nothing;
+                }
+                let (tournament, format) = (info.id.clone(), info.format);
+                match (server.tournament_chosen(Side::Corp), server.tournament_chosen(Side::Runner)) {
+                    (Some(corp), Some(runner)) => {
+                        let (corp, runner) = (Box::new(corp.clone()), Box::new(runner.clone()));
+                        self.notice = None;
+                        Outcome::Register { tournament, corp, runner }
+                    }
+                    (None, _) => {
+                        self.notice = Some(format!("No Corp deck is legal in {:?}: build one under Decks", format));
+                        Outcome::Redraw
+                    }
+                    (_, None) => {
+                        self.notice = Some(format!("No Runner deck is legal in {:?}: build one under Decks", format));
+                        Outcome::Redraw
+                    }
+                }
+            }
+            Intent::Unregister => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.is_entered() && server.may_register() => Outcome::Unregister { tournament: server.tournament.clone().expect("entered in the open tournament") },
+                _ => Outcome::Nothing,
+            },
             Intent::Disconnect => self.disconnect(),
             Intent::Waiting(status) => {
                 if self.page != Page::Waiting {
@@ -543,7 +754,7 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Intent::Failed(reason) => {
-                if matches!(self.page, Page::Waiting | Page::Server | Page::MakeLobby) {
+                if matches!(self.page, Page::Waiting | Page::Server | Page::MakeLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament) {
                     self.page = self.came_from;
                 }
                 self.server = None;
@@ -635,9 +846,32 @@ impl OnlineForm {
                 }
                 Outcome::Redraw
             }
-            Intent::Standing(standing) => {
+            Intent::Standing { key, standing } => {
                 if let Some(server) = &mut self.server {
+                    server.key = key;
                     server.standing = standing;
+                }
+                Outcome::Redraw
+            }
+            Intent::Tournaments(tournaments) => {
+                if let Some(server) = &mut self.server {
+                    server.tournaments = tournaments;
+                    server.tournaments_listed = true;
+                }
+                Outcome::Redraw
+            }
+            // After making one, its page; after entering or leaving the
+            // open one, the page brought level.
+            Intent::Tournament(info) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                let format = info.format;
+                let id = info.id.clone();
+                server.put_tournament(info);
+                self.notice = None;
+                if self.page == Page::MakeTournament {
+                    server.tournament = Some(id);
+                    self.page = Page::Tournament;
+                    return Outcome::TournamentDecks(format);
                 }
                 Outcome::Redraw
             }
@@ -677,7 +911,18 @@ impl OnlineForm {
                 let password = Some(self.make.password.clone()).filter(|password| !password.is_empty());
                 Outcome::CreateLobby { name: self.make.name.clone(), format: self.make.format, closed: self.make.closed, password, casual: self.make.casual }
             }
-            Page::Home | Page::Watch | Page::Waiting | Page::Server => Outcome::Nothing,
+            Page::MakeTournament => {
+                if self.server.is_none() {
+                    return Outcome::Nothing;
+                }
+                if self.make_tournament.name.is_empty() {
+                    self.notice = Some("Give the tournament a name".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                Outcome::CreateTournament { name: self.make_tournament.name.clone(), format: self.make_tournament.format }
+            }
+            Page::Home | Page::Watch | Page::Waiting | Page::Server | Page::Tournaments | Page::Tournament => Outcome::Nothing,
         }
     }
 }
@@ -955,9 +1200,9 @@ mod tests {
             server.rating_line(server.lobby.as_ref().unwrap())
         };
         assert_eq!(line(&guest), "Rated here.", "before the server has answered");
-        guest.apply(Intent::Standing(StandingHere::Unrated));
+        guest.apply(Intent::Standing { key: None, standing: StandingHere::Unrated });
         assert_eq!(line(&guest), "Rated here. No rated games here yet.");
-        guest.apply(Intent::Standing(StandingHere::NoKey));
+        guest.apply(Intent::Standing { key: None, standing: StandingHere::NoKey });
         assert_eq!(line(&guest), "Unrated for you: this client has no key, so nothing here counts.");
         guest.apply(Intent::LobbyJoined(LobbyInfo { rated: false, permanent: false, name: "Friday".into(), ..lobby("K7M2QX", NsgFormat::Startup) }));
         assert_eq!(line(&guest), "Unrated: nothing in this lobby is rated.");
@@ -975,6 +1220,118 @@ mod tests {
     fn a_servers_own_lobby_is_named_by_its_format_alone() {
         assert_eq!(lobby_title(&lobby("startup", NsgFormat::Startup)), "Startup");
         assert_eq!(lobby_title(&LobbyInfo { name: "Friday".into(), permanent: false, ..lobby("K7M2QX", NsgFormat::Standard) }), "Friday · Standard");
+    }
+
+    fn key(byte: u8) -> PublicKey {
+        netrunner_identity::Identity::from_secret([byte; 32]).public_key()
+    }
+
+    fn tournament_info(id: &str, organizer: PublicKey, entrants: Vec<netrunner_server::protocol::Entrant>) -> TournamentInfo {
+        TournamentInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, organizer, state: TournamentState::Registering, entrants }
+    }
+
+    fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
+        let identity = netrunner_identity::Identity::from_secret([byte; 32]);
+        netrunner_server::protocol::Entrant { name: format!("p{byte}"), key: identity.public_key(), corp_hash: "c".into(), runner_hash: "r".into(), commitment: identity.sign(b"t", "{}".into()) }
+    }
+
+    /// Opening the tournaments page asks the server for the list; a row
+    /// opens its tournament and asks for the decks legal in its format;
+    /// Register sends the two chosen, and a side with no legal deck is
+    /// said rather than sent; the server's answer brings the page level;
+    /// Withdraw is offered to an entrant and sent; Back walks the pages.
+    #[test]
+    fn a_tournament_is_opened_entered_and_left_from_its_page() {
+        let mut form = attached();
+        form.apply(Intent::Standing { key: Some(key(2)), standing: StandingHere::Unrated });
+        assert_eq!(form.apply(Intent::Open(Page::Tournaments)), Outcome::ListTournaments);
+        assert_eq!(form.page, Page::Tournaments);
+        assert!(!form.server.as_ref().unwrap().tournaments_listed, "not an answer yet");
+        form.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", key(1), vec![])]));
+        assert!(form.server.as_ref().unwrap().tournaments_listed);
+        assert_eq!(form.apply(Intent::OpenTournament(1)), Outcome::Nothing, "no such row");
+        assert_eq!(form.apply(Intent::OpenTournament(0)), Outcome::TournamentDecks(NsgFormat::Startup));
+        assert_eq!(form.page, Page::Tournament);
+        assert_eq!(form.apply(Intent::Refresh), Outcome::ListTournaments, "Refresh here lists the tournaments, not the lobbies");
+
+        form.set_tournament_decks(vec![deck("brick_stack")]);
+        assert_eq!(form.apply(Intent::Register), Outcome::Redraw, "no Runner deck legal");
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("No Runner deck")));
+        form.set_tournament_decks(vec![deck("brick_stack"), deck("glyph_of_warding"), deck("stolen_goods")]);
+        assert_eq!(form.apply(Intent::SetCorpDeck(1)), Outcome::Redraw, "the tournament's own choice, not the lobby's");
+        assert_eq!(form.server.as_ref().unwrap().corp_deck, 0);
+        let Outcome::Register { tournament, corp, runner } = form.apply(Intent::Register) else { panic!("the two decks chosen") };
+        assert_eq!((tournament.as_str(), corp.id.as_str(), runner.id.as_str()), ("K7M2QX", "glyph_of_warding", "stolen_goods"));
+        assert_eq!(form.apply(Intent::Unregister), Outcome::Nothing, "not entered yet");
+
+        let entered = tournament_info("K7M2QX", key(1), vec![entrant(2)]);
+        assert_eq!(form.apply(Intent::Tournament(entered.clone())), Outcome::Redraw);
+        let server = form.server.as_ref().unwrap();
+        assert!(server.is_entered() && server.may_register());
+        assert_eq!(server.open_tournament(), Some(&entered), "the list learnt it too");
+        assert_eq!(form.apply(Intent::Unregister), Outcome::Unregister { tournament: "K7M2QX".into() });
+        form.apply(Intent::Refused("registration has closed".to_string()));
+        assert!(form.notice.is_some() && form.page == Page::Tournament, "a refusal changes nothing");
+
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Tournaments);
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Server);
+        assert_eq!(form.apply(Intent::Register), Outcome::Nothing, "only from the page");
+    }
+
+    /// A key that has none cannot register or hold one; a tournament that
+    /// has closed takes no entry; the drop-downs read the tournament's
+    /// decks afresh by id.
+    #[test]
+    fn a_keyless_client_and_a_closed_tournament_offer_no_entry() {
+        let mut form = attached();
+        form.apply(Intent::Standing { key: None, standing: StandingHere::NoKey });
+        form.apply(Intent::Open(Page::Tournaments));
+        form.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", key(1), vec![])]));
+        assert_eq!(form.apply(Intent::Open(Page::MakeTournament)), Outcome::Redraw);
+        assert!(form.page == Page::Tournaments && form.notice.as_deref().is_some_and(|notice| notice.contains("no")));
+        form.apply(Intent::OpenTournament(0));
+        form.set_tournament_decks(vec![deck("brick_stack"), deck("stolen_goods")]);
+        assert!(!form.server.as_ref().unwrap().may_register());
+        assert_eq!(form.apply(Intent::Register), Outcome::Nothing);
+
+        form.apply(Intent::Standing { key: Some(key(2)), standing: StandingHere::Unrated });
+        assert!(form.server.as_ref().unwrap().may_register());
+        form.set_tournament_decks(vec![deck("brick_stack"), deck("glyph_of_warding"), deck("stolen_goods"), deck("dashing_mad")]);
+        form.apply(Intent::SetCorpDeck(1));
+        form.apply(Intent::SetRunnerDeck(1));
+        form.set_tournament_decks(vec![deck("fine_print"), deck("glyph_of_warding"), deck("dashing_mad")]);
+        let server = form.server.as_ref().unwrap();
+        assert_eq!((server.tournament_chosen(Side::Corp).unwrap().id.as_str(), server.tournament_chosen(Side::Runner).unwrap().id.as_str()), ("glyph_of_warding", "dashing_mad"));
+    }
+
+    /// A tournament is held from its form — a name, the format of the
+    /// lobby the person is in — and the server's answer opens its page,
+    /// asking for its format's decks.
+    #[test]
+    fn a_tournament_is_held_from_its_form_and_its_page_opens() {
+        let mut form = attached();
+        form.apply(Intent::Standing { key: Some(key(1)), standing: StandingHere::Unrated });
+        form.apply(Intent::JoinLobby(1));
+        form.apply(Intent::LobbyJoined(lobby("standard", NsgFormat::Standard)));
+        form.apply(Intent::Open(Page::Tournaments));
+        assert_eq!(form.apply(Intent::Open(Page::MakeTournament)), Outcome::Redraw);
+        assert_eq!((form.page, form.make_tournament.format), (Page::MakeTournament, NsgFormat::Standard));
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw, "a tournament needs a name");
+        form.apply(Intent::Typed(Field::TournamentName, " Friday ".to_string()));
+        form.apply(Intent::SetFormat(NsgFormat::Startup));
+        assert_eq!(form.format, NsgFormat::Startup, "Host's format is untouched");
+        assert_eq!(form.apply(Intent::Go), Outcome::CreateTournament { name: "Friday".into(), format: NsgFormat::Startup });
+        let made = tournament_info("K7M2QX", key(1), vec![]);
+        assert_eq!(form.apply(Intent::Tournament(made.clone())), Outcome::TournamentDecks(NsgFormat::Startup));
+        let server = form.server.as_ref().unwrap();
+        assert_eq!((form.page, server.open_tournament()), (Page::Tournament, Some(&made)));
+        assert!(!server.is_entered() && server.may_register());
+        form.apply(Intent::Back);
+        form.apply(Intent::Open(Page::MakeTournament));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Tournaments);
     }
 
     /// Back from the board the Server page is up, still attached; after a
