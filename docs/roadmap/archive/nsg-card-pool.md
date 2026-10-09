@@ -10175,3 +10175,36 @@ new `Effect`, and a Sweep deck.
   suffered with a Net Shield installed and nobody asked.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 792 card files.
+
+#### Stage 11s — the next encounter, and whether it was fully broken (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Chum (Core Set has 112 of 113 built).
+
+- **"The next piece of ice the Runner encounters during this run gets +2
+  strength."** A delayed ability on the next `OnEncounter` for the rest of
+  the run (`LaterThisTurn`, `this_run`), which makes the encountered ice
+  2 stronger for that encounter.
+- **"When that encounter ends, if the Runner did not fully break that
+  ice, do 3 net damage."** A second delayed ability, made as the next
+  encounter begins, on `OnEncounterEnded`. The end now says whether the
+  ice was fully broken (`GameEvent::EncounterEnded::fully_broken`, CR
+  6.5.7b), because the run's flag is reset as the next encounter begins
+  and the run may be over, and a new `EffectRequirement::
+  IceFullyBrokenThatEncounter` reads it, under a `Not`.
+- **A run that ends in an encounter ends that encounter too (CR 6.1.4),
+  and the end is heard after the run is gone** (`ability::end_the_run`,
+  a jack-out paid as a cost). `run::end_run` dropped every "this run"
+  delayed ability first, so an Ice Wall that ended the run after Chum's
+  subroutine did no damage. A once-only one waiting for the end of the
+  encounter the run ends in now stays for that one hearing, which spends
+  it.
+- **A Thousand Cuts**, a Sweep deck, takes two for its two Tributary, a
+  code gate for a code gate; Open Book and Second Site keep Tributary.
+- **Tests.** After Chum's subroutine, Ice Wall inside it is at strength
+  3; left unbroken, it ends the run and the Runner takes 3 net damage;
+  pumped to and fully broken by Corroder, no damage. An engine test's
+  ice with no subroutines now ends its encounter fully broken.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 793 card files.

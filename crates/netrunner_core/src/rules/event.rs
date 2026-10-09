@@ -123,6 +123,14 @@ pub enum GameEvent {
         install: crate::rules::state::InstallId,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         broken_with: Vec<crate::rules::state::InstallId>,
+        /// Whether the Runner fully broke the ice during the encounter
+        /// (`RunState::fully_broken`, CR 6.5.7b) — Chum's "if the Runner did
+        /// not fully break that ice" (`EffectRequirement::
+        /// IceFullyBrokenThatEncounter`). Carried for the reason
+        /// `broken_with` is: the run's flag is the next encounter's by the
+        /// time anybody hears this one end.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fully_broken: bool,
     },
     /// `card`, `side`'s, is shown to both players and goes back to where it
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
