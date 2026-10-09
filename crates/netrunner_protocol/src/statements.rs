@@ -60,6 +60,99 @@ pub struct SeatStatement {
     pub deck_hash: String,
     /// Unix seconds.
     pub started_at: u64,
+    /// For a tournament table's game, the seat's half of the shuffle
+    /// (Phase 4 §7 stage 6c): the table, the commitment to the server's
+    /// secret the player saw before sitting, and the nonce the player sat
+    /// with. `None` for a game outside a tournament. The player's
+    /// signature over it is what keeps a server from swapping the nonce
+    /// or the commitment after the fact: the reveal must agree with it.
+    pub table: Option<TableSeat>,
+}
+
+/// A tournament seat's terms for the game's seed: which table, the
+/// commitment the player saw, and the nonce the player brought.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableSeat {
+    pub tournament: String,
+    /// Into the tournament's rounds, from 0.
+    pub round: usize,
+    /// Into the round's tables, from 0.
+    pub table: usize,
+    pub seed_commitment: String,
+    pub nonce: String,
+}
+
+/// The tag every seed hash is taken under, so neither hash can be
+/// mistaken for any other SHA-256 in the protocol.
+const SEED_DOMAIN: &str = "netrunner-seed-v1";
+
+/// The longest nonce a seat may bring, and the only characters it may
+/// hold: the hash below separates its parts with newlines, so a nonce
+/// that held one could be read two ways.
+pub const MAX_NONCE: usize = 64;
+
+/// Whether `nonce` is one a seat may bring: 1 to `MAX_NONCE` ASCII
+/// letters and digits.
+pub fn nonce_is_valid(nonce: &str) -> bool {
+    (1..=MAX_NONCE).contains(&nonce.len()) && nonce.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
+/// What the server publishes when a round is paired, for each table: a
+/// hash of a secret it holds (Phase 4 §7 stage 6c). Published before
+/// either player brings a nonce, so the secret cannot be chosen to suit
+/// them; revealed with the result, so anyone can check it was the one.
+pub fn seed_commitment(secret: &str) -> String {
+    sha256_hex(format!("{SEED_DOMAIN}\ncommit\n{secret}").as_bytes())
+}
+
+/// A tournament game's seed: the server's secret and both players'
+/// nonces, hashed together, the first eight bytes read as a number. No
+/// one of the three chooses it: the server fixed its secret before the
+/// nonces existed, and each player chose theirs knowing only the
+/// secret's hash.
+pub fn table_seed(secret: &str, corp_nonce: &str, runner_nonce: &str) -> u64 {
+    let hash = sha256_hex(format!("{SEED_DOMAIN}\nseed\n{secret}\n{corp_nonce}\n{runner_nonce}").as_bytes());
+    u64::from_str_radix(&hash[..16], 16).expect("a SHA-256 is hex")
+}
+
+/// One table's seed as a tournament publishes it: the commitment from
+/// the moment the round was paired, and — once the table has a result —
+/// the reveal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableSeed {
+    /// Into the tournament's rounds, from 0.
+    pub round: usize,
+    /// Into the round's tables, from 0.
+    pub table: usize,
+    pub commitment: String,
+    pub reveal: Option<SeedReveal>,
+}
+
+/// The server's secret, revealed with a table's result, and the two
+/// nonces its game was seeded with — `None` for a table whose game never
+/// started (a no-show recorded, a forfeit, a draw agreed at the table).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedReveal {
+    pub secret: String,
+    pub corp_nonce: Option<String>,
+    pub runner_nonce: Option<String>,
+}
+
+impl TableSeed {
+    /// Checks the reveal against the commitment: `Ok(Some(seed))` for a
+    /// game that was played, the seed it must have been dealt from;
+    /// `Ok(None)` for one never revealed, or revealed with no game;
+    /// `Err` when the secret is not the one committed to.
+    pub fn check(&self) -> Result<Option<u64>, String> {
+        let Some(reveal) = &self.reveal else { return Ok(None) };
+        if seed_commitment(&reveal.secret) != self.commitment {
+            return Err("the revealed secret is not the one the server committed to".to_string());
+        }
+        Ok(match (&reveal.corp_nonce, &reveal.runner_nonce) {
+            (Some(corp), Some(runner)) => Some(table_seed(&reveal.secret, corp, runner)),
+            _ => None,
+        })
+    }
 }
 
 /// The hash a seat commitment names a deck by: SHA-256 of a salt and the
@@ -118,6 +211,11 @@ pub struct Receipt {
     pub ended_at: u64,
     /// Reserved for a per-action hash chain; always `None` today.
     pub action_chain: Option<String>,
+    /// A tournament table's game: its seed's commitment and reveal, so
+    /// the record this receipt hashes can be checked to have been dealt
+    /// from the seed the three parties made (`TableSeed::check` against
+    /// the record header's `seed`). `None` outside a tournament.
+    pub table: Option<TableSeed>,
 }
 
 /// One seat as a receipt names it.
@@ -149,6 +247,25 @@ impl Receipt {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The commitment holds only for its secret; the seed moves with each
+    /// of the three parts; a reveal with no game has no seed to check.
+    #[test]
+    fn a_table_seed_is_made_by_all_three_and_checked_against_the_commitment() {
+        let commitment = seed_commitment("secret");
+        let mut seed = TableSeed { round: 0, table: 0, commitment: commitment.clone(), reveal: None };
+        assert_eq!(seed.check(), Ok(None), "nothing revealed yet");
+        seed.reveal = Some(SeedReveal { secret: "secret".into(), corp_nonce: Some("a1".into()), runner_nonce: Some("b2".into()) });
+        assert_eq!(seed.check(), Ok(Some(table_seed("secret", "a1", "b2"))));
+        let made = table_seed("secret", "a1", "b2");
+        assert!(made != table_seed("secret2", "a1", "b2") && made != table_seed("secret", "a2", "b2") && made != table_seed("secret", "a1", "b3"));
+        assert_ne!(made, table_seed("secret", "b2", "a1"), "the chairs are not interchangeable");
+        seed.reveal = Some(SeedReveal { secret: "other".into(), corp_nonce: Some("a1".into()), runner_nonce: Some("b2".into()) });
+        assert!(seed.check().is_err(), "a secret other than the committed one");
+        seed.reveal = Some(SeedReveal { secret: "secret".into(), corp_nonce: None, runner_nonce: None });
+        assert_eq!(seed.check(), Ok(None), "a table nobody played");
+        assert!(nonce_is_valid("abc123") && !nonce_is_valid("") && !nonce_is_valid("a\nb") && !nonce_is_valid(&"a".repeat(MAX_NONCE + 1)));
+    }
 
     #[test]
     fn a_deck_hash_depends_on_the_salt_and_the_list_and_not_its_order() {

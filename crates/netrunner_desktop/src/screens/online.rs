@@ -566,7 +566,7 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::CreateTournament { name, format } => connected.attached.create_tournament(name, format),
         Outcome::Register { tournament, corp, runner } => connected.attached.register(tournament, *corp, *runner),
         Outcome::Unregister { tournament } => connected.attached.unregister(tournament),
-        Outcome::Sit { tournament } => connected.attached.sit(tournament),
+        Outcome::Sit { tournament, seed_commitment } => connected.attached.sit(tournament, seed_commitment),
         Outcome::BeginRound { tournament } => connected.attached.begin_round(tournament),
         Outcome::FinishTournament { tournament } => connected.attached.finish_tournament(tournament),
         Outcome::RecordResult { tournament, table, outcome } => connected.attached.record_result(tournament, table, outcome),
@@ -1264,6 +1264,11 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
             section(parent, theme, if info.state == TournamentState::Finished { "Final standings" } else { "Standings" }, |section| {
                 for (index, standing) in info.standings().iter().enumerate() {
                     section.spawn(widgets::label(theme, tournament::standing_row(info, index + 1, standing)));
+                }
+                // Whether every secret the server revealed is the one it
+                // committed to (Phase 4 §7 stage 6c).
+                if let Some(line) = tournament::seeds_line(info) {
+                    section.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
             });
             if let Some(current) = info.current_round() {

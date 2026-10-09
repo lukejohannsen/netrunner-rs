@@ -138,6 +138,9 @@ pub struct Attached {
 enum Command {
     Send(ClientMessage),
     Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile>, salt: String },
+    /// A seat at a tournament table: the driver makes the nonce and finds
+    /// the kept registration before the machine sends it.
+    Sit { tournament: String, seed_commitment: String },
 }
 
 impl Attached {
@@ -231,8 +234,11 @@ impl Attached {
 
     /// Take the seat at this round's table: `Queued` until the opponent
     /// sits, then `Joined`; `cancel_seek` stands up again.
-    pub fn sit(&self, tournament: String) {
-        self.send(ClientMessage::Sit { tournament });
+    /// `seed_commitment` is the table's as the page read it
+    /// (`tournament::my_seed_commitment`); the nonce is made here, the
+    /// player's half of the game's seed (Phase 4 §7 stage 6c).
+    pub fn sit(&self, tournament: String, seed_commitment: String) {
+        let _ = self.commands.send(Command::Sit { tournament, seed_commitment });
     }
 
     /// The organizer records a table's result where no game decided it.
@@ -656,6 +662,14 @@ async fn drive(
                             let _ = events.send(AttachedEvent::TournamentRefused("this client has no key to sign a registration with".to_string()));
                         }
                     }
+                }
+                // The nonce is made here, as the salt is; the registration
+                // is read back from the file the salt was kept in, so the
+                // machine can hold the seat statement to the deck locked.
+                Some(Command::Sit { tournament, seed_commitment }) => {
+                    let nonce = format!("{:032x}", rand::random::<u128>());
+                    let registration = kept.registrations.as_deref().and_then(|path| crate::identity::registration_for(path, &tournament)).map(|kept| kept.statement);
+                    conn.sit(tournament, seed_commitment, nonce, registration);
                 }
                 None => commands_open = false,
             },

@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use netrunner_identity::Identity;
 /// Re-exported for the two clients, which name a key only to say whose a
 /// tournament entry is and never depend on the identity crate themselves.
-pub use netrunner_identity::PublicKey;
+pub use netrunner_identity::{PublicKey, Signed};
 
 /// Overrides the directory both files live in — for a test, a second
 /// profile on one machine, or a dev hook that must not touch the
@@ -232,6 +232,15 @@ pub struct Registration {
     /// The decks' ids (`DeckFile::id`).
     pub corp: String,
     pub runner: String,
+}
+
+/// The last registration kept for `tournament` (its code, read as typed
+/// either way): the one a seat at its table is checked against (Phase 4
+/// §7 stage 6c). A line that does not parse is skipped, and a file that
+/// cannot be read is none.
+pub fn registration_for(path: &Path, tournament: &str) -> Option<Registration> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().rev().filter_map(|line| serde_json::from_str::<Registration>(line).ok()).find(|kept| kept.statement.tournament.eq_ignore_ascii_case(tournament))
 }
 
 /// Appends `registration` to the registrations file, as `keep_receipt`

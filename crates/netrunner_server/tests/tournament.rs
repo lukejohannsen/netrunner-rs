@@ -256,6 +256,36 @@ async fn next_tournament(socket: &mut Socket) -> TournamentInfo {
     }
 }
 
+/// Sits `socket` (whose key is `key`) at its table in `tournament`, with
+/// the table's seed commitment as a second, unproved socket reads it — so
+/// no push this test is waiting for is taken — and a nonce of its own. A
+/// key with no table this round sits with a commitment that is no
+/// table's, which the server refuses for the reason that comes first.
+async fn sit(url: &str, socket: &mut Socket, tournament: &str, key: &PublicKey) {
+    send(socket, sit_message(&read(url, tournament).await, key)).await;
+}
+
+/// The `Sit` this key would send at its table in `info`.
+fn sit_message(info: &TournamentInfo, key: &PublicKey) -> ClientMessage {
+    let commitment = info
+        .current_round()
+        .and_then(|round| round.table_of(key))
+        .and_then(|(table, _)| info.seeds.iter().find(|seed| seed.round == info.rounds.len() - 1 && seed.table == table))
+        .map_or_else(|| "none".to_string(), |seed| seed.commitment.clone());
+    ClientMessage::Sit { tournament: info.id.clone(), seed_commitment: commitment, nonce: format!("nonce{}", key.fingerprint().chars().filter(char::is_ascii_alphanumeric).collect::<String>()) }
+}
+
+/// Tournament `id` as the server lists it now, read over a socket of its own.
+async fn read(url: &str, id: &str) -> TournamentInfo {
+    let mut reader = attach(url, None, "reader").await;
+    send(&mut reader, ClientMessage::ListTournaments).await;
+    loop {
+        if let ServerMessage::Tournaments { tournaments } = next(&mut reader).await {
+            return tournaments.into_iter().find(|info| info.id == id).expect("the tournament is listed");
+        }
+    }
+}
+
 /// The seat the socket is given: its side and its own deck's id.
 async fn next_joined(socket: &mut Socket) -> (Side, String) {
     loop {
@@ -332,17 +362,17 @@ async fn rounds_are_paired_played_recorded_and_kept() {
     let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
     let table = first.rounds[0].tables[0].clone();
     let (corp_at, runner_at) = (index_of(&table.corp), index_of(&table.runner));
-    send(&mut sockets[index_of(&bye)], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[index_of(&bye)], &made.id, &keys[index_of(&bye)]).await;
     let reason = seek_refused(&mut sockets[index_of(&bye)]).await;
     assert!(reason.contains("no table"), "{reason}");
-    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner_at], &made.id, &keys[runner_at]).await;
     assert!(matches!(next(&mut sockets[runner_at]).await, ServerMessage::Queued { position: 1, .. }));
-    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner_at], &made.id, &keys[runner_at]).await;
     { let reason = seek_refused(&mut sockets[runner_at]).await; assert!(reason.contains("cancel first"), "{reason}"); }
     // The organizer can neither begin the next round nor record over a
     // waiting seat's table without standing it up — recording does
     // that, so it is tried only on the next round; here, the game.
-    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
     assert_eq!(next_joined(&mut sockets[corp_at]).await, (Side::Corp, "brick_stack".to_string()));
     assert_eq!(next_joined(&mut sockets[runner_at]).await, (Side::Runner, "dashing_mad".to_string()));
     send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
@@ -379,7 +409,7 @@ async fn rounds_are_paired_played_recorded_and_kept() {
     assert_eq!(recorded.rounds[1].tables[0].result, Some(Outcome::Tie));
     send(&mut sockets[0], ClientMessage::RecordResult { tournament: made.id.clone(), table: 0, outcome: Outcome::CorpWon }).await;
     { let reason = refused(&mut sockets[0]).await; assert!(reason.contains("has its result"), "{reason}"); }
-    send(&mut sockets[index_of(&bye)], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[index_of(&bye)], &made.id, &keys[index_of(&bye)]).await;
     let reason = seek_refused(&mut sockets[index_of(&bye)]).await;
     assert!(reason.contains("has its result"), "round 1's bye is at round 2's recorded table: {reason}");
 
@@ -393,7 +423,7 @@ async fn rounds_are_paired_played_recorded_and_kept() {
     assert!(standings.iter().find(|row| row.key == table.runner).is_some_and(|row| row.runner_games == 1 && row.corp_games + row.runner_games == 2 || row.rounds_played() == 2));
     send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
     { let reason = refused(&mut sockets[0]).await; assert!(reason.contains("over"), "{reason}"); }
-    send(&mut sockets[index_of(&table.runner)], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[index_of(&table.runner)], &made.id, &keys[index_of(&table.runner)]).await;
     let reason = seek_refused(&mut sockets[index_of(&table.runner)]).await;
     assert!(reason.contains("no round"), "{reason}");
     let _ = Role::Corp;
@@ -444,7 +474,7 @@ async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
 
     // The Runner sits and waits; the Corp drops: the table is the
     // Runner's, who is stood up and told, and everyone sees the drop.
-    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner_at], &made.id, &keys[runner_at]).await;
     assert!(matches!(next(&mut sockets[runner_at]).await, ServerMessage::Queued { position: 1, .. }));
     send(&mut sockets[corp_at], ClientMessage::Unregister { tournament: made.id.clone() }).await;
     let dropped = next_tournament(&mut sockets[corp_at]).await;
@@ -466,7 +496,7 @@ async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
     assert_eq!(next_tournament(&mut sockets[index_of(&bye)]).await, dropped);
     send(&mut sockets[corp_at], ClientMessage::Unregister { tournament: made.id.clone() }).await;
     { let reason = refused(&mut sockets[corp_at]).await; assert!(reason.contains("dropped already"), "{reason}"); }
-    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
     { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("has its result"), "{reason}"); }
 
     // Round 2 pairs the two left, with no bye, and the drop at no table.
@@ -479,16 +509,16 @@ async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
     for socket in sockets.iter_mut().skip(1) {
         assert_eq!(next_tournament(socket).await, second, "the drop is told too: still an entrant");
     }
-    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
     { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("no table"), "{reason}"); }
 
     // Both sit; a drop with the game under way is refused; the loser
     // concedes, then drops, after which nobody is left to pair and the
     // organizer ends it with the drops in the final standings.
     let (corp2, runner2) = (index_of(&rematch.corp), index_of(&rematch.runner));
-    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp2], &made.id, &keys[corp2]).await;
     assert!(matches!(next(&mut sockets[corp2]).await, ServerMessage::Queued { .. }));
-    send(&mut sockets[runner2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner2], &made.id, &keys[runner2]).await;
     next_joined(&mut sockets[runner2]).await;
     next_joined(&mut sockets[corp2]).await;
     send(&mut sockets[runner2], ClientMessage::Unregister { tournament: made.id.clone() }).await;
@@ -567,7 +597,7 @@ async fn an_intentional_draw_is_offered_by_both_players() {
     assert_eq!(offered.draw_offers, vec![DrawOffer { table: 0, by: table.corp }]);
     assert_eq!(offered.rounds[0].tables[0].result, None, "one offer is not a draw");
     assert_eq!(next_tournament(&mut sockets[runner_at]).await, offered);
-    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
     assert!(matches!(next(&mut sockets[corp_at]).await, ServerMessage::Queued { .. }));
     send(&mut sockets[corp_at], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
     { let reason = refused(&mut sockets[corp_at]).await; assert!(reason.contains("offered a draw already"), "{reason}"); }
@@ -598,9 +628,9 @@ async fn an_intentional_draw_is_offered_by_both_players() {
     send(&mut sockets[corp2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
     assert_eq!(next_tournament(&mut sockets[corp2]).await.draw_offers.len(), 1);
     next_tournament(&mut sockets[runner2]).await;
-    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp2], &made.id, &keys[corp2]).await;
     assert!(matches!(next(&mut sockets[corp2]).await, ServerMessage::Queued { .. }));
-    send(&mut sockets[runner2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner2], &made.id, &keys[runner2]).await;
     next_joined(&mut sockets[runner2]).await;
     next_joined(&mut sockets[corp2]).await;
     send(&mut sockets[runner2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
@@ -651,9 +681,9 @@ async fn time_is_called_on_a_round() {
 
     // Both sit at once; time is called on the game two seconds in, and
     // both seats are told the turn it fell in.
-    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
     assert!(matches!(next(&mut sockets[corp_at]).await, ServerMessage::Queued { .. }));
-    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[runner_at], &made.id, &keys[runner_at]).await;
     next_joined(&mut sockets[runner_at]).await;
     next_joined(&mut sockets[corp_at]).await;
     for index in [corp_at, runner_at] {
@@ -691,7 +721,7 @@ async fn time_is_called_on_a_round() {
     assert!(second.clock.is_some_and(|clock| clock.began_at >= clock.began_at), "a fresh clock");
     tokio::time::sleep(RoundLength::from_millis(2500)).await;
     let (corp2, runner2) = (index_of(&second.rounds[1].tables[0].corp), index_of(&second.rounds[1].tables[0].runner));
-    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    sit(&url, &mut sockets[corp2], &made.id, &keys[corp2]).await;
     { let reason = seek_refused(&mut sockets[corp2]).await; assert!(reason.contains("time is called"), "{reason}"); }
     send(&mut sockets[runner2], ClientMessage::OfferDraw { tournament: made.id.clone() }).await;
     { let reason = refused(&mut sockets[runner2]).await; assert!(reason.contains("five minutes"), "{reason}"); }
@@ -699,4 +729,110 @@ async fn time_is_called_on_a_round() {
     let recorded = next_tournament(&mut sockets[0]).await;
     assert!(recorded.rounds[1].complete());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The seed commit-reveal (Phase 4 §7 stage 6c): every table's secret is
+/// committed to as the round is paired and kept back; a seat with another
+/// commitment, or a nonce that is not letters and digits, is refused; the
+/// game is dealt from the seed the secret and both nonces make, which the
+/// result reveals — and the record the server kept was dealt from it, as
+/// its signed receipt says; a table nobody played reveals its secret with
+/// no nonces.
+#[tokio::test]
+async fn a_table_is_shuffled_from_a_seed_no_one_party_chose() {
+    let dir = scratch("seed");
+    let (url, server_key) = start(Some(dir.clone())).await;
+    let people = [player(1), player(2), player(3), player(4)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo", "cy", "di"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "Seeds").await;
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+        next_tournament(&mut sockets[index]).await;
+    }
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = loop {
+        let info = next_tournament(&mut sockets[0]).await;
+        if info.state == (TournamentState::Playing { round: 1 }) {
+            break info;
+        }
+    };
+    assert_eq!(first.seeds.len(), 2, "a commitment for each table");
+    assert!(first.seeds.iter().all(|seed| seed.reveal.is_none()), "no secret leaves the server before the result");
+    assert_ne!(first.seeds[0].commitment, first.seeds[1].commitment);
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    let played = first.rounds[0].tables[0].clone();
+    let (corp_at, runner_at) = (index_of(&played.corp), index_of(&played.runner));
+
+    // Another table's commitment, and a nonce with a space in it.
+    let mut wrong = sit_message(&first, &keys[corp_at]);
+    if let ClientMessage::Sit { seed_commitment, .. } = &mut wrong {
+        *seed_commitment = first.seeds[1].commitment.clone();
+    }
+    send(&mut sockets[corp_at], wrong).await;
+    { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("not this table's seed commitment"), "{reason}"); }
+    let mut spaced = sit_message(&first, &keys[corp_at]);
+    if let ClientMessage::Sit { nonce, .. } = &mut spaced {
+        *nonce = "two words".into();
+    }
+    send(&mut sockets[corp_at], spaced).await;
+    { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("letters and digits"), "{reason}"); }
+
+    // Table 1 is played and conceded; table 2 is recorded unplayed.
+    sit(&url, &mut sockets[corp_at], &made.id, &keys[corp_at]).await;
+    assert!(matches!(next(&mut sockets[corp_at]).await, ServerMessage::Queued { .. }));
+    sit(&url, &mut sockets[runner_at], &made.id, &keys[runner_at]).await;
+    let match_id = loop {
+        if let ServerMessage::MatchJoined { match_id, .. } = next(&mut sockets[runner_at]).await {
+            break match_id;
+        }
+    };
+    send(&mut sockets[corp_at], ClientMessage::Surrender).await;
+    send(&mut sockets[0], ClientMessage::RecordResult { tournament: made.id.clone(), table: 1, outcome: Outcome::Tie }).await;
+    let done = loop {
+        let info = read(&url, &made.id).await;
+        if info.rounds[0].complete() {
+            break info;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    };
+    let seed = done.seeds[0].check().expect("the secret is the committed one").expect("a game was dealt");
+    let reveal = done.seeds[0].reveal.clone().unwrap();
+    let nonce_of = |key: &PublicKey| match sit_message(&first, key) {
+        ClientMessage::Sit { nonce, .. } => nonce,
+        _ => unreachable!(),
+    };
+    assert_eq!((reveal.corp_nonce.as_deref(), reveal.runner_nonce.as_deref()), (Some(nonce_of(&played.corp).as_str()), Some(nonce_of(&played.runner).as_str())), "each chair's own nonce");
+    assert_eq!(done.seeds[1].check(), Ok(None), "the unplayed table: its secret, and no game to check");
+    assert!(done.seeds[1].reveal.as_ref().is_some_and(|reveal| reveal.corp_nonce.is_none()));
+
+    // The record the server kept was dealt from that seed, and its signed
+    // receipt says so.
+    let found = walk(&dir.join("matches")).into_iter().find(|path| path.to_string_lossy().ends_with(&format!("{match_id}.receipt.json"))).expect("the receipt is kept");
+    let signed: netrunner_identity::Signed = serde_json::from_str(&std::fs::read_to_string(&found).unwrap()).unwrap();
+    let receipt = netrunner_server::protocol::statements::Receipt::read(&signed, &server_key).expect("the server signed it");
+    assert_eq!(receipt.table.as_ref().map(|table| table.check()), Some(Ok(Some(seed))));
+    let record = std::fs::read(found.to_string_lossy().replace(".receipt.json", ".jsonl")).unwrap();
+    assert_eq!(netrunner_identity::sha256_hex(&record), receipt.record);
+    let header: serde_json::Value = serde_json::from_slice(record.split(|&byte| byte == b'\n').next().unwrap()).unwrap();
+    assert_eq!(header["seed"].as_u64(), Some(seed), "dealt from the seed the three made");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(walk(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
 }

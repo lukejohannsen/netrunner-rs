@@ -188,11 +188,16 @@ pub enum ClientMessage {
     FinishTournament { tournament: String },
     /// Take the seat at this round's table: the game starts when the
     /// opponent sits too, dealt from the two registered lists on the
-    /// sides the pairing gave. Answered with `Queued` while the opponent
+    /// sides the pairing gave, and shuffled from a seed no one party
+    /// chose (Phase 4 §7 stage 6c): `seed_commitment` is the table's, as
+    /// the player read it in `TournamentInfo::seeds` — refused if it is
+    /// not the server's — and `nonce` is the player's half
+    /// (`statements::nonce_is_valid`), told to nobody until the table's
+    /// result reveals it with the server's secret. Answered with `Queued` while the opponent
     /// is awaited — `CancelSeek` stands up again — then `MatchJoined`; or
     /// `SeekRefused` for a key with no table this round, a table already
     /// played or playing, or a connection already looking or playing.
-    Sit { tournament: String },
+    Sit { tournament: String, seed_commitment: String, nonce: String },
     /// The organizer records a result for a table of the current round
     /// that has none and no game under way — a no-show, or a result the
     /// players agreed at the table (2.5.8). The organizer has the final
@@ -476,6 +481,11 @@ pub struct TournamentInfo {
     /// yet answered (`ClientMessage::OfferDraw`); the second offer at a
     /// table is the tie, and empties it. Nothing from an earlier round.
     pub draw_offers: Vec<DrawOffer>,
+    /// Every table's seed so far (Phase 4 §7 stage 6c): the commitment to
+    /// the server's secret, published as the round is paired, and the
+    /// secret and both nonces once the table has a result. In round
+    /// order, then table order.
+    pub seeds: Vec<statements::TableSeed>,
     /// The current round's clock (Organized Play Policies 1.1.5.2: forty
     /// minutes for single-sided Swiss, the daemon's `--round-minutes`),
     /// set when the round begins. `None` while registering and after

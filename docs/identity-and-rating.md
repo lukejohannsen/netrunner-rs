@@ -117,9 +117,15 @@ The server is the rating authority. The question signatures answer is narrower:
 *can a player deny a game, and can a server invent one?*
 
 - **At `MatchJoined`, each identified player signs a seat commitment:**
-  `{ match_id, server_key, side, own_key, opponent_key, deck_hash, started_at }`
-  under the tag `netrunner-seat-v1`. A player cannot later deny having sat the
-  game, and a server cannot attribute a game to a key that never sat it.
+  `{ match_id, server_key, side, own_key, opponent_key, deck_hash, started_at,
+  table }` under the tag `netrunner-seat-v1`. A player cannot later deny having
+  sat the game, and a server cannot attribute a game to a key that never sat
+  it. `table` is a tournament table's seat (Phase 4 §7 stage 6c): the table,
+  the commitment to the server's secret the player read before sitting and
+  the nonce the player sat with — the seed is
+  `H(secret ‖ corp nonce ‖ runner nonce)`, and the player's signature is what
+  keeps the server from swapping either half after the fact. A table seat's
+  `deck_hash` is the one it registered, under the registration's salt.
 - **At the end, the server keeps the record it already has** — the header and
   the JSON-Lines history — and adds a footer:
   `{ match_id, corp_key, runner_key, both seat commitments, winner,
