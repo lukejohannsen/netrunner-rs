@@ -1,0 +1,125 @@
+{
+  "id": "cold_reading",
+  "name": "Cold Reading",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Steve Cambridge: Master Grifter, System Update 2021's Criminal identity, who on the first successful run on HQ each turn chooses 2 cards in the heap, the Corp removes 1 from the game and the Runner takes the other. On Hit List's frame after Tranche 8 Stage 11l, its identity swapped, a Criminal for a Criminal at the same fifteen influence; Hit List runs HQ every turn for Gabriel Santiago, and its events fill the heap Steve draws on. Tranche 8 Stage 11v.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "steve_cambridge_master_grifter",
+  "cards": [
+    {
+      "card": "wake_implant_v2a_jrj",
+      "count": 2
+    },
+    {
+      "card": "poison_vial",
+      "count": 2
+    },
+    {
+      "card": "tremolo",
+      "count": 2
+    },
+    {
+      "card": "jeitinho",
+      "count": 3
+    },
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "laser_pointer",
+      "count": 2
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "inside_job",
+      "count": 2
+    },
+    {
+      "card": "asmund_pudlat",
+      "count": 2
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "pan_weave",
+      "count": 2
+    },
+    {
+      "card": "no_free_lunch",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "cats_cradle",
+      "count": 2
+    },
+    {
+      "card": "penumbral_toolkit",
+      "count": 2
+    },
+    {
+      "card": "networking",
+      "count": 2
+    },
+    {
+      "card": "swift",
+      "count": 1
+    },
+    {
+      "card": "the_back",
+      "count": 1
+    },
+    {
+      "card": "prognostic_q_loop",
+      "count": 1
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "desperado",
+      "count": 1
+    },
+    {
+      "card": "easy_mark",
+      "count": 1
+    },
+    {
+      "card": "special_order",
+      "count": 1
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "data_dealer",
+      "count": 2
+    }
+  ]
+}

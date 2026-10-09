@@ -27,9 +27,14 @@ pub enum CardZoneRef {
     /// those 2 cards", chosen from what it set aside. Faceup, so a
     /// selection over it shows nothing new.
     OwnSetAside,
-    /// The Corp's cards in the set-aside zone (`CorpState::set_aside`, CR
-    /// 4.8), named from the Runner's side — Deep Dive's "Access 1 of those
-    /// cards" and "the Corp shuffles the set-aside cards into R&D". Faceup.
+    /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
+    /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
+    /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
+    /// into R&D" — and the Runner's (`RunnerState::set_aside`) from the
+    /// Corp's — Steve Cambridge's "the Corp removes 1 of those cards from
+    /// the game", out of the 2 the Runner chose and set aside for it.
+    /// Faceup. The other side's, as every `Opponent…` zone is: it was the
+    /// Corp's from either chair while Deep Dive was the only card.
     OpponentSetAside,
     /// The opposing side's installed cards (Corp's `installed` if the
     /// chooser is Runner, or the Runner's `rig` if the chooser is Corp).

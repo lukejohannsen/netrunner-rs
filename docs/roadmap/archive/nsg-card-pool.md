@@ -10270,3 +10270,34 @@ new `Effect`.
   unrezzed Enigma on R&D is not offered.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 795 card files.
+
+#### Stage 11v — the Corp chooses among the Runner's set-aside cards (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from System Update 2021, with no
+new `Effect`.
+- **Card:** Steve Cambridge: Master Grifter (System Update 2021 has 81 of
+  82 built; Ayla "Bios" Rahim remains).
+
+- **"The first time each turn you make a successful run on HQ, you may
+  choose 2 cards in your heap."** `OnSuccessfulRun` with `when: Server
+  [Hq]` and `first_each_turn`; the "may" is a `PresentChoice` with a
+  declined option, offered only with 2 cards in the heap.
+- **"If you do, the Corp removes 1 of those cards from the game, then you
+  add the other card to your grip."** The 2 chosen are set aside
+  (`OwnSetAside`, faceup and public, CR 4.8), the Corp chooses 1 of them to
+  remove from the game, and the Runner takes what is left into the grip.
+  `CardZoneRef::OpponentSetAside` was the Corp's set-aside zone from either
+  chair, because Deep Dive was its only card; it is now the other player's,
+  as every `Opponent…` zone is, so the Corp names the Runner's. Choosing
+  out of the heap by `AmongCards` instead would have needed a placeholder
+  for "those cards" written over by a selection, which nothing writes
+  today.
+- **Cold Reading**, a new Sweep deck: Hit List's frame with Steve
+  Cambridge for Gabriel Santiago, a Criminal for a Criminal at fifteen
+  influence; Hit List runs HQ every turn, and its events fill the heap.
+  Eternal only, as Hit List is.
+- **Tests.** The first success on HQ asks; declined, nothing moves;
+  accepted, 2 of 3 heap cards are set aside, the Corp removes Corroder,
+  Sure Gamble reaches the grip, and a second success on HQ asks nothing.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 796 card files.
