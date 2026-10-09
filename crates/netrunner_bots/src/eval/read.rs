@@ -733,6 +733,10 @@ pub(super) struct Income {
     /// places), and the clicks that use costs.
     pub click_credits: u32,
     pub click_cost: u32,
+    /// Hosted counters one use of the click ability removes as its cost
+    /// (Dr. Nuka Vrolyck's "[click], hosted power counter: Draw 3 cards"),
+    /// which bound the uses as the stock does; zero when it removes none.
+    pub click_counters: u32,
     /// The click ability trashes the card: one use, not one a turn.
     pub click_trashes: bool,
     /// The click ability places the credits on the card for its turn
@@ -1009,9 +1013,18 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
         }
         // Credits the click takes off the card (Regolith, Telework), or
         // counters it places that the card's own turn starts pay off
-        // (Smartware Distributor): either is credits for a click.
-        let credits = if sum.credits > 0 {
-            sum.credits as u32
+        // (Smartware Distributor): either is credits for a click. The
+        // cards it draws are credits too, a card at a credit as a turn
+        // start's are, and the credits its cost asks besides the click are
+        // taken off (Phase 5 §62): Professional Contacts' "[click]: Gain
+        // 1[credit] and draw 1 card" was a credit for a click, nothing,
+        // and the planner never installed it.
+        let gained = sum.credits.max(0) + sum.cards.max(0) - cost_credits(ability.cost.as_ref()) as i32;
+        let credits = if sum.credits > 0 || sum.cards > 0 {
+            if gained <= 0 {
+                continue;
+            }
+            gained as u32
         } else if sum.counters > 0 && income.stocked && income.turn_credits > 0 {
             sum.counters as u32
         } else {
@@ -1021,9 +1034,10 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
             income.click_credits = credits;
             income.click_cost = clicks;
             income.click_trashes = trashes;
-            income.click_places = sum.credits <= 0;
+            income.click_places = sum.credits <= 0 && sum.cards <= 0;
             income.click_runs = rider.is_some();
-            if sum.counters < 0 {
+            income.click_counters = cost_counters(ability.cost.as_ref());
+            if sum.counters < 0 || income.click_counters > 0 {
                 income.stocked = true;
             }
         }
@@ -1079,6 +1093,25 @@ fn run_rider(effect: &Effect) -> Option<Option<&Effect>> {
     }
 }
 
+/// The credits a cost takes besides its clicks (Virtual Intelligence:
+/// P.I.'s "[click], 1[credit]: Draw 1 card").
+fn cost_credits(cost: Option<&Cost>) -> u32 {
+    match cost {
+        Some(Cost::Credits(n)) => *n,
+        Some(Cost::AllOf(parts)) => parts.iter().map(|part| cost_credits(Some(part))).sum(),
+        _ => 0,
+    }
+}
+
+/// The hosted counters a cost removes.
+fn cost_counters(cost: Option<&Cost>) -> u32 {
+    match cost {
+        Some(Cost::RemoveCounters(n)) => *n,
+        Some(Cost::AllOf(parts)) => parts.iter().map(|part| cost_counters(Some(part))).sum(),
+        _ => 0,
+    }
+}
+
 /// The clicks a cost takes and whether it trashes the card.
 fn click_cost(cost: Option<&Cost>) -> (u32, bool) {
     match cost {
@@ -1117,7 +1150,8 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
         if income.click_trashes {
             net
         } else {
-            let uses = stock.map_or(horizon, |stock| horizon.min(stock / income.click_credits.max(1)));
+            let per_use = if income.click_counters > 0 { income.click_counters } else { income.click_credits.max(1) };
+            let uses = stock.map_or(horizon, |stock| horizon.min(stock / per_use));
             net * uses
         }
     } else {
@@ -2019,6 +2053,22 @@ mod tests {
         assert_eq!(sabotaged(&income("cacophony"), Some(2), 1), 3, "two hosted pay for one now");
         assert_eq!(sabotaged(&income("marrow"), None, 5), 0);
         assert!(future_credits(&income("cacophony"), None, 4) > 0.0, "the install is worth something");
+    }
+
+    /// A click ability's draws are income, a card at a credit, less the
+    /// credits its cost asks, and bounded by the counters a use removes
+    /// (§62): Professional Contacts a card and a credit for a click,
+    /// Dr. Nuka Vrolyck three cards for a click and one of two counters,
+    /// Virtual Intelligence: P.I.'s draw for a click and a credit nothing.
+    #[test]
+    fn a_click_abilitys_draws_are_income() {
+        let pool = pool();
+        let future = |id: &str, hosted: Option<u32>, horizon: u32| future_credits(&declared_income(&printed(&pool, id)), hosted, horizon);
+        assert_eq!(future("professional_contacts", None, 4), 4.0, "a card and a credit for a click, a turn");
+        assert_eq!(future("dr_nuka_vrolyck", None, 4), 4.0, "two counters, three cards less the click each");
+        assert_eq!(future("dr_nuka_vrolyck", Some(1), 4), 2.0);
+        assert_eq!(future("calvin_b4l3y", None, 3), 3.0, "two cards for a click");
+        assert_eq!(future("virtual_intelligence_p_i_you_can_call_me_vic", None, 4), 0.0);
     }
 
     #[test]
