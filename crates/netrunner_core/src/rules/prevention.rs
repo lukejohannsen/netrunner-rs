@@ -150,7 +150,9 @@ pub(crate) fn would(
     // you may rez this asset" is heard facedown, and only an announcement
     // could reach it.
     let heard = matches!(what, WouldHappen::Damage { .. } | WouldHappen::Draw { .. } | WouldHappen::Expose { .. });
-    if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
+    // "This damage cannot be prevented" (CR 9.3.3g, Stimhack): nobody is
+    // asked, and nothing is announced for an interrupt to hear.
+    if ctx.unpreventable || state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         let responsible = responsible_for(registry, ctx.acting_card);
         let source = ctx.acting_install;
         return happen(state, registry, &what, what.amount(), responsible, source, Some(ctx));

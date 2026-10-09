@@ -481,6 +481,7 @@ mod catalog_join_tests {
                 Effect::Trace { on_success: effect, .. }
                 | Effect::SetAccessReplacement { effect, .. }
                 | Effect::SetRunEndedEffect(effect)
+                | Effect::Unpreventable(effect)
                 | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),
                 Effect::GainSubroutine { subroutine, .. } => walk(&subroutine.effect, out),
                 Effect::PromptChooseCards { then: Some(then), .. } | Effect::Access { then: Some(then), .. } => walk(then, out),

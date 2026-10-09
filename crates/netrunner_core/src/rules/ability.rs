@@ -125,6 +125,12 @@ pub struct ResolutionContext<'a> {
     /// because it is read within this one resolution: both cards read it
     /// before anything they do can park, and it does not survive a park.
     pub last_known: Option<LastKnown>,
+    /// This resolution is inside an `Effect::Unpreventable`: what it makes
+    /// about to happen cannot be prevented (CR 9.3.3g), so
+    /// `prevention::would` makes it happen at once. On the context because
+    /// the restriction is the wrapped effect's alone, and `would` either
+    /// parks nothing for it or is not reached.
+    pub unpreventable: bool,
     /// The cards that were hosted on the acting install when its own cost
     /// took it off the table, set aside rather than trashed with it because
     /// the effect acts on them (CR 9.5.5: "set aside any hosted cards ...
@@ -937,6 +943,13 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::Unpreventable(effect) => {
+            let was = ctx.unpreventable;
+            ctx.unpreventable = true;
+            let resolved = evaluate_effect(state, effect, ctx, registry);
+            ctx.unpreventable = was;
+            resolved
+        }
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.on_end.push(crate::rules::run::RunEndRider { effect: effect.clone(), card: acting_card.cloned(), install: ctx.acting_install });

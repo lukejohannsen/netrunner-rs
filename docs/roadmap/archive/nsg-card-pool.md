@@ -10143,3 +10143,35 @@ new `Effect`, and a Sweep deck.
   the purge test's virus roster.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 791 card files.
+
+#### Stage 11r — damage that cannot be prevented (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with one new
+`Effect`.
+- **Card:** Stimhack (Core Set has 111 of 113 built).
+
+- **"Place 9[credit] on this event, then run any server. During that
+  run, hosted credits are considered to be in your credit pool."**
+  Overclock's run credits (`PromptChooseServer::bonus_run_credits`),
+  which pay for anything during the run. Read as credits the Runner may
+  spend, not as credits in the pool for what counts the pool or makes
+  the Runner lose credits from it; no card in the pool tells the two
+  apart during a Stimhack run.
+- **"When that run ends, suffer 1 core damage. This damage cannot be
+  prevented."** Charm Offensive's `SetRunEndedEffect`, set as the run
+  starts, around a new `Effect::Unpreventable`. A stipulation that an
+  effect cannot be prevented is a restriction (CR 9.3.3g), so it rides
+  on the resolution (`ResolutionContext::unpreventable`) to the one
+  door, `prevention::would`, which then makes the damage happen at once:
+  no window, and no announcement for Net Shield's interrupt to hear, as
+  a cost's damage (1.16.1a). Composition didn't work: `DealDamage` is a
+  tuple every card file writes, and a cost is paid before what it pays
+  for.
+- **Rez Tax**, a Sweep deck, takes two for its two Katorga Breakout, a
+  run event for a run event; Side Quest, Free Spirit and Pay as You Go
+  keep Katorga Breakout.
+- **Tests.** Played for 0, a run on Archives with 9[credit] to spend,
+  and 1 core damage when it ends; net damage wrapped the same way is
+  suffered with a Net Shield installed and nobody asked.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 792 card files.
