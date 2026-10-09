@@ -337,7 +337,7 @@ fn apply_action_once(
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
         PlayerAction::InstallHardware { card_id, host } => install_hardware(state, registry, card_id, host),
-        PlayerAction::InstallProgram { card_id, trash_first } => install_program(state, registry, card_id, trash_first),
+        PlayerAction::InstallProgram { card_id, trash_first, host } => install_program(state, registry, card_id, trash_first, host),
         PlayerAction::InstallResource { card_id, host } => install_resource(state, registry, card_id, host),
         PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
             install_program_on_ice(state, registry, card_id, host, trash_first)
@@ -2184,6 +2184,7 @@ fn install_program(
     registry: &CardRegistry,
     card_id: CardId,
     trash_first: bool,
+    host: Option<InstallId>,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -2213,15 +2214,29 @@ fn install_program(
     // An install over the limit was refused until Rules Conformance B.
     let memory_cost = card_def.memory_cost.unwrap_or(0);
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(crate::rules::install_trash::before_program_install(&mut next, registry, &card_id, memory_cost, trash_first)?);
+    // Onto a host (Djinn), asked with the card out of the grip as
+    // `install_hardware` asks; what such a host takes it takes outside the
+    // memory limit, so step 8.5.16c has nothing to make room for.
+    match host {
+        Some(host) if trash_first || next.find_rig_install(host).is_none() || !continuous::may_install_onto(&next, registry, card_def, host) => {
+            return Err(RulesError::CannotInstallOnto { card: card_id, host });
+        }
+        Some(_) => {}
+        None => events.extend(crate::rules::install_trash::before_program_install(&mut next, registry, &card_id, memory_cost, trash_first)?),
+    }
 
     // The card's own discount (see `per_card_install_discount`) stacks
     // independently on top of the once-per-turn discount above.
-    let cost = continuous::install_cost_of(&next, registry, card_def);
+    let cost = continuous::install_cost_onto(&next, registry, card_def, host);
 
     let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
     events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
+    if let Some(host) = host
+        && let Some(installed) = next.runner.rig.last_mut()
+    {
+        installed.hosted_on_rig_card = Some(host);
+    }
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
     // `dispatch_event` from this one event. `memory_cost` is a record of
@@ -5320,7 +5335,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None },
         )
         .expect("action should succeed");
 
@@ -5358,7 +5373,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id, trash_first: false },
+            PlayerAction::InstallProgram { card_id, trash_first: false, host: None },
         );
 
         assert_eq!(
@@ -5377,7 +5392,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None },
         );
 
         assert_eq!(
@@ -5401,7 +5416,7 @@ mod tests {
         reg.insert(oversized);
 
         let result =
-            apply_action(&state, &reg, PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false });
+            apply_action(&state, &reg, PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None });
 
         assert_eq!(result, Err(RulesError::InsufficientMemory { available: 4, requested: 5 }));
 
@@ -5424,7 +5439,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None },
         )
         .expect("action should succeed");
 
@@ -5450,7 +5465,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None },
         )
         .expect("action should succeed");
 
@@ -6965,7 +6980,7 @@ mod tests {
             Some(RulesError::CardTypeMismatch { card: card("program"), expected: "hardware" })
         );
         assert_eq!(
-            play(PlayerAction::InstallProgram { card_id: card("hardware"), trash_first: false }),
+            play(PlayerAction::InstallProgram { card_id: card("hardware"), trash_first: false, host: None }),
             Some(RulesError::CardTypeMismatch { card: card("hardware"), expected: "a program" })
         );
         assert_eq!(
@@ -6974,7 +6989,7 @@ mod tests {
         );
         assert_eq!(play(PlayerAction::PlayEvent { card_id: card("event") }), None);
         assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware"), host: None }), None);
-        assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program"), trash_first: false }), None);
+        assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program"), trash_first: false, host: None }), None);
         assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource"), host: None }), None);
     }
 

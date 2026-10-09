@@ -10208,3 +10208,39 @@ new `Effect`, and a Sweep deck.
   ice with no subroutines now ends its encounter fully broken.
 - **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
   single-use, none unused, over 793 card files.
+
+#### Stage 11t — programs hosted outside the memory limit (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** Djinn (Core Set has 113 of 113 built — the set is complete;
+  it has no gate yet).
+
+- **"Djinn can host up to 3[mu] of non-icebreaker programs."** Two
+  declarations. Which programs: `MayHost` on `InstallingOntoThis`, a
+  program that is not an icebreaker, as Stage 11p's hardware hosts read.
+  How much: a new `ContinuousKind::HostsMemory(Number)`, valid only on a
+  program's `This`; `continuous::may_install_onto` refuses a program
+  whose memory, with what the host already holds, would pass it.
+- **"The memory costs of hosted programs do not count against your
+  memory limit."** `memory::memory_balance` skips a rig card hosted on a
+  card that declares `HostsMemory`, so the limit is read off the cards
+  and nothing is stored.
+- **A program can be installed onto a card.** `PlayerAction::InstallProgram`
+  takes `host: Option<InstallId>` (serde default, skipped when `None`, so
+  every recorded match still reads); with a host the install is priced by
+  `install_cost_onto`, makes no forced trash and offers no `trash_first`
+  (a hosted program cannot pass the limit). It is a new `ActionSpace`
+  segment, **appended** (`INSTALL_PROGRAM_ON_HOST_START` 4285, size 4285
+  → 4797, no index moved), offered for each rig card that may host it,
+  and both clients label it "Install X onto Y" and draw it on the host.
+- **"[click], 1[credit]: Search your stack for a virus program, reveal
+  it, and add it to your grip. Shuffle your stack."** A `PromptChooseCards`
+  from the stack, revealed and shuffled after.
+- **Pay as You Go**, a Sweep deck, takes two for its two Mimic; Rez Tax
+  and Free Spirit keep Mimic.
+- **Tests.** Djinn hosts Abagnale, Baker and Lampades with the memory
+  limit untouched, a fourth hosted megabyte is refused, and its ability
+  finds a virus in the stack.
+- **DSL ratio** (`pool_status.py`): 18 of 111 `Effect` variants
+  single-use, none unused, over 794 card files.

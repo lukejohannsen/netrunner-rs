@@ -199,9 +199,12 @@ mod tests {
     ///
     /// 3773 → 4285 for hardware installed onto a rig card (tranche 8 Stage
     /// 11p, The Personal Touch), appended.
+    ///
+    /// 4285 → 4797 for a program installed onto a rig card (tranche 8
+    /// Stage 11t, Djinn), appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 4285);
+        assert_eq!(ACTION_SPACE_SIZE, 4797);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

@@ -682,9 +682,14 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
             // Twice, like a Corp install: plain, and trashing programs first
             // (CR 8.5.6c) when there is a program to trash.
             CardType::Program if !card.installs_on_ice => {
-                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false });
+                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None });
                 if any_program_installed {
-                    candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: true });
+                    candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: true, host: None });
+                }
+                // And onto each rig card that says it may host it (Djinn),
+                // where it takes no memory.
+                for host in state.runner.rig.iter().filter(|host| crate::rules::continuous::may_install_onto(state, registry, card, host.install_id)) {
+                    candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: Some(host.install_id) });
                 }
             }
             CardType::Resource => {

@@ -891,6 +891,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
+        ContinuousKind::HostsMemory(number) => format!("hosts up to {} memory of programs, outside the memory limit", signed(number).trim_start_matches('+')),
         ContinuousKind::AgendaPointsToWin(number) => format!("needs {} agenda points to win", signed(number)),
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),

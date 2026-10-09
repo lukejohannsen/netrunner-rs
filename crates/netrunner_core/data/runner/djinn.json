@@ -1,0 +1,49 @@
+{
+  "id": "djinn",
+  "title": "Djinn",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            { "CardType": "Program" },
+            { "Not": "Icebreaker" }
+          ]
+        }
+      },
+      "text": "Djinn can host up to 3[mu] of non-icebreaker programs."
+    },
+    {
+      "kind": { "HostsMemory": { "per": 3 } },
+      "applies_to": "This",
+      "text": "The memory costs of hosted programs do not count against your memory limit."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], 1[credit]: Search your stack for a virus program, reveal it, and add it to your grip. Shuffle your stack.",
+      "cost": { "AllOf": [ { "Clicks": 1 }, { "Credits": 1 } ] },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": { "All": [ { "CardType": "Program" }, { "HasSubtype": "Virus" } ] },
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnGrip"
+        }
+      }
+    }
+  ],
+  "built_from": 1009,
+  "is_playable": true
+}

@@ -159,10 +159,19 @@ pub enum PlayerAction {
     /// How many memory units this reserves is therefore not a property of
     /// the action at all — see `runner::available_memory`, which derives
     /// the Runner's free memory from what is on the board.
+    ///
+    /// `host` installs the program onto that rig card instead, where the
+    /// host says it may be (`ContinuousKind::MayHost`, Djinn's "can host up
+    /// to 3[mu] of non-icebreaker programs") — as `InstallResource`'s
+    /// `host` does. Never with `trash_first`: what such a host takes it
+    /// takes outside the memory limit (`ContinuousKind::HostsMemory`), so
+    /// there is nothing to make room for.
     InstallProgram {
         card_id: CardId,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         trash_first: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<crate::rules::state::InstallId>,
     },
     /// Spend 1 click and `card_id`'s registry `cost` in credits, move
     /// `card_id` from the Grip into the Rig. Runner-only. Mirrors
@@ -627,7 +636,7 @@ mod tests {
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card(), host: None },
-            PlayerAction::InstallProgram { card_id: card(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card(), trash_first: false, host: None },
             PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
