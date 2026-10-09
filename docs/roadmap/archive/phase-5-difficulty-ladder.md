@@ -3816,3 +3816,20 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Pooled +5 / −8, **z −0.83**, inside the band; every other card that says a run-end effect (Bravado, Stimhack, Boomerang, Raindrops Cut Stone, Hannah) is unmoved.
 
 **Verified.** `plays_dirty_laundry_for_the_credits_its_run_ends_with` fails on `main` (the planner runs HQ on a click) and passes here. Engine untouched; `netrunner_bots` only.
+
+## 65. A bypass is a way past the ice: Inside Job is played, and the rig's bypasses are priced — DONE (`claude/bot-blindness-bypass`, 9 October 2026)
+
+**The debt.** Nine cards on the blind list re-taken at §61 get past ice by bypassing it rather than breaking it: Inside Job (random seats 9, the planner 0), Laser Pointer (6), Malandragem (8), Physarum Entangler (12), Femme Fatale (23), Backstitching, S-Dobrado, Always Have a Backup Plan and Alarm Clock.
+
+**Why.** A run's price is `remaining_break_cost`, the cheapest break of each rezzed piece ahead (`cheapest_break_cost`), read off the rig's break and pump abilities. A bypass was in neither place: the rig card that could bypass a piece read as one that could not get past it, and a run begun by Inside Job — whose "the first time you encounter a piece of ice during that run, bypass it" waits on the table as a delayed ability — read as stopped at the first wall.
+
+**What is read now.** `break_cost` takes the cheaper of a card's break and its bypass (`read::bypass`): an `OnEncounter` trigger whose `when` admits the piece (`dsl::card_matches_filter`) and whose requirement `bypass_reach` knows — `unconditional_reach`'s words plus the card's counters, a type the piece must not be, a strength it must stay under and "once per turn" read as unspent — with the bypass as the effect itself or what a paid choice buys; and a paid ability that bypasses (Abagnale's "[trash]"). The price is `price_of`'s, with "1[credit] for each subroutine it has" read off the piece. And `remaining_break_cost` passes the next rezzed piece free for each one-shot bypass waiting on the table (`bypasses_waiting`). An effect behind a condition, a requirement it does not know and a bypass waiting for a particular piece are not priced, the cheaper direction.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games:
+
+- Seed 2: **Inside Job 0 → 9**, Laser Pointer 0 → 3, Malandragem 0 → 3, Physarum Entangler 0 → 3, Femme Fatale 0 → 1, Afterimage 14 → 16, Curupira 250 → 262; Corp share 0.459 → 0.470 (+9 / −2, z +2.11).
+- Seed 3: **Inside Job 0 → 9**, Laser Pointer 0 → 1, Malandragem 0 → 1, Physarum Entangler 5 → 6, Afterimage 20 → 30, Curupira 163 → 168; Corp share 0.516 → 0.516 (+4 / −4).
+- Pooled +13 / −6, **z +1.61**, inside the band, though seed 2 alone sits just outside it: the Runner uses its bypasses and wins no more for it, which says the bypass is now taken where a break or a credit was better, or that the planner still prices the run behind the bypass badly. Not chased here.
+- Still unplayed: S-Dobrado, whose "the first time you encounter" is a trigger on the event itself with nothing on the run to say the event began it; Backstitching (its bypass is behind an `EffectIf` on the mark); Always Have a Backup Plan (a bypass waiting for one piece); Alarm Clock (a bypass paid in clicks). Femme Fatale chooses its piece when installed, so its install is priced without the bypass it will have.
+
+**Verified.** `a_bypass_is_a_way_past_the_piece` (Physarum Entangler on an Enigma two credits, on a barrier nothing; Malandragem a counter, and nothing with none) and `plays_inside_job_past_ice_it_cannot_break`, which fails on `main`. Engine untouched; `netrunner_bots` only.
