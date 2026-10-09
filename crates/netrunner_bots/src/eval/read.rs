@@ -58,6 +58,22 @@ pub(super) fn run_ending_prevented(state: &GameState, run: &RunState) -> bool {
         && state.corp.installed.iter().any(|card| card.server == run.server && card.slot == InstallSlot::Root)
 }
 
+/// The run's next encounters a card has already said will be bypassed
+/// (Phase 5 §65): Inside Job's "the first time you encounter a piece of
+/// ice during that run, bypass it", waiting on the table as a delayed
+/// ability (`GameState::delayed`) once the event resolves. Each is one
+/// piece of ice, the next one met, that costs nothing to get past; one
+/// that waits for a particular piece (Always Have a Backup Plan's) is
+/// not counted.
+fn bypasses_waiting(state: &GameState) -> usize {
+    state
+        .delayed
+        .iter()
+        .filter(|delayed| !delayed.every_time && delayed.filter.is_none() && delayed.when == Trigger::OnEncounter)
+        .filter(|delayed| matches!(delayed.effect, Effect::BypassEncounteredIce))
+        .count()
+}
+
 /// The credits still to be spent breaking this run's rezzed ICE, or
 /// `None` when one of them no rig card can break. Split out of
 /// `run_is_breakable` so the same number both gates the run and pays for
@@ -84,7 +100,12 @@ pub(super) fn remaining_break_cost(state: &GameState, run: &RunState, registry: 
     let mut total = 0;
     let mut stock = fresh_stock(state);
     let mut prevention = run_ending_prevented(state, run);
+    let mut bypassed = bypasses_waiting(state);
     for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
+        if bypassed > 0 {
+            bypassed -= 1;
+            continue;
+        }
         match cheapest_break_cost(state, ice, registry, &mut stock) {
             Some(cost) => total += cost,
             None if prevention => prevention = false,
@@ -460,11 +481,90 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
         let (pump_credits, pump_stock) = if shortfall == 0 { (0, 0) } else { cheapest_pump? };
         Some((break_credits + pump_credits, break_stock + pump_stock))
     });
-    let (credits, stock) = match (contested, cheapest_outright) {
-        (Some(a), Some(b)) => a.min(b),
-        (a, b) => a.or(b)?,
-    };
+    let (credits, stock) = [contested, cheapest_outright, bypass(state, card, def, ice, registry, already)].into_iter().flatten().min()?;
     Some(Spend { credits, stock })
+}
+
+/// The cheapest way `card` has around `ice` rather than through it — a
+/// bypass, which is a break of every subroutine at once (Phase 5 §65):
+/// Femme Fatale's "whenever you encounter the chosen ice, you may pay
+/// 1[credit] for each subroutine it has. If you do, bypass that ice",
+/// Laser Pointer's "[trash]" against an AP, destroyer or observer piece,
+/// Malandragem's counter, Physarum Entangler's host, Abagnale's
+/// "[trash]: Bypass the code gate you are encountering". `(credits,
+/// stock drawn)` as `break_cost` counts them, priced by `price_of`, and
+/// `None` when the card has none for this piece.
+///
+/// Read off an `OnEncounter` trigger whose `when` admits the piece and
+/// whose requirement `bypass_reach` knows, with its bypass either the
+/// effect itself or what a paid choice buys; and off a paid ability, as a
+/// break is. An effect behind a condition (`EffectIf`) and a requirement
+/// this does not know are not priced, the cheaper direction, as a break's
+/// are not. Before this a bypass was nothing to the evaluator, so a rig
+/// that could only bypass a piece read as one that could not get past it
+/// — and nine bypass cards were on the blind list.
+fn bypass(state: &GameState, card: &InstalledRunnerCard, def: &CardDefinition, ice: &RunIce, registry: &CardRegistry, already: u32) -> Option<(u32, u32)> {
+    let ice_def = registry.get(&ice.card_id);
+    let bypasses = |effect: &Effect| {
+        let mut found = false;
+        effect.for_each_effect(&mut |effect| found |= matches!(effect, Effect::BypassEncounteredIce));
+        found
+    };
+    let priced = |cost: Option<&Cost>| -> Option<(u32, u32)> {
+        let price = match cost {
+            // "1[credit] for each subroutine it has", read off the piece:
+            // the table's number is the encounter's, and there is none.
+            Some(Cost::CreditsAmount(Amount::EncounteredIceSubroutines)) => Price { credits: ice.subroutines.len() as u32, stock: None },
+            cost => price_of(cost, card, pending_on(ice), state, registry)?,
+        };
+        let left = price.stock.map(|stock| stock.saturating_sub(already));
+        (left != Some(0)).then_some((price.credits, u32::from(price.stock.is_some())))
+    };
+    let mut ways: Vec<(u32, u32)> = Vec::new();
+    for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnEncounter) {
+        let admitted = match &trigger.when {
+            None => true,
+            Some(netrunner_core::dsl::EventFilter::Card(filter)) => ice_def.is_some_and(|ice_def| netrunner_core::dsl::card_matches_filter(ice_def, filter)),
+            Some(_) => false,
+        };
+        if !admitted || !bypass_reach(trigger.requirement.as_ref(), state, card, ice, registry) {
+            continue;
+        }
+        for effect in &trigger.effects {
+            match effect {
+                Effect::BypassEncounteredIce => ways.push((0, 0)),
+                Effect::OfferPaidChoice { cost, if_paid, .. } if bypasses(if_paid) => ways.extend(priced(Some(cost))),
+                _ => {}
+            }
+        }
+    }
+    for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid && bypasses(&ability.effect)) {
+        if bypass_reach(ability.requirement.as_ref(), state, card, ice, registry) {
+            ways.extend(priced(ability.cost.as_ref()));
+        }
+    }
+    ways.into_iter().min()
+}
+
+/// Whether a bypass's requirement admits an encounter with `ice`, read
+/// for the piece as `unconditional_reach` reads a break's, and with the
+/// words the bypass cards add: the card's own counters (Curupira's three,
+/// Malandragem's one), a type the piece must not be (Physarum
+/// Entangler's "if it is not a barrier"), a strength it must stay under
+/// (Malandragem's "strength 3 or less"), and "once per turn", read as
+/// unspent. Anything else is not priced.
+fn bypass_reach(requirement: Option<&EffectRequirement>, state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> bool {
+    match requirement {
+        Some(EffectRequirement::ThisCardCountersAtLeast(n)) => card.counters >= *n,
+        Some(EffectRequirement::OncePerTurn) => true,
+        Some(EffectRequirement::Not(inner)) => match inner.as_ref() {
+            EffectRequirement::Encountering(subtype) => !ice_is(state, ice, *subtype, registry),
+            EffectRequirement::AmountAtLeast(Amount::EncounteredIceStrength, n) => continuous::ice_strength(state, registry, ice) < *n as i32,
+            _ => false,
+        },
+        Some(EffectRequirement::And(a, b)) => bypass_reach(Some(a), state, card, ice, registry) && bypass_reach(Some(b), state, card, ice, registry),
+        requirement => unconditional_reach(requirement, state, card, ice, registry),
+    }
 }
 
 /// Whether an unconditional break's requirement admits an encounter with
@@ -1866,6 +1966,39 @@ pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bypass is a way past the piece (Phase 5 §65): Physarum Entangler
+    /// on an Enigma pays a credit for each of its two subroutines, and on
+    /// a barrier (which it does not bypass) is nothing; Malandragem
+    /// bypasses the Enigma (strength 2, under its 4) on a counter, and
+    /// with none left does not.
+    #[test]
+    fn a_bypass_is_a_way_past_the_piece() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            InstalledCard { card: CardId("enigma".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(2), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+        ];
+        let price = |state: &GameState, install: u32| {
+            let installed = state.corp.installed.iter().find(|card| card.install_id == InstallId(install)).expect("installed");
+            let ice = as_first_met(installed, pool.get(&installed.card).expect("ice")).expect("ice");
+            cheapest_break_cost(state, &ice, &pool, &mut fresh_stock(state))
+        };
+        assert_eq!(price(&state, 1), None, "an empty rig");
+        let physarum = |host| InstalledRunnerCard { card: CardId("physarum_entangler".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(host)), ..Default::default() };
+        state.runner.rig = vec![physarum(1)];
+        assert_eq!(price(&state, 1), Some(2), "a credit a subroutine");
+        state.runner.rig = vec![physarum(2)];
+        assert_eq!(price(&state, 2), None, "not a barrier");
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("malandragem".to_string()), install_id: InstallId(10), counters: 2, ..Default::default() }];
+        assert_eq!(price(&state, 1), Some(0), "a counter");
+        state.runner.rig[0].counters = 0;
+        assert_eq!(price(&state, 1), None, "no counter left");
+    }
 
     /// A rider that resolves some of its options is read as the chooser's
     /// best of them (Phase 5 §56): Bahia Bands' "resolve 2 of the

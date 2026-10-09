@@ -2612,6 +2612,56 @@ mod positions {
         );
     }
 
+    /// A run event that bypasses the first piece of ice is played to get
+    /// past ice the rig cannot break (Phase 5 §65): with every server
+    /// behind a rezzed Ice Wall and no breaker, Inside Job's "the first
+    /// time you encounter a piece of ice during that run, bypass it" is
+    /// the one way in. Before, the bypass waiting on the table was nothing
+    /// to the run's price, the run read as stopped at the wall, and the
+    /// planner never played it.
+    #[test]
+    fn plays_inside_job_past_ice_it_cannot_break() {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(2), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("inside_job".to_string())];
+        state.runner.grip.extend(vec![CardId("sure_gamble".to_string()); 5]);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("hostile_takeover".to_string()); 3];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives, ServerId::Remote(0)].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(index as u32 + 1), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        }
+        // Something worth the run: a card advanced twice in the remote.
+        state.corp.installed.push(InstalledCard {
+            card: CardId("hostile_takeover".to_string()),
+            install_id: InstallId(9),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let play = PlayerAction::PlayEvent { card_id: CardId("inside_job".to_string()) };
+        let mut agent = PlanningAgent::new(Side::Runner, 1);
+        let mut actions = Vec::new();
+        for _ in 0..12 {
+            if current_actor(&state) != Some(Side::Runner) || state.active_run.is_some() {
+                break;
+            }
+            let view = build_client_view(&state, &registry, Side::Runner);
+            agent.observe(&view);
+            let action = agent.select_action(&view, &registry);
+            state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+            actions.push(action);
+        }
+        assert!(actions.contains(&play), "should play Inside Job: {actions:?}");
+    }
+
     /// A run event whose payout waits for the run's end is played for it
     /// (Phase 5 §64): Dirty Laundry's "when that run ends, if it was
     /// successful, gain 5[credit]" is said inside its success rider as
