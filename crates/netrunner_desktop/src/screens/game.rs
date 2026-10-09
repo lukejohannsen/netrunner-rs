@@ -511,10 +511,23 @@ pub struct ControlBar;
 /// The action panel's scroll column, inside the rail.
 #[derive(Component)]
 struct ActionList;
+/// The log's lines, and what of them is drawn. The log arrives whole
+/// with every view (`Intent::Show`) and used to be respawned whole,
+/// trimmed to its last 80 lines because a long match's span trees were
+/// too many to rebuild every view. Instead the list remembers how many
+/// lines it drew and a fingerprint of them: a view whose log still
+/// begins with those lines appends the rest, and one whose log does not
+/// — a move taken back, a reconnect — starts over. So the whole match
+/// is readable, and a view costs the lines it added.
+#[derive(Component, Default)]
+pub struct LogList {
+    /// How many of the model's lines are drawn, from the first.
+    pub drawn: usize,
+    fingerprint: u64,
+}
+/// The log's scroll area, 200 px of the right column.
 #[derive(Component)]
-struct LogList;
-#[derive(Component)]
-struct LogScroll;
+pub struct LogScroll;
 /// The log and its scrollbar; shown or hidden by the play history
 /// preference, never despawned.
 #[derive(Component)]
@@ -560,7 +573,7 @@ pub struct StatusLine;
 pub struct Model(pub Game);
 
 #[derive(Resource, Default)]
-pub(crate) struct Dirty {
+pub struct Dirty {
     board: bool,
     rail: bool,
     log: bool,
@@ -587,6 +600,13 @@ impl Dirty {
         self.overlay = true;
         self.trail = true;
         self.side = true;
+    }
+
+    /// The log is to be redrawn. Public for the headless tests, which
+    /// put lines in the model the way a view would and ask for the
+    /// redraw a view would raise.
+    pub fn relog(&mut self) {
+        self.log = true;
     }
 }
 
@@ -816,7 +836,7 @@ fn spawn(
             Node { width: percent(100), height: px(200), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), padding: UiRect::all(px(6)), ..default() },
         ))
         .with_children(|parent| {
-            parent.spawn((LogList, Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() }));
+            parent.spawn((LogList::default(), Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() }));
         })
         .id();
     let log_row = commands
@@ -1375,6 +1395,29 @@ fn secondary_modifier(keys: &ButtonInput<KeyCode>) -> bool {
 /// per word so the line could still wrap, was the alternative — about ten
 /// nodes a line over eighty lines, rebuilt on every action. The indent a
 /// narrated line carries in the terminal is dropped here, as it was.
+/// What the drawn lines were, so a later view's log can say whether it
+/// still begins with them. The text alone: a line's names are read off
+/// its text.
+fn log_fingerprint(lines: &[netrunner_client::actions::LogLine]) -> u64 {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    for line in lines {
+        line.text.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Whether a scroll area at `y` shows its last line, in the terms
+/// `scroll_stack` uses: the furthest the layout lets it scroll is the
+/// content past the visible height, in logical pixels. A content that
+/// fits is at the bottom, and so is the position before the layout has
+/// clamped it. Read before the new lines are laid out, so it says where
+/// the reader *was*.
+fn at_the_bottom(y: f32, visible: f32, content: f32, inverse_scale: f32) -> bool {
+    let most = ((content - visible) * inverse_scale).max(0.0);
+    y >= most - 1.0
+}
+
 fn spawn_log_line(parent: &mut ChildSpawnerCommands, theme: &Theme, line: &netrunner_client::actions::LogLine) {
     let spans = line.spans();
     let last = spans.len().saturating_sub(1);
@@ -1868,9 +1911,9 @@ fn redraw(
     board: Query<Entity, With<Board>>,
     rail: Query<Entity, With<Rail>>,
     bar: Query<Entity, With<ControlBar>>,
-    log: Query<Entity, With<LogList>>,
+    mut log: Query<(Entity, &mut LogList)>,
     mut log_row: Query<&mut Node, With<LogRow>>,
-    mut log_scroll: Query<&mut ScrollPosition, With<LogScroll>>,
+    mut log_scroll: Query<(&mut ScrollPosition, &ComputedNode), With<LogScroll>>,
     // One query for the three floating layers: a system takes sixteen
     // parameters at most, and this one is at the limit.
     floating: Query<(Entity, Has<Overlay>, Has<DecisionPopup>, Has<ActionsMenu>), Or<(With<Overlay>, With<DecisionPopup>, With<ActionsMenu>)>>,
@@ -1922,16 +1965,30 @@ fn redraw(
         for mut node in &mut log_row {
             node.display = if prefs.play_history { Display::Flex } else { Display::None };
         }
-        if prefs.play_history && let Ok(log) = log.single() {
-            commands.entity(log).despawn_children().with_children(|parent| {
-                for line in game.log.iter().rev().take(80).rev() {
+        if prefs.play_history && let Ok((entity, mut list)) = log.single_mut() {
+            // Append when the log still begins with what is drawn; start
+            // over when it does not (see `LogList`).
+            let lines = &game.log;
+            let kept = if list.drawn <= lines.len() && log_fingerprint(&lines[..list.drawn]) == list.fingerprint { list.drawn } else { 0 };
+            if kept == 0 {
+                commands.entity(entity).despawn_children();
+            }
+            commands.entity(entity).with_children(|parent| {
+                for line in &lines[kept..] {
                     spawn_log_line(parent, &theme, line);
                 }
             });
-            // The newest line is the one to read; the layout clamps this to
-            // the real range.
-            for mut position in &mut log_scroll {
-                position.y = 1.0e6;
+            list.drawn = lines.len();
+            list.fingerprint = log_fingerprint(lines);
+            // The newest line is the one to read, so a reader at the
+            // bottom follows it (the layout clamps this to the real
+            // range) — and one who scrolled up to read an earlier turn
+            // keeps their place, which every view used to take away. A
+            // rebuilt log always goes to its end.
+            for (mut position, node) in &mut log_scroll {
+                if kept == 0 || at_the_bottom(position.y, node.size().y, node.content_size().y, node.inverse_scale_factor()) {
+                    position.y = 1.0e6;
+                }
             }
         }
     }
@@ -5274,4 +5331,33 @@ fn end_reason(reason: netrunner_client::play::GameEndReason) -> &'static str {
 /// The slot an install occupies, for a test that reads the board.
 pub fn install_slot(view: &ClientView, id: InstallId) -> Option<InstallSlot> {
     view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).find(|c| c.install_id == id).map(|c| c.slot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reader who scrolled up keeps their place; the one at the end
+    /// follows the new lines; a log that fits, or one not yet laid out,
+    /// counts as at the end.
+    #[test]
+    fn the_log_follows_only_a_reader_at_its_end() {
+        assert!(at_the_bottom(0.0, 200.0, 120.0, 1.0), "a log that fits is at its end");
+        assert!(at_the_bottom(0.0, 0.0, 0.0, 1.0), "before the layout has measured anything");
+        assert!(at_the_bottom(800.0, 200.0, 1000.0, 1.0), "at the end, read as scroll_stack reads the stack");
+        assert!(at_the_bottom(1.0e6, 200.0, 1000.0, 1.0), "the snap the layout has not clamped yet");
+        assert!(!at_the_bottom(300.0, 200.0, 1000.0, 1.0), "scrolled up to read an earlier turn");
+        assert!(!at_the_bottom(400.0, 400.0, 2000.0, 0.5), "the layout's sizes are physical pixels: at a 2x scale the furthest is (2000 - 400) * 0.5 = 800, and 400 is halfway");
+        assert!(at_the_bottom(800.0, 400.0, 2000.0, 0.5));
+    }
+
+    #[test]
+    fn a_fingerprint_is_of_the_text_in_order() {
+        let line = |text: &str| netrunner_client::actions::LogLine::from(text.to_string());
+        let a = [line("one"), line("two")];
+        assert_eq!(log_fingerprint(&a), log_fingerprint(&[line("one"), line("two")]));
+        assert_ne!(log_fingerprint(&a), log_fingerprint(&[line("two"), line("one")]));
+        assert_ne!(log_fingerprint(&a), log_fingerprint(&a[..1]));
+        assert_eq!(log_fingerprint(&[]), log_fingerprint(&a[..0]));
+    }
 }

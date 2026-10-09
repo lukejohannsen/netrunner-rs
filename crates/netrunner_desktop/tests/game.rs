@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Avatar, AvatarBar, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, MoreStrip, StackRow, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, Avatar, AvatarBar, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, MoreStrip, StackRow, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep, LogList, LogScroll, Dirty};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -2308,6 +2308,69 @@ fn a_card_selection_shows_the_cards_and_a_card_is_its_own_button() {
     app.update();
     let outlined = app.world_mut().query_filtered::<&ChoiceCard, With<Outline>>().iter(app.world()).count();
     assert_eq!(outlined, 1, "the chosen card is drawn, outlined");
+}
+
+/// The log keeps the whole match, and a view costs the lines it added
+/// (Phase 7 §3's "the log keeps 80 lines"): a log longer than the old
+/// cap is drawn whole; a view that only adds lines appends them, leaving
+/// the drawn ones alone; a log that no longer begins with what is drawn
+/// (a move taken back) is rebuilt; and the scroll follows the new lines
+/// only for a reader who was at the end.
+#[test]
+fn the_log_keeps_the_whole_match_and_a_readers_place_in_it() {
+    use netrunner_client::actions::LogLine;
+    let (mut app, _dir) = headless_client();
+    app.world_mut().resource_mut::<ClientCore>().settings.desktop.play_history = true;
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let lines = |n: usize| (0..n).map(|i| LogLine::from(format!("[turn 1] Corp: line {i}"))).collect::<Vec<_>>();
+    let drawn = |app: &mut App| {
+        let (entity, list) = app.world_mut().query::<(Entity, &LogList)>().single(app.world()).map(|(e, l)| (e, l.drawn)).expect("one log list");
+        let children = app.world().get::<Children>(entity).map_or(0, |c| c.len());
+        (list, children)
+    };
+    let line_entities = |app: &mut App| {
+        let entity = app.world_mut().query_filtered::<Entity, With<LogList>>().single(app.world()).unwrap();
+        app.world().get::<Children>(entity).map(|c| c.iter().collect::<Vec<_>>()).unwrap_or_default()
+    };
+    let redraw = |app: &mut App, log: Vec<LogLine>| {
+        app.world_mut().resource_mut::<Model>().0.log = log;
+        app.world_mut().resource_mut::<Dirty>().relog();
+        app.update();
+        app.update();
+    };
+
+    redraw(&mut app, lines(150));
+    assert_eq!(drawn(&mut app), (150, 150), "more than the old cap of 80 is drawn whole");
+    let first = line_entities(&mut app);
+
+    // A reader partway up: the layout is not running headless, so the
+    // measured node says it for them.
+    let scroll = app.world_mut().query_filtered::<Entity, With<LogScroll>>().single(app.world()).unwrap();
+    app.world_mut().entity_mut(scroll).insert((ScrollPosition(Vec2::new(0.0, 300.0)), ComputedNode { size: Vec2::new(300.0, 200.0), content_size: Vec2::new(300.0, 3000.0), ..default() }));
+    let mut longer = lines(150);
+    longer.extend(lines(3).into_iter().map(|line| LogLine::from(line.text.replace("line", "late"))));
+    redraw(&mut app, longer);
+    assert_eq!(drawn(&mut app), (153, 153));
+    let second = line_entities(&mut app);
+    assert_eq!(&second[..150], &first[..], "a view that adds lines leaves the drawn ones where they were");
+    assert_eq!(app.world().get::<ScrollPosition>(scroll).map(|p| p.y), Some(300.0), "a reader partway up keeps their place");
+
+    // At the end, the new lines are followed.
+    app.world_mut().entity_mut(scroll).insert(ScrollPosition(Vec2::new(0.0, 2800.0)));
+    let mut longer = lines(150);
+    longer.extend(lines(4).into_iter().map(|line| LogLine::from(line.text.replace("line", "late"))));
+    redraw(&mut app, longer);
+    assert_eq!(drawn(&mut app), (154, 154));
+    assert!(app.world().get::<ScrollPosition>(scroll).is_some_and(|p| p.y > 2800.0), "a reader at the end follows the newest line");
+
+    // Taken back: the log no longer begins with what was drawn.
+    app.world_mut().entity_mut(scroll).insert(ScrollPosition(Vec2::new(0.0, 300.0)));
+    redraw(&mut app, lines(120));
+    assert_eq!(drawn(&mut app), (120, 120), "a shorter log is rebuilt");
+    let third = line_entities(&mut app);
+    assert!(third.iter().all(|e| !first.contains(e)), "rebuilt from nothing");
+    assert!(app.world().get::<ScrollPosition>(scroll).is_some_and(|p| p.y > 300.0), "a rebuilt log goes to its end");
 }
 
 /// A card's name in the match log is a span of its own, in the accent,
