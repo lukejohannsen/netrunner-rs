@@ -138,6 +138,10 @@ pub fn faction_icon(faction: Faction) -> char {
         Faction::Nbn => '\u{e915}',
         Faction::WeylandConsortium => '\u{e917}',
         Faction::NeutralCorp | Faction::NeutralRunner => '\u{e92f}',
+        // NetrunnerDB's `.icon-sunny-lebeau`, `.icon-adam`, `.icon-apex`.
+        Faction::SunnyLebeau => '\u{e91c}',
+        Faction::Adam => '\u{e91d}',
+        Faction::Apex => '\u{e91e}',
     }
 }
 
@@ -302,7 +306,7 @@ mod tests {
             assert!(in_map(symbol.icon()), "{symbol:?}");
             assert!(seen.insert(symbol.icon()), "{symbol:?} shares an icon");
         }
-        for faction in [Faction::Anarch, Faction::Criminal, Faction::Shaper, Faction::HaasBioroid, Faction::Jinteki, Faction::Nbn, Faction::WeylandConsortium, Faction::NeutralCorp] {
+        for faction in [Faction::Anarch, Faction::Criminal, Faction::Shaper, Faction::HaasBioroid, Faction::Jinteki, Faction::Nbn, Faction::WeylandConsortium, Faction::NeutralCorp, Faction::Adam, Faction::Apex, Faction::SunnyLebeau] {
             assert!(in_map(faction_icon(faction)), "{faction:?}");
             assert!(seen.insert(faction_icon(faction)), "{faction:?} shares an icon");
         }

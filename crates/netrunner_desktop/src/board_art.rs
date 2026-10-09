@@ -96,7 +96,7 @@ pub fn faction_slug(faction: Faction) -> Option<&'static str> {
         Faction::Nbn => Some("nbn"),
         Faction::WeylandConsortium => Some("weyland-consortium"),
         Faction::NeutralCorp => Some("neutral-corp"),
-        Faction::Anarch | Faction::Criminal | Faction::Shaper | Faction::NeutralRunner => None,
+        Faction::Anarch | Faction::Criminal | Faction::Shaper | Faction::NeutralRunner | Faction::Adam | Faction::Apex | Faction::SunnyLebeau => None,
     }
 }
 

@@ -160,7 +160,8 @@ impl Plan {
     /// The plan a faction's chapter of the guide teaches — the Runner
     /// factions' three — and `None` for a faction the guide gives no plan
     /// of its own (the Corp's four are ways to make a window, not a
-    /// faction's, and a neutral identity has no chapter).
+    /// faction's, and neither a neutral identity nor a mini-faction has a
+    /// chapter).
     pub fn for_faction(faction: Faction) -> Option<Plan> {
         match faction {
             Faction::Anarch => Some(Plan::Dismantle),
@@ -171,7 +172,10 @@ impl Plan {
             | Faction::Nbn
             | Faction::WeylandConsortium
             | Faction::NeutralCorp
-            | Faction::NeutralRunner => None,
+            | Faction::NeutralRunner
+            | Faction::Adam
+            | Faction::Apex
+            | Faction::SunnyLebeau => None,
         }
     }
 
