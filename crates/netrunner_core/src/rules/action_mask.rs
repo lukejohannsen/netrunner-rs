@@ -277,13 +277,20 @@ const CHOOSE_CARD_NAME_LEN: usize = MAX_NAME_OPTIONS;
 const INSTALL_HARDWARE_ON_HOST_START: usize = CHOOSE_CARD_NAME_START + CHOOSE_CARD_NAME_LEN;
 const INSTALL_HARDWARE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
 
+/// `InstallProgram` onto a rig card (Djinn's "can host up to 3[mu] of
+/// non-icebreaker programs"), laid out as hardware onto one is: every hand
+/// slot crossed with every rig slot, never trashing first. **Appended**
+/// (tranche 8 Stage 11t), so nothing moved: 4285 → 4797.
+const INSTALL_PROGRAM_ON_HOST_START: usize = INSTALL_HARDWARE_ON_HOST_START + INSTALL_HARDWARE_ON_HOST_LEN;
+const INSTALL_PROGRAM_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = INSTALL_HARDWARE_ON_HOST_START + INSTALL_HARDWARE_ON_HOST_LEN;
+    pub const SIZE: usize = INSTALL_PROGRAM_ON_HOST_START + INSTALL_PROGRAM_ON_HOST_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -345,7 +352,7 @@ impl ActionSpace {
                 let host_slot = bounded_position_rig(&state.runner.rig, *host, MAX_INSTALLED_PER_SIDE)?;
                 Some(INSTALL_HARDWARE_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
             }
-            PlayerAction::InstallProgram { card_id, trash_first } => {
+            PlayerAction::InstallProgram { card_id, trash_first, host: None } => {
                 let start = if *trash_first { INSTALL_PROGRAM_TRASHING_START } else { INSTALL_PROGRAM_START };
                 Some(start + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
@@ -357,6 +364,14 @@ impl ActionSpace {
                 let host_slot = bounded_position_rig(&state.runner.rig, *host, MAX_INSTALLED_PER_SIDE)?;
                 Some(INSTALL_RESOURCE_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
             }
+            PlayerAction::InstallProgram { card_id, trash_first: false, host: Some(host) } => {
+                let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
+                let host_slot = bounded_position_rig(&state.runner.rig, *host, MAX_INSTALLED_PER_SIDE)?;
+                Some(INSTALL_PROGRAM_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
+            }
+            // Never offered: a host that takes programs takes them outside
+            // the memory limit, so there is nothing to trash first.
+            PlayerAction::InstallProgram { trash_first: true, host: Some(_), .. } => None,
             PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
                 let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
                 let ice_slot = bounded_position_installed(&state.corp.installed, *host, MAX_INSTALLED_PER_SIDE)?;
@@ -544,7 +559,7 @@ impl ActionSpace {
         for (start, trash_first) in [(INSTALL_PROGRAM_START, false), (INSTALL_PROGRAM_TRASHING_START, true)] {
             if let Some(local) = in_segment(index, start, INSTALL_PROGRAM_LEN) {
                 let card_id = state.runner.playable_hand().get(local)?.clone();
-                return Some(PlayerAction::InstallProgram { card_id, trash_first });
+                return Some(PlayerAction::InstallProgram { card_id, trash_first, host: None });
             }
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
@@ -670,6 +685,11 @@ impl ActionSpace {
             let card_id = state.runner.playable_hand().get(local / MAX_INSTALLED_PER_SIDE)?.clone();
             let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
             return Some(PlayerAction::InstallHardware { card_id, host: Some(host) });
+        }
+        if let Some(local) = in_segment(index, INSTALL_PROGRAM_ON_HOST_START, INSTALL_PROGRAM_ON_HOST_LEN) {
+            let card_id = state.runner.playable_hand().get(local / MAX_INSTALLED_PER_SIDE)?.clone();
+            let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
+            return Some(PlayerAction::InstallProgram { card_id, trash_first: false, host: Some(host) });
         }
         if let Some(local) = in_segment(index, HAND_ABILITY_START, HAND_ABILITY_LEN) {
             let (hand_slot, ability_index) = (local / MAX_ABILITIES_PER_CARD, local % MAX_ABILITIES_PER_CARD);
@@ -1582,7 +1602,10 @@ mod tests {
         // **3773 → 4285: hardware installed onto a rig card (tranche 8
         // Stage 11p, The Personal Touch), appended.** Hand slot by rig
         // slot (512).
-        assert_eq!(ActionSpace::SIZE, 4285);
+        // **4285 → 4797: a program installed onto a rig card (tranche 8
+        // Stage 11t, Djinn), appended.** Hand slot by rig slot (512).
+        assert_eq!(ActionSpace::SIZE, 4797);
+        assert_eq!(INSTALL_PROGRAM_ON_HOST_START, 4285, "appended after hardware onto a rig card");
         assert_eq!(INSTALL_HARDWARE_ON_HOST_START, 3773, "appended after a card name chosen");
         assert_eq!(CHOOSE_CARD_NAME_START, 3261, "appended after an ability used from a hand");
         assert_eq!(HAND_ABILITY_START, 3133, "appended after a resource installed onto a rig card");

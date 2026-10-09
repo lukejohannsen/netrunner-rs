@@ -1932,6 +1932,8 @@ impl CardDefinition {
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
+                (ContinuousKind::HostsMemory(_), Scope::This) if self.card_type == CardType::Program => {}
+                (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program says of itself (`This`) how many [mu] of programs it hosts"),
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), Scope::RunsOnThisServer)
                     if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {

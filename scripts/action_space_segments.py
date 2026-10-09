@@ -10,7 +10,7 @@ Shared by `diagnose_policy_head.py` and `train_alpha_netrunner.py` so the
 two cannot disagree about which slots are which.
 """
 
-SIZE = 4285
+SIZE = 4797
 
 _H, _I, _REMOTE, _ABIL, _SUBS = 16, 32, 10, 4, 8
 _DECK, _ACCESS, _COST, _PENDING, _TRACE, _NUMBER = 50, 32, 2, 4, 30, 30
@@ -51,6 +51,9 @@ _SEGMENT_LENGTHS = [
     # Appended (tranche 8 Stage 11p): hardware installed onto a rig card
     # (The Personal Touch), hand slot by rig slot.
     ("install hardware onto a host", _H * _I),
+    # Appended (tranche 8 Stage 11t): a program installed onto a rig card
+    # (Djinn), hand slot by rig slot.
+    ("install program onto a host", _H * _I),
 ]
 
 SEGMENTS = []

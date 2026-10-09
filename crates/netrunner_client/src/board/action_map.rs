@@ -439,11 +439,13 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
-        PlayerAction::InstallResource { card_id, host: Some(host) } | PlayerAction::InstallHardware { card_id, host: Some(host) } => {
+        PlayerAction::InstallResource { card_id, host: Some(host) }
+        | PlayerAction::InstallHardware { card_id, host: Some(host) }
+        | PlayerAction::InstallProgram { card_id, host: Some(host), .. } => {
             vec![Target::HandCard(card_id.clone()), Target::Install(*host)]
         }
         PlayerAction::PlayEvent { card_id } | PlayerAction::PlayOperation { card_id } => vec![Target::HandCard(card_id.clone()), Target::Table],
-        PlayerAction::InstallHardware { card_id, host: None } | PlayerAction::InstallProgram { card_id, .. } | PlayerAction::InstallResource { card_id, host: None } => {
+        PlayerAction::InstallHardware { card_id, host: None } | PlayerAction::InstallProgram { card_id, host: None, .. } | PlayerAction::InstallResource { card_id, host: None } => {
             vec![Target::HandCard(card_id.clone()), Target::Rig]
         }
         PlayerAction::DiscardCard { card_id } | PlayerAction::ActivateHandAbility { card_id, .. } => vec![Target::HandCard(card_id.clone())],

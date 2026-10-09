@@ -656,7 +656,7 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
         ..Default::default()
     }];
 
-    let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), trash_first: false })
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), trash_first: false, host: None })
         .expect("install cleaver");
     assert_eq!(state.runner.resources.credits, Credits(7), "10 - 3 (Cleaver's install cost)");
 
@@ -937,7 +937,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false },
+            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None },
         )
         .expect("install corroder");
         assert_eq!(state.runner.memory_units.0, base - 1, "Corroder reserves 1 MU while installed");
@@ -990,7 +990,7 @@ mod system_gateway {
 
         for trojan in ["botulus", "tranquilizer"] {
             assert_eq!(
-                apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId(trojan.to_string()), trash_first: false }).err(),
+                apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId(trojan.to_string()), trash_first: false, host: None }).err(),
                 Some(RulesError::TrojanMustBeHostedOnIce(CardId(trojan.to_string())))
             );
         }
@@ -1352,7 +1352,7 @@ mod system_gateway {
 
         for card_id in programs.iter().take(4) {
             state.runner.resources.clicks = Clicks(4);
-            let install = PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false };
+            let install = PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false, host: None };
             assert!(
                 crate::rules::legal_actions(&state, &registry).contains(&install),
                 "{} must still be offered with memory free",
@@ -1365,7 +1365,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         // CR 3.9.3b: the fifth is installed, and the Runner trashes one of
         // the four to make room. It was refused until Rules Conformance B.
-        let fifth = PlayerAction::InstallProgram { card_id: programs[4].clone(), trash_first: false };
+        let fifth = PlayerAction::InstallProgram { card_id: programs[4].clone(), trash_first: false, host: None };
         assert!(crate::rules::legal_actions(&state, &registry).contains(&fifth), "a fifth program is offered");
         let (asked, _) = apply_action(&state, &registry, fifth).expect("parks the question");
         let Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Install(question), .. }) = &asked.pending_payment else {
@@ -1472,13 +1472,13 @@ mod system_gateway {
 
         let mut state = runner_turn(20, 4);
         state.runner.grip = vec![CardId("corroder".to_string())];
-        let into_nothing = PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: true };
+        let into_nothing = PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: true, host: None };
         assert!(matches!(apply_action(&state, &registry, into_nothing.clone()), Err(RulesError::NothingToTrashFirst { .. })));
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&into_nothing));
 
         state.runner.rig = ["cleaver", "buzzsaw", "carmen", "unity"].map(|id| rig_card_with_counters(id, 0)).to_vec();
         assert!(matches!(apply_action(&state, &registry, into_nothing.clone()), Err(RulesError::NothingToTrashFirst { .. })), "the plain install already asks");
-        assert!(crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }));
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }));
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&into_nothing));
     }
 
@@ -1491,7 +1491,7 @@ mod system_gateway {
         let mut state = runner_turn(20, 4);
         state.runner.grip = vec![CardId("gordian_blade".to_string())];
         state.runner.rig = vec![rig_card_with_counters("corroder", 0), rig_card_with_counters("cleaver", 0)];
-        let trashing = PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: true };
+        let trashing = PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: true, host: None };
         assert!(crate::rules::legal_actions(&state, &registry).contains(&trashing));
 
         let (asked, _) = apply_action(&state, &registry, trashing).expect("asks");
@@ -1517,7 +1517,7 @@ mod system_gateway {
         let mut state = runner_turn(20, 4);
         state.runner.grip = vec![CardId("mayfly".to_string())];
         state.runner.rig = ["corroder", "cleaver", "buzzsaw", "carmen"].map(|id| rig_card_with_counters(id, 0)).to_vec();
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("mayfly".to_string()), trash_first: false }).expect("asks");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("mayfly".to_string()), trash_first: false, host: None }).expect("asks");
         assert_eq!(parked_install_question(&asked).memory_short, 2);
         let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: position_of(&asked, "carmen") }).expect("carmen");
         let question = parked_install_question(&asked);
@@ -1672,7 +1672,7 @@ mod system_gateway {
         }];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("buzzsaw".to_string()), trash_first: false })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("buzzsaw".to_string()), trash_first: false, host: None })
                 .expect("install buzzsaw");
         assert_eq!(state.runner.resources.credits, Credits(6), "10 - 4 (Buzzsaw's install cost)");
 
@@ -3953,7 +3953,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false },
+            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None },
         )
         .expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(9), "10 - 2 (cost) + 1 (DZMZ discount)");
@@ -3962,7 +3962,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false },
+            PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false, host: None },
         )
         .expect("install gordian blade");
         assert_eq!(state.runner.resources.credits, Credits(5), "9 - 4 (cost), discount already used this turn");
@@ -3980,9 +3980,9 @@ mod system_gateway {
         state.runner.rig[1].install_id = crate::rules::InstallId(state.runner.rig[0].install_id.0 + 1);
         state.runner.grip = vec![CardId("corroder".to_string()), CardId("gordian_blade".to_string())];
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("install corroder");
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(10), "2 (cost) - 1 - 1");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false, host: None })
             .expect("install gordian blade");
         assert_eq!(state.runner.resources.credits, Credits(6), "both first times are spent");
     }
@@ -4001,16 +4001,16 @@ mod system_gateway {
         state.runner.resources.credits = Credits(10);
         state.runner.grip = vec![CardId("corroder".to_string()), CardId("dzmz_optimizer".to_string()), CardId("gordian_blade".to_string()), CardId("corroder".to_string())];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("the turn's first program");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("the turn's first program");
         assert_eq!(state.runner.resources.credits, Credits(8), "10 - 2");
         let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()), host: None }).expect("install the optimizer");
         assert_eq!(state.runner.resources.credits, Credits(6), "8 - 2");
-        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false }).expect("the turn's second program");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), trash_first: false, host: None }).expect("the turn's second program");
         assert_eq!(state.runner.resources.credits, Credits(2), "6 - 4: not the first program this turn, whoever was watching the first");
 
         crate::rules::turn_log::rotate(&mut state);
         state.runner.resources.clicks = Clicks(4);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("next turn's first program");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("next turn's first program");
         assert_eq!(state.runner.resources.credits, Credits(1), "2 - 2 + 1");
     }
 
@@ -4054,7 +4054,7 @@ mod system_gateway {
             .expect("install dzmz optimizer");
         assert_eq!(state.runner.resources.credits, Credits(8), "9 - 2 (cost) + 1 (Kate)");
         let (after, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("install corroder");
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("install corroder");
         assert_eq!(after.runner.resources.credits, Credits(7), "8 - 2 (cost) + 1 (DZMZ); Kate's is spent");
 
         // A new turn: both apply to the one install. DZMZ's is a use that
@@ -4062,7 +4062,7 @@ mod system_gateway {
         state.runner.once_per_turn_used.clear();
         crate::rules::turn_log::rotate(&mut state);
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("install corroder");
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(8), "8 - 2 (cost) + 1 (Kate) + 1 (DZMZ)");
     }
 
@@ -4112,7 +4112,7 @@ mod system_gateway {
         let (state_no_run, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), trash_first: false },
+            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), trash_first: false, host: None },
         )
         .expect("install carmen without a successful run this turn");
         assert_eq!(state_no_run.runner.resources.credits, Credits(5), "10 - 5, no discount");
@@ -4121,7 +4121,7 @@ mod system_gateway {
         let (state_after_run, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), trash_first: false },
+            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), trash_first: false, host: None },
         )
         .expect("install carmen after a successful run this turn");
         assert_eq!(state_after_run.runner.resources.credits, Credits(7), "10 - 5 + 2 (discount)");
@@ -4613,7 +4613,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("leech".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("leech".to_string()), trash_first: false })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("leech".to_string()), trash_first: false, host: None })
                 .expect("install leech");
         // Leech's own OnInstall doesn't place a counter (only Cookbook's
         // optional reaction can, and only Leech's OnSuccessfulRun does) —
@@ -6682,13 +6682,13 @@ mod system_gateway {
         state.runner.grip = vec![CardId("principia".to_string())];
 
         let (alone, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()), trash_first: false })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()), trash_first: false, host: None })
                 .expect("install principia into an empty rig");
         assert_eq!(alone.runner.resources.credits, Credits(6), "10 - 4: no other icebreaker, no discount");
 
         state.runner.rig = vec![rig_card_with_counters("cleaver", 0), rig_card_with_counters("unity", 0)];
         let (discounted, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()), trash_first: false })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()), trash_first: false, host: None })
                 .expect("install principia beside two icebreakers");
         assert_eq!(discounted.runner.resources.credits, Credits(8), "10 - (4 - 2): one less per other icebreaker");
         assert_eq!(discounted.runner.rig.len(), 3);
@@ -6812,7 +6812,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("azimat".to_string())];
         corp_rd_filler(&mut state);
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("azimat".to_string()), trash_first: false })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("azimat".to_string()), trash_first: false, host: None })
             .expect("install azimat");
         assert_eq!(state.runner.rig[0].counters, 2, "when you install this program, refill to 2");
 
@@ -6850,7 +6850,7 @@ mod system_gateway {
         state.corp.r_and_d = (0..3).map(|i| CardId(format!("rd_card_{i}"))).collect();
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("devadatta_drone".to_string()), trash_first: false })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("devadatta_drone".to_string()), trash_first: false, host: None })
                 .expect("install devadatta drone");
         assert_eq!(state.runner.rig[0].counters, 2);
 
@@ -7155,11 +7155,11 @@ mod system_gateway {
         let mut installing = state.clone();
         installing.runner.resources.credits = Credits(2);
         installing.runner.grip = vec![CardId("hantu".to_string()), CardId("cleaver".to_string())];
-        let installed = act(installing.clone(), &registry, PlayerAction::InstallProgram { card_id: CardId("hantu".to_string()), trash_first: false });
+        let installed = act(installing.clone(), &registry, PlayerAction::InstallProgram { card_id: CardId("hantu".to_string()), trash_first: false, host: None });
         assert_eq!((installed.runner.rig[0].counters, installed.runner.resources.credits), (0, Credits(0)));
 
         // Cleaver is 3[c] too and no virus: the wallet's 2 is all there is.
-        assert!(apply_action(&installing, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), trash_first: false }).is_err());
+        assert!(apply_action(&installing, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), trash_first: false, host: None }).is_err());
     }
 
     #[test]
@@ -7803,7 +7803,7 @@ mod system_gateway {
         let mut state = runner_turn(10, 4);
         state.runner.grip = vec![CardId("hantu".to_string())];
         state.corp.installed = vec![corp_ice("tithe", ServerId::Hq)];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("hantu".to_string()), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("hantu".to_string()), trash_first: false, host: None }).expect("install");
         assert_eq!(state.runner.rig[0].counters, 2);
         let state = enter_encounter_with(state, &registry, ServerId::Hq);
         let hantu = install_of(&state, "hantu");
@@ -8069,10 +8069,10 @@ mod system_gateway {
         state.runner.grip = vec![CardId("marjanah".to_string()), CardId("corroder".to_string())];
 
         // A paid install: no offer.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false }).expect("install, paying 2");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), trash_first: false, host: None }).expect("install, paying 2");
         assert!(state.pending_decision.is_none(), "credits were spent");
         // A free one: host the top of the stack.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("marjanah".to_string()), trash_first: false }).expect("install for 0");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("marjanah".to_string()), trash_first: false, host: None }).expect("install for 0");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may host");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host it");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { card, host: Some(host) } if card.0 == "sure_gamble" && host.0 == "bling")));
@@ -12100,7 +12100,7 @@ mod vantage_point {
         let mut after = state.clone();
         after.active_run = None;
         after.lingering.clear();
-        let install = PlayerAction::InstallProgram { card_id: id("sipa"), trash_first: false };
+        let install = PlayerAction::InstallProgram { card_id: id("sipa"), trash_first: false, host: None };
         assert!(apply_action(&after, &registry, install).is_err(), "outside a run its credits pay for nothing");
     }
 
@@ -12515,7 +12515,7 @@ mod vantage_point {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.grip = vec![id("lampades")];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lampades"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lampades"), trash_first: false, host: None }).expect("install");
         assert_eq!(hosted_on(&state, "lampades"), 3);
 
         for (stealth, trashed) in [(2, true), (1, false)] {
@@ -12705,7 +12705,7 @@ mod vantage_point {
         state.runner.grip = vec![id("read_write_share"), id("sure_gamble"), id("corsair")];
         state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("read_write_share"), trash_first: false }).expect("install");
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("read_write_share"), trash_first: false, host: None }).expect("install");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host one");
         let corsair = state.runner.grip.iter().position(|c| c.0 == "corsair").expect("in the grip");
         let (state, _) = pick(&state, &registry, corsair);
@@ -13342,7 +13342,7 @@ mod rebellion_without_rehearsal {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("coalescence")];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("coalescence"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("coalescence"), trash_first: false, host: None }).expect("install");
         let coalescence = install_of(&state, "coalescence");
         assert_eq!(state.runner.rig[0].counters, 2, "two power counters on install");
         let use_it = PlayerAction::ActivateAbility { target: coalescence, ability_index: 0 };
@@ -13779,7 +13779,7 @@ mod rebellion_without_rehearsal {
         let mut state = runner_turn();
         state.runner.grip = vec![id("malandragem")];
         state.corp.installed = vec![ice_at_hq("ice_wall")];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("malandragem"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("malandragem"), trash_first: false, host: None }).expect("install");
         assert_eq!(state.runner.rig[0].counters, 2, "loaded with two");
         let at_ice = encounter(&state, &registry);
         assert!(at_ice.pending_paid_choice.is_some(), "Ice Wall is strength 1");
@@ -14213,7 +14213,7 @@ mod rebellion_without_rehearsal {
     #[test]
     fn muse_installs_a_found_program_on_itself_and_a_found_trojan_on_a_chosen_piece_of_ice() {
         let registry = registry();
-        let install_muse = PlayerAction::InstallProgram { card_id: id("muse"), trash_first: false };
+        let install_muse = PlayerAction::InstallProgram { card_id: id("muse"), trash_first: false, host: None };
         let mut state = runner_turn();
         state.runner.grip = vec![id("muse")];
         state.runner.stack = vec![id("corroder"), id("sure_gamble")];
@@ -15289,7 +15289,7 @@ mod rebellion_without_rehearsal {
         let mut state = runner_turn();
         state.runner.grip = vec![id("lobisomem")];
         state.runner.resources.credits = Credits(10);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lobisomem"), trash_first: false }).expect("install it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lobisomem"), trash_first: false, host: None }).expect("install it");
         assert_eq!(state.runner.rig[0].counters, 1, "when you install this program");
 
         let state = lobisomem_against("enigma", 0);
@@ -16424,11 +16424,11 @@ mod the_automata_initiative {
         assert_eq!(crate::rules::memory::available_memory(&state, &registry), before + 2, "+2[mu]");
         assert!(state.pending_decision.is_none(), "hardware is not a program");
 
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false }).expect("a program");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None }).expect("a program");
         assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "you may draw");
         let (drew, _) = choose(&asked, &registry, 0);
         assert_eq!(drew.runner.stack.len(), 2);
-        let (second, _) = apply_action(&drew, &registry, PlayerAction::InstallProgram { card_id: id("gordian_blade"), trash_first: false }).expect("another");
+        let (second, _) = apply_action(&drew, &registry, PlayerAction::InstallProgram { card_id: id("gordian_blade"), trash_first: false, host: None }).expect("another");
         assert!(second.pending_decision.is_none(), "the first time each turn");
     }
 
@@ -18509,7 +18509,7 @@ mod parhelion {
         state.runner.grip = vec![id("nga")];
         state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
         state.corp.r_and_d = vec![id("hedge_fund"); 3];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("nga"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("nga"), trash_first: false, host: None }).expect("install");
         assert_eq!(counters(&state, "nga"), Some(3), "load 3 power counters");
 
         let asked = successful_run(&state, &registry, ServerId::Archives);
@@ -19288,6 +19288,48 @@ mod parhelion {
             passed = step(&passed);
         }
         assert_eq!(passed.runner.grip.len(), 5, "fully broken: no damage");
+    }
+
+    #[test]
+    fn djinn_hosts_three_memory_of_non_icebreakers_outside_the_limit_and_tutors_a_virus() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(20);
+        // Djinn and three more programs: the 4[mu] limit is full.
+        state.runner.rig = vec![in_rig("djinn", 0, 0), in_rig("abagnale", 0, 0), in_rig("baker", 0, 0), in_rig("lampades", 0, 0)];
+        state.next_install_id = 4_000_000;
+        state.runner.grip = vec![id("datasucker"), id("corroder"), id("cache"), id("imp"), id("medium")];
+        let djinn = fixture_install_id("djinn");
+        let onto = |card: &str| PlayerAction::InstallProgram { card_id: id(card), trash_first: false, host: Some(djinn) };
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.contains(&onto("datasucker")), "a non-icebreaker program");
+        assert!(!offered.contains(&onto("corroder")), "not an icebreaker");
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 0, "the limit is full");
+
+        let mut hosting = state.clone();
+        for card in ["datasucker", "cache", "imp"] {
+            let (next, events) = apply_action(&hosting, &registry, onto(card)).expect("onto Djinn");
+            assert!(next.pending_decision.is_none(), "nothing to trash: {events:?}");
+            let hosted = next.runner.rig.iter().find(|installed| installed.card == id(card)).expect("installed");
+            assert_eq!(hosted.hosted_on_rig_card, Some(djinn));
+            assert_eq!(crate::rules::memory::memory_balance(&next, &registry), 0, "its memory does not count");
+            hosting = next;
+            hosting.runner.resources.clicks = Clicks(4);
+        }
+        let offered = crate::rules::legal_actions(&hosting, &registry);
+        assert!(!offered.contains(&onto("medium")), "3[mu] hosted already");
+        assert!(apply_action(&hosting, &registry, onto("medium")).is_err());
+
+        // [click], 1[credit]: search the stack for a virus program.
+        let mut searching = state.clone();
+        searching.runner.stack = vec![id("sure_gamble"), id("datasucker"), id("corroder")];
+        let (asked, _) = apply_action(&searching, &registry, PlayerAction::ActivateAbility { target: djinn, ability_index: 0 }).expect("search");
+        assert_eq!(asked.runner.resources.credits, Credits(19));
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: crate::rules::test_support::position_of(&asked, "datasucker") }).expect("pick");
+        let (found, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("add it to the grip");
+        assert!(found.runner.grip.contains(&id("datasucker")));
+        assert_eq!(found.runner.stack.len(), 2);
     }
 
     #[test]
@@ -20174,7 +20216,7 @@ mod parhelion {
         let mut state = runner_turn();
         state.runner.grip = vec![id("matryoshka"), id("matryoshka"), id("sure_gamble")];
         state.runner.resources.credits = Credits(10);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("matryoshka"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("matryoshka"), trash_first: false, host: None }).expect("install");
         let install = state.runner.rig[0].install_id;
         let host = PlayerAction::ActivateAbility { target: install, ability_index: 0 };
         let (asked, _) = apply_action(&state, &registry, host.clone()).expect("host a copy");
@@ -20869,7 +20911,7 @@ mod midnight_sun {
     }
 
     fn install_program(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
-        apply_action(state, registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false }).expect("install").0
+        apply_action(state, registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false, host: None }).expect("install").0
     }
 
     fn install_hardware(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
@@ -23018,7 +23060,7 @@ mod uprising {
     fn install(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
         let card_id = id(card);
         let action = match registry.get(&card_id).expect("a card").card_type {
-            crate::dsl::CardType::Program => PlayerAction::InstallProgram { card_id, trash_first: false },
+            crate::dsl::CardType::Program => PlayerAction::InstallProgram { card_id, trash_first: false, host: None },
             crate::dsl::CardType::Hardware => PlayerAction::InstallHardware { card_id, host: None },
             _ => PlayerAction::InstallResource { card_id, host: None },
         };
@@ -25109,7 +25151,7 @@ mod downfall {
         let mut state = runner_turn();
         state.runner.grip = vec![id("gauss")];
         let (installed, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("gauss"), trash_first: false }).expect("install");
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("gauss"), trash_first: false, host: None }).expect("install");
         let (mut installed, _) = close_all_windows(installed, &registry);
         installed.corp.r_and_d = vec![id("hedge_fund")];
         assert_eq!(installed.runner.resources.credits, Credits(8));
@@ -25923,10 +25965,10 @@ mod downfall {
         let mut state = runner_turn();
         state.runner.rig = vec![rig("the_nihilist", 2001)];
         state.runner.grip = vec![id("leech"), id("leech")];
-        let (one, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let (one, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false, host: None }).expect("install");
         let one = pass_until_settled(one, &registry).0;
         assert_eq!(counters_on(&one, "the_nihilist"), Some(2), "the first virus program this turn");
-        let (two, _) = apply_action(&one, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false }).expect("install");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::InstallProgram { card_id: id("leech"), trash_first: false, host: None }).expect("install");
         let two = pass_until_settled(two, &registry).0;
         assert_eq!(counters_on(&two, "the_nihilist"), Some(2), "only the first");
 
@@ -26019,7 +26061,7 @@ mod downfall {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("pelangi")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("pelangi"), trash_first: false }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("pelangi"), trash_first: false, host: None }).expect("install");
         let installed = pass_until_settled(installed, &registry).0;
         assert_eq!(counters_on(&installed, "pelangi"), Some(2));
 
@@ -26290,7 +26332,7 @@ mod downfall {
         let played = pass_until_settled(played, &registry).0;
         assert_eq!(played.delayed.len(), 1);
         let install = |state: &GameState, card: &str| {
-            let (state, _) = apply_action(state, &registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false }).expect("install");
+            let (state, _) = apply_action(state, &registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false, host: None }).expect("install");
             pass_until_settled(state, &registry).0
         };
         let corroder = install(&played, "corroder");
@@ -27075,7 +27117,7 @@ mod reprints {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("cache")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("cache"), trash_first: false }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("cache"), trash_first: false, host: None }).expect("install");
         let (mut state, _) = close_all_windows(installed, &registry);
         assert_eq!(counters_on(&state, "cache"), 3);
         assert_eq!(state.runner.resources.credits, Credits(9));
@@ -27778,7 +27820,7 @@ mod reprints {
         let mut state = runner_turn();
         state.runner.resources.credits = Credits(10);
         state.runner.grip = vec![id("atman")];
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("atman"), trash_first: false }).expect("install");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("atman"), trash_first: false, host: None }).expect("install");
         let (spent, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("spend 2");
         let (spent, _) = pass_until_settled(spent, &registry);
         assert_eq!(spent.runner.resources.credits, Credits(5), "3 to install, 2 spent");
@@ -27839,7 +27881,7 @@ mod reprints {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("cerberus_lady_h1")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("cerberus_lady_h1"), trash_first: false }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("cerberus_lady_h1"), trash_first: false, host: None }).expect("install");
         let installed = close_all_windows(installed, &registry).0;
         assert_eq!(counters_on(&installed, "cerberus_lady_h1"), 4);
 
@@ -28386,7 +28428,7 @@ mod reprints {
         state.runner.resources.credits = Credits(20);
         state.runner.grip = vec![id("femme_fatale")];
         state.corp.installed = vec![ice_at_hq("enigma")];
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("femme_fatale"), trash_first: false }).expect("install");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("femme_fatale"), trash_first: false, host: None }).expect("install");
         assert_eq!(runner_toggles(&asked, &registry), vec![0], "choose 1 installed piece of ice");
         let chosen = pick(&asked, &registry, &[0]);
         let chosen = close_all_windows(chosen, &registry).0;
@@ -28520,7 +28562,7 @@ mod reprints {
         let registry = registry();
         let mut state = runner_turn();
         state.runner.grip = vec![id("chameleon")];
-        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("chameleon"), trash_first: false }).expect("install");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("chameleon"), trash_first: false, host: None }).expect("install");
         let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("code gate");
         let (chosen, _) = close_all_windows(chosen, &registry);
         assert_eq!(crate::rules::lingering::chosen_ice_type(&chosen, install_of(&chosen, "chameleon")), Some(crate::dsl::IceType::CodeGate));
@@ -29340,10 +29382,10 @@ mod reprints {
         state.runner.rig = vec![rig("grimoire", 0)];
         assert_eq!(crate::rules::memory::memory_balance(&state, &registry), memory + 2);
         state.runner.grip = vec![id("datasucker"), id("aurora")];
-        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("datasucker"), trash_first: false }).expect("install");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("datasucker"), trash_first: false, host: None }).expect("install");
         let (installed, _) = pass_until_settled(installed, &registry);
         assert_eq!(counters_on(&installed, "datasucker"), 1, "place 1 virus counter on that program");
-        let (installed, _) = apply_action(&installed, &registry, PlayerAction::InstallProgram { card_id: id("aurora"), trash_first: false }).expect("install");
+        let (installed, _) = apply_action(&installed, &registry, PlayerAction::InstallProgram { card_id: id("aurora"), trash_first: false, host: None }).expect("install");
         let (installed, _) = pass_until_settled(installed, &registry);
         assert_eq!(counters_on(&installed, "aurora"), 0, "not a virus");
     }

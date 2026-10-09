@@ -752,8 +752,9 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PlayOperation { card_id } => format!("Play {}", title(card_id)),
         PlayerAction::InstallHardware { card_id, host: None } => format!("Install {}", title(card_id)),
         PlayerAction::InstallHardware { card_id, host: Some(host) } => format!("Install {} onto {}", title(card_id), install_label(host)),
-        PlayerAction::InstallProgram { card_id, trash_first: false } => format!("Install {}", title(card_id)),
-        PlayerAction::InstallProgram { card_id, trash_first: true } => format!("Install {}, trashing programs first", title(card_id)),
+        PlayerAction::InstallProgram { card_id, trash_first: false, host: None } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallProgram { card_id, trash_first: true, host: None } => format!("Install {}, trashing programs first", title(card_id)),
+        PlayerAction::InstallProgram { card_id, host: Some(host), .. } => format!("Install {} onto {}", title(card_id), install_label(host)),
         PlayerAction::InstallResource { card_id, host: None } => format!("Install {}", title(card_id)),
         PlayerAction::InstallResource { card_id, host: Some(host) } => format!("Install {} onto {}", title(card_id), install_label(host)),
         PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
@@ -1050,10 +1051,14 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             "Spend 1 click and its install cost to install {} onto a card that hosts it. It leaves play if its host does.",
             title(card_id)
         ),
-        PlayerAction::InstallProgram { card_id, trash_first } => format!(
+        PlayerAction::InstallProgram { card_id, trash_first, host: None } => format!(
             "Spend 1 click and its install cost to install {}. Programs take memory (MU); you have 4 MU by default, and an icebreaker is how you get through ice. With no room, you trash programs of your choice to make it.{}",
             title(card_id),
             if *trash_first { " First trash any of your installed programs, one at a time." } else { "" }
+        ),
+        PlayerAction::InstallProgram { card_id, host: Some(_), .. } => format!(
+            "Spend 1 click and its install cost to install {} onto a card that hosts it, outside your memory limit. It leaves play if its host does.",
+            title(card_id)
         ),
         PlayerAction::InstallResource { card_id, host: None } => format!(
             "Spend 1 click and its install cost to install {}. Resources stay in play but can be trashed by the Corp if you are tagged.",
@@ -1683,7 +1688,7 @@ mod tests {
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card(), host: None },
-            PlayerAction::InstallProgram { card_id: card(), trash_first: false },
+            PlayerAction::InstallProgram { card_id: card(), trash_first: false, host: None },
             PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },

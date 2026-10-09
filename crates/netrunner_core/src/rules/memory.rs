@@ -62,8 +62,17 @@ pub const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
 /// that stops being true. The grant was a `memory_bonus` field summed the
 /// same way, and is the scan the continuous-effect layer was modelled on.
 pub fn memory_balance(state: &GameState, registry: &CardRegistry) -> i32 {
-    let spent: i32 =
-        state.runner.rig.iter().filter_map(|installed| registry.get(&installed.card)).map(|card| card.memory_cost.unwrap_or(0) as i32).sum();
+    // A program a card hosts outside the limit (Djinn's "the memory costs
+    // of hosted programs do not count against your memory limit",
+    // `continuous::hosts_memory`) spends none of it.
+    let spent: i32 = state
+        .runner
+        .rig
+        .iter()
+        .filter(|installed| installed.hosted_on_rig_card.is_none_or(|host| continuous::hosts_memory(state, registry, host).is_none()))
+        .filter_map(|installed| registry.get(&installed.card))
+        .map(|card| card.memory_cost.unwrap_or(0) as i32)
+        .sum();
     RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) - spent
 }
 

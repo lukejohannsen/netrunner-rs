@@ -237,6 +237,17 @@ pub enum ContinuousKind {
     /// the action list and by the install. No payload: which cards is the
     /// scope's to say.
     MayHost,
+    /// This card hosts up to this many [mu] of programs, and the memory
+    /// costs of the programs it hosts do not count against the Runner's
+    /// memory limit — Djinn's "Djinn can host up to 3[mu] of non-icebreaker
+    /// programs. The memory costs of hosted programs do not count against
+    /// your memory limit." About `This`; which programs is `MayHost`'s to
+    /// say. Asked by `continuous::may_install_onto` (the room left) and by
+    /// `memory::memory_balance` (the programs it leaves out). One kind for
+    /// both sentences because the room is what the memory is free within.
+    /// Composition didn't work: `Memory` adds to the limit whatever is
+    /// hosted, and nothing limited what a host may take.
+    HostsMemory(Number),
     /// A run it applies to cannot be declared successful — Flagship's
     /// "Runs against this server cannot be declared successful. (This effect
     /// does not cause runs to become unsuccessful.)" The Success Phase is

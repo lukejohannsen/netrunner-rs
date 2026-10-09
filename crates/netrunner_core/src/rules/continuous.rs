@@ -646,7 +646,39 @@ pub(crate) fn may_install_onto(state: &GameState, registry: &CardRegistry, card:
             .and_then(|installed| registry.get(&installed.card))
             .is_some_and(|host| crate::dsl::card_matches_filter(host, filter));
     }
-    any(state, registry, Target::InstallingOnto { card, host }, |kind| matches!(kind, ContinuousKind::MayHost))
+    if !any(state, registry, Target::InstallingOnto { card, host }, |kind| matches!(kind, ContinuousKind::MayHost)) {
+        return false;
+    }
+    // Djinn's "up to 3[mu]": the programs it hosts already, and this one.
+    match hosts_memory(state, registry, host) {
+        Some(room) => {
+            let hosted: u32 = state
+                .runner
+                .rig
+                .iter()
+                .filter(|installed| installed.hosted_on_rig_card == Some(host))
+                .filter_map(|installed| registry.get(&installed.card))
+                .map(|card| card.memory_cost.unwrap_or(0))
+                .sum();
+            hosted + card.memory_cost.unwrap_or(0) <= room
+        }
+        None => true,
+    }
+}
+
+/// How many [mu] of programs the rig card `host` hosts outside the memory
+/// limit (`ContinuousKind::HostsMemory`, Djinn), if it says it does.
+pub(crate) fn hosts_memory(state: &GameState, registry: &CardRegistry, host: InstallId) -> Option<u32> {
+    let installed = state.find_rig_install(host)?;
+    let card = registry.get(&installed.card)?;
+    if !card.continuous.iter().any(|effect| matches!(effect.kind, ContinuousKind::HostsMemory(_))) {
+        return None;
+    }
+    let room = sum(state, registry, Target::Rig { card, install: host }, |kind| match kind {
+        ContinuousKind::HostsMemory(number) => Some(number),
+        _ => None,
+    });
+    (room > 0).then_some(room as u32)
 }
 
 
