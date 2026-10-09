@@ -352,6 +352,22 @@ pub(super) fn advancement_upside(
     worst.unwrap_or(0.0).max(0.0)
 }
 
+/// The Runner's maximum hand size below the printed 5: the core damage
+/// taken, less what the table adds to it (`continuous::hand_size` — Marrow's
+/// "+3 maximum hand size", T400 Memory Diamond's +1) and plus what the
+/// Corp's cards take (Dr. Vientiane Keeling's "-1 maximum hand size for each
+/// hosted power counter"). Both chairs weigh it at `core_damage_weight`,
+/// since core damage is a hand size (§36): a point of hand size the rig
+/// gives back is the point a core damage took (Phase 5 §59).
+///
+/// **Why.** The evaluator read the core damage and never the hand size, so
+/// Marrow — "+3 maximum hand size … when you install this hardware, suffer
+/// 1 core damage" — was read as a core damage for nothing, and the planner
+/// never installed it (random seats 11 over the Sweep decks, the planner 0).
+pub(super) fn runner_hand_size_lost(state: &GameState, registry: &CardRegistry) -> f64 {
+    f64::from(state.runner.brain_damage as i32 - continuous::hand_size(state, registry, Side::Runner))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,3 +707,4 @@ mod tests {
         assert_eq!(declared_value(&printed(&pool, "pad_campaign"), &w), 0.0, "an install's future is priced where the install is");
     }
 }
+

@@ -644,7 +644,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score += held_traps(state, registry) as f64 * w.held_trap_weight;
     }
     *score += w.opponent_grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.opponent_grip_shortfall_weight;
-    *score += state.runner.brain_damage as f64 * w.core_damage_weight;
+    *score += runner_hand_size_lost(state, registry) * w.core_damage_weight;
     if state.corp.r_and_d.len() >= w.rd_draw_reserve {
         *score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
     }

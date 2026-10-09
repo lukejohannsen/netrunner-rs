@@ -2379,7 +2379,7 @@ mod positions {
             .collect();
         state.next_install_id = 20;
         let view = build_client_view(&state, &registry, Side::Runner);
-        let install = PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()) };
+        let install = PlayerAction::InstallHardware { card_id: CardId("carnivore".to_string()), host: None };
         assert!(view.legal_actions.contains(&install), "{:?}", view.legal_actions);
         const SEEDS: u64 = 20;
         let installs = |style: Style| {
@@ -2486,7 +2486,7 @@ mod positions {
         state.runner.resources.credits = Credits(3);
         state.runner.grip = [vec![CardId("madani".to_string()), CardId("fracter".to_string()), CardId("killer".to_string()), CardId("decoder".to_string())], filler()].concat();
         let (actions, after) = play(state, &dear);
-        assert!(actions.contains(&PlayerAction::InstallHardware { card_id: CardId("madani".to_string()) }), "{actions:?}");
+        assert!(actions.contains(&PlayerAction::InstallHardware { card_id: CardId("madani".to_string()), host: None }), "{actions:?}");
         assert!(after.runner.rig.iter().any(|card| card.card.0 == "madani"));
 
         // A breaker hosted on Madani and one click: the free install, and
@@ -2976,7 +2976,7 @@ mod positions {
                 .legal_actions
                 .iter()
                 .find(|action| match action {
-                    PlayerAction::InstallResource { card_id, .. } | PlayerAction::InstallHardware { card_id } => card_id.0 == card,
+                    PlayerAction::InstallResource { card_id, .. } | PlayerAction::InstallHardware { card_id, .. } => card_id.0 == card,
                     _ => false,
                 })
                 .cloned()

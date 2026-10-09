@@ -3714,3 +3714,21 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Pooled +8 / −12, **z −0.89**, inside the band: seed 2's loss was that seed's trajectory, which seed 3 does not repeat.
 
 **Verified.** `cargo test --workspace --exclude netrunner_desktop` green (2,694 passed), `cargo clippy --workspace --exclude netrunner_desktop --all-targets -- -D warnings` silent; the fixture `plays_a_lockdown_with_the_last_click_for_what_it_takes_from_the_runners_next_run` plays each lockdown and fails with the Corp term off (a credit instead), and `a_lockdown_in_play_is_read_on_the_runs_it_is_about` holds the reading. Engine untouched; `netrunner_bots` only.
+
+## 59. The Runner's hand size is read, not only its core damage: Marrow is installed — DONE (`claude/bot-blindness-hand-size`, 9 October 2026)
+
+**The debt.** The second mechanism of §57's list over the Sweep decks. Marrow (random seats 11, the planner 0) is hardware that prints "+1[mu]", "You get +3 maximum hand size" and "When you install this hardware, suffer 1 core damage".
+
+**Why.** §36 made core damage a hand size on both chairs, at `core_damage_weight`, and read the damage counter alone. What the table adds to a hand size — Marrow's +3, T400 Memory Diamond's +1 — or takes from it (Dr. Vientiane Keeling's "-1 maximum hand size for each hosted power counter") was read by nothing, so Marrow was its install's core damage and a memory unit, and never worth a click and 2[credit].
+
+**What is read now.** `fundamentals::runner_hand_size_lost` is the core damage less `continuous::hand_size` for the Runner, the engine's own question (made public for it, as `points_to_win` is), and both chairs weigh it where they weighed the damage. A point of hand size the rig gives back is the point a core damage took.
+
+**Not paid here: sabotage.** Marrow's "whenever the Corp scores an agenda, sabotage 1", Cacophony's and Nga's park a Corp selection over HQ that the planner's line does not answer (`opponents_answer` answers a yes-or-no and a choice of effects, not a selection), and nothing reads what the Corp's cards are worth to the Runner. That is the next mechanism.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games:
+
+- Seed 2: **Marrow 0 → 46** (random 13), T400 Memory Diamond 38 → 41, Supercorridor 5 → 11, Hippocampic Mechanocytes 9 → 14; the strict blind list against `main`'s random pass 53 → 49 cards. Corp share 0.471 → 0.492 (+30 / −17, z +1.90).
+- Seed 3: **Marrow 0 → 42**, T400 Memory Diamond 24 → 34, Supercorridor 5 → 13, Hippocampic Mechanocytes 8 → 16; Corp share 0.508 → 0.508 (+23 / −23).
+- Pooled +53 / −40, **z +1.35**, inside the band: seed 2's move was that seed's trajectory.
+
+**Verified.** `a_hand_size_the_rig_gives_is_the_core_damage_it_answers` holds that a Marrow in the rig is worth more to the Runner than none, and less to the Corp, and fails with the damage read alone. Engine behaviour untouched (one function made public); `netrunner_bots` only.

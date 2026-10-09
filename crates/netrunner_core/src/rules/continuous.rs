@@ -365,7 +365,9 @@ pub(crate) fn memory(state: &GameState, registry: &CardRegistry) -> i32 {
 /// Dr. Vientiane Keeling's "The Runner gets -1 maximum hand size for each
 /// hosted power counter" is the Corp's asset binding the Runner, so it is
 /// asked as a prohibition is, across both tables (`Target::Bound`).
-pub(crate) fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
+/// Public for the bots, which read a hand size as core damage reads it
+/// (`netrunner_bots::eval`), as `points_to_win` is for the win they read.
+pub fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
     fn hand_size(kind: &ContinuousKind) -> Option<&Number> {
         match kind {
             ContinuousKind::HandSize(number) => Some(number),
@@ -630,10 +632,20 @@ pub(crate) fn install_cost_onto(state: &GameState, registry: &CardRegistry, card
 }
 
 /// Whether `card` may be installed onto the rig card `host` — a host that
-/// says so of it (`ContinuousKind::MayHost`, Hackerspace). The one
+/// says so of it (`ContinuousKind::MayHost`, Hackerspace), or, for a card
+/// that installs only onto another (`CardDefinition::installs_onto`, The
+/// Personal Touch), a host its filter admits, and no other. The one
 /// question, for the action list and for the install that is refused
 /// without it.
 pub(crate) fn may_install_onto(state: &GameState, registry: &CardRegistry, card: &CardDefinition, host: InstallId) -> bool {
+    // The hosted card's own restriction (The Personal Touch's "only on an
+    // icebreaker"), read off the host's printed card.
+    if let Some(filter) = &card.installs_onto {
+        return state
+            .find_rig_install(host)
+            .and_then(|installed| registry.get(&installed.card))
+            .is_some_and(|host| crate::dsl::card_matches_filter(host, filter));
+    }
     any(state, registry, Target::InstallingOnto { card, host }, |kind| matches!(kind, ContinuousKind::MayHost))
 }
 

@@ -10075,3 +10075,40 @@ new `Effect`, and a Sweep deck.
   `otherwise` resolving only when its condition fails.
 - **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
   single-use, none unused, over 789 card files.
+
+#### Stage 11p — hardware installed onto an icebreaker (9 October 2026)
+
+`claude/nsg-tranche-8-qmn4v7`: one card, from the Core Set, with no new
+`Effect`.
+- **Card:** The Personal Touch (Core Set has 109 of 113 built).
+
+- **"Install The Personal Touch only on an icebreaker."** A new
+  `CardDefinition::installs_onto`, a filter on the host, beside
+  `installs_on_ice`: the restriction is the hosted card's, where
+  Hackerspace's `MayHost` is the host's, and `continuous::may_install_onto`
+  asks both. `InstallHardware` takes a `host`, as `InstallResource` has
+  since Hackerspace, and refuses such a card without one
+  (`RulesError::MustBeInstalledOnto`); the action list offers it onto
+  each icebreaker and never into the rig on its own.
+  `CardDefinition::validate` refuses the field on anything but hardware.
+- **"Host icebreaker has +1 strength."** GAMEDRAGON™ Pro's `Strength` on
+  `Scope::Host`, unchanged.
+- **The action space grew, appended** (3773 → 4285): hardware onto a rig
+  card, hand slot by rig slot, after the card names, so no index moved.
+  `scripts/action_space_segments.py` and the gym's pin follow.
+- **Deferred:** an install by a card's text (Modded) does not offer it,
+  since no text in the pool lets the Runner choose a host and it has
+  nowhere else to go.
+- **Transhuman**, a Sweep deck, takes two for its two Simulchip, hardware
+  for hardware; Level Pegging keeps Simulchip.
+- **The fog gate learned Tatu-Bola's gain.** At seed 117 (Permafrost
+  against Free Spirit) Tatu-Bola, passed rezzed, was swapped into HQ while
+  another copy sat facedown elsewhere; the masking strikes an
+  `IceSwapped` half by card id, so the swap was blank, and the gate read
+  the "gain 4[credit]" in the same entry as naming an HQ card. The Runner
+  watched it, so the gate now takes that gain's card as seen.
+- **Tests.** Offered onto Corroder and not onto Daily Casts or into the
+  rig; refused without a host and onto a resource; installed onto
+  Corroder for 2[credit], hosted there, with Corroder 1 stronger.
+- **DSL ratio** (`pool_status.py`): 17 of 110 `Effect` variants
+  single-use, none unused, over 790 card files.

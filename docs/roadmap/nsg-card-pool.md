@@ -58,12 +58,13 @@ cards each stage takes.
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 65 + 7 | 0 | complete (5 October 2026) |
 | 7 | Downfall (`df`) | 65 | 65 | 0 | complete (6 October 2026) |
-| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 108 | 3, 0, 0, — | in progress: Stages 1a–11o; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
+| 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`), Core Set (`core`) | 82, 18, 6, 113 | 79, 18, 6, 109 | 3, 0, 0, — | in progress: Stages 1a–11p; Salvaged Memories and Magnum Opus Reprint complete (8 October 2026; `core` has no gate yet) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 110
-`Effect` variants single-use, none unused, over 789 card files** (9 October
-2026, with tranche 8 Stage 11o, which added none and gives `EffectIf` an
-`otherwise`; Stage 11n, at 17 of 110 over 788, added none and lets a rez cost on ice
+`Effect` variants single-use, none unused, over 790 card files** (9 October
+2026, with tranche 8 Stage 11p, which added none and lets hardware be
+installed onto another rig card; Stage 11o, at 17 of 110 over 789, added
+none and gives `EffectIf` an `otherwise`; Stage 11n, at 17 of 110 over 788, added none and lets a rez cost on ice
 be about the first rez each turn; Stage 11m, at 17 of 110 over 787, added none and keeps a played event
 out of the heap until it has resolved; Stage 11l, at 17 of 110 over 786, added none and lets the Runner pay
 `Cost::Forfeit`; Stage 11k, at 17 of 110 over 785, added none and asks an install's
@@ -581,7 +582,7 @@ The planner seats in the sweeps and `coverage_identical.py` reach these cards th
 **Over the Sweep decks (Phase 5 §57, 8 October 2026).** The matchup pass deals Sample decks only, and 480 cards are held by Sweep decks alone — every card a set adds that no published list carries, the Core Set tranche among them — so no blind list before this one could name them. `diag precepts --sweep-decks` plays the sweeps' schedule instead (game n the pairing `sweep_decks_for_seed(n)`, Eternal), and `blind_cards.py` reads it as it reads the matchup pass. On this branch, 630 games, seed 2, random seats then planner seats, **50 cards are strictly blind** (random seats use each at least five times, the planner never) and 90 at a ratio of a quarter:
 
 - *Corp* (14) — Earth Station: SEA Headquarters (32), ~~SYNC Rerouting~~ (32; 23 since §58), Nightmare Archive (25), ~~Argus Crackdown~~ (17; 15 since §58), Scapenet (17), Digital Rights Management (12), Simulation Reset (10), Hyoubu Precog Manifold (7; its psi game is heard since §58 and not priced), Neurospike (7), Focus Group (6), Trust Operation (6), Precognition (5), Psychographics (5), Shipment from Vladisibirsk (5).
-- *Runner* (36) — Sipa (28), Chrysopoeian Skimming (25), Backstitching (20), Career Fair (20), S-Dobrado (14), Virtuoso (13), Networking (12), Physarum Entangler (12), Marrow (11), Tsakhia "Bankhar" Gantulga (11), Buffer Drive (10), Light the Fire! (10), Banner (9), Cacophony (9), Environmental Testing (9), Jeitinho (9), Stargate (9), Take a Dive (9), Dirty Laundry (8), Eye for an Eye (8), Malandragem (8), Always Have a Backup Plan (7), Khusyuk (7), Saci (7), WAKE Implant v2A-JRJ (7), Basilar Synthgland 2KVJ (6), Burner (6), Laser Pointer (6), Lemuria Codecracker (6), Professional Contacts (6), Rotary (6), World Tree (6), Xanadu (6), AirbladeX (JSRF Ed.) (5), Clot (5), Stowaway (5).
+- *Runner* (36) — Sipa (28), Chrysopoeian Skimming (25), Backstitching (20), Career Fair (20), S-Dobrado (14), Virtuoso (13), Networking (12), Physarum Entangler (12), ~~Marrow~~ (11; 46 since §59), Tsakhia "Bankhar" Gantulga (11), Buffer Drive (10), Light the Fire! (10), Banner (9), Cacophony (9), Environmental Testing (9), Jeitinho (9), Stargate (9), Take a Dive (9), Dirty Laundry (8), Eye for an Eye (8), Malandragem (8), Always Have a Backup Plan (7), Khusyuk (7), Saci (7), WAKE Implant v2A-JRJ (7), Basilar Synthgland 2KVJ (6), Burner (6), Laser Pointer (6), Lemuria Codecracker (6), Professional Contacts (6), Rotary (6), World Tree (6), Xanadu (6), AirbladeX (JSRF Ed.) (5), Clot (5), Stowaway (5).
 
 Only the planner uses Lobisomem (28), Endurance (10, §57's break), Grimoire (7), Orca (6) and Supercorridor (6). This list, not the matchup pass's, is the one a new set's stage is measured against.
 
@@ -1202,6 +1203,7 @@ trashed faceup (Stargate, CR 4.4.6b). The stage order below stands.
 - **Stage 11m** — Déjà Vu, from the Core Set: a played event whose own choice is parked waits in the play area, shown in both clients, and reaches the heap once it has resolved, so Déjà Vu cannot return itself and Networking returns only itself (`claude/nsg-tranche-8-qmn4v7`, 8 October 2026).
 - **Stage 11n** — Reina Roja: Freedom Fighter, from System Update 2021: the first piece of ice the Corp rezzes each turn costs 1[credit] more, read off the turn log as an install discount is, and her Sweep deck, Rez Tax (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 - **Stage 11o** — Accelerated Beta Test, from the Core Set: the Corp installs and rezzes any ice among the top 3 of R&D, ignoring all costs, and trashes the rest, with an `otherwise` branch on `EffectIf` (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
+- **Stage 11p** — The Personal Touch, from the Core Set: hardware that installs only onto an icebreaker, and gives it +1 strength (`claude/nsg-tranche-8-qmn4v7`, 9 October 2026).
 
 System Update 2021 (68 unbuilt), Salvaged Memories (17) and the Magnum
 Opus Reprint (6), then the 68 Core Set cards no reprint pack carries
@@ -1315,6 +1317,9 @@ nine by kind):
     turn, and she has a Sweep deck, Rez Tax.
     **11o closed**, Accelerated Beta Test, with no new `Effect`: an
     `EffectIf` can say what happens when its condition does not hold.
+    **11p closed**, The Personal Touch, with no new `Effect`: a piece of
+    hardware can install only onto a rig card it names, and
+    `InstallHardware` takes a host.
 
 Most of what this tranche needs has been built by the time it arrives; the
 exceptions are Magnet, abilities that work from Archives or the heap, and

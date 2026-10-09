@@ -1,0 +1,23 @@
+{
+  "id": "the_personal_touch",
+  "title": "The Personal Touch",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "installs_onto": "Icebreaker",
+  "triggers": [],
+  "abilities": [],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host icebreaker has +1 strength."
+    }
+  ],
+  "built_from": 1040,
+  "is_playable": true
+}
