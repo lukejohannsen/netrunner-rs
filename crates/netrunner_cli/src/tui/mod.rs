@@ -1311,7 +1311,18 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         Some((side, remaining)) => format!("{text} | Clock: {side:?} {}s", remaining.as_secs()),
         None => text,
     };
-    frame.render_widget(Paragraph::new(text), area);
+    // The matchup first, on a row of its own: the two identities are the
+    // one thing a spectator joining a match, or a player coming back to
+    // one, cannot read off the numbers — and the board's identity lines
+    // are further down, under each side's zones.
+    frame.render_widget(Paragraph::new(vec![Line::from(matchup(view, app.registry())), Line::from(text)]), area);
+}
+
+/// "Corp identity vs Runner identity", with "—" for an identity the view
+/// does not name, as `identity_line` writes it.
+fn matchup(view: &ClientView, registry: &CardRegistry) -> String {
+    let name = |identity: Option<&CardId>| identity.map_or_else(|| "—".to_string(), |id| card_title(id, registry));
+    format!("{} vs {}", name(view.corp.identity.as_ref()), name(view.runner.identity.as_ref()))
 }
 
 fn click_pool(current: u32, max: u32) -> String {
@@ -1916,6 +1927,8 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let rows: Vec<String> = (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect()).collect();
         let screen = rows.join("\n");
+        assert!(rows[0].starts_with("Nebula Talent Management: Making Stars vs "), "the header's first row is the matchup: {}", rows[0]);
+        assert!(rows[1].starts_with("Turn 0 | Phase: Mulligan"), "and its second the numbers: {}", rows[1]);
         assert!(screen.contains("Identity: Nebula Talent Management: Making Stars · Its flip side is up   Removed from the game: none"), "{screen}");
         assert!(screen.contains("Removed from the game: Sure Gamble"), "{screen}");
         assert!(screen.contains("In effect — Aircheck: the Runner cannot spend or lose credits"), "{screen}");

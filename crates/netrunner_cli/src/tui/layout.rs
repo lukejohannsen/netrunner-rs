@@ -28,7 +28,10 @@ pub struct LayoutRegions {
 pub fn build_layout(area: Rect, with_coach: bool) -> LayoutRegions {
     let [header, board_row, actions, log] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(10), Constraint::Length(8), Constraint::Length(8)])
+        // Two header rows: the matchup, then the numbers. One row held
+        // both only by leaving the identities off, which a spectator
+        // joining a match had no other way to learn (Phase 4 §3).
+        .constraints([Constraint::Length(2), Constraint::Min(10), Constraint::Length(8), Constraint::Length(8)])
         .areas(area);
 
     let (board, coach) = if with_coach {
