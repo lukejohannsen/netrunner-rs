@@ -3753,3 +3753,17 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Pooled +20 / −13, **z +1.22**, inside the band.
 
 **Verified.** `a_sabotage_a_turn_is_read_as_the_cards_its_counters_buy` holds the income reading (Nga's three, Cacophony's three a use at two counters, Marrow's none) and `a_parked_sabotage_is_the_cards_it_takes` the parked one, at the guide's rate and not at the reference's. Engine untouched; `netrunner_bots` only.
+
+## 61. A breach a lockdown denies is priced: Hyoubu Precog Manifold is played — DONE (`claude/bot-blindness-psi`, 9 October 2026)
+
+**The debt.** §58 left it: Hyoubu Precog Manifold's "whenever the Runner makes a successful run on the chosen server, play a Psi Game" is heard since then, and its `on_differ` ends a run that has already succeeded — a denied breach, which `Pays` has no word for. The planner played it once in a pass of the Sweep decks, random seats six times.
+
+**What is read now.**
+
+- `identities::breach_denied` is the chance a successful run on a server loses its breach to the lockdowns in play: a psi game whose differing bids end the run, at six in nine — each side bids 0, 1 or 2 credits (CR 10.14.6b), and a bid neither side can read is any of the three at a third.
+- `corp::breach_denial` is what that takes from the Runner's next run: the agenda points its best run would reach (`read::server_stakes`, `run_stakes` asked of a server between runs) less the most it can still expect once each breach is kept only at the chance it is left, at `run_stakes_weight`. The run is the Runner's to aim, so Hyoubu on HQ is worth nothing while R&D promises as much, and on a remote holding a 2-point agenda it is worth most of that run.
+- The Runner's side is not read: a run on the chosen server is priced as if its breach were sure, the optimism every unread card leaves the Runner with.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games: **Hyoubu 1 → 10** (seed 2) and **1 → 7** (seed 3); Corp share 0.508 → 0.505 (+0 / −2) and 0.497 → 0.495 (+1 / −2); pooled +1 / −4, z −1.34, inside the band. The strict blind list re-taken against a random pass on `main` at seed 2: 46 cards, Scapenet, Simulation Reset, Archived Memories, Shipment from Kaguya and Neurospike the Corp's first, Femme Fatale, Backstitching, Poison Vial, Environmental Testing, Stargate and Whistleblower the Runner's.
+
+**Verified.** `plays_hyoubu_on_the_remote_whose_breach_is_worth_most`: with one click, a 2-point agenda in a remote and Hyoubu in HQ, the Corp plays it and chooses the remote — and with the term off it does not. Engine untouched; `netrunner_bots` only.

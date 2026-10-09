@@ -1266,10 +1266,17 @@ pub(super) fn taxing_cost(state: &GameState, server: netrunner_core::rules::Serv
 /// Archives, which a breach accesses whole. One access a run; the cards
 /// a run event adds are not read. See `RUN_STAKES_WEIGHT`.
 pub(super) fn run_stakes(state: &GameState, run: &RunState, registry: &CardRegistry) -> f64 {
+    server_stakes(state, run.server, registry)
+}
+
+/// `run_stakes` for a run on `server`, asked between runs too (Phase 5
+/// §61: what a lockdown that denies a breach takes from the Runner's next
+/// run).
+pub(super) fn server_stakes(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let points = |card: &netrunner_core::dsl::CardId| registry.get(card).and_then(|def| def.agenda_points).map_or(0.0, f64::from);
     let density = |cards: &[netrunner_core::dsl::CardId]| if cards.is_empty() { 0.0 } else { cards.iter().map(points).sum::<f64>() / cards.len() as f64 };
-    match run.server {
+    match server {
         ServerId::Hq => density(&state.corp.hq),
         ServerId::RnD => density(&state.corp.r_and_d),
         ServerId::Archives => state.corp.archives.iter().map(|card| points(&card.card)).sum(),
@@ -1277,7 +1284,7 @@ pub(super) fn run_stakes(state: &GameState, run: &RunState, registry: &CardRegis
             .corp
             .installed
             .iter()
-            .filter(|card| card.server == run.server && card.slot == InstallSlot::Root)
+            .filter(|card| card.server == server && card.slot == InstallSlot::Root)
             .map(|card| points(&card.card))
             .sum(),
     }
