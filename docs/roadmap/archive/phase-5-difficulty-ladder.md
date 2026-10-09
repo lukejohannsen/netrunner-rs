@@ -3767,3 +3767,19 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games: **Hyoubu 1 → 10** (seed 2) and **1 → 7** (seed 3); Corp share 0.508 → 0.505 (+0 / −2) and 0.497 → 0.495 (+1 / −2); pooled +1 / −4, z −1.34, inside the band. The strict blind list re-taken against a random pass on `main` at seed 2: 46 cards, Scapenet, Simulation Reset, Archived Memories, Shipment from Kaguya and Neurospike the Corp's first, Femme Fatale, Backstitching, Poison Vial, Environmental Testing, Stargate and Whistleblower the Runner's.
 
 **Verified.** `plays_hyoubu_on_the_remote_whose_breach_is_worth_most`: with one click, a 2-point agenda in a remote and Hyoubu in HQ, the Corp plays it and chooses the remote — and with the term off it does not. Engine untouched; `netrunner_bots` only.
+
+## 62. A click ability's draws are income: Professional Contacts is installed — DONE (`claude/bot-blindness-click-draws`, 9 October 2026)
+
+**The debt.** The next mechanism of the blind list re-taken at §61. Professional Contacts (random seats 13, the planner 0) is a 5[credit] resource whose one line is "[click]: Gain 1[credit] and draw 1 card."
+
+**Why.** `declared_income` read a click ability for the credits it takes — Regolith, Telework, Red Team — and a card it draws was nothing, so Professional Contacts was a credit for a click, worth nothing over the click it costs, and its price bought only board presence. The same reading left Calvin B4L3Y's two cards and Dr. Nuka Vrolyck's three at nothing, and charged nothing for the credits a cost asks besides the click.
+
+**What is read now.** A click ability's draws are credits, a card at a credit as a turn start's draws already were; the credits its cost asks besides the click are taken off (Virtual Intelligence: P.I.'s "[click], 1[credit]: Draw 1 card" nets nothing, as before); and the hosted counters its cost removes bound the uses as a stock does (`Income::click_counters`: Dr. Nuka Vrolyck's two counters are two uses). An ability that draws is no longer read as one that places counters for the card's turn starts (`click_places`), which had zeroed Dr. Nuka.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games (uses count each click, so they run past installs):
+
+- Seed 2: **Professional Contacts 0 → 198**, Dr. Nuka Vrolyck 176 → 206, Humanoid Resources 293 → 340, Calvin B4L3Y 53 → 50; Corp share 0.508 → 0.498 (+27 / −33).
+- Seed 3: **Professional Contacts 0 → 116**, Dr. Nuka Vrolyck 190 → 216, Calvin B4L3Y 68 → 51; Corp share 0.497 → 0.502 (+32 / −29).
+- Pooled +59 / −62, **z −0.27**, inside the band; the discordant games spread over the decks, none above six.
+
+**Verified.** `a_click_abilitys_draws_are_income` holds the reading (Professional Contacts a card and a credit for a click a turn, Dr. Nuka bounded by its counters, Calvin B4L3Y two cards for a click, P.I.'s draw nothing). Engine untouched; `netrunner_bots` only.
