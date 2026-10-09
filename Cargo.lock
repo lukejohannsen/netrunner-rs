@@ -5133,7 +5133,6 @@ name = "netrunner_cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "futures-util",
  "netrunner_bots",
  "netrunner_card_sync",
  "netrunner_client",
@@ -5147,9 +5146,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tokio",
- "tokio-tungstenite",
  "uuid",
 ]
 

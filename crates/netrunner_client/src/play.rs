@@ -339,7 +339,7 @@ pub struct MatchHandle {
     /// What the model opponent's requests have cost so far, mirrored the
     /// same way (`LlmAgent::usage`); `None` when the chair holds a rung.
     model_usage: Option<Arc<Mutex<Usage>>>,
-    /// The model opponent's profile name, for "<name> is thinking…".
+    /// The model opponent's profile name, for "`<name>` is thinking…".
     model_name: Option<String>,
 }
 

@@ -369,8 +369,8 @@ impl PoolSort {
 /// to start with — and a set outside that format has nothing they can
 /// use, so "Legal in" is the leftmost filter and decides which sets the
 /// Set filter offers ([`sets`]). There is no "any format": Casual lists
-/// no pool, so it is already every card. The filter was "Only <the
-/// Settings format>" or everything, then a format and a set as two
+/// no pool, so it is already every card. The filter was "Only `<the
+/// Settings format>`" or everything, then a format and a set as two
 /// unrelated drop-downs, which let a Startup builder pick the Core Set
 /// and see an empty pool.
 #[derive(Debug, Clone, PartialEq, Eq)]
