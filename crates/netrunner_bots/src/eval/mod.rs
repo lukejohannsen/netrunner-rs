@@ -51,7 +51,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
+    card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, EffectRequirement, IceType,
     SubroutineBreakCount, Trigger,
 };
 use netrunner_core::rules::continuous;

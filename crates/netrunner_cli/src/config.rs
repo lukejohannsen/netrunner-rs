@@ -764,6 +764,14 @@ pub enum DiagAction {
         /// are for.
         #[arg(long)]
         deck_styles: bool,
+        /// Play the sweeps' schedule — the Sample decks and the Sweep
+        /// decks, game n the pairing `sweep_decks_for_seed(n)` — instead
+        /// of the matchup pass. The Sweep decks are where a set's cards
+        /// that no published list holds are played, and `matchups()`
+        /// never yields one, so a blind-card pass over the matchups
+        /// cannot see them. Ignores `--format`: Sweep decks are Eternal.
+        #[arg(long)]
+        sweep_decks: bool,
         /// Worker threads. All cores if omitted.
         #[arg(long)]
         threads: Option<usize>,

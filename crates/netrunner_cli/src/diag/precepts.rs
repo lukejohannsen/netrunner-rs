@@ -82,6 +82,11 @@ pub struct PreceptsArgs {
     /// as play does, instead of the style the bot spec names — the
     /// shipped seating, and the one the by-style groups are for.
     pub deck_styles: bool,
+    /// Play the sweeps' schedule, Sweep decks included, rather than the
+    /// matchup pass (`--sweep-decks`): the only pass in which the cards a
+    /// set's Sweep decks alone hold are dealt, and so the only one whose
+    /// blind list can name them.
+    pub sweep_decks: bool,
     pub report: Option<PathBuf>,
 }
 
@@ -1014,8 +1019,14 @@ const STAGE_RULE: &str = "late: either side within 2 points of the target; early
 
 pub fn run(args: &PreceptsArgs, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
-    let matchups = config.matchups(&registry)?;
-    let format: NsgFormat = config.format.into();
+    // The sweeps' schedule is one pairing a game, so the pass's list is
+    // as long as the pass and game n plays the pairing for n.
+    let matchups = if args.sweep_decks {
+        (0..u64::from(args.games)).map(netrunner_session::sweep_decks_for_seed).collect()
+    } else {
+        config.matchups(&registry)?
+    };
+    let format: NsgFormat = if args.sweep_decks { NsgFormat::Eternal } else { config.format.into() };
     let pool = match args.threads {
         Some(threads) => rayon::ThreadPoolBuilder::new().num_threads(threads).build()?,
         None => rayon::ThreadPoolBuilder::new().build()?,

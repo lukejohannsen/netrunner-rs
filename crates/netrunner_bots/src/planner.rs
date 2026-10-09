@@ -120,7 +120,13 @@
 //! rather than at no answer. If the real answer is the other one, the
 //! view is not the one predicted and the turn is planned again, which
 //! is the rule every step already plays under. One node of minimax,
-//! never a search of the opponent's turn.
+//! never a search of the opponent's turn. **A choice between a card's
+//! options that the card hands the opponent is the same question with
+//! more answers** — Wildcat Strike's "the Corp chooses: gain 6[credit] or
+//! draw 4 cards" — and is answered the same way: before it was, the line
+//! ended on the parked choice with the event's cost paid and neither
+//! option given, so the planner never played the card (Phase 5 §57: 0
+//! against random seats' 11 on a pass of the pool, seed 2; 21 since).
 //!
 //! **The first action is chosen from the view's list, the rest from the
 //! sample's.** A sample is consistent with everything the view shows, not
@@ -704,21 +710,31 @@ impl Search<'_> {
         best
     }
 
-    /// The opponent's answer to the paid choice parked on `state` that
-    /// leaves the seat worst off — each answer applied and settled, the
-    /// settled states scored where they stand — with the state it
+    /// The opponent's answer to the paid choice, or the choice between a
+    /// card's options (`PendingDecision::ChooseEffect`), parked on `state`
+    /// that leaves the seat worst off — each answer applied and settled,
+    /// the settled states scored where they stand — with the state it
     /// settles to and where that stands, so the line goes on from it;
     /// `None` when nothing of the kind is parked. Nested at most
     /// `ANSWER_DEPTH` deep, so an answer that parks another question is
     /// answered too, and a third is where the second stands.
     fn opponents_answer(&mut self, state: &GameState) -> Option<(GameState, Standing)> {
         let opponent = self.side.other();
-        if state.pending_paid_choice.as_ref()?.side != opponent || self.answering >= ANSWER_DEPTH {
+        if self.answering >= ANSWER_DEPTH {
+            return None;
+        }
+        let paid = state.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == opponent);
+        let chosen = matches!(&state.pending_decision, Some(PendingDecision::ChooseEffect { chooser, .. }) if *chooser == opponent);
+        if !paid && !chosen {
             return None;
         }
         let answers: Vec<PlayerAction> = netrunner_core::rules::legal_actions_for(state, self.registry, opponent)
             .into_iter()
-            .filter(|action| matches!(action, PlayerAction::AcceptPendingPaidChoice { .. } | PlayerAction::DeclinePendingPaidChoice))
+            .filter(|action| match action {
+                PlayerAction::AcceptPendingPaidChoice { .. } | PlayerAction::DeclinePendingPaidChoice => paid,
+                PlayerAction::ResolvePendingChoice { .. } => chosen,
+                _ => false,
+            })
             .collect();
         self.applications += answers.len();
         let mut worst: Option<(f64, GameState, Standing)> = None;
@@ -2057,6 +2073,33 @@ mod positions {
         assert_eq!(after.corp.resources.agenda_points, AgendaPoints(2));
     }
 
+    /// Psychographics is played to score: "X is equal to or less than the
+    /// number of tags the Runner has. Place X advancement counters on 1
+    /// installed card you can advance." With the Runner on 2 tags, a 3/2
+    /// two tokens short and one click, the Corp pays 2[c] and scores,
+    /// where one advance would have left it a token short. The card is on
+    /// the blind list (Phase 5 §57: random seats 7, the planner 0 on a
+    /// pass of the pool), and this says the play is read where it scores;
+    /// why the pass never reaches such a turn is not measured — its one
+    /// deck holds one copy and must find the Runner tagged.
+    #[test]
+    fn plays_psychographics_to_score_an_agenda_the_runners_tags_reach() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = corp_state_with_scorable_agenda(&mut registry);
+        state.corp.installed[0].advancement_tokens = 1;
+        state.corp.resources.clicks = Clicks(1);
+        state.corp.hq = vec![CardId("psychographics".to_string())];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 5];
+        state.runner.tags = 2;
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.iter().any(|action| matches!(action, PlayerAction::PlayOperation { .. })), "{:?}", view.legal_actions);
+
+        let mut agent = PlanningAgent::new(Side::Corp, 1);
+        let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+        assert_eq!(after.corp.resources.agenda_points, AgendaPoints(2), "{played:?}");
+    }
+
     /// The Runner-side counterpart: a rezzed ICE the rig cannot break
     /// makes a run worth less than a credit, and an unrezzed one does not
     /// (ROADMAP Phase 2 §5's eagerness item).
@@ -2663,6 +2706,120 @@ mod positions {
         assert!(actions.contains(&play), "should play Bahia Bands this turn: {actions:?}");
         let run = state.active_run.as_ref().expect("and run on it");
         assert!(run.on_success_effect.is_some(), "the run carries its rider: {actions:?}");
+    }
+
+    /// Boomerang is installed on the ice in the way and the run made
+    /// through it: with no breaker and HQ behind a rezzed two-subroutine
+    /// sentry, "choose 1 installed piece of ice … [trash]: break up to 2
+    /// subroutines" is the one way in. Before, a break with no strength
+    /// contest broke nothing to the evaluator, and random seats installed
+    /// Boomerang 7 times on a pass of the pool where the planner never did.
+    #[test]
+    fn installs_boomerang_on_the_ice_in_the_way_and_runs_through_it() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut sentry = blank_card("sentry", CardType::Ice(IceType::Sentry));
+        sentry.strength = Some(5);
+        sentry.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }; 2];
+        registry.insert(sentry);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(4), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("boomerang".to_string())];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state.corp.resources.credits = Credits(5);
+        // Next to nothing in the centrals, so the remote is the run: a sample
+        // that deals R&D an agenda must not outbid the reading under test.
+        state.corp.hq = Vec::new();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
+        state.corp.installed.push(InstalledCard { card: CardId("sentry".to_string()), install_id: InstallId(4), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        state.corp.installed.push(InstalledCard { card: CardId("offworld_office".to_string()), install_id: InstallId(5), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 3, ..Default::default() });
+        state.next_install_id = 10;
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    actions.push(action);
+                    if state.active_run.is_some() {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        assert!(state.runner.rig.iter().any(|card| card.card.0 == "boomerang"), "should install Boomerang: {actions:?}");
+        assert!(state.active_run.is_some(), "and run: {actions:?}");
+    }
+
+    /// An event whose options the opponent chooses between is played for
+    /// the worse of them: Wildcat Strike's "the Corp chooses: gain 6[c]
+    /// or draw 4 cards" parks a choice of the Corp's, and the line used
+    /// to end there with 2[c] and a click spent and nothing gained, so a
+    /// Runner with 2[c] clicked for credits instead. Now the Corp's
+    /// answer is taken as the one worst for the Runner and the line goes
+    /// on, and either answer beats a click for a credit.
+    #[test]
+    fn plays_wildcat_strike_for_the_worse_of_the_corps_two_answers() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(2), clicks: Clicks(4), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("wildcat_strike".to_string())];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 5];
+        let play = PlayerAction::PlayEvent { card_id: CardId("wildcat_strike".to_string()) };
+        assert!(build_client_view(&state, &registry, Side::Runner).legal_actions.contains(&play));
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    // The Corp answers the choice with its first option
+                    // (the credits) and otherwise passes.
+                    let answer = if state.pending_decision.is_some() { PlayerAction::ResolvePendingChoice { option_index: 0 } } else { PlayerAction::PassPriority { side: Side::Corp } };
+                    let Ok((next, _)) = apply_action(&state, &registry, answer) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    if !matches!(state.phase, GamePhase::Action(Side::Runner)) {
+                        break;
+                    }
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    actions.push(action);
+                    if state.active_run.is_some() || actions.contains(&play) {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        assert!(actions.contains(&play), "should play Wildcat Strike this turn: {actions:?}");
     }
 
     /// A run event that pays when the run ends is played for what the end
