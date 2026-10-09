@@ -1,76 +1,19 @@
-//! Builds a legal 45-card Kate "Mac" McCaffrey (Runner) vs. Haas-Bioroid:
-//! Engineering the Future (Corp) matchup, for this crate's integration
-//! tests. Deliberately a near-identical copy of
-//! `netrunner_server::fixtures`/`netrunner_cli::decks` rather than a shared
-//! dependency: neither is importable from here (one's a binary crate, the
-//! other would defeat the point of this crate having no non-core/bots
-//! deps), and the fixture is small enough that inventing a shared crate
-//! just to deduplicate it isn't worth the indirection — same rationale as
-//! `netrunner_server::fixtures`'s own doc comment.
+//! The System Gateway matchup this crate's integration tests play: real
+//! cards with genuine DSL rules on both sides. It replaced a blank-padded
+//! Kate-vs-HB fixture (24 of 45 Corp cards did nothing) that these tests
+//! kept long after the daemon stopped dealing it (Phase 4 §3): a game of
+//! blanks passes vacuously over the machinery the tests are here to
+//! reach. Deliberately this crate's own copy rather than a shared
+//! dependency — `netrunner_client::decks` would defeat the point of this
+//! crate having no non-core/bots deps, and the fixture is small.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{CardDefinition, CardId, CardType};
-use netrunner_core::rules::{Deck, Side};
-
-const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
-const RUNNER_IDENTITY: &str = "kate_mac_mccaffrey_digital_tinker";
-
-const BASELINE_CORP_CARDS: [&str; 7] =
-    ["hedge_fund", "scorched_earth", "hostile_takeover", "pad_campaign", "snare", "enigma", "wall_of_static"];
-const BASELINE_RUNNER_CARDS: [&str; 6] =
-    ["sure_gamble", "diesel", "the_makers_eye", "account_siphon", "corroder", "gordian_blade"];
-
-const FILLER_AGENDA_COUNT: u32 = 6;
-const FILLER_ASSET_COUNT: u32 = 2;
-const FILLER_EVENT_COUNT: u32 = 9;
-
-fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
-    CardDefinition {
-        title: id.clone(),
-        id: CardId(id),
-        side,
-        card_type,
-        is_playable: true,
-        ..Default::default()
-    }
-}
-
-fn filler_agenda_id(index: u32) -> String {
-    format!("filler_agenda_{index}")
-}
-
-fn filler_asset_id(index: u32) -> String {
-    format!("filler_asset_{index}")
-}
-
-fn filler_event_id(index: u32) -> String {
-    format!("filler_event_{index}")
-}
-
-#[allow(dead_code)]
-pub fn kate_vs_hb_registry() -> CardRegistry {
-    let mut registry = CardRegistry::new();
-    cards::register_playable_cards(&mut registry);
-
-    for index in 0..FILLER_AGENDA_COUNT {
-        let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);
-        agenda.advancement_requirement = Some(3);
-        agenda.agenda_points = Some(1);
-        registry.insert(agenda);
-    }
-    for index in 0..FILLER_ASSET_COUNT {
-        registry.insert(blank_card(filler_asset_id(index), Side::Corp, CardType::Asset));
-    }
-    for index in 0..FILLER_EVENT_COUNT {
-        registry.insert(blank_card(filler_event_id(index), Side::Runner, CardType::Event));
-    }
-
-    registry
-}
+use netrunner_core::dsl::CardId;
+use netrunner_core::rules::Deck;
 
 /// A System Gateway matchup built for *mechanic coverage*: every card in
 /// both decks is a real hand-authored System Gateway card with genuine DSL
-/// rules — no synthetic filler at all, unlike the Kate-vs-HB fixture above.
+/// rules — no synthetic filler at all.
 ///
 /// The card mix is chosen so a bot-driven sweep actually reaches the
 /// machinery the System Gateway work added, rather than passing vacuously
@@ -190,7 +133,7 @@ const SG_RUNNER_DECK: [(&str, u32); 31] = [
 /// A representative slice of each deck, for the delivery-proof test's
 /// "these are real, playable, rules-carrying System Gateway cards" check.
 /// `#[allow(dead_code)]` because each test binary compiles this module
-/// separately, and `single_player_test.rs` uses only the Kate-vs-HB half.
+/// separately, and `single_player_test.rs` plays the decks without it.
 #[allow(dead_code)]
 pub const SG_CORP_CARDS: [&str; 4] = ["tithe", "government_subsidy", "palisade", "whitespace"];
 #[allow(dead_code)]
@@ -215,21 +158,5 @@ pub fn sg_decks() -> (Deck, Deck) {
 
     let corp_deck = Deck { identity: CardId(SG_CORP_IDENTITY.to_string()), cards: to_cards(&SG_CORP_DECK) };
     let runner_deck = Deck { identity: CardId(SG_RUNNER_IDENTITY.to_string()), cards: to_cards(&SG_RUNNER_DECK) };
-    (corp_deck, runner_deck)
-}
-
-#[allow(dead_code)]
-pub fn kate_vs_hb_decks() -> (Deck, Deck) {
-    let mut corp_cards: Vec<(CardId, u32)> =
-        BASELINE_CORP_CARDS.into_iter().map(|id| (CardId(id.to_string()), 3)).collect();
-    corp_cards.extend((0..FILLER_AGENDA_COUNT).map(|index| (CardId(filler_agenda_id(index)), 3)));
-    corp_cards.extend((0..FILLER_ASSET_COUNT).map(|index| (CardId(filler_asset_id(index)), 3)));
-
-    let mut runner_cards: Vec<(CardId, u32)> =
-        BASELINE_RUNNER_CARDS.into_iter().map(|id| (CardId(id.to_string()), 3)).collect();
-    runner_cards.extend((0..FILLER_EVENT_COUNT).map(|index| (CardId(filler_event_id(index)), 3)));
-
-    let corp_deck = Deck { identity: CardId(CORP_IDENTITY.to_string()), cards: corp_cards };
-    let runner_deck = Deck { identity: CardId(RUNNER_IDENTITY.to_string()), cards: runner_cards };
     (corp_deck, runner_deck)
 }
