@@ -10,8 +10,8 @@ use netrunner_bots::Agent;
 use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
 fn random_vs_planner_session(seed: u64) -> SinglePlayerSession {
-    let registry = common::kate_vs_hb_registry();
-    let (corp_deck, runner_deck) = common::kate_vs_hb_decks();
+    let registry = common::sg_registry();
+    let (corp_deck, runner_deck) = common::sg_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
 
     let corp: Box<dyn Agent> = Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp));
@@ -33,8 +33,8 @@ fn random_vs_onnx_reaches_game_over_within_step_budget() {
     use netrunner_bots::onnx_fixture::write_fixture_model;
     use netrunner_bots::{IndexedOnnxAgent, OnnxPolicyEvaluator};
 
-    let registry = common::kate_vs_hb_registry();
-    let (corp_deck, runner_deck) = common::kate_vs_hb_decks();
+    let registry = common::sg_registry();
+    let (corp_deck, runner_deck) = common::sg_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 2).expect("legal decks set up cleanly");
 
     let model_file = write_fixture_model();
@@ -96,8 +96,8 @@ fn history_records_every_resolved_action_with_matching_turn_and_side() {
     // a freshly-setup GameState (GameState/apply_action are deterministic
     // pure functions of their explicit inputs) reproduces the exact final
     // state.
-    let registry = common::kate_vs_hb_registry();
-    let (corp_deck, runner_deck) = common::kate_vs_hb_decks();
+    let registry = common::sg_registry();
+    let (corp_deck, runner_deck) = common::sg_decks();
     let (mut replayed, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).expect("legal decks set up cleanly");
     for entry in history.entries() {
         let (next, _events) = apply_action(&replayed, &registry, entry.action.clone()).expect("recorded action should replay cleanly");
