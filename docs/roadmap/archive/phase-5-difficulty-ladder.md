@@ -3800,3 +3800,19 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Cards under a quarter of the random seats' rate (random seats five uses or more): **110 → 90** on seed 2, **112 → 91** on seed 3.
 
 **Verified.** `a_token_on_ice_is_the_break_it_adds` (Ice Wall against Corroder: free at one token, a credit a token after; nothing against a code-gate breaker) and `plays_kaguya_on_the_agenda_and_the_ice_in_front_of_it`. `plays_overclock_to_run_through_ice_it_cannot_otherwise_afford` asserted HQ in a tie with R&D (the same three walls behind the same wall; over eight seeds the planner ran each), and now asserts either. Engine untouched; `netrunner_bots` only.
+
+## 64. A run-end effect inside a success rider is what it registers: Dirty Laundry is played — DONE (`claude/bot-blindness-run-end-riders`, 9 October 2026)
+
+**The debt.** The next mechanism of the blind list re-taken at §61. Dirty Laundry (random seats 8, the planner 0) is a 2[credit] run event: "Run any server. When that run ends, if it was successful, gain 5[credit]."
+
+**Why.** Its card file says the payout inside the run's success rider as `SetRunEndedEffect(GainCredits 5)`, the gain registered for the run's end once the run succeeds. The rider is read by `tally` (`rider_income`, §31), which had no arm for `SetRunEndedEffect`, so the rider paid nothing and the event was a 2[credit] run. Probed with an open HQ and 2[credit], the planner ran on a click.
+
+**What is read now.** `tally` reads a `SetRunEndedEffect` as the effect it registers, wherever it is said: inside a success rider it is what the success pays, and in a play it is what the run's end pays, as `run_end_income` already reads the effect once it is registered.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` against this branch, the same games:
+
+- Seed 2: **Dirty Laundry 0 → 27**, Virtuoso 3 → 1; Corp share 0.465 → 0.459 (+1 / −5).
+- Seed 3: **Dirty Laundry 0 → 31**, Virtuoso 1 → 0; Corp share 0.514 → 0.516 (+4 / −3).
+- Pooled +5 / −8, **z −0.83**, inside the band; every other card that says a run-end effect (Bravado, Stimhack, Boomerang, Raindrops Cut Stone, Hannah) is unmoved.
+
+**Verified.** `plays_dirty_laundry_for_the_credits_its_run_ends_with` fails on `main` (the planner runs HQ on a click) and passes here. Engine untouched; `netrunner_bots` only.

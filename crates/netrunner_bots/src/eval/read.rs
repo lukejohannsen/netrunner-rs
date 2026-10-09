@@ -897,6 +897,12 @@ fn tally(effect: &Effect, side: Side) -> Tally {
         Effect::TakeAllCountersAsCredits(s) if own(s) => Tally { cashout_per_counter: 1, ..Default::default() },
         Effect::Sequence(effects) => effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side))),
         Effect::EffectIf { effect, .. } => tally(effect, side),
+        // "When that run ends" said inside a success rider — Dirty
+        // Laundry's "if successful, gain 5[credit]" registers the gain
+        // for the run's end once the run succeeds (Phase 5 §64). Tallied
+        // as what it registers: read as nothing, the rider paid nothing,
+        // and a run event whose whole payout is one was never played.
+        Effect::SetRunEndedEffect(effect) => tally(effect, side),
         Effect::PresentChoice { chooser, options, .. } => {
             let tallies = options.iter().map(|option| tally(option, side));
             if *chooser == side { tallies.max_by_key(|t| t.worth()) } else { tallies.min_by_key(|t| t.worth()) }
