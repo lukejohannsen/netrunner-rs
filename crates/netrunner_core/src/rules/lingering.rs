@@ -148,7 +148,7 @@ pub enum Lingering {
     /// Aggressive Trendsetting's "+1 allotted [click] for your next turn",
     /// Caveat Emptor's "−1 allotted [click] for their next turn" — taken
     /// by `turn::enter_start_of_turn` as it assigns the allotment
-    /// ([`take_allotted_clicks`]). Was `CorpState::extra_clicks_next_turn`,
+    /// (`take_allotted_clicks`). Was `CorpState::extra_clicks_next_turn`,
     /// a field no view carried.
     AllottedClicks(i32),
     /// A piece of ice has this subtype on top of what it prints — Lycian

@@ -22,13 +22,10 @@ ratatui = "0.30"
 clap = { version = "4", features = ["derive"] }
 rand = "0.9"
 tokio = { workspace = true }
-tokio-tungstenite = "0.24"
-futures-util = "0.3"
 # Only the type: the session token `ServerMessage::MatchJoined` issues.
 uuid = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 # The benchmark suite's worker pool; the same crate self-play and the
 # search agents already use, so one pool implementation in the tree.
 rayon = "1"

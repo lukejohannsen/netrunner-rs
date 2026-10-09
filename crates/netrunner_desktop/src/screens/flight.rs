@@ -5,7 +5,7 @@
 //! so a card that moved is not a node that moved: the node it was is gone
 //! and a node where it now is has taken its place. The movement is drawn
 //! *over* that, as a flying copy under the screen root: when a redraw is
-//! about to draw transitions, [`flights`] reads where every box on the
+//! about to draw transitions, `flights` reads where every box on the
 //! old board is laid out (a [`Survey`]), waits one frame for the new
 //! board to be laid out in its turn, reads it again and plans each
 //! `CardMoved` between the two. The copy sets off from the old box, the

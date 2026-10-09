@@ -14,7 +14,7 @@
 //! `examples/render_sfx.rs` (`scripts/render_sfx.sh`): a cyberpunk set
 //! the person asked for on 4 October 2026, in place of Kenney's recorded
 //! paper cards and poker chips. **A set with no file is synthesized
-//! here** ([`synth`]): a burst of shaped noise or a short chirp, written
+//! here** (`synth`): a burst of shaped noise or a short chirp, written
 //! as a WAV in memory. That is the tier that always works (AGENTS.md §5)
 //! and it is deliberately plain, so a missing file is noticed rather
 //! than mistaken for the look.
