@@ -462,6 +462,10 @@ struct Tournament {
     /// Every round paired so far, each table's result written as its
     /// game ends or the organizer records one (Phase 4 §7 stage 6b).
     rounds: Vec<swiss::Round<PublicKey>>,
+    /// Who dropped mid-event: still in `entrants` and the standings,
+    /// paired no more. A drop's entry stays because the standings need
+    /// its name and its opponents' tiebreakers need its games.
+    dropped: Vec<PublicKey>,
 }
 
 /// One entrant's registration: the decks the server holds for them, the
@@ -503,6 +507,7 @@ impl Tournament {
             state: self.state,
             seeding: self.seeding.clone(),
             rounds: self.rounds.clone(),
+            dropped: self.dropped.clone(),
             entrants: self
                 .entrants
                 .iter()

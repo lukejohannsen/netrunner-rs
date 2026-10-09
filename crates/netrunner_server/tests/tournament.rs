@@ -402,3 +402,123 @@ async fn rounds_are_paired_played_recorded_and_kept() {
     assert_eq!(tournaments, vec![finished]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A drop mid-event (Phase 4 §7 stage 6b's leftover): the entry and its
+/// results stay, the key is paired no more; a table of the round it has
+/// not played is forfeit to the opponent, who is stood up if waiting
+/// there; a drop with a game under way is refused until the game is
+/// conceded on the board; a tournament with one player left pairs no
+/// further round; a restarted daemon holds who dropped.
+#[tokio::test]
+async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
+    let dir = scratch("drop");
+    let (url, server_key) = start(Some(dir.clone())).await;
+    let people = [player(1), player(2), player(3)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo", "cy"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "Drops").await;
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+        next_tournament(&mut sockets[index]).await;
+    }
+    next_tournament(&mut sockets[0]).await;
+    next_tournament(&mut sockets[0]).await;
+    next_tournament(&mut sockets[1]).await;
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = next_tournament(&mut sockets[0]).await;
+    assert_eq!(next_tournament(&mut sockets[1]).await, first);
+    assert_eq!(next_tournament(&mut sockets[2]).await, first);
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    let table = first.rounds[0].tables[0].clone();
+    let bye = first.rounds[0].bye.expect("three entrants: one sits out");
+    let (corp_at, runner_at) = (index_of(&table.corp), index_of(&table.runner));
+
+    // The Runner sits and waits; the Corp drops: the table is the
+    // Runner's, who is stood up and told, and everyone sees the drop.
+    send(&mut sockets[runner_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    assert!(matches!(next(&mut sockets[runner_at]).await, ServerMessage::Queued { position: 1, .. }));
+    send(&mut sockets[corp_at], ClientMessage::Unregister { tournament: made.id.clone() }).await;
+    let dropped = next_tournament(&mut sockets[corp_at]).await;
+    assert_eq!(dropped.dropped, vec![table.corp]);
+    assert_eq!(dropped.entrants.len(), 3, "a drop is still an entrant");
+    assert_eq!(dropped.rounds[0].tables[0].result, Some(Outcome::RunnerWon), "forfeit");
+    // The push goes out on the connection's own channel and the refusal
+    // through the seat's, so the Runner may see them in either order.
+    let (mut told, mut stood_up) = (None, None);
+    while told.is_none() || stood_up.is_none() {
+        match next(&mut sockets[runner_at]).await {
+            ServerMessage::Tournament { tournament } => told = Some(tournament),
+            ServerMessage::SeekRefused { reason } => stood_up = Some(reason),
+            _ => {}
+        }
+    }
+    assert_eq!(told, Some(dropped.clone()));
+    assert!(stood_up.as_deref().is_some_and(|reason| reason.contains("opponent dropped")), "{stood_up:?}");
+    assert_eq!(next_tournament(&mut sockets[index_of(&bye)]).await, dropped);
+    send(&mut sockets[corp_at], ClientMessage::Unregister { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[corp_at]).await; assert!(reason.contains("dropped already"), "{reason}"); }
+    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("has its result"), "{reason}"); }
+
+    // Round 2 pairs the two left, with no bye, and the drop at no table.
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let second = next_tournament(&mut sockets[0]).await;
+    assert_eq!(second.state, TournamentState::Playing { round: 2 });
+    assert_eq!((second.rounds[1].bye, second.rounds[1].tables.len()), (None, 1));
+    let rematch = second.rounds[1].tables[0].clone();
+    assert!(rematch.role_of(&table.corp).is_none() && rematch.role_of(&table.runner).is_some() && rematch.role_of(&bye).is_some());
+    for socket in sockets.iter_mut().skip(1) {
+        assert_eq!(next_tournament(socket).await, second, "the drop is told too: still an entrant");
+    }
+    send(&mut sockets[corp_at], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    { let reason = seek_refused(&mut sockets[corp_at]).await; assert!(reason.contains("no table"), "{reason}"); }
+
+    // Both sit; a drop with the game under way is refused; the loser
+    // concedes, then drops, after which nobody is left to pair and the
+    // organizer ends it with the drops in the final standings.
+    let (corp2, runner2) = (index_of(&rematch.corp), index_of(&rematch.runner));
+    send(&mut sockets[corp2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    assert!(matches!(next(&mut sockets[corp2]).await, ServerMessage::Queued { .. }));
+    send(&mut sockets[runner2], ClientMessage::Sit { tournament: made.id.clone() }).await;
+    next_joined(&mut sockets[runner2]).await;
+    next_joined(&mut sockets[corp2]).await;
+    send(&mut sockets[runner2], ClientMessage::Unregister { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[runner2]).await; assert!(reason.contains("under way"), "{reason}"); }
+    send(&mut sockets[runner2], ClientMessage::Surrender).await;
+    let after = next_tournament(&mut sockets[corp_at]).await;
+    assert_eq!(after.rounds[1].tables[0].result, Some(Outcome::CorpWon));
+    for index in [corp2, runner2] {
+        assert_eq!(next_tournament(&mut sockets[index]).await, after);
+    }
+    send(&mut sockets[runner2], ClientMessage::Unregister { tournament: made.id.clone() }).await;
+    let two_gone = next_tournament(&mut sockets[runner2]).await;
+    assert_eq!(two_gone.dropped.len(), 2);
+    assert_eq!(two_gone.rounds[1].tables[0].result, Some(Outcome::CorpWon), "a played table is not forfeit");
+    for (index, socket) in sockets.iter_mut().enumerate() {
+        if index != runner2 {
+            next_tournament(socket).await;
+        }
+    }
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    { let reason = refused(&mut sockets[0]).await; assert!(reason.contains("fewer than two"), "{reason}"); }
+    send(&mut sockets[0], ClientMessage::FinishTournament { tournament: made.id.clone() }).await;
+    let finished = next_tournament(&mut sockets[0]).await;
+    assert_eq!(finished.state, TournamentState::Finished);
+    let standings = finished.standings();
+    assert_eq!(standings.len(), 3, "the drops keep their rows");
+    assert_eq!(standings[0].key, rematch.corp);
+    assert!(finished.dropped.contains(&table.corp) && finished.dropped.contains(&rematch.runner));
+
+    // A daemon restarted on the directory holds who dropped.
+    let (again, _) = start(Some(dir.clone())).await;
+    let mut socket = attach(&again, None, "anyone").await;
+    send(&mut socket, ClientMessage::ListTournaments).await;
+    let ServerMessage::Tournaments { tournaments } = next(&mut socket).await else { panic!() };
+    assert_eq!(tournaments, vec![finished]);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -1275,6 +1275,15 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
                             }
                         });
                     }
+                    // A drop is the same message as a withdrawal; the
+                    // server tells a player with a game under way to
+                    // concede it on the board first.
+                    if server.may_drop() {
+                        section.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Drop from the tournament", Val::Auto, Control::Unregister));
+                            row.spawn(widgets::dim(theme, "Your results stand; you are paired no more."));
+                        });
+                    }
                 });
             }
         }

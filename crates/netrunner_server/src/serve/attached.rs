@@ -434,7 +434,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new() };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new() };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id, tournament);
         self.shared.save_tournaments(&registry);
@@ -490,18 +490,60 @@ impl Attached {
         Ok(info)
     }
 
+    /// Withdraw while registration is open, or drop mid-event. A drop is
+    /// the policies' player who leaves, not an erasure: the entry and
+    /// every result stay in the standings — their opponents' Strength of
+    /// Schedule still counts the games against them — and `swiss::pair`
+    /// leaves them out of every later table and bye. A table of the
+    /// current round they have not played is forfeit: the opponent takes
+    /// the win, and whoever is waiting at it is stood up and told which.
+    /// A drop with a game under way is refused rather than ended here —
+    /// the board's Surrender is the way out of a game, and it writes the
+    /// loss through the table — so no game outlives its player's entry.
     fn unregister(&self, id: &str) -> Result<TournamentInfo, String> {
         let key = self.key.ok_or("withdrawing needs a key: prove one before attaching")?;
         let id = id.trim().to_uppercase();
         let mut registry = self.shared.lock();
-        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
-        if tournament.state != TournamentState::Registering {
-            return Err("registration has closed".into());
-        }
-        let before = tournament.entrants.len();
-        tournament.entrants.retain(|entry| entry.key != key);
-        if tournament.entrants.len() == before {
+        let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
+        if tournament.entry(&key).is_none() {
             return Err("you are not registered there".into());
+        }
+        let registering = tournament.state == TournamentState::Registering;
+        let forfeit = match tournament.state {
+            TournamentState::Registering => None,
+            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Playing { .. } => {
+                if tournament.dropped.contains(&key) {
+                    return Err("you have dropped already".into());
+                }
+                let (round, current) = tournament.current().ok_or("the round being played is missing")?;
+                current.table_of(&key).filter(|(_, slot)| slot.result.is_none()).map(|(table, slot)| {
+                    let outcome = match slot.role_of(&key) {
+                        Some(TableRole::Corp) => TableOutcome::RunnerWon,
+                        _ => TableOutcome::CorpWon,
+                    };
+                    (TableRef { tournament: id.clone(), round, table }, outcome)
+                })
+            }
+        };
+        if let Some((table_ref, _)) = &forfeit {
+            match registry.tables.get(table_ref) {
+                Some(TableState::Playing(_)) => return Err("your game is under way: concede it on the board, which records the loss, then drop".into()),
+                Some(TableState::Waiting(seated)) => {
+                    refuse(&seated.tx, if seated.key == key { "you dropped from the tournament" } else { "your opponent dropped: the table is yours" });
+                    registry.tables.remove(table_ref);
+                }
+                None => {}
+            }
+        }
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        if registering {
+            tournament.entrants.retain(|entry| entry.key != key);
+        } else {
+            tournament.dropped.push(key);
+            if let Some((table_ref, outcome)) = forfeit {
+                tournament.rounds[table_ref.round].tables[table_ref.table].result = Some(outcome);
+            }
         }
         let info = tournament.info(&id);
         self.shared.save_tournaments(&registry);
@@ -526,7 +568,7 @@ impl Attached {
     /// daemon's seed and the tournament's age, so a `--seed` daemon seeds
     /// the same way every run and any other at random; each round after
     /// needs the one before complete, since a table with no result has
-    /// no points to pair by.
+    /// no points to pair by, and two players who have not dropped.
     fn begin_round(&self, id: &str) -> Result<TournamentInfo, String> {
         let id = id.trim().to_uppercase();
         let mut registry = self.shared.lock();
@@ -548,10 +590,13 @@ impl Attached {
                 if !current.complete() {
                     return Err("a table of this round has no result yet".into());
                 }
+                if tournament.entrants.len() - tournament.dropped.len() < 2 {
+                    return Err("fewer than two players remain: end the tournament".into());
+                }
             }
             TournamentState::Finished => return Err("the tournament is over".into()),
         }
-        let next = swiss::pair(&tournament.seeding, &tournament.rounds);
+        let next = swiss::pair(&tournament.seeding, &tournament.rounds, &tournament.dropped);
         tournament.rounds.push(next);
         tournament.state = TournamentState::Playing { round: tournament.rounds.len() as u32 };
         let info = tournament.info(&id);
