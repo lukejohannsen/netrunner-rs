@@ -208,6 +208,46 @@ pub(super) fn lockdowns_on_the_next_run(state: &GameState, registry: &CardRegist
         .unwrap_or_default()
 }
 
+/// The chance a successful run on `server` loses its breach to what the
+/// lockdowns in play print about it (Phase 5 §61): Hyoubu Precog
+/// Manifold's "whenever the Runner makes a successful run on the chosen
+/// server, play a Psi Game" whose differing bids end the run. Each bid is
+/// 0, 1 or 2 credits (CR 10.14.6b), and a bid neither side can read is
+/// one of the three at a third each, so two bids differ six times in
+/// nine (`PSI_BIDS_DIFFER`); two such games deny a breach unless both
+/// match.
+///
+/// **Why.** §58 heard Hyoubu's psi game and priced nothing for it,
+/// because what it takes from the Runner is a breach the run has already
+/// earned, which `Pays` has no word for; the planner never played it.
+pub(super) fn breach_denied(state: &GameState, registry: &CardRegistry, server: ServerId) -> f64 {
+    let mut kept = 1.0;
+    for (id, handle) in lockdowns(state) {
+        let Some(def) = registry.get(id) else { continue };
+        for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnSuccessfulRun && trigger.subject != Some(Subject::This)) {
+            if admits(state, trigger, server, id, handle) {
+                kept *= trigger.effects.iter().map(|effect| 1.0 - denies(effect)).product::<f64>();
+            }
+        }
+    }
+    1.0 - kept
+}
+
+/// Two psi bids of 0, 1 or 2 credits, each a third likely, differ in six
+/// of nine pairs.
+const PSI_BIDS_DIFFER: f64 = 6.0 / 9.0;
+
+/// The chance `effect` ends the run it resolves in: a psi game whose
+/// differing bids end it, at `PSI_BIDS_DIFFER`.
+fn denies(effect: &Effect) -> f64 {
+    let ends = |effect: &Effect| matches!(effect, Effect::EndTheRun) || matches!(effect, Effect::Sequence(effects) if effects.iter().any(|e| matches!(e, Effect::EndTheRun)));
+    match effect {
+        Effect::PsiGame { on_differ, .. } if ends(on_differ) => PSI_BIDS_DIFFER,
+        Effect::Sequence(effects) => 1.0 - effects.iter().map(|effect| 1.0 - denies(effect)).product::<f64>(),
+        _ => 0.0,
+    }
+}
+
 /// What both identities print about the Runner accessing `installed` in
 /// `server`'s root: BANGUN's "whenever the Runner accesses a faceup
 /// installed agenda, do 2 meat damage and give the Runner 1 tag".

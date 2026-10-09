@@ -2141,6 +2141,39 @@ mod positions {
         }
     }
 
+    /// Hyoubu Precog Manifold is played on the server whose breach is
+    /// worth the Runner most — a remote holding a 2-point agenda — since a
+    /// psi game ends a run there six times in nine (Phase 5 §61). Before,
+    /// its psi game was heard and priced at nothing, and the planner never
+    /// played it on a pass of the pool.
+    #[test]
+    fn plays_hyoubu_on_the_remote_whose_breach_is_worth_most() {
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.runner.resources.credits = Credits(6);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.corp.resources = PlayerResources { credits: Credits(0), clicks: Clicks(1), agenda_points: AgendaPoints(0) };
+        state.corp.hq = vec![CardId("hyoubu_precog_manifold".to_string())];
+        state.corp.hq.extend(vec![CardId("hedge_fund".to_string()); 4]);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 5];
+        state.corp.installed.push(InstalledCard {
+            card: CardId("astroscript_pilot_program".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        });
+        let mut agent = PlanningAgent::new(Side::Corp, 1);
+        let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+        let hyoubu = after.corp.play_area.iter().find(|card| card.card.0 == "hyoubu_precog_manifold").unwrap_or_else(|| panic!("not played: {played:?}"));
+        let chosen = netrunner_core::rules::lingering::chosen_server(&after, &hyoubu.card, Some(hyoubu.handle));
+        assert_eq!(chosen, Some(ServerId::Remote(0)), "{played:?}");
+    }
+
     /// The Runner-side counterpart: a rezzed ICE the rig cannot break
     /// makes a run worth less than a credit, and an unrezzed one does not
     /// (ROADMAP Phase 2 §5's eagerness item).

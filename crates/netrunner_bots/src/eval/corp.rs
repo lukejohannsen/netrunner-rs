@@ -613,6 +613,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     *score += identity_counters(state, registry, w);
     *score += held_for_a_later_score(state, registry, w);
     *score += lockdown_tax(state, registry, w);
+    *score += breach_denial(state, registry, w);
     *score -= f64::from(archived_agenda_points(state, registry)) * w.archived_agenda_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
     if w.installed_agenda_weight != 0.0 {
@@ -734,6 +735,34 @@ fn lockdown_tax(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 
         + f64::from(pays.damage - pays.core_damage) * w.known_trap_damage_weight
         + f64::from(pays.core_damage) * w.core_damage_weight
         + f64::from(pays.tags) * tag
+}
+
+/// What a lockdown that denies a breach is worth to the Corp (Phase 5
+/// §61): the agenda points the Runner's best next run would reach
+/// (`read::server_stakes`, at `run_stakes_weight`), less the most it can
+/// still expect from a run once each server's breach is kept only at the
+/// chance the lockdowns leave it (`identities::breach_denied`) — the run
+/// is the Runner's to aim, so Hyoubu Precog Manifold on HQ is worth
+/// nothing while R&D promises as much, and on a remote holding a 2-point
+/// agenda it is worth most of that agenda's run.
+fn breach_denial(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    use netrunner_core::rules::ServerId;
+    if state.corp.play_area.is_empty() || w.run_stakes_weight == 0.0 {
+        return 0.0;
+    }
+    let mut servers = vec![ServerId::Archives, ServerId::RnD, ServerId::Hq];
+    for card in &state.corp.installed {
+        if matches!(card.server, ServerId::Remote(_)) && !servers.contains(&card.server) {
+            servers.push(card.server);
+        }
+    }
+    let (mut best, mut left) = (0.0f64, 0.0f64);
+    for server in servers {
+        let stakes = server_stakes(state, server, registry);
+        best = best.max(stakes);
+        left = left.max(stakes * (1.0 - identities::breach_denied(state, registry, server)));
+    }
+    (best - left) * w.run_stakes_weight
 }
 
 /// `state` as it stands between runs: the run taken off the board, and
