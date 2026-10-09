@@ -214,18 +214,11 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
     }
 }
 
-/// What the relay field's `text` would save: `None` for the public
-/// relays, `off`, or a URL — or why it is not a relay. Read by
-/// `peer::Relay::from_setting`, the one place hosting reads it, so the
-/// field refuses exactly what hosting would.
+/// What the relay field's `text` would save, or why it is not a relay:
+/// `peer::Relay::setting_from`, shared with the terminal's form since
+/// that form learned to edit the field (9 October 2026).
 pub fn relay_setting(text: &str) -> Result<Option<String>, String> {
-    let text = text.trim();
-    Relay::from_setting(Some(text))?;
-    Ok(match text {
-        "" => None,
-        off if off.eq_ignore_ascii_case("off") => Some("off".to_string()),
-        url => Some(url.to_string()),
-    })
+    Relay::setting_from(text)
 }
 
 fn step_volume(volume: &mut f32, delta: i32) -> bool {
@@ -260,11 +253,7 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::PlayHistory => on_off(prefs.play_history),
         Row::PhaseBar => on_off(prefs.phase_bar),
         Row::BasicGraphics => on_off(prefs.basic_graphics),
-        Row::Relay => match settings.relay.as_deref().map(str::trim) {
-            None | Some("") => "n0's public relays".to_string(),
-            Some(off) if off.eq_ignore_ascii_case("off") => "off: addresses only".to_string(),
-            Some(url) => url.to_string(),
-        },
+        Row::Relay => Relay::label(settings.relay.as_deref()),
         Row::CardBacks => prefs.card_backs.label().to_string(),
         // The folder's own name. A table carrying a `table.json` with a
         // prettier one is relabelled by the screen that draws the row,

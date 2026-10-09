@@ -205,18 +205,29 @@ enum SettingsRow {
     /// (`netrunner_client::standing`): Enter forgets them all. The
     /// desktop client's settings screen forgets one at a time.
     Answers,
+    /// The relay a hosted game's ticket goes through (`Settings::relay`):
+    /// empty for n0's public relays, `off` for none, or a relay's URL.
+    /// Typed like the name; `peer::Relay::setting_from` is what takes or
+    /// refuses it, in both clients.
+    Relay,
 }
 
-const SETTINGS_ROWS: [SettingsRow; 3] = [SettingsRow::Player, SettingsRow::Format, SettingsRow::Answers];
+const SETTINGS_ROWS: [SettingsRow; 4] = [SettingsRow::Player, SettingsRow::Format, SettingsRow::Answers, SettingsRow::Relay];
 
 /// Longest player name the form accepts. An id, not an essay.
 const MAX_NAME: usize = 32;
+/// Longest relay URL the form accepts, the desktop's limit.
+const MAX_RELAY: usize = 200;
 
 #[derive(Debug, Clone)]
 struct SettingsForm {
     cursor: usize,
-    /// The name being typed, while the name row is open for editing.
-    editing: Option<String>,
+    /// The row open for typing — the name or the relay — and its text so
+    /// far.
+    editing: Option<(SettingsRow, String)>,
+    /// Why the relay typed was not taken, shown on its row until the next
+    /// key; the row stays open with the text to mend.
+    refused: Option<String>,
     settings: Settings,
     /// The name games are recorded under right now — the setting, a
     /// `--player` flag or the login name — which editing starts from.
@@ -232,7 +243,7 @@ enum SettingsKey {
 
 impl SettingsForm {
     fn new(settings: Settings, current_name: String) -> Self {
-        SettingsForm { cursor: 0, editing: None, settings, current_name }
+        SettingsForm { cursor: 0, editing: None, refused: None, settings, current_name }
     }
 
     fn format(&self) -> FormatArg {
@@ -245,18 +256,33 @@ impl SettingsForm {
         self.settings.format = Some(all[(index + delta).rem_euclid(all.len() as i32) as usize].into());
     }
 
-    /// While the name is open every printable key is text — `q` included,
+    /// While a row is open every printable key is text — `q` included,
     /// which is why editing is checked before anything else.
     fn key(&mut self, key: KeyCode) -> SettingsKey {
-        if let Some(name) = &mut self.editing {
+        self.refused = None;
+        if let Some((row, text)) = &mut self.editing {
+            let limit = if *row == SettingsRow::Relay { MAX_RELAY } else { MAX_NAME };
             match key {
-                KeyCode::Char(c) if !c.is_control() && name.chars().count() < MAX_NAME => name.push(c),
+                KeyCode::Char(c) if !c.is_control() && text.chars().count() < limit => text.push(c),
                 KeyCode::Backspace => {
-                    name.pop();
+                    text.pop();
                 }
                 KeyCode::Enter => {
-                    let name = self.editing.take().unwrap_or_default();
-                    let name = name.trim();
+                    let (row, text) = self.editing.take().unwrap_or((SettingsRow::Player, String::new()));
+                    if row == SettingsRow::Relay {
+                        return match netrunner_client::peer::Relay::setting_from(&text) {
+                            Ok(relay) => {
+                                self.settings.relay = relay;
+                                SettingsKey::Changed
+                            }
+                            Err(reason) => {
+                                self.refused = Some(reason);
+                                self.editing = Some((row, text));
+                                SettingsKey::Continue
+                            }
+                        };
+                    }
+                    let name = text.trim();
                     self.settings.player = (!name.is_empty()).then(|| name.to_string());
                     if let Some(name) = &self.settings.player {
                         self.current_name = name.clone();
@@ -277,7 +303,11 @@ impl SettingsForm {
             }
             KeyCode::Enter | KeyCode::Char(' ') => match SETTINGS_ROWS[self.cursor] {
                 SettingsRow::Player => {
-                    self.editing = Some(self.current_name.clone());
+                    self.editing = Some((SettingsRow::Player, self.current_name.clone()));
+                    SettingsKey::Continue
+                }
+                SettingsRow::Relay => {
+                    self.editing = Some((SettingsRow::Relay, self.settings.relay.clone().unwrap_or_default()));
                     SettingsKey::Continue
                 }
                 SettingsRow::Format => {
@@ -639,22 +669,27 @@ impl Menu {
     }
 
     fn draw_settings(&self, frame: &mut Frame, area: Rect, form: &SettingsForm) {
-        let player = match (&form.editing, &form.settings.player) {
-            (Some(name), _) => format!("{name}▏  (Enter saves, Esc cancels)"),
-            (None, Some(name)) => name.clone(),
-            (None, None) => format!("{}  (not set — Enter to choose one)", form.current_name),
+        let typing = |row: SettingsRow| form.editing.as_ref().filter(|(open, _)| *open == row).map(|(_, text)| format!("{text}▏  (Enter saves, Esc cancels)"));
+        let player = typing(SettingsRow::Player).unwrap_or_else(|| match &form.settings.player {
+            Some(name) => name.clone(),
+            None => format!("{}  (not set — Enter to choose one)", form.current_name),
+        });
+        let relay = typing(SettingsRow::Relay).unwrap_or_else(|| format!("{}  (Enter to change: empty for n0's public relays, off for none, or a relay's URL)", netrunner_client::peer::Relay::label(form.settings.relay.as_deref())));
+        let relay = match &form.refused {
+            Some(reason) => format!("{relay}  ✗ {reason}"),
+            None => relay,
         };
         let answers = match form.settings.answers.iter().count() {
             0 => "none — a card's \"you may\" can be answered with y (always) or n (never)".to_string(),
             1 => "1 card  (Enter forgets it)".to_string(),
             count => format!("{count} cards  (Enter forgets them all)"),
         };
-        let rows = [format!("Player name   {player}"), format!("Format        {}  (Left/Right to change)", format_name(form.format())), format!("Answers       {answers}")];
+        let rows = [format!("Player name   {player}"), format!("Format        {}  (Left/Right to change)", format_name(form.format())), format!("Answers       {answers}"), format!("Relay         {relay}")];
         let items: Vec<ListItem> = rows.into_iter().map(ListItem::new).collect();
         let mut state = ListState::default();
         state.select(Some(form.cursor));
         let [list, about] =
-            Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(5), Constraint::Min(0)]).areas(area);
+            Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(6), Constraint::Min(0)]).areas(area);
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("Settings — Up/Down choose, Enter edits, Esc goes back"))
@@ -940,6 +975,39 @@ mod tests {
         press(&mut menu, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
         assert_eq!(menu.base.server, "ws://127.0.0.1:1", "this session's next form starts there");
         assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().server.as_deref(), Some("ws://127.0.0.1:1"), "and so does the next session's");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The relay row takes off, a URL or nothing and saves it, and refuses
+    /// anything else with the reason, leaving the row open to mend (Phase
+    /// 4 §6's "the terminal's settings form does not edit `relay`").
+    #[test]
+    fn the_relay_is_typed_saved_and_refused_when_it_is_not_one() {
+        let (mut menu, dir) = menu("relay");
+        go_to(&mut menu, Entry::Settings);
+        press(&mut menu, &[KeyCode::Down, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        let type_text = |menu: &mut Menu, text: &str| {
+            for c in text.chars() {
+                menu.key(KeyCode::Char(c));
+            }
+        };
+        type_text(&mut menu, "not a url");
+        menu.key(KeyCode::Enter);
+        let Screen::Settings(form) = &menu.screen else { panic!("still on Settings") };
+        assert!(form.refused.as_deref().is_some_and(|why| why.contains("not a relay's URL")), "{:?}", form.refused);
+        assert!(matches!(&form.editing, Some((SettingsRow::Relay, text)) if text == "not a url"), "the row stays open with the text to mend");
+        assert_eq!(Settings::load(&dir.join("settings.toml")).map(|s| s.relay).unwrap_or_default(), None, "nothing was saved");
+        press(&mut menu, &[KeyCode::Backspace; 20]);
+        type_text(&mut menu, " OFF ");
+        menu.key(KeyCode::Enter);
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().relay.as_deref(), Some("off"));
+        press(&mut menu, &[KeyCode::Enter]);
+        let Screen::Settings(form) = &menu.screen else { panic!() };
+        assert!(matches!(&form.editing, Some((SettingsRow::Relay, text)) if text == "off"), "editing starts from the saved value");
+        press(&mut menu, &[KeyCode::Backspace; 5]);
+        type_text(&mut menu, "https://relay.example.org");
+        menu.key(KeyCode::Enter);
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().relay.as_deref(), Some("https://relay.example.org"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

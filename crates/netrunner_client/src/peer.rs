@@ -133,6 +133,31 @@ impl Relay {
         }
     }
 
+    /// What a settings form's relay field would save: `None` for the
+    /// public relays, `"off"`, or a URL — or why the text is not a relay.
+    /// Read through `from_setting`, the one place hosting reads it, so a
+    /// form refuses exactly what hosting would. Here rather than in a
+    /// client, because both clients' forms edit the one field.
+    pub fn setting_from(text: &str) -> Result<Option<String>, String> {
+        let text = text.trim();
+        Relay::from_setting(Some(text))?;
+        Ok(match text {
+            "" => None,
+            off if off.eq_ignore_ascii_case("off") => Some("off".to_string()),
+            url => Some(url.to_string()),
+        })
+    }
+
+    /// The words a settings form shows for the field, the same in both
+    /// clients.
+    pub fn label(setting: Option<&str>) -> String {
+        match setting.map(str::trim) {
+            None | Some("") => "n0's public relays".to_string(),
+            Some(off) if off.eq_ignore_ascii_case("off") => "off: addresses only".to_string(),
+            Some(url) => url.to_string(),
+        }
+    }
+
     fn mode(&self) -> RelayMode {
         match self {
             Relay::Public => RelayMode::Default,
@@ -359,5 +384,18 @@ mod tests {
         for address in ["ws://127.0.0.1:8080", "192.168.1.5", "endpoint", "[::1]:8080"] {
             assert_eq!(Ticket::parse(address), None, "{address}");
         }
+    }
+
+    /// A relay field takes off, a URL or nothing, and refuses the rest
+    /// with a reason; its label says which it holds.
+    #[test]
+    fn a_relay_setting_is_off_a_url_or_nothing() {
+        assert_eq!(Relay::setting_from("  "), Ok(None));
+        assert_eq!(Relay::setting_from(" OFF "), Ok(Some("off".to_string())));
+        assert_eq!(Relay::setting_from("https://relay.example.org"), Ok(Some("https://relay.example.org".to_string())));
+        assert!(Relay::setting_from("not a url").is_err());
+        assert_eq!(Relay::label(None), "n0's public relays");
+        assert_eq!(Relay::label(Some("off")), "off: addresses only");
+        assert_eq!(Relay::label(Some("https://relay.example.org")), "https://relay.example.org");
     }
 }
