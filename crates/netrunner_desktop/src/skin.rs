@@ -295,6 +295,25 @@ impl Drawn {
     pub fn new(bg: Color, border: Color) -> Self {
         Self { bg, border }
     }
+
+    /// The colour of the state here — what a picture asking for
+    /// `"state"` is washed in. The border carries it wherever the board
+    /// has one: a tile's is its card's faction colour, a server column's
+    /// the accent when it welcomes a drag, a HUD readout's the alarm red
+    /// or the bar's ink. A slot with no border is its fill (a readout that
+    /// opens a zone is drawn with the buttons' fill), and one drawn in
+    /// nothing at all leaves the picture as it is.
+    pub fn state(&self) -> Color {
+        [self.border, self.bg].into_iter().find(|colour| colour.alpha() > 0.0).unwrap_or(Color::WHITE)
+    }
+}
+
+/// What a slot's `tint` asks for: a colour of the skin's own, or the
+/// state's (`TINT_STATE`), which only the call site knows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Tint {
+    Fixed(Color),
+    State,
 }
 
 /// How a slot is to be painted.
@@ -360,7 +379,7 @@ pub struct Skin {
     pub folder: Option<String>,
     pub manifest: Manifest,
     art: HashMap<Slot, Art>,
-    tints: HashMap<Slot, Color>,
+    tints: HashMap<Slot, Tint>,
 }
 
 impl Skin {
@@ -372,13 +391,15 @@ impl Skin {
                 image: art.image.clone(),
                 mode: art.mode.clone(),
                 // A state's own tint wins; then its base's; then the
-                // picture as it was drawn.
-                tint: self
-                    .tints
-                    .get(&slot)
-                    .copied()
-                    .or_else(|| slot.base().and_then(|base| self.tints.get(&base).copied()))
-                    .unwrap_or(Color::WHITE),
+                // picture as it was drawn. `"state"` is the colour the
+                // caller would have drawn — a white picture coloured by
+                // the game, which the guide promised from the start and
+                // nothing resolved until 9 October 2026.
+                tint: match self.tints.get(&slot).copied().or_else(|| slot.base().and_then(|base| self.tints.get(&base).copied())) {
+                    Some(Tint::Fixed(colour)) => colour,
+                    Some(Tint::State) => fallback.state(),
+                    None => Color::WHITE,
+                },
             },
             None => Dressing::Drawn(fallback),
         }
@@ -456,24 +477,15 @@ pub fn load(folder: &str, images: &mut Assets<Image>) -> Skin {
 ///
 /// `"state"` is the useful one: it means "whatever colour the board would
 /// have used", so a single white picture serves every faction colour, the
-/// alarm red and both sides. It is resolved at the call site, where the
-/// colour is known, so here it only has to be recognised.
-fn tint_of(entry: &SlotArt) -> Option<Color> {
+/// alarm red and both sides. It is resolved in `dress`, from the `Drawn`
+/// the call site hands over, so here it only has to be recognised.
+fn tint_of(entry: &SlotArt) -> Option<Tint> {
     let text = entry.tint.as_deref()?;
     if text.eq_ignore_ascii_case(TINT_STATE) {
-        return None;
+        return Some(Tint::State);
     }
     let (r, g, b) = entry.tint_rgb()?;
-    Some(Color::srgb_u8(r, g, b))
-}
-
-/// Whether a slot's entry asked for the state's own colour.
-pub fn wants_state_tint(manifest: &Manifest, slot: Slot) -> bool {
-    manifest
-        .slot(slot.key())
-        .or_else(|| manifest.slot(slot.base()?.key()))
-        .and_then(|entry| entry.tint.as_deref())
-        .is_some_and(|tint| tint.eq_ignore_ascii_case(TINT_STATE))
+    Some(Tint::Fixed(Color::srgb_u8(r, g, b)))
 }
 
 fn node_mode(entry: &SlotArt) -> NodeImageMode {
@@ -590,9 +602,9 @@ mod tests {
             Dressing::Drawn(_) => panic!("expected art"),
         };
         assert_eq!(tint_of(&skin, Slot::ButtonHover), Color::WHITE, "undrawn and untinted is the picture as it is");
-        skin.tints.insert(Slot::Button, Color::srgb(1.0, 0.0, 0.0));
+        skin.tints.insert(Slot::Button, Tint::Fixed(Color::srgb(1.0, 0.0, 0.0)));
         assert_eq!(tint_of(&skin, Slot::ButtonHover), Color::srgb(1.0, 0.0, 0.0), "the base's tint reaches its states");
-        skin.tints.insert(Slot::ButtonHover, Color::srgb(0.0, 1.0, 0.0));
+        skin.tints.insert(Slot::ButtonHover, Tint::Fixed(Color::srgb(0.0, 1.0, 0.0)));
         assert_eq!(tint_of(&skin, Slot::ButtonHover), Color::srgb(0.0, 1.0, 0.0), "its own wins");
         assert_eq!(tint_of(&skin, Slot::Button), Color::srgb(1.0, 0.0, 0.0), "and does not leak back to the base");
     }
@@ -627,13 +639,30 @@ mod tests {
     }
 
     /// `"state"` is not a colour, and must not be read as a failed one.
+    /// `"tint": "state"` is the colour the board would have drawn there:
+    /// one white `tile.png` comes out in each card's faction colour, and
+    /// one plate in the alarm red when a readout is alarmed. A state
+    /// inherits its base's ask; a slot drawn in nothing is left as the
+    /// picture.
     #[test]
-    fn the_state_tint_is_recognised_rather_than_parsed() {
-        let entry = SlotArt { tint: Some("state".to_string()), ..SlotArt::default() };
-        assert_eq!(tint_of(&entry), None, "resolved at the call site, where the colour is known");
-        let manifest = Manifest::parse("s", r#"{"slots":{"tile":{"tint":"state"}}}"#);
-        assert!(wants_state_tint(&manifest, Slot::Tile));
-        assert!(wants_state_tint(&manifest, Slot::TileRezzed), "a state inherits the ask");
-        assert!(!wants_state_tint(&manifest, Slot::Button));
+    fn the_state_tint_is_the_colour_the_board_would_have_drawn() {
+        assert_eq!(tint_of(&SlotArt { tint: Some("state".to_string()), ..SlotArt::default() }), Some(Tint::State));
+        assert_eq!(tint_of(&SlotArt { tint: Some("#ff0000".to_string()), ..SlotArt::default() }), Some(Tint::Fixed(Color::srgb_u8(255, 0, 0))));
+        let mut skin = Skin::default();
+        skin.art.insert(Slot::Tile, Art { image: Handle::default(), mode: NodeImageMode::Stretch });
+        skin.art.insert(Slot::HudCell, Art { image: Handle::default(), mode: NodeImageMode::Stretch });
+        skin.tints.insert(Slot::Tile, Tint::State);
+        skin.tints.insert(Slot::HudCell, Tint::State);
+        let tint_of = |slot, fallback| match skin.dress(slot, fallback) {
+            Dressing::Art { tint, .. } => tint,
+            Dressing::Drawn(_) => panic!("expected art"),
+        };
+        let faction = Color::srgb(0.2, 0.6, 0.9);
+        let danger = Color::srgb(0.9, 0.1, 0.1);
+        assert_eq!(tint_of(Slot::TileRezzed, Drawn::new(Color::BLACK, faction)), faction, "a rezzed tile is its faction's colour, which its border carried");
+        assert_eq!(tint_of(Slot::TileUnrezzed, Drawn::new(Color::BLACK, Color::srgb(0.5, 0.5, 0.5))), Color::srgb(0.5, 0.5, 0.5));
+        assert_eq!(tint_of(Slot::HudCellAlarm, Drawn::new(Color::NONE, danger)), danger, "an alarmed readout's plate is red");
+        assert_eq!(tint_of(Slot::HudCell, Drawn::new(Color::NONE, Color::NONE)), Color::WHITE, "drawn in nothing, the picture is left as it is");
+        assert_eq!(tint_of(Slot::HudCell, Drawn::new(Color::BLACK, Color::NONE)), Color::BLACK, "with no border the fill is the state");
     }
 }

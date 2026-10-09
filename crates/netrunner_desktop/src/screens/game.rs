@@ -2714,6 +2714,11 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
     for readout in readouts {
         let colour = if readout.alarm { theme.danger } else { ink };
         let marker = HudReadout { label: readout.label, value: readout.value.clone() };
+        // A bare readout has no border, so the `Drawn` carries its ink as
+        // one anyway: that is the colour a skin's plate asking for
+        // `"tint": "state"` is washed in — the alarm red, or the bar's
+        // ink — and a zero-width border draws nothing.
+        let plate = Drawn::new(Color::NONE, colour);
         let node = Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, align_items: AlignItems::Center, column_gap: px(4), ..default() };
         // A readout that opens something is a button; the rest are bare
         // numbers. Both are slots, so a skin can put a plate behind every
@@ -2728,7 +2733,7 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
                 BackgroundColor(theme.button),
                 widgets::Dressed::button(theme, Slot::HudCellOpens, Drawn::new(theme.button, Color::NONE)),
             )),
-            None => parent.spawn((marker, node, widgets::Dressed::still(if readout.alarm { Slot::HudCellAlarm } else { Slot::HudCell }, Drawn::new(Color::NONE, Color::NONE)))),
+            None => parent.spawn((marker, node, widgets::Dressed::still(if readout.alarm { Slot::HudCellAlarm } else { Slot::HudCell }, plate))),
         };
         cell.with_children(|cell| {
             // The number, after Null Signal Games' own glyph for what it
