@@ -3833,3 +3833,21 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 - Still unplayed: S-Dobrado, whose "the first time you encounter" is a trigger on the event itself with nothing on the run to say the event began it; Backstitching (its bypass is behind an `EffectIf` on the mark); Always Have a Backup Plan (a bypass waiting for one piece); Alarm Clock (a bypass paid in clicks). Femme Fatale chooses its piece when installed, so its install is priced without the bypass it will have.
 
 **Verified.** `a_bypass_is_a_way_past_the_piece` (Physarum Entangler on an Enigma two credits, on a barrier nothing; Malandragem a counter, and nothing with none) and `plays_inside_job_past_ice_it_cannot_break`, which fails on `main`. Engine untouched; `netrunner_bots` only.
+
+## 66. A breach that is replaced is worth what replaces it: Stargate and Bank Job are played — DONE (`claude/bot-blindness-breach-replacements`, 10 October 2026)
+
+**The debt.** Cards on the blind list whose run's breach is replaced: Stargate (random seats 14, the planner 0), Bank Job (9), Khusyuk (8) and Burner (9).
+
+**Why.** The run leaf prices a run by its breach (`breach_worth`), and `RunState::access_replacement` was nowhere in it. A run whose breach a card replaces read as the breach it never makes: Stargate's "[click]: Run R&D. If successful, instead of breaching R&D, reveal the top 3 cards of R&D. Trash 1 of the revealed cards" as a click that runs R&D, bought for 4[c] and 2[mu]; Khusyuk as an R&D run for 3[c]; Bank Job's "instead of breaching that server, you may take any number of credits from this resource" as nothing, its 8[credit] read as counters no text cashes.
+
+**What is read now.** `read::breach_replacement` finds the replacement on the run (set by the card that began it) or in the rig (an `OnSuccessfulRun` trigger whose `when` admits the server), and `read::instead_of_breach` reads it as `Instead`: the credits and cards it pays, and the cards of R&D it looks at to take one of (`TopOfZone` of R&D, or what is set aside before an `Access` of the set-aside cards). A number the Runner chooses is read at its best, by `Effect::with_chosen_number` over its range. `breach_worth` is then the replacement's worth (`instead_worth`: a credit at `own_credit_weight`, a card at `click_weight`, and `looks_worth`, a hidden access times the chance an agenda is among the looks over the chance it is the one card), or the better of it and the breach where the Runner may decline it. A replacement that reads as nothing (Eru Ayase-Pessoa's breach of R&D instead) is left to the breach. For the installs: `run_replacement_value` credits a click ability whose run is replaced with what the replacement adds over a hidden access, a use a turn over the horizon at `future_credit_weight`, for the held card and the installed one alike; and `declared_income` reads Bank Job's replacement as cashing its counters at a credit apiece.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` (e539c99) against this branch, the same games:
+
+- Seed 2: **Stargate 0 → 18**, **Bank Job 0 → 18**, Security Testing 9 → 15, Indexing 2 → 11, Pinhole Threading 16 → 17; Corp share 0.470 → 0.467 (+6 / −8).
+- Seed 3: **Stargate 0 → 13**, **Bank Job 0 → 17**, Security Testing 12 → 16, Indexing 3 → 7, Pinhole Threading 9 → 12; Corp share 0.516 → 0.514 (+6 / −7).
+- Pooled +12 / −15, z −0.58, inside the band.
+- Still unplayed: Khusyuk, whose looks are as many as the rig has cards of one printed install cost — one or two on most rigs, under its 3[c] — and Burner, whose replacement (three of HQ revealed, two put back on R&D) is not a credit, a card or a look and reads as nothing.
+
+**Verified.** `a_replaced_breach_is_read_as_what_replaces_it` (Stargate three looks, Khusyuk two over two Corroders and a Cleaver, Bank Job's 8[credit] on a remote and nothing on HQ, and its 8[credit] held) and `stargate_is_worth_its_looks_over_a_breach`. Engine untouched; `netrunner_bots` only.
+
