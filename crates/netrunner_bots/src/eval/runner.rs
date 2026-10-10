@@ -48,7 +48,50 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
 /// `access_prospect` with the runs already made on the server this turn
 /// given rather than read: `shut_doors` reads a server for a run to come,
 /// on a turn when nothing it shows has been seen.
+///
+/// **A breach that is replaced is worth what replaces it** (Phase 5 §66,
+/// `breach_replacement`): the credits and cards it pays, and a look at the
+/// top cards of R&D to take one of (`looks_worth`) — or, where the Runner
+/// may decline it, the better of that and the breach. A replacement the
+/// reading cannot say (Eru Ayase-Pessoa's breach of R&D instead) is left
+/// to the breach, as before it.
 fn breach_worth(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32, earlier: usize) -> f64 {
+    let server = run.redirect_on_approach.unwrap_or(run.server);
+    match breach_replacement(state, run, registry, server) {
+        Some((instead, optional)) if instead != Instead::default() => {
+            let instead = instead_worth(state, registry, w, instead);
+            if optional { instead.max(breached(state, run, registry, w, credits, horizon, earlier)) } else { instead }
+        }
+        _ => breached(state, run, registry, w, credits, horizon, earlier),
+    }
+}
+
+/// What `Instead` is worth to the Runner: a credit at `own_credit_weight`,
+/// a card at `click_weight` (the identities' draw on a trash is read so),
+/// and `looks_worth` for the cards it looks at.
+pub(super) fn instead_worth(state: &GameState, registry: &CardRegistry, w: &Weights, instead: Instead) -> f64 {
+    f64::from(instead.credits) * w.own_credit_weight + f64::from(instead.cards) * w.click_weight + looks_worth(state, registry, w, instead.looks)
+}
+
+/// One card taken from the top `looks` of R&D — accessed (Khusyuk) or
+/// trashed (Stargate): a hidden access's `active_run_weight`, times the
+/// chance an agenda is among them over the chance it is the one card a
+/// breach would see, with an agenda in every `TYPICAL_AGENDA_POINTS` of
+/// the density's points (`agenda_points_expected`). A trashed agenda is
+/// read as a stolen one: it is the same points out of the Corp's reach in
+/// a race to seven. Three looks into a 44-card deck needing 20 points are
+/// 2.4 accesses.
+fn looks_worth(state: &GameState, registry: &CardRegistry, w: &Weights, looks: u32) -> f64 {
+    if looks == 0 {
+        return 0.0;
+    }
+    let (_, density) = agenda_points_expected(state, registry);
+    let chance = (density / TYPICAL_AGENDA_POINTS).clamp(0.01, 1.0);
+    w.active_run_weight * (1.0 - (1.0 - chance).powi(looks as i32)) / chance
+}
+
+/// The breach itself, as `breach_worth` reads it when nothing replaces it.
+fn breached(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32, earlier: usize) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.redirect_on_approach.unwrap_or(run.server);
     // What the rig adds at the breach (Docklands Pass, `rig_breach_accesses`)
@@ -334,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -420,6 +463,41 @@ pub(super) fn access_trash_value(state: &GameState, registry: &CardRegistry, def
 /// `access_trash_value` summed over the rig (Phase 5 §52).
 pub(super) fn rig_access_trash_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| access_trash_value(state, registry, def, w, horizon)).sum()
+}
+
+/// What a card's click ability that runs a server and replaces its breach
+/// adds over the breach it replaces, a use a turn over the horizon at
+/// `future_credit_weight` (Phase 5 §66): Stargate's "[click]: Run R&D. If
+/// successful, instead of breaching R&D, reveal the top 3 cards of R&D.
+/// Trash 1 of the revealed cards" is three looks where the breach is one
+/// hidden access (`active_run_weight`). The run itself is the leaf's to
+/// price when it is made (`breach_worth`); this is why the card is worth
+/// installing, where it read as 4[c] and 2[mu] for a click that runs R&D.
+/// Read for the held card and the installed one alike, as
+/// `access_trash_value` is.
+pub(super) fn run_replacement_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let mut best = 0.0_f64;
+    for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
+        let mut runs = false;
+        let mut instead = None;
+        ability.effect.for_each_effect(&mut |effect| match effect {
+            Effect::InitiateRun(_) => runs = true,
+            Effect::SetAccessReplacement { effect, .. } => instead = Some(instead_of_breach(effect, state, registry, 0)),
+            _ => {}
+        });
+        if let (true, Some(instead)) = (runs, instead) {
+            best = best.max(instead_worth(state, registry, w, instead) - w.active_run_weight);
+        }
+    }
+    best * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `run_replacement_value` summed over the rig (Phase 5 §66).
+pub(super) fn rig_run_replacement_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| run_replacement_value(state, registry, def, w, horizon)).sum()
 }
 
 /// What installing a held card would cost the Runner, as the engine asks
@@ -658,6 +736,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A program's derez of its host is the host's rez a turn
     // (`host_derez_value`, Phase 5 §54).
     *score += rig_host_derez_value(state, registry, w, horizon);
+    // A click ability whose run's breach is replaced is that replacement
+    // a turn (`run_replacement_value`, Phase 5 §66).
+    *score += rig_run_replacement_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
@@ -769,6 +850,27 @@ mod tests {
     /// opponent's rate over the turns after its count, discounted, and
     /// nothing while no piece is rezzed; hosted, the counters it holds
     /// shorten the wait, and a 5[c] host pays five times a 1[c] one.
+    /// A click ability whose run's breach is replaced is worth what the
+    /// replacement adds over the breach, a turn at a time (Phase 5 §66):
+    /// Stargate's three looks at R&D over one hidden access, at the
+    /// guide's rate; nothing at the reference's, and nothing for a
+    /// breaker.
+    #[test]
+    fn stargate_is_worth_its_looks_over_a_breach() {
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 30];
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let looks = looks_worth(&state, &pool, &guide, 3);
+        assert!(looks > 2.0 * guide.active_run_weight, "three looks are more than two accesses: {looks}");
+        let stargate = run_replacement_value(&state, &pool, card("stargate"), &guide, 5);
+        assert!((stargate - (looks - guide.active_run_weight) * 5.0 * guide.future_credit_weight).abs() < 1e-9);
+        assert_eq!(run_replacement_value(&state, &pool, card("stargate"), &Weights::default(), 5), 0.0);
+        assert_eq!(run_replacement_value(&state, &pool, card("corroder"), &guide, 5), 0.0);
+    }
+
     #[test]
     fn a_trojans_derez_is_the_hosts_rez_a_turn() {
         use netrunner_core::rules::{InstallSlot, InstalledCard, ServerId};

@@ -1099,6 +1099,140 @@ pub(super) fn rider_accesses(run: &RunState, server: netrunner_core::rules::Serv
     count
 }
 
+/// What a breach replaced gives the Runner instead (Phase 5 §66): the
+/// credits and cards the replacement pays, and the cards of R&D it looks
+/// at to take one of — Stargate's "reveal the top 3 cards of R&D. Trash 1
+/// of the revealed cards", Khusyuk's "access 1 of the set-aside cards".
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Instead {
+    pub credits: i32,
+    pub cards: i32,
+    pub looks: u32,
+}
+
+impl Instead {
+    fn add(self, other: Instead) -> Instead {
+        Instead { credits: self.credits + other.credits, cards: self.cards + other.cards, looks: self.looks.max(other.looks) }
+    }
+
+    /// The order the numbers a replacement lets its Runner choose are
+    /// compared in, each about a click's worth as `Tally::worth` reads.
+    fn worth(self) -> i32 {
+        self.credits + self.cards + self.looks as i32
+    }
+}
+
+/// `Instead` for a replacement `effect` that resolves as a card hosting
+/// `hosted` counters. A number the Runner chooses is read at its best
+/// (`Effect::with_chosen_number` over its range, as the engine writes it
+/// in): Bank Job's "take any number of credits from this resource" is
+/// every credit on it, Khusyuk's install cost the one most of the rig was
+/// installed at. **Why it is read at all:** the run leaf priced every run
+/// by its breach, so a run whose breach is replaced read as the breach it
+/// never makes — Khusyuk as an R&D run for 3[c], Stargate as a program
+/// that runs R&D for a click, Bank Job as a remote run — and the planner
+/// played none of them (`diag precepts --sweep-decks`, random seats 8, 14
+/// and 9 plays in 630 games).
+pub(super) fn instead_of_breach(effect: &Effect, state: &GameState, registry: &CardRegistry, hosted: u32) -> Instead {
+    let mut set_aside = 0;
+    instead(effect, state, registry, hosted, &mut set_aside)
+}
+
+fn instead(effect: &Effect, state: &GameState, registry: &CardRegistry, hosted: u32, set_aside: &mut u32) -> Instead {
+    use netrunner_core::dsl::{CardFilter, CardZoneRef};
+    let amount = |amount: &Amount| replacement_amount(amount, state, registry, hosted);
+    match effect {
+        Effect::GainCredits(Side::Runner, n) => Instead { credits: *n as i32, ..Default::default() },
+        Effect::GainCreditsAmount(Side::Runner, n) => Instead { credits: amount(n) as i32, ..Default::default() },
+        Effect::DrawCards(Side::Runner, n) => Instead { cards: *n as i32, ..Default::default() },
+        Effect::Sequence(effects) => effects.iter().fold(Instead::default(), |sum, effect| sum.add(instead(effect, state, registry, hosted, set_aside))),
+        Effect::EffectIf { effect, .. } => instead(effect, state, registry, hosted, set_aside),
+        Effect::SetAsideFromTopUntil { deck: Side::Corp, count, .. } => {
+            *set_aside += count;
+            Instead::default()
+        }
+        Effect::Repeat { times, effect } => {
+            if let Effect::SetAsideFromTopUntil { deck: Side::Corp, count, .. } = effect.as_ref() {
+                *set_aside += amount(times) * count;
+            }
+            Instead::default()
+        }
+        Effect::Access { from: CardZoneRef::OpponentSetAside, .. } => Instead { looks: *set_aside, ..Default::default() },
+        Effect::PromptChooseCards { source: CardZoneRef::OpponentDeck, filter: CardFilter::TopOfZone(n), .. } => {
+            Instead { looks: (*n).min(state.corp.r_and_d.len() as u32), ..Default::default() }
+        }
+        Effect::ChooseNumber { chooser: Side::Runner, min, max, then, .. } => (*min..=amount(max).min(MOST_A_NUMBER_IS_READ_AT))
+            .map(|n| {
+                let mut set_aside = *set_aside;
+                instead(&then.as_ref().clone().with_chosen_number(n), state, registry, hosted, &mut set_aside)
+            })
+            .max_by_key(|instead| instead.worth())
+            .unwrap_or_default(),
+        _ => Instead::default(),
+    }
+}
+
+/// The largest number `instead_of_breach` tries a choice at: Khusyuk's
+/// range is printed as 10, and no replacement in the pool asks for more.
+const MOST_A_NUMBER_IS_READ_AT: u32 = 20;
+
+/// An amount a replacement names, as it would resolve: what the card
+/// hosts, and the Runner's installed cards a filter counts.
+fn replacement_amount(amount: &Amount, state: &GameState, registry: &CardRegistry, hosted: u32) -> u32 {
+    use netrunner_core::dsl::CardZoneRef;
+    match amount {
+        Amount::Fixed(n) => *n,
+        Amount::HostedCounters => hosted,
+        Amount::Reduced { amount, by } => replacement_amount(amount, state, registry, hosted).saturating_sub(replacement_amount(by, state, registry, hosted)),
+        Amount::Increased { amount, by } => replacement_amount(amount, state, registry, hosted) + replacement_amount(by, state, registry, hosted),
+        Amount::InZone { zone: CardZoneRef::OwnInstalled, filter } => state
+            .runner
+            .rig
+            .iter()
+            .filter_map(|card| registry.get(&card.card))
+            .filter(|def| netrunner_core::dsl::card_matches_filter(def, filter))
+            .count() as u32,
+        _ => 0,
+    }
+}
+
+/// The replacement on `run`'s breach of `server` and whether the Runner
+/// may decline it: the one the run carries (a run event's, Stargate's —
+/// set when the run began, so read only off a run the search began, as a
+/// rider is), else one the rig sets when the run succeeds (Bank Job's "whenever you make a
+/// successful run on a remote server, instead of breaching that server").
+/// Read as `Instead` with the counters of the card it resolves as.
+pub(super) fn breach_replacement(state: &GameState, run: &RunState, registry: &CardRegistry, server: netrunner_core::rules::ServerId) -> Option<(Instead, bool)> {
+    use netrunner_core::dsl::{EventFilter, Subject};
+    let hosted = |install: Option<netrunner_core::rules::InstallId>| {
+        install.and_then(|install| state.runner.rig.iter().find(|card| card.install_id == install)).map_or(0, |card| card.counters)
+    };
+    if let Some((replaced, effect, optional)) = &run.access_replacement
+        && *replaced == server
+    {
+        return Some((instead_of_breach(effect, state, registry, hosted(run.access_replacement_install)), *optional));
+    }
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|card| registry.get(&card.card).map(|def| (card, def)))
+        .flat_map(|(card, def)| def.triggers.iter().map(move |trigger| (card, trigger)))
+        .filter(|(_, trigger)| trigger.trigger == Trigger::OnSuccessfulRun && trigger.subject != Some(Subject::This) && trigger.requirement.is_none())
+        .filter(|(_, trigger)| match &trigger.when {
+            None => true,
+            Some(EventFilter::Server(servers)) => servers.contains(&server),
+            Some(EventFilter::ServerKind(kind)) => kind.admits(server),
+            Some(_) => false,
+        })
+        .flat_map(|(card, trigger)| trigger.effects.iter().map(move |effect| (card, effect)))
+        .filter_map(|(card, effect)| match effect {
+            Effect::SetAccessReplacement { server: None, effect, optional } => Some((instead_of_breach(effect, state, registry, card.counters), *optional)),
+            _ => None,
+        })
+        .max_by_key(|(instead, _)| instead.worth())
+}
+
 /// `Income` for `def`, read as the struct's docs say.
 pub(super) fn declared_income(def: &CardDefinition) -> Income {
     let side = def.side;
@@ -1135,6 +1269,12 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 run_counters += sum.counters.max(0) as u32;
             }
             Trigger::OnTrashedFromAccess | Trigger::OnAgendaStolen if sum.counters > 0 => income.counters_per_turn = 1,
+            // "Instead of breaching that server, you may take any number
+            // of credits from this resource" (Bank Job; Phase 5 §66): its
+            // counters cash at a credit apiece, on the runs that take them.
+            Trigger::OnSuccessfulRun if trigger.effects.iter().any(cashes_counters_instead_of_breaching) => {
+                income.cashout_per_counter = income.cashout_per_counter.max(1);
+            }
             _ => {}
         }
         if matches!(trigger.trigger, Trigger::OnTurnStart | Trigger::OnActionPhaseEnd)
@@ -1198,6 +1338,24 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
     }
     income.run_credits += run_counters * income.cashout_per_counter;
     income
+}
+
+/// Whether `effect` replaces a breach with credits taken from the card's
+/// own counters (Bank Job's "take any number of credits from this
+/// resource"): a number up to what it hosts, gained as credits.
+fn cashes_counters_instead_of_breaching(effect: &Effect) -> bool {
+    let Effect::SetAccessReplacement { effect, .. } = effect else { return false };
+    let mut cashes = false;
+    effect.for_each_effect(&mut |effect| {
+        if let Effect::ChooseNumber { max: Amount::HostedCounters, then, .. } = effect {
+            then.for_each_effect(&mut |effect| {
+                if matches!(effect, Effect::GainCreditsAmount(Side::Runner, Amount::ChosenNumber)) {
+                    cashes = true;
+                }
+            });
+        }
+    });
+    cashes
 }
 
 /// The cards one use of `effect` sabotages and the hosted counters it
@@ -1998,6 +2156,42 @@ mod tests {
         assert_eq!(price(&state, 1), Some(0), "a counter");
         state.runner.rig[0].counters = 0;
         assert_eq!(price(&state, 1), None, "no counter left");
+    }
+
+    /// A replaced breach is read as what replaces it (Phase 5 §66):
+    /// Stargate's run looks at the top 3 cards of R&D, Khusyuk's at as
+    /// many as the rig has cards of one install cost (two Corroders and a
+    /// Cleaver: 2), and Bank Job, on a run on a remote server only, pays
+    /// every credit it hosts — which the Runner may decline.
+    #[test]
+    fn a_replaced_breach_is_read_as_what_replaces_it() {
+        use netrunner_core::rules::{InstallId, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        let replacement = |card: &str| {
+            let def = pool.get(&CardId(card.to_string())).expect("card");
+            let mut found = None;
+            for effect in def.triggers.iter().flat_map(|trigger| trigger.effects.iter()).chain(def.abilities.iter().map(|ability| &ability.effect)) {
+                effect.for_each_effect(&mut |effect| {
+                    if let Effect::SetAccessReplacement { effect, .. } = effect {
+                        found = Some((**effect).clone());
+                    }
+                });
+            }
+            found.expect("a replacement")
+        };
+        assert_eq!(instead_of_breach(&replacement("stargate"), &state, &pool, 0), Instead { looks: 3, ..Default::default() });
+        let rig = |card: &str, id: u32| InstalledRunnerCard { card: CardId(card.to_string()), install_id: InstallId(id), ..Default::default() };
+        state.runner.rig = vec![rig("corroder", 1), rig("corroder", 2), rig("cleaver", 3)];
+        assert_eq!(instead_of_breach(&replacement("khusyuk"), &state, &pool, 0), Instead { looks: 2, ..Default::default() });
+        state.runner.rig = vec![InstalledRunnerCard { counters: 8, ..rig("bank_job", 4) }];
+        let run = |server| RunState { server, ..Default::default() };
+        assert_eq!(breach_replacement(&state, &run(ServerId::Remote(0)), &pool, ServerId::Remote(0)), Some((Instead { credits: 8, ..Default::default() }, true)));
+        assert_eq!(breach_replacement(&state, &run(ServerId::Hq), &pool, ServerId::Hq), None, "a central's breach is not Bank Job's");
+        let bank_job = declared_income(pool.get(&CardId("bank_job".to_string())).expect("Bank Job"));
+        assert_eq!(future_credits(&bank_job, None, 5), 8.0, "held, Bank Job is the 8[credit] it loads");
     }
 
     /// A rider that resolves some of its options is read as the chooser's
