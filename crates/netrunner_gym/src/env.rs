@@ -16,6 +16,7 @@
 use std::str::FromStr;
 
 use netrunner_bots::{evaluate_state, BotAgent, IndexedActionError, Knowledge, PlanningAgent, RandomAgent};
+use netrunner_core::decks::match_format;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{get_action_mask, ActionSpace, Deck, GamePhase, GameState, Side};
@@ -58,14 +59,13 @@ impl FromStr for Opponent {
 }
 
 impl Opponent {
-    /// The opponent knows the deck it plays; the fixtures' decks are
-    /// dealt under no format, so the learner's hidden cards are Casual's.
-    fn build(self, side: Side, seed: u64, deck: &Deck) -> Box<dyn BotAgent> {
+    /// The opponent knows the deck it plays and the match's format, the
+    /// narrowest the fixtures' two decks are legal in
+    /// (`decks::match_format`, Phase 4 §8).
+    fn build(self, side: Side, seed: u64, deck: &Deck, format: NsgFormat) -> Box<dyn BotAgent> {
         match self {
             Opponent::Random => Box::new(RandomAgent::new(seed)),
-            Opponent::Planner => {
-                Box::new(PlanningAgent::new(side, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(deck.clone()))))
-            }
+            Opponent::Planner => Box::new(PlanningAgent::new(side, seed).with_knowledge(Knowledge::new(format, Some(deck.clone())))),
         }
     }
 }
@@ -127,7 +127,7 @@ impl NetrunnerEnv {
                 placeholder_state,
                 registry.clone(),
                 agent_side,
-                opponent.build(agent_side.other(), opponent_seed, opponent_deck),
+                opponent.build(agent_side.other(), opponent_seed, opponent_deck, match_format(&corp_deck, &runner_deck, &registry).expect("the fixtures' decks are legal in a published format")),
             ),
             registry,
             corp_deck,
@@ -158,7 +158,8 @@ impl NetrunnerEnv {
             self.runner_deck = runner_deck;
         }
         let opponent_deck = if self.agent_side == Side::Corp { &self.runner_deck } else { &self.corp_deck };
-        let opponent = self.opponent_kind.build(self.agent_side.other(), self.opponent_seed, opponent_deck);
+        let format = match_format(&self.corp_deck, &self.runner_deck, &self.registry).expect("the fixtures' decks are legal in a published format");
+        let opponent = self.opponent_kind.build(self.agent_side.other(), self.opponent_seed, opponent_deck, format);
         let (state, _events) = GameState::setup(&self.corp_deck, &self.runner_deck, &self.registry, self.seed)
             .expect("fixtures decks are legal by construction");
         // A fresh `Session` per episode, which also resets its step budget.

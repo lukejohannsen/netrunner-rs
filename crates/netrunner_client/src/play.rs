@@ -1162,7 +1162,7 @@ mod tests {
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").clone();
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").clone();
-        LocalMatchSpec { registry, corp, runner, human, opponent: Opponent::Ladder(Level::Novice), style: None, seed, rules: MatchRules::default(), format: NsgFormat::Casual, record }
+        LocalMatchSpec { registry, corp, runner, human, opponent: Opponent::Ladder(Level::Novice), style: None, seed, rules: MatchRules::default(), format: NsgFormat::Unrestricted, record }
     }
 
     /// The pump a client is: wait for `Awaiting`, submit the first legal

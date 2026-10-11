@@ -82,6 +82,20 @@ def git(*args, cwd=REPO):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
+def format_for(binary, fmt):
+    """The name `binary` knows the format by. The every-card format was
+    `casual` until Phase 4 §8 (11 October 2026) and is `unrestricted`
+    since, so a before/after across that change asks each binary by the
+    name it accepts (`deck matchups` refuses a name it does not know)."""
+    if fmt not in ("unrestricted", "casual"):
+        return fmt
+    for name in ("unrestricted", "casual"):
+        probe = subprocess.run([str(binary), "deck", "matchups", "--format", name], capture_output=True, text=True)
+        if probe.returncode == 0:
+            return name
+    raise SystemExit(f"{binary.name} knows the every-card format by neither name")
+
+
 def matchup_count(root, binary, fmt):
     """One pass of the pool: `decks::matchups().len()`, Corp x Runner over
     the sample decks, read off the ref's own deck files so a pool that grew
@@ -91,7 +105,7 @@ def matchup_count(root, binary, fmt):
     (Phase 5 §25 Stage 0 or later)."""
     if fmt:
         lines = subprocess.run(
-            [str(binary), "deck", "matchups", "--format", fmt], check=True, capture_output=True, text=True
+            [str(binary), "deck", "matchups", "--format", format_for(binary, fmt)], check=True, capture_output=True, text=True
         ).stdout.splitlines()
         return len(lines)
     sides = {"Corp": 0, "Runner": 0}
@@ -143,7 +157,7 @@ def play(binary, kind, extra, games, seed, fmt, out):
     out.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [str(binary), "--headless", "--all-matchups", "--games", str(games), "--seed", str(seed),
-         "--corp", kind, "--runner", kind, "--report", str(out), *(["--format", fmt] if fmt else []), *extra],
+         "--corp", kind, "--runner", kind, "--report", str(out), *(["--format", format_for(binary, fmt)] if fmt else []), *extra],
         cwd=out.parent,
         check=True,
         stdout=subprocess.DEVNULL,
@@ -211,8 +225,10 @@ def main():
     parser.add_argument("--games", type=int, help="override one full pass of the pool (never go below it for per-card claims)")
     parser.add_argument("--expect-renames", metavar="OLD=NEW,...", help="Trigger variants renamed on purpose")
     parser.add_argument("--expect-card-renames", metavar="OLD=NEW,...", help="card ids renamed on purpose")
-    parser.add_argument("--format", choices=["startup", "standard", "eternal", "snapshot"],
-                        help="play only the sample matchups legal in this format (default: the whole pool, Casual)")
+    parser.add_argument("--format", choices=["startup", "standard", "eternal", "snapshot", "unrestricted", "casual"],
+                        default="unrestricted",
+                        help="play only the sample matchups legal in this format (default: unrestricted, the whole "
+                             "pool — named casual on refs before Phase 4 §8, which the script passes for those)")
     args = parser.parse_args()
     renames = parse_renames(args.expect_renames)
     card_renames = parse_renames(args.expect_card_renames)

@@ -275,7 +275,9 @@ impl PlanningAgent {
             style,
             weights: style.planned_weights(side),
             resolved: false,
-            knowledge: Knowledge::default(),
+            // Until the driver says otherwise (`with_knowledge`, which every
+            // driver in the workspace calls): every card.
+            knowledge: Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None),
             plan: None,
             stats: PlanStats::default(),
         }
@@ -1340,7 +1342,7 @@ mod tests {
                     break;
                 }
                 let view = build_client_view(&state, &registry, Side::Corp);
-                let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+                let sample = determinize(&view, &registry, &Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None), &mut rng);
                 let action = one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng);
                 state = apply_action(&state, &registry, action).expect("one ply's action applies").0;
             }
@@ -1395,7 +1397,7 @@ mod tests {
                         .expect("the Runner can go on")
                         .clone(),
                     Side::Corp => {
-                        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+                        let sample = determinize(&view, &registry, &Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None), &mut rng);
                         one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng)
                     }
                 };
@@ -1416,7 +1418,7 @@ mod tests {
         let state = corp_with_a_scorable_hand(&mut registry);
         let view = build_client_view(&state, &registry, Side::Corp);
         let mut rng = StdRng::seed_from_u64(1);
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sample = determinize(&view, &registry, &Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None), &mut rng);
         assert!(
             !matches!(one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng), PlayerAction::InstallCard { .. }),
             "one ply does not install a naked agenda"
@@ -1850,7 +1852,7 @@ mod cost {
         for (n, (corp_deck, runner_deck)) in decks::matchups().iter().take(6).enumerate() {
             let seed = n as u64 + 1;
             let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
-            let knowing = |deck: &decks::DeckFile| Knowledge::new(NsgFormat::Casual, Some(deck.to_deck()));
+            let knowing = |deck: &decks::DeckFile| Knowledge::new(NsgFormat::Unrestricted, Some(deck.to_deck()));
             let mut corp = PlanningAgent::new(Side::Corp, seed).with_knowledge(knowing(corp_deck));
             let mut runner = PlanningAgent::new(Side::Runner, seed).with_knowledge(knowing(runner_deck));
             let mut slowest = 0.0_f64;
@@ -2814,7 +2816,7 @@ mod positions {
                 // fills R&D from the pool, and three draws of real cards
                 // outscored the purge.
                 let dead_deck = netrunner_core::rules::Deck { identity: CardId("haas_bioroid_precision_design".to_string()), cards: vec![(CardId("dead".to_string()), 49)] };
-                let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(dead_deck)));
+                let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, Some(dead_deck)));
                 agent.observe(&view);
                 agent.select_action(&view, &registry) == PlayerAction::PurgeVirusCounters
             })
@@ -3440,7 +3442,7 @@ mod positions {
                 identity: CardId("au_co_the_gold_standard_in_clones".to_string()),
                 cards: vec![(CardId("hedge_fund".to_string()), 13), (CardId("offworld_office".to_string()), 1), (CardId("pad_campaign".to_string()), 1)],
             };
-            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck)));
+            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, Some(deck)));
             for _ in 0..10 {
                 if state.pending_paid_choice.is_none() && state.pending_decision.is_none() {
                     break;
@@ -3506,7 +3508,7 @@ mod positions {
                     (CardId("pad_campaign".to_string()), 3),
                 ],
             };
-            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck)));
+            let mut agent = PlanningAgent::new(Side::Corp, seed).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, Some(deck)));
             let archived = state.corp.archives.len();
             for _ in 0..10 {
                 if state.pending_paid_choice.is_none() && state.pending_decision.is_none() {

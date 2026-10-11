@@ -1437,7 +1437,7 @@ mod tests {
         let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, opponent: netrunner_client::play::Opponent::Ladder(Level::Novice), style: None, seed: 11, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
+        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, opponent: netrunner_client::play::Opponent::Ladder(Level::Novice), style: None, seed: 11, rules: Default::default(), format: netrunner_core::format::NsgFormat::Unrestricted, record: None };
         let handle = MatchHandle::start_local(spec).unwrap();
         (Game::new(registry, side), handle)
     }
@@ -2258,7 +2258,7 @@ mod tests {
         let labels: Vec<String> = game.actions.decisions().iter().map(|i| game.actions.entries[*i].label.clone()).collect();
         assert_eq!(labels, vec!["Install in Remote 0 — trashes Nico Campaign".to_string(), "Install in a new remote server".to_string()]);
         let prompt = game.prompt.as_ref().expect("an install is a prompt");
-        assert_eq!(prompt.title, "Scatter Field: where to install PAD Campaign?");
+        assert_eq!(prompt.title, "Scatter Field (your ice) asks: where to install PAD Campaign?");
         assert!(prompt.detail.starts_with("A new remote server is an option."), "{}", prompt.detail);
     }
 

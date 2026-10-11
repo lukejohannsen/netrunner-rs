@@ -1015,12 +1015,13 @@ mod tests {
     fn the_format_cycles_and_is_saved() {
         let (mut menu, dir) = menu("format");
         go_to(&mut menu, Entry::Settings);
-        // Unset is Casual, the last format, so Right wraps to Startup.
-        press(&mut menu, &[KeyCode::Down, KeyCode::Right]);
-        assert_eq!(menu.base.format, FormatArg::Startup, "wraps forwards from Casual");
-        press(&mut menu, &[KeyCode::Left, KeyCode::Left]);
-        assert_eq!(menu.base.format, FormatArg::Snapshot, "wraps backwards");
-        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().format, Some(NsgFormat::Snapshot));
+        // Unset is Standard, the second format, so Left is Startup and a
+        // second Left wraps to Unrestricted, the last.
+        press(&mut menu, &[KeyCode::Down, KeyCode::Left]);
+        assert_eq!(menu.base.format, FormatArg::Startup, "one back from Standard");
+        press(&mut menu, &[KeyCode::Left]);
+        assert_eq!(menu.base.format, FormatArg::Unrestricted, "wraps backwards");
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().format, Some(NsgFormat::Unrestricted));
         let _ = std::fs::remove_dir_all(dir);
     }
 

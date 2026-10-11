@@ -313,8 +313,11 @@ impl Attached {
         let (into, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
         let slot = PlayerSlot::Channel { tx: out_tx.clone(), rx: into_rx };
         let token = Uuid::new_v4();
+        // A format the daemon can deal no bot a deck in (Snapshot, with
+        // the shipped pool) queues the seek for a person, whatever the
+        // bot runner is.
         match self.shared.options.bot_runner {
-            ServeBotKind::None => {
+            kind if kind == ServeBotKind::None || !self.shared.seats_a_bot_in(format) => {
                 let newcomer = PendingHuman { token, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, tx: out_tx, slot };
                 enqueue_or_pair(&self.shared, newcomer);
             }

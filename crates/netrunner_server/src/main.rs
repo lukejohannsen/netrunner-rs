@@ -118,12 +118,12 @@ struct Config {
     /// in, comma-separated or repeated, each a queue of its own. A client
     /// that names no format joins the first. Every deck the daemon can
     /// deal, pinned or rotating, is checked against each at bind, so an
-    /// illegal pool is a startup error rather than a bad match. Startup,
-    /// Standard, Eternal and Casual by default (`serve::DEFAULT_FORMATS`):
-    /// Snapshot is a Fantasy Flight Games pool no shipped deck is legal in,
-    /// so a daemon with a bot cannot deal one there; name it to host
-    /// human-vs-human Snapshot games.
-    #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Casual])]
+    /// illegal pool is a startup error rather than a bad match. All five
+    /// by default (`serve::DEFAULT_FORMATS`); a format no shipped deck is
+    /// legal in — Snapshot, a Fantasy Flight Games pool — is served for
+    /// people alone, who bring their own decks, and a seek there waits for
+    /// a person rather than being dealt a bot.
+    #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Snapshot, ServeFormat::Unrestricted])]
     formats: Vec<ServeFormat>,
 
 
@@ -160,7 +160,7 @@ enum ServeFormat {
     Standard,
     Eternal,
     Snapshot,
-    Casual,
+    Unrestricted,
 }
 
 impl From<ServeFormat> for netrunner_core::format::NsgFormat {
@@ -171,7 +171,7 @@ impl From<ServeFormat> for netrunner_core::format::NsgFormat {
             ServeFormat::Standard => NsgFormat::Standard,
             ServeFormat::Eternal => NsgFormat::Eternal,
             ServeFormat::Snapshot => NsgFormat::Snapshot,
-            ServeFormat::Casual => NsgFormat::Casual,
+            ServeFormat::Unrestricted => NsgFormat::Unrestricted,
         }
     }
 }
@@ -183,10 +183,10 @@ enum BotKind {
     Mcts,
 }
 
-/// A bot that knows the deck it is dealt; the exhibition runner plays
-/// the sample pool with no format, so its opponent's cards are Casual's.
-fn make_agent(kind: BotKind, side: Side, seed: u64, deck: &netrunner_core::rules::Deck) -> Box<dyn BotAgent> {
-    let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
+/// A bot that knows the deck it is dealt and the match's format — the
+/// narrowest both dealt decks are legal in (`decks::match_format`).
+fn make_agent(kind: BotKind, side: Side, seed: u64, deck: &netrunner_core::rules::Deck, format: netrunner_core::format::NsgFormat) -> Box<dyn BotAgent> {
+    let knowledge = Knowledge::new(format, Some(deck.clone()));
     match kind {
         BotKind::Random => Box::new(RandomAgent::new(seed)),
         BotKind::Planner => Box::new(PlanningAgent::new(side, seed).with_knowledge(knowledge)),
@@ -223,8 +223,9 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
         let dealt = fixtures::sample_decks_for_seed(seed);
         let (state, _events) = GameState::setup(&dealt.corp, &dealt.runner, &registry, seed)?;
 
-        let corp_slot = PlayerSlot::Bot(make_agent(corp_kind, Side::Corp, seed, &dealt.corp));
-        let runner_slot = PlayerSlot::Bot(make_agent(runner_kind, Side::Runner, seed.wrapping_add(1), &dealt.runner));
+        let format = netrunner_core::decks::match_format(&dealt.corp, &dealt.runner, &registry).ok_or("the dealt decks are legal in no published format")?;
+        let corp_slot = PlayerSlot::Bot(make_agent(corp_kind, Side::Corp, seed, &dealt.corp, format));
+        let runner_slot = PlayerSlot::Bot(make_agent(runner_kind, Side::Runner, seed.wrapping_add(1), &dealt.runner, format));
         let session = MatchSession::new(state, registry.clone(), corp_slot, runner_slot);
 
         let final_state = session.run().await;

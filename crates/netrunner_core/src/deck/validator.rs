@@ -349,7 +349,7 @@ fn check_format_legality(card_id: &CardId, format: NsgFormat, rules: &FormatRule
 }
 
 // The fixtures below number their cards 1, 100, 901… — ids no real
-// pool holds — so a test of deck construction judges them in Casual, and a
+// pool holds — so a test of deck construction judges them in Unrestricted, and a
 // test of a pool supplies its own through `validate_deck_with_rules`.
 #[cfg(test)]
 mod tests {
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn a_valid_corp_deck_passes() {
         let (registry, deck) = valid_corp_registry_and_deck();
-        let report = validate_deck(&deck, &registry, NsgFormat::Casual).expect("well-formed deck should validate");
+        let report = validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("well-formed deck should validate");
         assert_eq!(report.deck_size, 45);
         assert_eq!(report.agenda_points, Some(20));
         assert_eq!(report.influence_spent, 0);
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn a_valid_runner_deck_passes() {
         let (registry, deck) = valid_runner_registry_and_deck();
-        let report = validate_deck(&deck, &registry, NsgFormat::Casual).expect("well-formed deck should validate");
+        let report = validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("well-formed deck should validate");
         assert_eq!(report.deck_size, 45);
         assert_eq!(report.agenda_points, None);
     }
@@ -470,7 +470,7 @@ mod tests {
         let deck = Decklist { identity: c(1), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::DeckSizeTooSmall { size: 10, minimum: 45 })
         );
     }
@@ -488,7 +488,7 @@ mod tests {
         let deck = Decklist { identity: c(1), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::InsufficientAgendaPoints { points: 10, min: 20, max: 21, size: 45 })
         );
     }
@@ -510,7 +510,7 @@ mod tests {
         let deck = Decklist { identity: c(2), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::InfluenceExceeded { spent: 20, limit: 15 })
         );
     }
@@ -537,7 +537,7 @@ mod tests {
         deck.cards.insert(c(600), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::FactionMismatch { card: c(600), expected: Side::Corp, actual: Side::Runner })
         );
     }
@@ -546,7 +546,7 @@ mod tests {
     /// The fixture's codes are in no real pool, so the pool is the test's
     /// own, through the seam the budget tests use.
     #[test]
-    fn a_card_outside_the_pool_is_refused_in_that_format_and_casual_admits_it() {
+    fn a_card_outside_the_pool_is_refused_in_that_format_and_unrestricted_admits_it() {
         let mut registry = CardRegistry::new();
         registry.insert(identity(2, Side::Runner, Faction::Criminal, 45));
         let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 44);
@@ -562,7 +562,7 @@ mod tests {
             validate_deck_with_rules(&deck, &registry, NsgFormat::Startup, &pool),
             Err(DeckValidationError::NotInPool { card: c(700), format: NsgFormat::Startup })
         );
-        assert!(validate_deck(&deck, &registry, NsgFormat::Casual).is_ok());
+        assert!(validate_deck(&deck, &registry, NsgFormat::Unrestricted).is_ok());
     }
 
     /// The restriction budget, which no shipped format uses yet because
@@ -641,7 +641,7 @@ mod tests {
         deck.cards.insert(c(999), 4);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::TooManyCopies { card: c(999), count: 4, max: 3 })
         );
     }
@@ -655,7 +655,7 @@ mod tests {
         deck.cards.insert(c(998), 2);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::TooManyCopies { card: c(998), count: 2, max: 1 })
         );
     }
@@ -665,21 +665,21 @@ mod tests {
         let registry = CardRegistry::new();
         let deck = Decklist { identity: c(9999), cards: HashMap::new() };
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::IdentityNotFound(c(9999)))
         );
 
         let mut registry = CardRegistry::new();
         registry.insert(card(1, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None));
         let deck = Decklist { identity: c(1), cards: HashMap::new() };
-        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::NotAnIdentity(c(1))));
+        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Unrestricted), Err(DeckValidationError::NotAnIdentity(c(1))));
     }
 
     #[test]
     fn an_agenda_from_another_faction_is_rejected_and_a_neutral_one_is_not() {
         // The fixture's four agendas are neutral, and it validates.
         let (registry, deck) = valid_corp_registry_and_deck();
-        validate_deck(&deck, &registry, NsgFormat::Casual).expect("neutral agendas are legal in any Corp deck");
+        validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("neutral agendas are legal in any Corp deck");
 
         // Swap one for a 5-point Jinteki agenda in the Weyland deck: same
         // points, same size, no influence printed — only the faction rule
@@ -691,7 +691,7 @@ mod tests {
         deck.cards.remove(&c(100));
         deck.cards.insert(c(900), 1);
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::OutOfFactionAgenda {
                 card: c(900),
                 faction: Faction::Jinteki,
@@ -706,7 +706,7 @@ mod tests {
         registry.insert(own);
         deck.cards.remove(&c(100));
         deck.cards.insert(c(901), 1);
-        validate_deck(&deck, &registry, NsgFormat::Casual).expect("an in-faction agenda is legal");
+        validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("an in-faction agenda is legal");
     }
 
     #[test]
@@ -722,7 +722,7 @@ mod tests {
         deck.cards.insert(c(800), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::RunnerDeckContainsAgenda(c(800)))
         );
     }
@@ -739,11 +739,11 @@ mod tests {
         deck.identity = c(3);
         // The fixture's filler holds three copies of each card.
         assert!(matches!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::TooManyCopies { count: 3, max: 1, .. })
         ));
         deck.cards = runner_filler_singletons(&mut registry, 1000, 45);
-        validate_deck(&deck, &registry, NsgFormat::Casual).expect("forty-five different cards");
+        validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("forty-five different cards");
         assert_eq!(registry.get(&c(1000)).unwrap().copy_limit_under(registry.get(&c(3)), MAX_COPIES_PER_CARD), 1);
         assert_eq!(registry.get(&c(1000)).unwrap().copy_limit_under(registry.get(&c(2)), MAX_COPIES_PER_CARD), 3);
     }
@@ -780,12 +780,12 @@ mod tests {
         swap(&mut deck, 100, 910);
         swap(&mut deck, 101, 911);
         swap(&mut deck, 102, 913);
-        assert!(matches!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::OutOfFactionAgenda { .. })));
+        assert!(matches!(validate_deck(&deck, &registry, NsgFormat::Unrestricted), Err(DeckValidationError::OutOfFactionAgenda { .. })));
         deck.identity = c(4);
-        validate_deck(&deck, &registry, NsgFormat::Casual).expect("two Jinteki titles and one NBN");
+        validate_deck(&deck, &registry, NsgFormat::Unrestricted).expect("two Jinteki titles and one NBN");
         swap(&mut deck, 103, 912);
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::TooManyAgendasFromFaction { faction: Faction::Jinteki, count: 3, max: 2 })
         );
     }
@@ -798,7 +798,7 @@ mod tests {
         deck.cards.insert(c(801), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Casual),
+            validate_deck(&deck, &registry, NsgFormat::Unrestricted),
             Err(DeckValidationError::IdentityInDeck(c(801)))
         );
     }

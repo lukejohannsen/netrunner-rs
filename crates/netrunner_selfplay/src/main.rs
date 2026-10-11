@@ -246,6 +246,10 @@ enum SelfPlayError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[cfg(not(feature = "onnx"))]
+    /// Two decks no published format admits together, which no pair of
+    /// shipped decks is (`decks::match_format`).
+    #[error("the two decks are legal in no published format together")]
+    NoFormat,
     #[error("--model-path was given but this binary was built without the `onnx` feature")]
     OnnxFeatureDisabled,
     #[cfg(feature = "onnx")]
@@ -466,10 +470,11 @@ fn play_arena_game(
         } else {
             evaluator
         };
-        // Each seat knows its own deck; the arena's pool is dealt under
-        // no format, so the other chair's hidden cards are Casual's.
+        // Each seat knows its own deck and the match's format, the
+        // narrowest both decks are legal in (`decks::match_format`).
         let deck = if side == Side::Corp { &corp_deck } else { &runner_deck };
-        let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
+        let format = netrunner_core::decks::match_format(&corp_deck, &runner_deck, &registry).ok_or(SelfPlayError::NoFormat)?;
+        let knowledge = Knowledge::new(format, Some(deck.clone()));
         Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config).with_knowledge(knowledge))))
     };
     let corp = seat(Side::Corp, seed)?;
@@ -646,7 +651,8 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let evaluator = |side: Side| -> Result<Box<dyn PolicyEvaluator>, SelfPlayError> {
         Ok(ablate(make_evaluator(side, &cli.model_path)?, side, cli.model_uses))
     };
-    let knowledge = |deck: &Deck| Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
+    let format = netrunner_core::decks::match_format(&corp_deck, &runner_deck, &registry).ok_or(SelfPlayError::NoFormat)?;
+    let knowledge = |deck: &Deck| Knowledge::new(format, Some(deck.clone()));
     let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, evaluator(Side::Corp)?, config).with_knowledge(knowledge(&corp_deck));
     let mut runner_agent =
         PuctAgent::with_config(Side::Runner, seed.wrapping_add(1), evaluator(Side::Runner)?, config).with_knowledge(knowledge(&runner_deck));

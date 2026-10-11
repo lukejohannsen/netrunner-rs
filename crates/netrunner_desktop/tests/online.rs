@@ -143,7 +143,7 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
 
     // The opponent: a seat through the same driver, over the address.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
-    // The host's lobby is the table's format, Casual unless set.
+    // The host's lobby is the table's format, Standard unless set.
     let hello = remote::seat_in_format("guest", netrunner_client::settings::DEFAULT_FORMAT, netrunner_core::decks::by_id("stolen_goods").unwrap());
     let mut guest = runtime.block_on(async { tokio::time::timeout(Duration::from_secs(10), remote::connect(remote::seek(address.clone(), hello), |_| {})).await }).expect("seated in time").unwrap();
 

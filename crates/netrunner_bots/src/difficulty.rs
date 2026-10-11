@@ -408,7 +408,7 @@ mod tests {
             for side in [Side::Corp, Side::Runner] {
                 let spec = level.spec(side);
                 assert_eq!(spec.level, level);
-                let _: Box<dyn BotAgent> = spec.agent(7, Knowledge::default());
+                let _: Box<dyn BotAgent> = spec.agent(7, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None));
                 assert!(spec.label().starts_with(level.name()));
                 assert!(!spec.describe().is_empty());
             }
@@ -433,7 +433,7 @@ mod tests {
                     (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
                 );
-                let _: Box<dyn BotAgent> = styled.agent(3, Knowledge::default());
+                let _: Box<dyn BotAgent> = styled.agent(3, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None));
             }
         }
     }

@@ -412,3 +412,8 @@ the sides balanced across the asynchronous play, so two people who meet again sw
 seats. Bots sit only in Casual, and only when a lobby asks for one. A chat may come
 later, optional, in Casual and in a friend lobby. No backwards compatibility is owed to
 anything: nothing has been released.
+
+**Later the same day, when the formats were built (Phase 4 §8):** told that no published
+format admits every card — Eternal bans seven and holds a deck to a points budget — the
+person kept the every-card format after all, and named it Unrestricted so that "casual"
+means only the queue.

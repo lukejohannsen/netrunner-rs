@@ -113,22 +113,6 @@ impl DeckCategory {
         }
     }
 
-    /// The format an embedded deck of this category is legal in — what
-    /// `every_sample_deck_is_legal` holds each one to. Casual for
-    /// everything Null Signal Games published (see below); Eternal for a
-    /// sweep deck, which exists to field cards Startup does not have.
-    pub fn format(self) -> NsgFormat {
-        match self {
-            DeckCategory::Sweep => NsgFormat::Eternal,
-            // The published lists were Startup lists when they were
-            // published; NetrunnerDB's lists have since banned cards some
-            // of them hold (Stage 0b). They are still decks to play, so the
-            // format they are held to as a category is Casual, and which
-            // formats each is legal in is pinned deck by deck
-            // (`every_shipped_deck_is_legal_in_the_formats_pinned_for_it`).
-            DeckCategory::Sample | DeckCategory::Starter | DeckCategory::Boosted | DeckCategory::Custom => NsgFormat::Casual,
-        }
-    }
 }
 
 /// An authored decklist — one of the published samples embedded at compile
@@ -286,7 +270,7 @@ impl DeckFile {
     /// both validators, per format. A deck's legality is this set, never
     /// one flag (the person's decision, 26 September 2026) — a ban makes a
     /// deck illegal in the format that bans it and nowhere else, and
-    /// `Casual` holds every deck the engine can run. Computed, never stored:
+    /// `Unrestricted` holds every deck the engine can run. Computed, never stored:
     /// a new list re-judges every deck on the next read.
     pub fn legal_formats(&self, registry: &CardRegistry) -> Vec<NsgFormat> {
         NsgFormat::ALL.into_iter().filter(|format| self.validate(registry, *format).is_ok()).collect()
@@ -397,9 +381,10 @@ pub fn matchups() -> Vec<(DeckFile, DeckFile)> {
 
 /// `matchups()`, keeping only the pairings both decks are legal in
 /// `format` — the pass a measurement of *Startup* play is taken over
-/// (Phase 5 §25 Stage 0), in `matchups()`'s own order so a `Casual` pass
-/// is `matchups()` game for game and every number recorded before the
-/// filter existed still reproduces.
+/// (Phase 5 §25 Stage 0), in `matchups()`'s own order so a `Unrestricted` pass
+/// — or an Eternal one, every shipped deck being Eternal-legal — is
+/// `matchups()` game for game and every number recorded before the filter
+/// existed still reproduces.
 ///
 /// Filtered a deck at a time rather than a pairing at a time: a deck's
 /// legality is `validate` under every rule of the format, and 40 decks
@@ -420,6 +405,28 @@ pub fn matchups_in(format: NsgFormat, registry: &CardRegistry) -> Vec<(DeckFile,
     corps.iter().flat_map(|corp| runners.iter().map(move |runner| (corp.clone(), runner.clone()))).collect()
 }
 
+/// The format a match between two decks is played in when nobody named
+/// one: the narrowest both are legal in (`NsgFormat::NARROWEST_FIRST`), as
+/// two people with Startup decks would agree to play Startup, and Unrestricted
+/// — every card — only for a pair no published list admits. `None` when
+/// a deck is not legal even there, which a driver treats as a deck it
+/// cannot play. This is what the sweeps, self-play and the gym give a
+/// bot's `Knowledge` (Phase 4 §8, 11 October 2026): the pool it imagines
+/// the other chair's hidden cards from, which used to be Unrestricted's — every
+/// card the catalog knows — for every game.
+///
+/// Over `rules::Deck` rather than `DeckFile` because that is what every
+/// driver holds once a game is set up; the deckbuilding validator is the
+/// same one `DeckFile::validate` runs, so a deck is legal here exactly
+/// where a table would deal it.
+pub fn match_format(corp: &crate::rules::Deck, runner: &crate::rules::Deck, registry: &CardRegistry) -> Option<NsgFormat> {
+    let decklist = |deck: &crate::rules::Deck| crate::deck::Decklist { identity: deck.identity.clone(), cards: deck.cards.iter().cloned().collect() };
+    let (corp, runner) = (decklist(corp), decklist(runner));
+    NsgFormat::NARROWEST_FIRST
+        .into_iter()
+        .find(|format| crate::deck::validate_deck(&corp, registry, *format).is_ok() && crate::deck::validate_deck(&runner, registry, *format).is_ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,7 +445,7 @@ mod tests {
     /// thing that exercises it against real data.
     /// **Which formats each shipped deck is legal in**, pinned (Stage 0b, 26
     /// September 2026, against NetrunnerDB's lists of that day). Every deck
-    /// is legal in Eternal and Casual. The published lists predate the
+    /// is legal in Eternal and Unrestricted. The published lists predate the
     /// current Startup balance update and Standard ban list, so a deck
     /// holding Cleaver, Mercia B4LL4RD, NBN: Reality Plus or Seamless
     /// Launch is not Startup-legal, and one holding Cleaver, Luminal
@@ -448,11 +455,11 @@ mod tests {
     /// change is read rather than shipped.
     #[test]
     fn every_shipped_deck_is_legal_in_the_formats_pinned_for_it() {
-        use NsgFormat::{Casual, Eternal, Standard, Startup};
+        use NsgFormat::{Unrestricted, Eternal, Standard, Startup};
         let registry = registry();
-        let not_startup = [Standard, Eternal, Casual];
-        let neither = [Eternal, Casual];
-        let not_standard = [Startup, Eternal, Casual];
+        let not_startup = [Standard, Eternal, Unrestricted];
+        let neither = [Eternal, Unrestricted];
+        let not_standard = [Startup, Eternal, Unrestricted];
         let expected: &[(&str, &[NsgFormat])] = &[
             ("agency", &neither),
             ("brutal_efficiency", &neither),
@@ -617,18 +624,41 @@ mod tests {
             let want: Vec<NsgFormat> = expected
                 .iter()
                 .find(|(id, _)| *id == deck.id)
-                .map_or_else(|| vec![Startup, Standard, Eternal, Casual], |(_, formats)| formats.to_vec());
+                .map_or_else(|| vec![Startup, Standard, Eternal, Unrestricted], |(_, formats)| formats.to_vec());
             assert_eq!(legal, want, "{} ({})", deck.id, deck.name);
         }
     }
 
+    /// Every embedded deck is legal in Eternal, the widest published pool:
+    /// the sample decks because they are published lists, the sweep decks
+    /// because they are built to be (Rules Audit item 4). So a pass over
+    /// the whole pool is an Eternal pass as much as a Unrestricted one, and
+    /// `match_format` finds a published format for two shipped decks.
     #[test]
     fn every_sample_deck_is_legal() {
         let registry = registry();
         for deck in embedded_decks() {
-            deck.validate(&registry, deck.category.format())
-                .unwrap_or_else(|e| panic!("sample deck {:?} ({}) is not legal: {e}", deck.id, deck.name));
+            deck.validate(&registry, NsgFormat::Eternal)
+                .unwrap_or_else(|e| panic!("sample deck {:?} ({}) is not legal in Eternal: {e}", deck.id, deck.name));
         }
+        for (corp, runner) in matchups() {
+            let format = match_format(&corp.to_deck(), &runner.to_deck(), &registry);
+            assert!(format.is_some_and(|format| format != NsgFormat::Unrestricted), "{} vs {}: {format:?}", corp.id, runner.id);
+        }
+    }
+
+    /// A match is played in the narrowest format both decks are legal in:
+    /// Sabbatical and Stolen Goods are Startup decks and play Startup;
+    /// Agency is legal in Eternal alone (Stage 0b pinned it), so against
+    /// Stolen Goods the match is Eternal; and Pork Chops, legal in Startup
+    /// but not Standard, plays Startup against a Startup deck.
+    #[test]
+    fn a_match_is_played_in_the_narrowest_format_both_decks_are_legal_in() {
+        let registry = registry();
+        let deck = |id: &str| by_id(id).expect("embedded").to_deck();
+        assert_eq!(match_format(&deck("sabbatical"), &deck("stolen_goods"), &registry), Some(NsgFormat::Startup));
+        assert_eq!(match_format(&deck("agency"), &deck("stolen_goods"), &registry), Some(NsgFormat::Eternal));
+        assert_eq!(match_format(&deck("pork_chops"), &deck("stolen_goods"), &registry), Some(NsgFormat::Startup));
     }
 
     /// CR 1.4.1a: a *Learn to Play* identity is legal with its published
@@ -640,7 +670,7 @@ mod tests {
         let registry = registry();
         for id in ["the_catalyst_starter", "the_catalyst_boosted", "the_syndicate_starter", "the_syndicate_boosted"] {
             let deck = by_id(id).expect("embedded");
-            deck.validate(&registry, NsgFormat::Casual).unwrap_or_else(|e| panic!("{id} is a published list: {e}"));
+            deck.validate(&registry, NsgFormat::Eternal).unwrap_or_else(|e| panic!("{id} is a published list: {e}"));
         }
 
         let mut altered = by_id("the_catalyst_starter").expect("embedded");
@@ -673,7 +703,7 @@ mod tests {
     fn a_tally_agrees_with_the_validator_and_survives_an_illegal_deck() {
         let registry = registry();
         for deck in embedded_decks() {
-            let report = deck.validate(&registry, deck.category.format()).unwrap();
+            let report = deck.validate(&registry, NsgFormat::Eternal).unwrap();
             let tally = deck.tally(&registry).unwrap();
             assert_eq!(tally.size, report.deck_size, "{}", deck.id);
             assert_eq!(tally.influence_spent, report.influence_spent, "{}", deck.id);
@@ -762,9 +792,9 @@ mod tests {
         for (deck, (id, side, cards, influence, agenda_points)) in decks.iter().zip(PUBLISHED) {
             assert_eq!(deck.side, *side, "{id}");
             assert_eq!(deck.size(), *cards, "{id} card count");
-            // Casual: what this pins is the list — its size, influence and
+            // Eternal: what this pins is the list — its size, influence and
             // points — and a later ban list does not change the list.
-            let report = deck.validate(&registry, NsgFormat::Casual).expect("published decks are legal");
+            let report = deck.validate(&registry, NsgFormat::Eternal).expect("published decks are legal");
             assert_eq!(report.influence_spent, *influence, "{id} influence spent");
             let points: u32 = deck
                 .cards
@@ -821,16 +851,16 @@ mod tests {
         }
     }
 
-    /// The format filter keeps `matchups()`'s order, so a Casual pass is the
-    /// whole pool unchanged and a Startup pass is the 9 × 10 sample decks
-    /// NetrunnerDB's Startup list admits (Stage 0b pinned which nine it
-    /// refuses). Both counts are load-bearing: every recorded Casual number
-    /// was taken over `matchups()`, and the Startup pass is what Phase 5
-    /// §25 measures Startup play over.
+    /// The format filter keeps `matchups()`'s order, so an Eternal pass is
+    /// the whole pool unchanged and a Startup pass is the 9 × 10 sample
+    /// decks NetrunnerDB's Startup list admits (Stage 0b pinned which nine
+    /// it refuses). Both counts are load-bearing: every number recorded
+    /// over the whole pool was taken over `matchups()`, and the Startup
+    /// pass is what Phase 5 §25 measures Startup play over.
     #[test]
     fn matchups_in_a_format_keep_the_pairings_both_decks_are_legal_in() {
         let registry = registry();
-        assert_eq!(matchups_in(NsgFormat::Casual, &registry), matchups(), "Casual is the whole pool, in order");
+        assert_eq!(matchups_in(NsgFormat::Eternal, &registry), matchups(), "Eternal is the whole pool, in order");
         let startup = matchups_in(NsgFormat::Startup, &registry);
         assert_eq!(startup.len(), 90, "9 Startup-legal Corp decks x 10 Startup-legal Runner decks");
         for (corp, runner) in &startup {

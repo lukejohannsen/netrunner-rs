@@ -208,12 +208,14 @@ impl Default for ServeOptions {
 /// Single-sided Swiss's round (Organized Play Policies 1.1.5.2).
 pub const DEFAULT_ROUND_LENGTH: Duration = Duration::from_secs(40 * 60);
 
-/// The formats a daemon offers by default, in lobby order. Not every
-/// format: Snapshot is a Fantasy Flight Games pool no shipped deck is
-/// legal in (Phase 1 §9 Stage 0b), so a daemon with a bot could deal
-/// nothing there (`deals_by_format`). An operator names it to host
-/// human-vs-human Snapshot games.
-pub const DEFAULT_FORMATS: [NsgFormat; 4] = [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Casual];
+/// The formats a daemon offers by default, in lobby order: all five
+/// (Phase 4 §8, 11 October 2026). Snapshot is a Fantasy Flight Games pool
+/// no shipped deck is legal in (Phase 1 §9 Stage 0b), so a daemon can deal
+/// a bot nothing there and serves it for people alone, who bring their own
+/// decks (`deals_by_format`, `Shared::seats_a_bot_in`). Until today
+/// Snapshot was left out for that reason, and the fourth was Unrestricted
+/// under its old name, Casual.
+pub const DEFAULT_FORMATS: [NsgFormat; 5] = NsgFormat::ALL;
 
 /// A pinned decklist per side, each `None` if that side rotates.
 #[derive(Clone, Default)]
@@ -292,19 +294,19 @@ fn legal_matchups(registry: &CardRegistry, format: NsgFormat) -> Vec<usize> {
         .collect()
 }
 
-/// `legal_matchups` for every format the daemon serves, refusing to start
-/// when a bot will be dealt a deck in a format that allows no matchup.
+/// `legal_matchups` for every format the daemon serves. A format that
+/// allows no matchup is served all the same — for people, who bring their
+/// own decks — and a seek there waits for a person (`seats_a_bot_in`);
+/// the daemon refuses to start only when *no* served format can deal a
+/// bot and one would be seated, because then every seek on it would wait
+/// for a second person the operator did not ask for.
 fn deals_by_format(registry: &CardRegistry, options: &ServeOptions) -> std::io::Result<HashMap<NsgFormat, Vec<usize>>> {
-    let deals_bots = options.bot_runner != ServeBotKind::None;
-    let mut deals = HashMap::new();
-    for &format in &options.formats {
-        let legal = legal_matchups(registry, format);
-        if legal.is_empty() && deals_bots {
-            return Err(std::io::Error::other(format!(
-                "no sample matchup is legal in {format:?}, and a bot would be dealt one; pin a legal matchup or serve another format"
-            )));
-        }
-        deals.insert(format, legal);
+    let deals: HashMap<NsgFormat, Vec<usize>> = options.formats.iter().map(|&format| (format, legal_matchups(registry, format))).collect();
+    if options.bot_runner != ServeBotKind::None && deals.values().all(Vec::is_empty) {
+        return Err(std::io::Error::other(format!(
+            "no sample matchup is legal in any of {:?}, and a bot would be dealt one; pin a legal matchup or serve another format",
+            options.formats
+        )));
     }
     Ok(deals)
 }
@@ -846,6 +848,14 @@ impl Shared {
         self.registry.lock().expect("daemon registry poisoned")
     }
 
+    /// Whether a seek in `format` is seated against a bot: the daemon
+    /// runs one, and the format has a matchup to deal it. A format with
+    /// none (Snapshot, with the shipped pool) queues the seek for a
+    /// person instead, whatever `--bot-runner` says.
+    fn seats_a_bot_in(&self, format: NsgFormat) -> bool {
+        self.options.bot_runner != ServeBotKind::None && self.deals.get(&format).is_some_and(|legal| !legal.is_empty())
+    }
+
     /// The decklists match `seed` is played with: whatever was pinned,
     /// and `fixtures::sample_decks_for_seed` for each side that was not.
     ///
@@ -858,8 +868,8 @@ impl Shared {
     /// The rotation runs over the matchups legal in the match's format
     /// (`Shared::deals`); a format with none deals from the whole pool,
     /// which only a match whose seats all brought decks reaches, because
-    /// `deals_by_format` refused to start a daemon that would deal a bot
-    /// one.
+    /// a seek in such a format is never seated against a bot
+    /// (`seats_a_bot_in`).
     fn decks_for(&self, seed: u64, format: NsgFormat) -> DealtMatchup {
         let mut dealt = match self.deals.get(&format).filter(|legal| !legal.is_empty()) {
             Some(legal) => fixtures::sample_decks_at(legal[(seed % legal.len() as u64) as usize]),
@@ -1279,20 +1289,28 @@ impl Server {
         let base_seed = options.seed.unwrap_or_else(rand::random);
         let Kept { identity, lasting, ratings, players, tournaments } = load_kept(options.data_dir.as_deref())?;
         let cards = fixtures::sample_registry();
+        // The rotating pool is gated per format, and for a better reason
+        // than a pinned deck: an operator who pins a deck names it and
+        // would see it refused, while a rotating daemon deals whatever the
+        // seed picks and would only find out mid-match. Worked out once
+        // here rather than per match — the pool is embedded and cannot
+        // change while the process runs.
+        let deals = deals_by_format(&cards, &options)?;
+        // A pinned deck is dealt only where a bot is seated, which is only
+        // a format the rotating pool can deal in (`seats_a_bot_in`), so it
+        // is held to those formats and not to one served for people alone
+        // — Snapshot, which no shipped deck is legal in, would otherwise
+        // refuse every pin on the default daemon.
         let mut pinned = PinnedDecks::default();
-        for &format in &options.formats {
+        for (&format, legal) in &deals {
+            if legal.is_empty() {
+                continue;
+            }
             pinned = PinnedDecks {
                 corp: pin_deck(options.corp_deck.as_deref(), Side::Corp, &cards, format)?,
                 runner: pin_deck(options.runner_deck.as_deref(), Side::Runner, &cards, format)?,
             };
         }
-        // The rotating pool needs the same gate as a pinned deck, and for
-        // a better reason: an operator who pins a deck names it and would
-        // see it refused, while a rotating daemon deals whatever the seed
-        // picks and would only find out mid-match. Worked out once here
-        // rather than per match — the pool is embedded and cannot change
-        // while the process runs.
-        let deals = deals_by_format(&cards, &options)?;
         let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
@@ -1898,9 +1916,10 @@ mod tests {
     /// The rotating pool gets the same gate, and for a stronger reason: an
     /// operator who pins a deck sees it refused by name, while a rotating
     /// daemon would deal the offending deck only on whichever seed reached
-    /// it. A daemon with a bot and no legal matchup does not start.
+    /// it. A daemon with a bot and no legal matchup in any format does not
+    /// start.
     #[test]
-    fn a_bot_daemon_with_no_legal_matchup_is_refused_at_bind() {
+    fn a_bot_daemon_with_no_legal_matchup_anywhere_is_refused_at_bind() {
         let empty = CardRegistry::new();
         let options = ServeOptions { formats: vec![NsgFormat::Startup], ..ServeOptions::default() };
         assert_ne!(options.bot_runner, ServeBotKind::None, "the default daemon seats a bot");
@@ -1922,9 +1941,12 @@ mod tests {
     /// The real pool against the real registry, in every format: each
     /// deals from the matchups its lists allow. Startup's balance update
     /// and Standard's ban list each refuse some of the published decks, so
-    /// each deals from part of the pool; Eternal and Casual deal all of it;
-    /// Snapshot — a Fantasy Flight Games pool — allows none, so a daemon
-    /// with a bot cannot serve it, and a human-vs-human one can.
+    /// each deals from part of the pool; Eternal and Unrestricted deal all of it; Snapshot
+    /// — a Fantasy Flight Games pool — allows none, so a daemon seats no
+    /// bot there and serves it for people: a daemon serving Snapshot alone
+    /// with a bot has nowhere to seat one and does not start, while the
+    /// default daemon, all four formats, starts and seats its bot in the
+    /// three that can deal it.
     #[test]
     fn each_format_deals_from_the_part_of_the_pool_it_allows() {
         let registry = fixtures::sample_registry();
@@ -1934,10 +1956,13 @@ mod tests {
             assert!(legal > 0 && legal < all, "{format:?} deals {legal} of {all}");
         }
         assert_eq!(legal_matchups(&registry, NsgFormat::Eternal).len(), all);
-        assert_eq!(legal_matchups(&registry, NsgFormat::Casual).len(), all);
+        assert_eq!(legal_matchups(&registry, NsgFormat::Unrestricted).len(), all);
         assert!(legal_matchups(&registry, NsgFormat::Snapshot).is_empty());
         let snapshot = |bot| ServeOptions { formats: vec![NsgFormat::Snapshot], bot_runner: bot, ..ServeOptions::default() };
         assert!(deals_by_format(&registry, &snapshot(ServeBotKind::Planner)).is_err());
         assert!(deals_by_format(&registry, &snapshot(ServeBotKind::None)).is_ok());
+        let deals = deals_by_format(&registry, &ServeOptions::default()).expect("the default daemon starts");
+        assert_eq!(deals.len(), 5, "all five formats are served");
+        assert!(deals[&NsgFormat::Snapshot].is_empty() && !deals[&NsgFormat::Eternal].is_empty());
     }
 }

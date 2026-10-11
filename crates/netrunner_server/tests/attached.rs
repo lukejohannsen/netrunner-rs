@@ -81,7 +81,7 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let url = human_daemon().await;
     let (mut socket, lobbies) = attach(&url, "browser").await;
     let ids: Vec<&str> = lobbies.iter().map(|lobby| lobby.id.as_str()).collect();
-    assert_eq!(ids, ["startup", "standard", "eternal", "casual"], "`serve::DEFAULT_FORMATS`");
+    assert_eq!(ids, ["startup", "standard", "eternal", "snapshot", "unrestricted"], "`serve::DEFAULT_FORMATS`");
     assert!(lobbies.iter().all(|lobby| lobby.permanent && !lobby.closed && lobby.players == 0));
     assert!(lobbies.iter().all(|lobby| !lobby.rated), "a daemon with no data directory rates nothing, and its lobbies say so");
 

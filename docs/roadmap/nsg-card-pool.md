@@ -184,7 +184,7 @@ Twelve published lists joined the `Sample` pool, and `matchups()` went from
   which unbans NBN: Reality Plus and Svyatogor Excavator; NetrunnerDB's v3
   `formats/standard` still names Ban List 26.03 as active, and
   `formats.json` is what `catalog_sync.py` reads from it. The Reality Plus
-  and Ob lists are pinned Eternal and Casual until NetrunnerDB moves and the
+  and Ob lists are pinned Eternal and Unrestricted until NetrunnerDB moves and the
   catalog is synced; the other ten are Standard. None is Startup, so the
   Startup pass stays 90 pairings.
 - **The new lists found one bug, in the bots' sampling.** At seed 27 of
@@ -255,7 +255,7 @@ Both are closed; see [Progress](#progress) for what is next.
 **Closed** — the record is in [the archive](archive/nsg-card-pool.md) under the same headings:
 
 - **Stage 0a** — the catalog from NetrunnerDB by script (`scripts/catalog_sync.py`), fifteen packs embedded, a completeness gate per pack, `CARD_VOCAB` grown once to 1024 with a rank reserved per pack, and `scripts/pool_status.py` (`feat/nsg-pool-stage-0a`, 26 September 2026).
-- **Stage 0b** — formats from NetrunnerDB (Standard, Startup, Eternal, Casual), a card banned in one and legal in another, a deck's legality judged per format on its printings, in both clients (`feat/nsg-pool-stage-0b`, 26 September 2026).
+- **Stage 0b** — formats from NetrunnerDB (Standard, Startup, Eternal, and a Casual of this project's own, Unrestricted since Phase 4 §8), a card banned in one and legal in another, a deck's legality judged per format on its printings, in both clients (`feat/nsg-pool-stage-0b`, 26 September 2026).
 - **Stage 0c** — the sixteen card files whose ids were not NetrunnerDB v3's card ids are renamed to them: fourteen identities now carry their whole title, plus M.I.C. and Maglectric Rapid (`fix/v3-card-ids`, 30 September 2026).
 - **Stage 0d** — the catalog is NetrunnerDB v3's: cards by id, printings by code beside them (`cards::catalog`), sets with release dates, formats and the deckbuilding validator by card, `numeric_id` became `built_from`, and the v2 live sync deleted (`feat/v3-catalog`, 30 September 2026).
 
@@ -385,7 +385,7 @@ env -u DISPLAY WAYLAND_DISPLAY=netrunner-shot XDG_DATA_HOME=<scratch>/data XDG_C
 A deck the default format refuses (a Sweep deck, Eternal-only) leaves the
 board at "No game in progress"; copy it into a scratch
 `NETRUNNER_DECKS_DIR` as a saved deck, and the scratch settings' default
-format (Casual) plays it.
+format (Standard since Phase 4 §8; Casual, now Unrestricted, when this was written) plays it.
 
 ## The surveys
 
