@@ -5281,7 +5281,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         }
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
-        Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |card| card.hosted_cards.len() as u32),
+        Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |host| {
+            let installed = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host.install_id)).count();
+            (host.hosted_cards.len() + installed) as u32
+        }),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
         Amount::RevealedThisEncounterSharingAType => {

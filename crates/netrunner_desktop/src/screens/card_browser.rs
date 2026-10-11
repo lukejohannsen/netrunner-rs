@@ -29,6 +29,9 @@
 //! held down is the difference between a browser and a slideshow. The
 //! search field, the count and the progress row are never respawned:
 //! one holds what is being typed and the others are updated in place.
+//! And a respawn is of the rows in view, never the pool: the grid is
+//! windowed (`Shown`), so a keystroke over the whole of Eternal costs
+//! what one over a single set did.
 //!
 //! **Keys.** The arrows move the selection by one, or by a row (the
 //! column count comes off the grid's laid-out width); Page Up and Page
@@ -73,7 +76,7 @@ impl Plugin for CardBrowserPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::CardBrowser), spawn).add_systems(
             Update,
-            (controls, keyboard, search_field, refresh, progress).chain().run_if(in_state(AppScreen::CardBrowser)),
+            (controls, keyboard, search_field, follow_scroll, refresh, progress).chain().run_if(in_state(AppScreen::CardBrowser)),
         );
     }
 }
@@ -175,6 +178,39 @@ impl Dirty {
     }
 }
 
+/// Which rows of the grid have thumbs, `first..end`, at how many
+/// columns. **The grid is windowed:** only the rows in view and
+/// `SPARE_ROWS` either side are spawned, and the grid's top and bottom
+/// padding stand for the rest, so the scroll range is the whole pool's
+/// while the thumbs are a few screens'. Spawning every thumb was 2,017
+/// faces once the FFG sets were embedded (FFG plan Stage 0d), and each
+/// keystroke in the search respawned them all: 0.7 to 1.2 seconds a
+/// keystroke on the software renderer it was measured on, and a frame
+/// twice as long as a short grid's while nothing moved. Rejected:
+/// paging the grid ("show more"), which makes the scrollbar lie about
+/// where a card is, and hiding off-screen thumbs with `Visibility`,
+/// which still spawns, lays out and shapes the text of every one.
+///
+/// `rows` is `None` until there is a laid-out grid to window, and
+/// always when no window draws the screen (a headless test), where every
+/// thumb is spawned because there is no view to keep them to.
+#[derive(Resource, Default)]
+struct Shown {
+    windowed: bool,
+    rows: Option<Rows>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Rows {
+    first: usize,
+    end: usize,
+    columns: usize,
+}
+
+/// Rows spawned beyond the view on each side, so a wheel turn or an
+/// arrow key lands on thumbs that already exist.
+const SPARE_ROWS: usize = 4;
+
 /// Set by the Search button; `search_field` opens the field and clears it.
 #[derive(Resource, Default)]
 struct SearchRequested(bool);
@@ -191,7 +227,14 @@ pub const MAX_QUERY_LEN: usize = 40;
 const GRID_GAP: f32 = 8.0;
 const GRID_PAD: f32 = 4.0;
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, downloads: Res<Downloads>) {
+fn spawn(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    core: Res<ClientCore>,
+    images: Res<CardImages>,
+    downloads: Res<Downloads>,
+    windows: Query<(), With<bevy::window::PrimaryWindow>>,
+) {
     let mut browser = Browser::new(core.catalog.clone());
     // `NETRUNNER_CARD` (`dev`): open on that card, so its inspector — a
     // reprint's printings, say — can be looked at without a hand on it.
@@ -202,6 +245,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
     }
     commands.init_resource::<Dirty>();
     commands.init_resource::<SearchRequested>();
+    commands.insert_resource(Shown { windowed: !windows.is_empty(), rows: None });
     commands.insert_resource(WasDownloading(downloads.is_running()));
 
     let filters = commands.spawn((Filters, wrap_row())).id();
@@ -237,7 +281,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
             },
         ))
         .id();
-    commands.entity(grid).with_children(|parent| spawn_grid(parent, &theme, &core, &browser, &images));
+    // With a window, the first thumbs wait for the first layout, which
+    // says how many fit (`follow_scroll`); without one, all of them now.
+    if windows.is_empty() {
+        commands.entity(grid).with_children(|parent| spawn_grid(parent, &theme, &core, &browser, &images, None));
+    }
     let grid_scroll = commands
         .spawn((
             GridScroll,
@@ -389,8 +437,15 @@ fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
     parent.spawn(widgets::button(theme, label, Val::Auto, Control::Download));
 }
 
-fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, browser: &Browser, images: &CardImages) {
-    for card in browser.visible() {
+/// The thumbs of `rows`, or of every visible card when there is no
+/// window to keep them to.
+fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, browser: &Browser, images: &CardImages, rows: Option<Rows>) {
+    let visible = browser.visible();
+    let cards = match rows {
+        Some(rows) => &visible[(rows.first * rows.columns).min(visible.len())..(rows.end * rows.columns).min(visible.len())],
+        None => &visible[..],
+    };
+    for card in cards {
         let face = Face::of(card, &core.settings.art);
         let image = images.of(&face, FaceSize::Thumb);
         let marker = (Button, FaceButton(card.id.clone()));
@@ -651,6 +706,44 @@ fn search_field(
     }
 }
 
+/// The vertical distance from one row of thumbs to the next.
+fn pitch() -> f32 {
+    FaceSize::Thumb.height() + GRID_GAP
+}
+
+/// The rows a view of `viewport` pixels scrolled to `top` shows, with
+/// `spare` more either side, out of `rows` in all.
+fn rows_for(top: f32, viewport: f32, columns: usize, rows: usize, spare: usize) -> Rows {
+    let first = ((top - GRID_PAD).max(0.0) / pitch()).floor() as usize;
+    let last = ((top + viewport - GRID_PAD).max(0.0) / pitch()).ceil() as usize;
+    Rows { first: first.saturating_sub(spare).min(rows), end: (last + spare).min(rows), columns }
+}
+
+/// Asks for the grid to be respawned when the view has moved past the
+/// rows that have thumbs, or the column count changed under it; the
+/// respawn itself is `refresh`'s, which picks the new rows.
+fn follow_scroll(
+    grid: Query<&ComputedNode, With<Grid>>,
+    grid_scroll: Query<(&ComputedNode, &ScrollPosition), With<GridScroll>>,
+    shown: Res<Shown>,
+    browser: Res<Model>,
+    mut dirty: ResMut<Dirty>,
+) {
+    if !shown.windowed || dirty.grid {
+        return;
+    }
+    let (Ok(grid), Ok((viewport, scroll))) = (grid.single(), grid_scroll.single()) else { return };
+    let height = viewport.size().y * viewport.inverse_scale_factor;
+    if height <= 0.0 {
+        return;
+    }
+    let columns = columns(grid);
+    let view = rows_for(scroll.y, height, columns, browser.visible().len().div_ceil(columns), 0);
+    if !shown.rows.is_some_and(|shown| shown.columns == columns && shown.first <= view.first && view.end <= shown.end) {
+        dirty.grid = true;
+    }
+}
+
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
@@ -659,8 +752,9 @@ fn refresh(
     filters: Query<Entity, With<Filters>>,
     download_slot: Query<Entity, With<DownloadSlot>>,
     mut count: Query<&mut Text, With<Count>>,
-    grid: Query<(Entity, &ComputedNode), With<Grid>>,
+    mut grid: Query<(Entity, &ComputedNode, &mut Node), With<Grid>>,
     mut grid_scroll: Query<(&ComputedNode, &mut ScrollPosition), With<GridScroll>>,
+    mut shown: ResMut<Shown>,
     inspector: Query<Entity, With<Inspector>>,
     thumbs: Query<(Entity, &FaceButton, Has<Outline>)>,
     theme: Res<Theme>,
@@ -678,8 +772,8 @@ fn refresh(
     }
     let Dirty { toolbar, download, grid: regrid, scroll, .. } = std::mem::take(&mut *dirty);
     let browser = &browser.0;
-    let (Ok(filters), Ok(download_slot), Ok((grid, grid_node)), Ok((viewport_node, mut scroll_position)), Ok(inspector)) =
-        (filters.single(), download_slot.single(), grid.single(), grid_scroll.single_mut(), inspector.single())
+    let (Ok(filters), Ok(download_slot), Ok((grid, grid_node, mut grid_style)), Ok((viewport_node, mut scroll_position)), Ok(inspector)) =
+        (filters.single(), download_slot.single(), grid.single_mut(), grid_scroll.single_mut(), inspector.single())
     else {
         return;
     };
@@ -690,7 +784,21 @@ fn refresh(
         commands.entity(download_slot).despawn_children().with_children(|parent| spawn_download(parent, &theme, &core));
     }
     if regrid {
-        commands.entity(grid).despawn_children().with_children(|parent| spawn_grid(parent, &theme, &core, browser, &images));
+        let viewport = viewport_node.size().y * viewport_node.inverse_scale_factor;
+        let rows = shown.windowed.then(|| {
+            let columns = columns(grid_node);
+            let total = browser.visible().len().div_ceil(columns);
+            // Before the first layout there is no view, so no rows: the
+            // next frame's `follow_scroll` asks again once there is one.
+            let rows = if viewport > 0.0 { rows_for(scroll_position.y, viewport, columns, total, SPARE_ROWS) } else { Rows { first: 0, end: 0, columns } };
+            // The rows with no thumbs are padding, a row's pitch each, so
+            // the grid is as tall as if every thumb were there.
+            grid_style.padding.top = px(GRID_PAD + rows.first as f32 * pitch());
+            grid_style.padding.bottom = px(GRID_PAD + (total - rows.end) as f32 * pitch());
+            rows
+        });
+        shown.rows = rows;
+        commands.entity(grid).despawn_children().with_children(|parent| spawn_grid(parent, &theme, &core, browser, &images, rows));
         for mut text in &mut count {
             text.0 = count_line(browser);
         }
@@ -738,5 +846,22 @@ fn progress(downloads: Res<Downloads>, mut bar: Query<&mut Node, With<ProgressBa
         if text.0 != line {
             text.0 = line.clone();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window covers the rows in view and `SPARE_ROWS` either side,
+    /// clipped to the grid, and a row only partly in view counts.
+    #[test]
+    fn the_window_is_the_rows_in_view_and_a_margin() {
+        let pitch = pitch();
+        assert_eq!(rows_for(0.0, 2.5 * pitch, 7, 300, 0), Rows { first: 0, end: 3, columns: 7 });
+        assert_eq!(rows_for(0.0, 2.5 * pitch, 7, 300, SPARE_ROWS), Rows { first: 0, end: 3 + SPARE_ROWS, columns: 7 });
+        let top = GRID_PAD + 100.0 * pitch + pitch / 2.0;
+        assert_eq!(rows_for(top, 3.0 * pitch, 7, 300, SPARE_ROWS), Rows { first: 100 - SPARE_ROWS, end: 104 + SPARE_ROWS, columns: 7 });
+        assert_eq!(rows_for(top, 3.0 * pitch, 7, 102, SPARE_ROWS), Rows { first: 96, end: 102, columns: 7 }, "never past the last row");
     }
 }

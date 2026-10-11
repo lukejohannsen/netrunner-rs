@@ -3,7 +3,7 @@
   "name": "Rez Tax",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n. Tranche 8 Stage 11r: two Stimhack for its two Katorga Breakout, a run event for a run event, run on nine hosted credits and ended in core damage nobody can prevent; Side Quest, Free Spirit and Pay as You Go keep Katorga Breakout.",
+  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n. Tranche 8 Stage 11r: two Stimhack for its two Katorga Breakout, a run event for a run event, run on nine hosted credits and ended in core damage nobody can prevent; Side Quest, Free Spirit and Pay as You Go keep Katorga Breakout. FFG F1 Stage 1 (Revised Core Set): two Force of Nature, decoder for decoder, for its two Utae; and two Morning Star, which breaks every barrier subroutine for a credit, for its two Stargate. Each card given up is still in another deck.",
   "style": [
     "rig",
     "dismantle"
@@ -39,7 +39,7 @@
       "count": 2
     },
     {
-      "card": "stargate",
+      "card": "morning_star",
       "count": 2
     },
     {
@@ -83,7 +83,7 @@
       "count": 2
     },
     {
-      "card": "utae",
+      "card": "force_of_nature",
       "count": 2
     },
     {

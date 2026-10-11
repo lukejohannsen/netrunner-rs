@@ -179,6 +179,34 @@ No cards. Four parts, each its own PR.
   deck builder and the card browser are measured over 2,000 cards: the
   NSG plan's Stage 0 promised a browser that stays fast over "a few
   thousand", and this is where that is checked.
+  **0d closed** (11 October 2026), and with it Stage 0:
+  - **The marks.** All 27 cycle glyphs `card_text::cycle_icon` names
+    are in the committed `NetrunnerDB-Icons.ttf` (read off its `cmap`),
+    and every embedded set but NAPD Multiplayer resolves to one, as
+    `every_embedded_set_has_its_cycles_mark` already held in 0a-ii.
+  - **The browser was not fast over 2,017 cards, and is now.** It
+    spawned a face for every card the filters let through, and a
+    keystroke in the search respawned them all. Timed in a real window
+    (the release client under Xvfb, on the Mesa software renderer, four
+    cores, a 1600×1000 window), a keystroke over the whole catalog took
+    a frame of 0.7 to 1.2 seconds, and a frame with nothing happening
+    took 124 ms against 62 ms for a grid narrowed to a handful. The
+    grid is now windowed (`card_browser::Shown`): only the rows in view
+    and four either side have thumbs, and the grid's padding stands for
+    the rest, so the scrollbar still measures the whole pool. The same
+    run afterwards: no keystroke frame over 115 ms, and an idle frame
+    of 73 ms. A screenshot scrolled 20,000 px down shows the thumbs
+    there. Rejected: a "show more" page, which makes the scrollbar lie
+    about where a card is; and hiding thumbs off screen, which still
+    spawns, lays out and shapes every one. A headless test has no
+    window to keep thumbs to, so it still spawns every one, which keeps
+    the navigation tests' counts of the whole catalog.
+  - **The deck builder is not windowed yet, and does not need to be
+    today.** Its pool is the playable cards of one side, 360 Runner
+    cards at most now, drawn large, and an idle frame on that screen
+    took 83 ms in the same setup. It grows to about a thousand a side
+    as the FFG tranches are built, so the builder's pool gets the same
+    windowing before Snapshot completes; it is owed, not done.
 
 ## The survey (Stage 0c)
 
@@ -332,6 +360,8 @@ Each tranche's section is the survey's: its decks, its stages (composes first, t
 5. **The trace's two outcomes become things a card can hear**: an "if unsuccessful" branch on `Effect::Trace`, and a `Trigger` on `GameEvent::TraceSuccessful` (the event exists, but no trigger hears it). Bernice Mai, Spinal Modem.
 6. **Words that last for a run, and meat damage made larger**: a lingering "cannot access more than N cards", a `Prohibition` on jacking out, and `IncreaseAboutToResolve` widened from a parked draw to parked damage. Hudson 1.0, Whirlpool, The Cleaners.
 7. **Recurring credits counted from the card**: `recurring_credits` as an `Amount` (it is `Option<u32>` today), and a `PaysFor` word for "during runs on HQ". Pheromones.
+
+**Stage 1 closed** (11 October 2026): the nine Runner cards, with no new `Effect` (18 of 111 single-use, none unused, over 806 card files), and two words widened for Dinosaurus. `Scope::Hosted`, which only a piece of ice used (Magnet), now reaches the programs installed onto a rig card in the continuous scan, so "Hosted icebreaker has +2 strength" is a `Strength` there. `Amount::HostedCards` now counts those programs beside the cards hosted without installing, so "a single" is the `MayHost`'s `while`. Its `HostsMemory` room is 4, the most [mu] an icebreaker prints. Darwin's printed X is its 0 plus `Strength` per hosted virus counter, as the catalog gate already read a v3 strength of −1. Revised Core Set 9 of 38 built (`CORE2_UNIMPLEMENTED` 38 → 29), and each card left the list of its first set too. Decks: a new Sweep deck, Head Start, on Chaos Theory with two Dinosaurus and three Dyson Mem Chip; Pay As You Go takes Hemorrhage and Darwin, Rez Tax Force of Nature and Morning Star, and Hit List Peacock and Faerie, two of each, for cards other decks keep.
 
 **Riskiest:**
 - **The Cleaners**: `IncreaseAboutToResolve` handles only a parked draw (Daily Business Show). Making parked damage bigger means changing the prevention window's `WouldHappen::Damage`. CR 9.9.7e's example (Flare with The Cleaners) is the case to test, and its "cannot be prevented" damage must still be made bigger.
