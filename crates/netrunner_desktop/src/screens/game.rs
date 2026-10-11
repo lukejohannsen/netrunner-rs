@@ -1300,7 +1300,7 @@ fn autoplay(
     // shot. An access is not a `PendingDecision`, so it is asked of
     // `access::Access` rather than matched here.
     let held = model.0.view.as_ref().is_some_and(|view| match view.pending_decision {
-        Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection,
+        Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection || (dev.hold_arrangement && model.0.actions.selection().is_some_and(|s| s.purpose.arrangement)),
         Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
         _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
     }) || (dev.hold_break && !model.0.breaks.is_empty())
@@ -1309,6 +1309,16 @@ fn autoplay(
         || dev.hold_stack.is_some_and(|n| model.0.view.as_ref().is_some_and(|view| view.corp.servers.iter().any(|s| s.ice.len() + s.root.len() >= n)))
         || (dev.hold_may && model.0.optional_prompt().is_some())
         || (dev.hold_run_pass.is_some() && model.0.run_pass_label().is_some());
+    // `=arranged`: the top card is put 1st before the hold, so the
+    // screenshot shows a pick numbered. The toggle is submitted once;
+    // the view that answers it has a pick, and holds.
+    if held && dev.hold_arranged && let Some(selection) = model.0.actions.selection().filter(|s| s.purpose.arrangement && s.chosen().is_empty()) {
+        let top = selection.candidates.first().map(|c| c.position);
+        if let Some(index) = model.0.actions.entries.iter().position(|e| matches!(e.action, PlayerAction::ToggleCardSelection { position } if Some(position) == top)) {
+            pending.0.push(Intent::Choose(index));
+            return;
+        }
+    }
     if held && dev.hold_run_pass == Some(true) {
         dev.hold_run_pass = None;
         pending.0.push(Intent::PassTheRun);
@@ -3900,15 +3910,16 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     };
     // A card selection's candidates are drawn as their cards, each with
     // its own button under it; the rest (the confirm, "Choose none")
-    // stay a list. The cards keep their positions' order, so the one just
-    // selected does not jump to the end of the row.
+    // stay a list. The cards keep the order the selection reads them in
+    // (`Selection::order`: top first off a deck, else the positions'),
+    // so the one just selected does not jump to the end of the row.
     let selection = game.actions.selection();
     let position_of = |index: usize| match &game.actions.entries[index].action {
         PlayerAction::ToggleCardSelection { position } if selection.is_some_and(|s| s.candidate(*position).is_some()) => Some(*position),
         _ => None,
     };
     let mut choices: Vec<(usize, usize)> = decisions.iter().filter_map(|index| position_of(*index).map(|position| (position, *index))).collect();
-    choices.sort();
+    choices.sort_by_key(|(position, _)| selection.map_or(*position, |s| s.order(*position)));
     let buttons: Vec<usize> = decisions.iter().copied().filter(|index| position_of(*index).is_none()).collect();
     // Otherwise the one card the prompt is about: the accessed card, the
     // card going in, or the card whose text is asking.
@@ -4079,6 +4090,18 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                                         cell.commands().entity(face).insert(Outline::new(px(3), px(2), theme.accent));
                                     } else {
                                         glow(&mut cell.commands(), face, theme, game.actions.affordance_of_entry(*index));
+                                    }
+                                    // An arrangement's pick is its place in
+                                    // the new order, 1 the top: said under
+                                    // the card, because an outline alone
+                                    // says "chosen" and not "where".
+                                    if let (true, Some(pick)) = (selection.purpose.arrangement, candidate.pick) {
+                                        let place = match (pick, pick as u32 == selection.max) {
+                                            (1, _) => "1 — top".to_string(),
+                                            (n, true) => format!("{n} — last"),
+                                            (n, false) => n.to_string(),
+                                        };
+                                        cell.spawn(widgets::notice(theme, place, ()));
                                     }
                                     let copies = selection.copies(*position);
                                     if copies > 1 {

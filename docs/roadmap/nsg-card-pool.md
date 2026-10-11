@@ -343,14 +343,14 @@ stage that opens it (and marked **OWED** in
 `crates/netrunner_client/src/view_ledger.rs`), and removed by the change
 that draws it, which says so in its own entry.
 
-**One open row** (11 October 2026): `PendingDecision::ChooseCards::destination`
-— the ledger said it was drawn and nothing reads it, so a selection never
-says whether it trashes, adds to HQ or arranges — and, with it, the pick
-order in `selected`, which is the deck's order for an arrangement and is
-shown as a set. Both are Phase 7 §4bo, the first item of the person's
-11 October plan.
+**No open rows** (11 October 2026). The row opened that morning —
+`PendingDecision::ChooseCards::destination`, which the ledger said was
+drawn and nothing read, so a selection never said whether it trashed,
+added to HQ or arranged, and with it the pick order in `selected`, the
+deck's order for an arrangement shown as a set — was drawn the same day
+(Phase 7 §4bo, `selection::purpose`), in both clients.
 
-**No open rows before that** (27 September 2026). The ledger's first pass found four
+**No open rows before that either** (27 September 2026). The ledger's first pass found four
 fields older than Vantage Point drawn nowhere, and #250 left two; all six
 were cleared before Rebellion Without Rehearsal:
 
@@ -539,7 +539,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **A use limit is spent when a trigger fires, whether its "may" is taken or not** (CR 9.3.6g says a declined ability is not used): Zahya Sadeghi, Shackleton Grid, Malandragem, Heliamphora, Brasília Government Grid, Afterimage. `TriggeredEffect::requirement` is consumed at fire; the 9.3 row carries it.
 - **"The Corp trashes" is read as the controller's trash** (CR 1.14): Noise, Heliamphora.
 - **A terminal card's end does nothing mid-run or with a window open** (CR 5.4.3b): Active Policing, Bring Them Home; no terminal in the pool resolves anywhere but its player's action window. Nuvem SA's "finish resolving" is announced after the action phase has ended, not while it is ending.
-- **Arranged cards are not made new objects** (CR 8.3.3): Cultivate, Knowledge Seeker — nothing in the engine remembers a card in R&D by identity. The client does not yet word an arrangement as "top first" (Phase 7 §4bo, open).
+- **Arranged cards are not made new objects** (CR 8.3.3): Cultivate, Knowledge Seeker — nothing in the engine remembers a card in R&D by identity. The client words an arrangement top first and numbers the picks (Phase 7 §4bo).
 - **Hosted cards are a list in the order hosted**, not "distinct groups … freely arranged" (CR 1.13.7d): Read-Write Share.
 - **Baker's credit is paid in the last paid-ability window before the approach** (CR 6.9.4e), not at it, so the Corp acts in that window after the Runner has chosen.
 - **A breach with no run that ends the game mid-access** still records a `RunCompleted`, pushed and not dispatched (Cataloguer); the breach is shown with the run's panel and trail.

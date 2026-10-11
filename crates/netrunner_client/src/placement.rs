@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(placement.question(), "where to install PAD Campaign?");
         assert_eq!(placement.card(), Some(&id("pad_campaign")), "the card a pop-up shows above the destinations");
         assert_eq!(crate::board::Prompt::card(&view, &registry), Some(id("pad_campaign")), "the card going in, not the card asking");
-        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Scatter Field asks — where to install PAD Campaign?"), "the terminal pane's title");
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Scatter Field (your ice) asks — where to install PAD Campaign?"), "the terminal pane's title");
         assert_eq!(
             placement.detail(),
             "A new remote server is an option. A remote holds one agenda or asset: installing one where one already is trashes it."

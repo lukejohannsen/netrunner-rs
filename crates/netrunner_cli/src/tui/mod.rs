@@ -1173,7 +1173,12 @@ fn card_in_question(view: &ClientView, ui: &impl RenderableView) -> Option<(Stri
     if let Some(selection) = Selection::of(view, registry) {
         let Some(PlayerAction::ToggleCardSelection { position }) = ui.selected_action() else { return None };
         let candidate = selection.candidate(position)?;
-        let title = if candidate.selected { format!("Selected — {}", selection.display(candidate)) } else { selection.display(candidate) };
+        // A pick in an arrangement is its place in the new order, 1 the top.
+        let title = match (selection.purpose.arrangement, candidate.pick) {
+            (true, Some(pick)) => format!("{} — {}", if pick == 1 { "1 (top)".to_string() } else { pick.to_string() }, selection.display(candidate)),
+            (_, Some(_)) => format!("Selected — {}", selection.display(candidate)),
+            _ => selection.display(candidate),
+        };
         return Some((title, face(candidate.card.as_ref()?)?));
     }
     // A choice about a card just looked at (Méliès U's "You may trash that
@@ -2202,14 +2207,14 @@ mod tests {
         }
         let bare_view = build_client_view(&bare, &registry, Side::Corp);
         assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&bare_view)), "Do nothing");
-        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Bigger Picture asks — choose one"));
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Bigger Picture (your operation) asks — choose one"));
 
         let mut ui = LocalUiState::new(registry, Side::Corp);
         ui.begin_decision(view);
         let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
         terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
         let rendered = format!("{:?}", terminal.backend().buffer());
-        assert!(rendered.contains("Bigger Picture asks"), "the pane is titled by the asking card");
+        assert!(rendered.contains("Bigger Picture (your operation) asks"), "the pane is titled by the asking card, and says whose it is");
     }
 
     /// An access draws the card, not its name: the person's report was

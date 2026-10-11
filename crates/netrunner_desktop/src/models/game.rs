@@ -2148,6 +2148,70 @@ mod tests {
         assert_eq!(game.prompt.as_ref().map(|p| p.detail.clone()), Some(format!("Selected: {}", title(&other))));
     }
 
+    /// Cultivate's last prompt, as the pop-up draws it: the top of R&D
+    /// first, each button putting a card in the next place, "Leave them as
+    /// they are" for none, the title saying what the choice does and whose
+    /// card asks, and the hint under the order. The person's report was
+    /// that the cards could not be reordered.
+    #[test]
+    fn an_arrangement_lists_the_top_card_first_and_offers_to_leave_it() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{GameState, PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let corp = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _) = GameState::setup(&corp, &runner, &registry, 11).unwrap();
+        state.phase = GamePhase::Action(Side::Corp);
+        let title = |id: &CardId| registry.get(id).unwrap().title.clone();
+        // The top of R&D is the end of the Vec.
+        let top = title(state.corp.r_and_d.last().expect("a deck"));
+        let asker = state.corp.hq[0].clone();
+        let parked = |selected: Vec<usize>| PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnRAndD,
+            filter: CardFilter::TopOfZone(3),
+            min: 0,
+            max: 3,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OwnRAndD),
+            then: None,
+            selected,
+            source_card: Some(asker.clone()),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        };
+        let mut game = Game::new(registry.clone(), Side::Corp);
+        let labels = |game: &Game| game.actions.decisions().iter().map(|i| game.actions.entries[*i].label.clone()).collect::<Vec<_>>();
+
+        state.pending_decision = Some(parked(Vec::new()));
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let whose = netrunner_client::prose::asker(Some(&asker), &view, &registry);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })));
+        let labels_before = labels(&game);
+        assert_eq!(labels_before.len(), 4, "three cards and the way to leave them: {labels_before:?}");
+        assert_eq!(labels_before[0], format!("Put {top} (top of R&D) 1st (on top)"), "the top of R&D is drawn first");
+        assert_eq!(labels_before[3], "Leave them as they are");
+        let prompt = game.prompt.clone().expect("a prompt");
+        assert!(whose.starts_with(&title(&asker)) && whose.contains("(your "), "{whose}");
+        assert_eq!(prompt.title, format!("{whose} asks: arrange the top 3 cards of R&D"));
+        assert!(prompt.detail.ends_with("the cards you leave stay beneath, in their order."), "{}", prompt.detail);
+
+        // The top card picked first: it is 1st, and the others are offered
+        // 2nd.
+        let top_position = state.corp.r_and_d.len() - 1;
+        state.pending_decision = Some(parked(vec![top_position]));
+        let view = build_client_view(&state, &registry, Side::Corp);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })));
+        let labels_after = labels(&game);
+        assert!(labels_after.iter().any(|l| l.ends_with(" 2nd")), "{labels_after:?}");
+        assert!(labels_after.contains(&"Confirm this order".to_string()), "{labels_after:?}");
+        assert!(labels_after.contains(&format!("Take {top} (top of R&D) back out")), "{labels_after:?}");
+    }
+
     /// Scatter Field's "You may install 1 card from HQ", from the Corp's
     /// chair with an asset already earning credits in Remote 0: the choice
     /// of server is under the prompt as buttons — the new remote among them,

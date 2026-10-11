@@ -509,8 +509,10 @@ impl Prompt {
     /// The prompt for `view`, or `None` when it is an ordinary action
     /// phase and the panel needs no heading.
     pub fn of(view: &ClientView, registry: &CardRegistry) -> Option<Prompt> {
+        // Who is asking, and whose card it is (`prose::asker`): the card
+        // whose text the prompt came from, else the card being resolved.
         let title = |card: &Option<CardId>| card.as_ref().map_or_else(|| "A card".to_string(), |id| card_title(id, registry));
-        let asked_by = |prompting: &Option<CardId>, source: &Option<CardId>| title(if prompting.is_some() { prompting } else { source });
+        let asked_by = |prompting: &Option<CardId>, source: &Option<CardId>| prose::asker(prompting.as_ref().or(source.as_ref()), view, registry);
         // Ahead of everything: the engine answers a parked payment before
         // whatever is parked beneath it, so the buttons on show are the
         // payment's, and a card's own question here would be asked over
@@ -556,26 +558,34 @@ impl Prompt {
         if let Some(decision) = &view.pending_decision {
             return Some(match decision {
                 PendingDecision::ChooseEffect { source_card, prompting_card, .. } => {
-                    Prompt { title: format!("{}: choose", asked_by(prompting_card, source_card)), detail: String::new() }
+                    Prompt { title: format!("{} asks: choose", asked_by(prompting_card, source_card)), detail: String::new() }
                 }
-                PendingDecision::ChooseCards { min, max, selected, source_card, prompting_card, .. } => {
-                    let range = if min == max { format!("{min}") } else { format!("{min} to {max}") };
-                    // The chosen cards by name; a count only for a viewer
-                    // who is not choosing and so has no names to be told.
-                    let detail = match Selection::of(view, registry) {
-                        Some(selection) => selection.summary(),
-                        None => format!("{} selected", selected.len()),
+                // What the selection does is the title ("Your operation,
+                // Cultivate, asks: trash 1 of the top 5 cards of R&D"); the
+                // chosen cards by name under it, with how an arrangement's
+                // order is made; a count only for a viewer who is not
+                // choosing and so has no names to be told.
+                PendingDecision::ChooseCards { side, source, filter, min, max, shuffle_after, destination, then, selected, source_card, prompting_card, .. } => {
+                    let (purpose, detail) = match Selection::of(view, registry) {
+                        Some(selection) => {
+                            let detail = if selection.purpose.hint.is_empty() { selection.summary() } else { format!("{}\n{}", selection.summary(), selection.purpose.hint) };
+                            (selection.purpose, detail)
+                        }
+                        None => (
+                            crate::selection::purpose(*side, source, destination.as_ref(), filter, *min, *max, *shuffle_after, then.as_deref(), source_card.as_ref(), registry),
+                            format!("{} selected", selected.len()),
+                        ),
                     };
-                    Prompt { title: format!("{}: choose {range} card{}", asked_by(prompting_card, source_card), if *max == 1 { "" } else { "s" }), detail }
+                    Prompt { title: format!("{} asks: {}", asked_by(prompting_card, source_card), lower_first(&purpose.verb)), detail }
                 }
                 PendingDecision::ChooseTriggerOrder { .. } => Prompt { title: "Choose which triggers first".to_string(), detail: String::new() },
                 // The card's clause is the question, the range its detail.
                 PendingDecision::ChooseNumber { text, min, max, source_card, prompting_card, .. } => Prompt {
-                    title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a number" } else { text.as_str() }),
+                    title: format!("{} asks: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a number".to_string() } else { lower_first(text) }),
                     detail: format!("{min} to {max}"),
                 },
                 PendingDecision::ChooseCardName { text, names, source_card, prompting_card, .. } => Prompt {
-                    title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a card name" } else { text.as_str() }),
+                    title: format!("{} asks: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a card name".to_string() } else { lower_first(text) }),
                     detail: format!("any of {} names", names.len()),
                 },
                 // Who is bidding, and what the viewer may know of the other
@@ -585,12 +595,12 @@ impl Prompt {
                     let corp_bidding = *corp_bid == netrunner_core::rules::PsiBid::Awaiting;
                     match (view.viewer.side(), corp_bidding) {
                         (Some(Side::Corp), true) | (Some(Side::Runner), false) => Prompt {
-                            title: format!("{card}: play a Psi Game — bid in secret"),
+                            title: format!("{card} asks: play a Psi Game — bid in secret"),
                             detail: format!("0 to {} credits", if corp_bidding { corp_max } else { runner_max }),
                         },
-                        (_, true) => Prompt { title: format!("{card}: the Corp is bidding in secret"), detail: String::new() },
+                        (_, true) => Prompt { title: format!("{card} asks: the Corp is bidding in secret"), detail: String::new() },
                         (_, false) => Prompt {
-                            title: format!("{card}: the Runner is bidding"),
+                            title: format!("{card} asks: the Runner is bidding"),
                             detail: match corp_bid {
                                 netrunner_core::rules::PsiBid::Bid(bid) => format!("you bid {bid}"),
                                 _ => "the Corp has bid".to_string(),
@@ -599,11 +609,11 @@ impl Prompt {
                     }
                 }
                 PendingDecision::ChooseServer { source_card, prompting_card, install, remember, .. } => match Placement::of(view, registry) {
-                    Some(placement) => Prompt { title: format!("{}: {}", asked_by(prompting_card, source_card), placement.question()), detail: placement.detail() },
-                    None if install.is_some() => Prompt { title: format!("{}: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
+                    Some(placement) => Prompt { title: format!("{} asks: {}", asked_by(prompting_card, source_card), lower_first(&placement.question())), detail: placement.detail() },
+                    None if install.is_some() => Prompt { title: format!("{} asks: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
                     // Tsakhia: a server remembered for the turn, not a run.
-                    None if *remember => Prompt { title: format!("{}: choose a server", asked_by(prompting_card, source_card)), detail: String::new() },
-                    None => Prompt { title: format!("{}: choose a server to run", asked_by(prompting_card, source_card)), detail: String::new() },
+                    None if *remember => Prompt { title: format!("{} asks: choose a server", asked_by(prompting_card, source_card)), detail: String::new() },
+                    None => Prompt { title: format!("{} asks: choose a server to run", asked_by(prompting_card, source_card)), detail: String::new() },
                 },
             });
         }
@@ -612,7 +622,7 @@ impl Prompt {
                 Some(text) => text.clone(),
                 None => format!("Pay {} to {}", prose::describe_cost(&paid.cost), prose::describe_effect(&paid.if_paid, registry)),
             };
-            return Some(Prompt { title: format!("{}: pay?", asked_by(&paid.prompting_card, &paid.source_card)), detail });
+            return Some(Prompt { title: format!("{} asks: pay?", asked_by(&paid.prompting_card, &paid.source_card)), detail });
         }
         if let Some(prevention) = &view.pending_prevention {
             let left = prevention.what.amount().saturating_sub(prevention.prevented);
@@ -783,6 +793,14 @@ impl Prompt {
     }
 }
 
+fn lower_first(words: &str) -> String {
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 fn title_of(card: Option<&CardId>, registry: &CardRegistry) -> String {
     card.map_or_else(|| "A card".to_string(), |id| card_title(id, registry))
 }
@@ -897,6 +915,61 @@ mod tests {
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         assert!(ActionMap::build(&view, &registry).is_empty());
         assert_eq!(Prompt::of(&view, &registry).expect("told who is deciding").title, "The Runner is choosing how to pay", "the other chair cannot see whether it is credits or cards");
+    }
+
+    /// Cultivate's three prompts, as both clients head them: what each
+    /// selection does and whose card asks, the arrangement's hint under the
+    /// summary, and the other chair told the purpose with a count.
+    #[test]
+    fn a_card_selection_is_headed_by_what_it_does_and_whose_card_asks() {
+        use netrunner_core::dsl::{CardDefinition, CardFilter, CardType, CardZoneRef};
+        use netrunner_core::rules::{GamePhase, GameState, PendingChoiceResume};
+        let def = |id: &str, title: &str, card_type: CardType| CardDefinition { id: CardId(id.to_string()), title: title.to_string(), side: Side::Corp, card_type, is_playable: true, ..Default::default() };
+        let registry = CardRegistry::from_cards(vec![def("cultivate", "Cultivate", CardType::Operation), def("hedge_fund", "Hedge Fund", CardType::Operation), def("enigma", "Enigma", CardType::Ice(netrunner_core::dsl::IceType::CodeGate))]);
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = vec![CardId("hedge_fund".into()), CardId("hedge_fund".into()), CardId("enigma".into()), CardId("hedge_fund".into()), CardId("enigma".into())];
+        let parked = |top: u32, min: u32, max: u32, destination: CardZoneRef| PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnRAndD,
+            filter: CardFilter::TopOfZone(top),
+            min,
+            max,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(destination),
+            then: None,
+            selected: Vec::new(),
+            source_card: Some(CardId("cultivate".into())),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        };
+        let titles = |state: &GameState| {
+            let corp = Prompt::of(&netrunner_core::view::build_client_view(state, &registry, Side::Corp), &registry).unwrap();
+            let runner = Prompt::of(&netrunner_core::view::build_client_view(state, &registry, Side::Runner), &registry).unwrap();
+            (corp, runner)
+        };
+        state.pending_decision = Some(parked(5, 1, 1, CardZoneRef::OwnArchives));
+        let (corp, runner) = titles(&state);
+        assert_eq!(corp.title, "Cultivate (your operation) asks: trash 1 of the top 5 cards of R&D");
+        assert_eq!(corp.detail, "Nothing selected yet");
+        assert_eq!(runner.title, "Cultivate (the Corp's operation) asks: trash 1 of the top 5 cards of R&D");
+        assert_eq!(runner.detail, "0 selected", "the other chair has no names to be told");
+        state.pending_decision = Some(parked(4, 1, 1, CardZoneRef::OwnHq));
+        assert_eq!(titles(&state).0.title, "Cultivate (your operation) asks: add 1 of the top 4 cards of R&D to HQ");
+        state.pending_decision = Some(parked(3, 0, 3, CardZoneRef::OwnRAndD));
+        let (corp, _) = titles(&state);
+        assert_eq!(corp.title, "Cultivate (your operation) asks: arrange the top 3 cards of R&D");
+        assert_eq!(corp.detail, "Nothing moved yet: they stay in the order shown\nThe first you choose goes on top; the cards you leave stay beneath, in their order.");
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        let map = ActionMap::build(&view, &registry);
+        let labels: Vec<&str> = map.decisions().into_iter().map(|index| map.entries[index].label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec!["Put Enigma (top of R&D) 1st (on top)", "Put Hedge Fund (2nd from the top of R&D) 1st (on top)", "Put Enigma (3rd from the top of R&D) 1st (on top)", "Leave them as they are"],
+            "top first, then the way to leave them"
+        );
     }
 
     /// A choice parked by the action that looked at a card shows the card

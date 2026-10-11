@@ -123,6 +123,11 @@
 //! - `NETRUNNER_HOLD_SELECTION=1` — on the board, the autoplay stops at
 //!   the first card-selection prompt the person is asked, so the
 //!   screenshot catches the pop-up's buttons naming the cards.
+//!   `=arrange` stops only at an arrangement — cards off the top of a
+//!   deck put back in the order chosen (Cultivate's last prompt) — so
+//!   the screenshot catches the deck listed top first; the prompts
+//!   before it are played through. `=arranged` picks the top card
+//!   first and then stops, so the screenshot catches a pick numbered.
 //! - `NETRUNNER_HOLD_INSTALL=1` — the same at the first server choice a
 //!   card's text installs into (Scatter Field, Ansel 1.0), so the
 //!   screenshot catches where the card may go.
@@ -310,6 +315,11 @@ pub struct Dev {
     pub hold_ice: bool,
     /// Stop the autoplay at the first card-selection prompt.
     pub hold_selection: bool,
+    /// `NETRUNNER_HOLD_SELECTION=arrange`: at the first arrangement only.
+    pub hold_arrangement: bool,
+    /// `NETRUNNER_HOLD_SELECTION=arranged`: the same, with the top card
+    /// picked first.
+    pub hold_arranged: bool,
     /// Stop the autoplay at the first "where to install" a card asks.
     pub hold_install: bool,
     /// Stop the autoplay at the first card the person is asked to access.
@@ -387,7 +397,9 @@ impl Dev {
             hold_flight: std::env::var_os("NETRUNNER_HOLD_FLIGHT").is_some_and(|v| !v.is_empty()),
             flight_held: false,
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
-            hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
+            hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty() && v != "arrange" && v != "arranged"),
+            hold_arrangement: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| v == "arrange" || v == "arranged"),
+            hold_arranged: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| v == "arranged"),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
             hold_access: std::env::var_os("NETRUNNER_HOLD_ACCESS").is_some_and(|v| !v.is_empty()),
             hold_break: std::env::var_os("NETRUNNER_HOLD_BREAK").is_some_and(|v| !v.is_empty()),

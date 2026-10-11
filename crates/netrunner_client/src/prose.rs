@@ -39,12 +39,20 @@ fn title(id: &CardId, registry: &CardRegistry) -> String {
     registry.get(id).map_or_else(|| id.0.clone(), |card| card.title.clone())
 }
 
+fn lower_first(words: &str) -> String {
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 fn plural(n: impl Into<u64>, one: &str, many: &str) -> String {
     let n = n.into();
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-fn who(side: Side) -> &'static str {
+pub fn who(side: Side) -> &'static str {
     match side {
         Side::Corp => "the Corp",
         Side::Runner => "the Runner",
@@ -986,6 +994,38 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
     }
 }
 
+/// The card asking a question, and whose it is: "Nuvem SA: Law of the
+/// Land (your identity)", "Cultivate (the Corp's operation)", "Scatter
+/// Field (your ice)" — the title first, since that is what the person
+/// recognises, and whose in the brackets, since that is what they asked
+/// for. A prompt used to name the card by its title alone, and
+/// the person asked whose card was asking — their own identity, the
+/// opponent's, a piece of ice (Phase 7 §4bo). Whose is read off the card's
+/// printed side against the viewer's chair; a spectator reads the side's
+/// name. A card the view does not name (a facedown one, masked) is "A
+/// card".
+pub fn asker(card: Option<&CardId>, view: &ClientView, registry: &CardRegistry) -> String {
+    let Some(card) = card else { return "A card".to_string() };
+    let Some(def) = registry.get(card) else { return card.0.clone() };
+    let whose = match view.viewer.side() {
+        Some(side) if side == def.side => "your".to_string(),
+        _ => format!("{}'s", who(def.side)),
+    };
+    let kind = match def.card_type {
+        netrunner_core::dsl::CardType::Agenda => "agenda",
+        netrunner_core::dsl::CardType::Asset => "asset",
+        netrunner_core::dsl::CardType::Operation => "operation",
+        netrunner_core::dsl::CardType::Ice(_) => "ice",
+        netrunner_core::dsl::CardType::Hardware => "hardware",
+        netrunner_core::dsl::CardType::Resource => "resource",
+        netrunner_core::dsl::CardType::Program => "program",
+        netrunner_core::dsl::CardType::Event => "event",
+        netrunner_core::dsl::CardType::Identity => "identity",
+        netrunner_core::dsl::CardType::Upgrade => "upgrade",
+    };
+    format!("{} ({whose} {kind})", def.title)
+}
+
 /// One of a card's printed ways to pay for its rez
 /// (`CardDefinition::rez_alternatives`), as its button reads: what it
 /// costs beside the credits, and what it takes off them — "Forfeit 1
@@ -1043,19 +1083,28 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             }
         });
     }
-    let name = decision_card(view).map(|id| title(id, registry));
+    let name = decision_card(view).map(|id| asker(Some(id), view, registry));
     let asks = |what: String| Some(match &name { Some(card) => format!("{card} asks — {what}"), None => what });
     if let Some(paid) = &view.pending_paid_choice {
         return asks(format!("pay {} to {}?", describe_cost(&paid.cost), describe_effect(&paid.if_paid, registry)));
     }
     match view.pending_decision.as_ref()? {
         PendingDecision::ChooseEffect { .. } => asks("choose one".to_string()),
-        PendingDecision::ChooseCards { source, min, max, .. } => {
-            let how_many = if min == max { plural(*min, "card", "cards") } else { format!("{min} to {max} cards") };
-            // The chooser is told what they have chosen so far, by name —
-            // the one line a terminal pane has for it.
-            let chosen = crate::selection::Selection::of(view, registry).map(|s| format!(" ({})", s.summary())).unwrap_or_default();
-            asks(format!("choose {how_many} from {}{chosen}", describe_zone(source)))
+        // What the selection does is the question ("trash 1 of the top 5
+        // cards of R&D"), and the chooser is told what they have chosen so
+        // far, by name — the one line a terminal pane has for it. Anyone
+        // else has no candidates and reads the purpose alone.
+        PendingDecision::ChooseCards { side, source, filter, min, max, shuffle_after, destination, then, source_card, .. } => {
+            match crate::selection::Selection::of(view, registry) {
+                Some(selection) => {
+                    let hint = if selection.purpose.hint.is_empty() { String::new() } else { format!(" {}", selection.purpose.hint) };
+                    asks(format!("{} ({}){hint}", lower_first(&selection.purpose.verb), selection.summary()))
+                }
+                None => {
+                    let purpose = crate::selection::purpose(*side, source, destination.as_ref(), filter, *min, *max, *shuffle_after, then.as_deref(), source_card.as_ref(), registry);
+                    asks(lower_first(&purpose.verb))
+                }
+            }
         }
         PendingDecision::ChooseServer { install, remember, .. } => match crate::placement::Placement::of(view, registry) {
             Some(placement) => asks(placement.question()),
@@ -1105,6 +1154,28 @@ mod tests {
             "if is tagged: do 4 meat damage"
         );
         assert_eq!(describe_cost(&Cost::AnyOf(vec![Cost::Credits(2), Cost::TrashSelf])), "2 credits or trash this card");
+    }
+
+    /// The asker is the card and whose it is, from the viewer's chair: the
+    /// Corp's own operation is "your operation", the same card to the
+    /// Runner is "the Corp's operation", and a card the view does not name
+    /// is "A card".
+    #[test]
+    fn the_asker_says_whose_card_it_is() {
+        use netrunner_core::rules::{GamePhase, GameState};
+        use netrunner_core::view::build_client_view;
+        let registry = crate::decks::sample_deck_registry();
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Corp);
+        let corp = build_client_view(&state, &registry, Side::Corp);
+        let runner = build_client_view(&state, &registry, Side::Runner);
+        let hedge = CardId("hedge_fund".to_string());
+        assert_eq!(asker(Some(&hedge), &corp, &registry), "Hedge Fund (your operation)");
+        assert_eq!(asker(Some(&hedge), &runner, &registry), "Hedge Fund (the Corp's operation)");
+        assert_eq!(asker(None, &corp, &registry), "A card");
+        let identity = registry.iter().find(|card| card.card_type == netrunner_core::dsl::CardType::Identity && card.side == Side::Runner).expect("a Runner identity in the pool");
+        assert_eq!(asker(Some(&identity.id), &corp, &registry), format!("{} (the Runner's identity)", identity.title));
+        assert_eq!(asker(Some(&identity.id), &runner, &registry), format!("{} (your identity)", identity.title));
     }
 
     #[test]
