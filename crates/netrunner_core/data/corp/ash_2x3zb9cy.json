@@ -1,0 +1,32 @@
+{
+  "id": "ash_2x3zb9cy",
+  "title": "Ash 2X3ZB9CY",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "Prohibit": {
+                "what": "AccessOthers",
+                "until": "Run",
+                "this_install": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever there is a successful run on this server, Trace[4]. If successful, the Runner cannot access any cards other than Ash 2X3ZB9CY for the remainder of this run."
+    }
+  ],
+  "trash_cost": 3,
+  "built_from": 2013,
+  "is_playable": true
+}

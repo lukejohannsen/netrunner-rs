@@ -1,0 +1,37 @@
+{
+  "id": "grndl_refinery",
+  "title": "GRNDL Refinery",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Gain 4[credit] for each advancement token on GRNDL Refinery.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          {
+            "Times": {
+              "amount": "HostedAdvancementTokens",
+              "times": 4
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "trash_cost": 2,
+  "built_from": 4099,
+  "is_playable": true
+}
