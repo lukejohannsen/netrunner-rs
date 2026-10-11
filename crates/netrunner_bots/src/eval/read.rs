@@ -1562,6 +1562,38 @@ pub(super) fn unaffordable_ice(state: &GameState, registry: &CardRegistry) -> us
         .count()
 }
 
+/// The credits stealing the installed agenda `agenda` would cost the
+/// Runner on top of the break (`continuous::steal_price`), `None` when the
+/// price holds something other than credits and clicks — taken as
+/// unpayable, as the Runner's `can_pay_to_steal` takes it. Phase 5 §68:
+/// NAPD Cordon's "4[credit] plus 2[credit] for each advancement counter
+/// on that agenda" is reckoned as the agenda is accessed (CR 1.16.2b) and
+/// reads the counters of the card under access, so the price is asked of
+/// a copy of the board with this agenda under access; a board no card
+/// taxes is never copied.
+pub(super) fn steal_credits(state: &GameState, registry: &CardRegistry, agenda: &netrunner_core::rules::InstalledCard) -> Option<u32> {
+    use netrunner_core::dsl::Cost;
+    use netrunner_core::rules::continuous::steal_price;
+    use netrunner_core::rules::{AccessState, RunState};
+    fn credits(cost: &Cost) -> Option<u32> {
+        match cost {
+            Cost::Credits(n) => Some(*n),
+            Cost::Clicks(_) => Some(0),
+            Cost::AllOf(parts) => parts.iter().try_fold(0, |sum, part| credits(part).map(|n| sum + n)),
+            _ => None,
+        }
+    }
+    let Some(def) = registry.get(&agenda.card) else { return Some(0) };
+    if steal_price(state, registry, def).is_none() {
+        return Some(0);
+    }
+    let mut accessing = state.clone();
+    let mut run = accessing.active_run.take().unwrap_or_else(|| RunState { server: agenda.server, ..RunState::default() });
+    run.access_state = Some(AccessState { server: agenda.server, pending_install: Some(agenda.install_id), ..AccessState::default() });
+    accessing.active_run = Some(run);
+    steal_price(&accessing, registry, def).map_or(Some(0), |cost| credits(&cost))
+}
+
 /// What the rig would spend to break into `server` if the Corp rezzed what
 /// it can afford: `server_break_cost`'s reading with the unrezzed ICE the
 /// Corp's credits cover added, taken in the order the Runner meets it,
