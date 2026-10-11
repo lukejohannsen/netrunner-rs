@@ -956,6 +956,11 @@ struct Tally {
     /// run's end (Bravado's "plus 1[credit] for each piece of ice you
     /// passed during that run", `Amount::IcePassedLastRun`; Phase 5 §53).
     per_ice_passed: i32,
+    /// Bad publicity the Corp takes, read for the Runner (Phase 5 §69):
+    /// Take a Dive's "the Corp takes 1 bad publicity". Always the Corp's
+    /// to take (`Effect::GiveBadPublicity` names no side), so a tally for
+    /// the Corp reads it as nothing — its own term prices the Corp's.
+    bad_publicity: i32,
 }
 
 impl Tally {
@@ -967,13 +972,14 @@ impl Tally {
             counters: self.counters + other.counters,
             cashout_per_counter: self.cashout_per_counter.max(other.cashout_per_counter),
             per_ice_passed: self.per_ice_passed + other.per_ice_passed,
+            bad_publicity: self.bad_publicity + other.bad_publicity,
         }
     }
 
     /// The order two options of a choice are compared in: credits,
     /// cards and clicks alike, each about a click's worth.
     fn worth(self) -> i32 {
-        self.credits + self.cards + self.clicks
+        self.credits + self.cards + self.clicks + self.bad_publicity
     }
 }
 
@@ -990,6 +996,7 @@ fn tally(effect: &Effect, side: Side) -> Tally {
         Effect::GainClicks(s, n) if own(s) => Tally { clicks: *n as i32, ..Default::default() },
         Effect::LoseClicks(n) => Tally { clicks: -(*n as i32), ..Default::default() },
         Effect::AddCounters(n) => Tally { counters: *n as i32, ..Default::default() },
+        Effect::GiveBadPublicity(Amount::Fixed(n)) if side == Side::Runner => Tally { bad_publicity: *n as i32, ..Default::default() },
         Effect::RemoveCounters(Amount::Fixed(n)) => Tally { counters: -(*n as i32), ..Default::default() },
         Effect::GainCreditsPerCounter { side: s, credits_per_counter } if own(s) => {
             Tally { cashout_per_counter: *credits_per_counter, ..Default::default() }
@@ -1077,6 +1084,15 @@ pub(super) fn run_end_income(run: &RunState, side: Side, passed: u32) -> (i32, u
 pub(super) fn rider_income(run: &RunState, side: Side) -> (i32, u32, u32) {
     let sum = run.on_success_effect.as_deref().map(|effect| tally(effect, side)).unwrap_or_default();
     (sum.credits, sum.cards.max(0) as u32, sum.clicks.max(0) as u32)
+}
+
+/// The bad publicity the rider on `run` gives the Corp when the run
+/// succeeds (Phase 5 §69), tallied as `rider_income` tallies credits:
+/// Take a Dive's "if a subroutine resolved during this run, the Corp
+/// takes 1 bad publicity", its condition taken as holding, as every
+/// `EffectIf` in a tally is.
+pub(super) fn rider_bad_publicity(run: &RunState) -> u32 {
+    run.on_success_effect.as_deref().map_or(0, |effect| tally(effect, Side::Runner).bad_publicity.max(0) as u32)
 }
 
 /// The accesses the rider on `run` adds to a breach of `server` beyond

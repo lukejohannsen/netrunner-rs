@@ -683,6 +683,22 @@ pub(super) fn shown_for(state: &GameState, registry: &CardRegistry, w: &Weights)
     if w.unshown_breaker_weight != 0.0 { ice_shown(state, registry) } else { [true; 3] }
 }
 
+/// What one bad publicity on the Corp is worth to the Runner (Phase 5
+/// §69): a credit for each run it makes for the rest of the game (CR
+/// 6.9.1b: as a run begins the Runner adds 1[credit] to their bad
+/// publicity fund for each bad publicity, spent during that run), taken
+/// at a run a
+/// turn over the horizon at `future_credit_weight`, the rate every income
+/// the Runner will collect is read at. Zero at the default weights.
+///
+/// **Why.** The Corp has always counted its bad publicity
+/// (`bad_publicity_weight`) and the Runner never had: Take a Dive and
+/// Kompromat, whose whole point is the Corp's bad publicity, read as an
+/// event spent for a run the Runner could make with a click.
+pub(super) fn bad_publicity_worth(w: &Weights, horizon: u32) -> f64 {
+    f64::from(horizon) * w.future_credit_weight
+}
+
 /// The future credits the rig's economy cards declare, each read with
 /// its own hosted counters as the stock (`read::future_credits`), for
 /// `future_credit_weight`. Zero at the default weights.
@@ -840,6 +856,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // saves (`strength_cut_value`, Phase 5 §67).
     *score += rig_strength_cut_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
+    // The Corp's bad publicity is a credit for every run the Runner
+    // makes (`bad_publicity_worth`, Phase 5 §69).
+    *score += f64::from(state.corp.bad_publicity) * bad_publicity_worth(w, horizon);
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
     }
@@ -860,6 +879,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
             *score += f64::from(due.min(run_credits_for_breaking(run))) * w.own_credit_weight;
             let (credits, cards, clicks) = rider_income(run, Side::Runner);
             *score += f64::from(credits) * w.own_credit_weight + f64::from(cards + clicks) * w.click_weight;
+            *score += f64::from(read::rider_bad_publicity(run)) * bad_publicity_worth(w, horizon);
             // What both identities print about the run succeeding, at the
             // same rates (§34): Gabriel Santiago's 2[credit] for the turn's
             // first HQ run, Zahya Sadeghi's credit an access, Dewi
@@ -945,11 +965,6 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
 mod tests {
     use super::*;
 
-    /// A trojan's derez is its host's rez a turn (Phase 5 §54): held,
-    /// Tranquilizer is worth the dearest rezzed piece's cost at the
-    /// opponent's rate over the turns after its count, discounted, and
-    /// nothing while no piece is rezzed; hosted, the counters it holds
-    /// shorten the wait, and a 5[c] host pays five times a 1[c] one.
     /// A card that lowers the strength of ice is the break credits it
     /// saves (Phase 5 §67): over a rezzed Tollbooth (strength 5) Gordian
     /// Blade pumps three times; The Tungsten Tailor saves one pump and
@@ -996,6 +1011,38 @@ mod tests {
         assert_eq!(run_replacement_value(&state, &pool, card("corroder"), &guide, 5), 0.0);
     }
 
+    /// The Corp's bad publicity is a credit a run to the Runner (Phase 5
+    /// §69): held, each one is worth a run a turn over the horizon at the
+    /// future rate, and nothing at the default weights; Take a Dive's
+    /// rider reads as the bad publicity it gives, and a rider that gives
+    /// none as nothing.
+    #[test]
+    fn the_corps_bad_publicity_is_a_credit_a_run() {
+        use netrunner_core::rules::ServerId;
+        let pool = crate::eval::test_support::pool();
+        let guide = Weights::default().at_the_guides_rate();
+        let mut state = GameState::new(0);
+        let before = crate::eval::evaluate_state_with(&state, Side::Runner, &pool, &guide);
+        state.corp.bad_publicity = 2;
+        let after = crate::eval::evaluate_state_with(&state, Side::Runner, &pool, &guide);
+        let worth = bad_publicity_worth(&guide, horizon(stage(&state, &pool)));
+        assert!(worth > 0.0);
+        assert!((after - before - 2.0 * worth).abs() < 1e-9, "{}", after - before);
+        assert_eq!(bad_publicity_worth(&Weights::default(), 5), 0.0);
+        let rider = |id: &str| match &pool.get(&CardId(id.to_string())).expect("card").triggers[0].effects[0] {
+            Effect::PromptChooseServer { on_success, .. } => on_success.clone(),
+            other => panic!("{other:?}"),
+        };
+        let run = |on_success_effect| RunState { server: ServerId::Hq, on_success_effect, ..Default::default() };
+        assert_eq!(read::rider_bad_publicity(&run(rider("take_a_dive"))), 1);
+        assert_eq!(read::rider_bad_publicity(&run(None)), 0);
+    }
+
+    /// A trojan's derez is its host's rez a turn (Phase 5 §54): held,
+    /// Tranquilizer is worth the dearest rezzed piece's cost at the
+    /// opponent's rate over the turns after its count, discounted, and
+    /// nothing while no piece is rezzed; hosted, the counters it holds
+    /// shorten the wait, and a 5[c] host pays five times a 1[c] one.
     #[test]
     fn a_trojans_derez_is_the_hosts_rez_a_turn() {
         use netrunner_core::rules::{InstallSlot, InstalledCard, ServerId};
