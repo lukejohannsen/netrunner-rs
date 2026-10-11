@@ -1,0 +1,54 @@
+{
+  "id": "braintrust",
+  "title": "Braintrust",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "text": "The rez cost of all ice is lowered by 1 for each agenda counter on Braintrust."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "Every": {
+                "amount": {
+                  "Reduced": {
+                    "amount": "HostedAdvancementTokens",
+                    "by": {
+                      "Fixed": 3
+                    }
+                  }
+                },
+                "every": 2
+              }
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you score Braintrust, place 1 agenda counter on it for every 2 advancement tokens on it over 3."
+    }
+  ],
+  "built_from": 2014,
+  "is_playable": true
+}

@@ -1,0 +1,55 @@
+{
+  "id": "project_ares",
+  "title": "Project Ares",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "count": {
+              "Reduced": {
+                "amount": "HostedAdvancementTokens",
+                "by": {
+                  "Fixed": 4
+                }
+              }
+            },
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHeap",
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "GiveBadPublicity": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, the Runner trashes 1 of their installed cards for each hosted advancement counter past 4. If the Runner trashes at least 1 card this way, take 1 bad publicity."
+    }
+  ],
+  "built_from": 4010,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Stronger Together",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Haas-Bioroid: Stronger Together, the Revised Core Set's Haas-Bioroid identity, whose bioroid ice has +1 strength, and four of the set's ice: Hive, which loses an “End the run.” for each of the Corp's agenda points, Caduceus's two traces, Yagura and Himitsu-Bako. Eight bioroids — Ansel 1.0, Eli 1.0, Hákarl 1.0, Viktor 1.0 and Týr — on Retirement Package's frame, its 21 points in Midnight-3 Arcology where it holds Vulnerability Audit, with the four splashes for 14 of its 15 influence. Eternal-legal only: Stronger Together is a Revised Core Set card. FFG F1 Stage 3.",
+  "description": "Not a published list: built so the sweeps reach Haas-Bioroid: Stronger Together, the Revised Core Set's Haas-Bioroid identity, whose bioroid ice has +1 strength, and four of the set's ice: Hive, which loses an “End the run.” for each of the Corp's agenda points, Caduceus's two traces, Yagura and Himitsu-Bako. Eight bioroids — Ansel 1.0, Eli 1.0, Hákarl 1.0, Viktor 1.0 and Týr — on Retirement Package's frame, its 21 points in Midnight-3 Arcology where it holds Vulnerability Audit, with the four splashes for 14 of its 15 influence. Eternal-legal only: Stronger Together is a Revised Core Set card. FFG F1 Stage 3. FFG F1 Stage 4: two Green Level Clearance for its two Corporate Hospitality, an operation for an operation; Ash 2X3ZB9CY and Strongbox for its two Experiential Data, an upgrade for an upgrade; and three Project Ares for its two Project Vacheron, the same 6 points in one more card, which has the Runner trash an install for each counter past 4. Retirement Package keeps all three.",
   "style": [
     "glacier"
   ],
@@ -18,8 +18,8 @@
       "count": 3
     },
     {
-      "card": "project_vacheron",
-      "count": 2
+      "card": "project_ares",
+      "count": 3
     },
     {
       "card": "accelerated_beta_test",
@@ -66,7 +66,7 @@
       "count": 1
     },
     {
-      "card": "corporate_hospitality",
+      "card": "green_level_clearance",
       "count": 2
     },
     {
@@ -90,8 +90,12 @@
       "count": 2
     },
     {
-      "card": "experiential_data",
-      "count": 2
+      "card": "ash_2x3zb9cy",
+      "count": 1
+    },
+    {
+      "card": "strongbox",
+      "count": 1
     },
     {
       "card": "aggressive_secretary",

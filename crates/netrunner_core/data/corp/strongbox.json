@@ -1,0 +1,23 @@
+{
+  "id": "strongbox",
+  "title": "Strongbox",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "Clicks": 1
+        }
+      },
+      "applies_to": "StealingFromThisServer",
+      "text": "Persistent → As an additional cost to steal an agenda from this server or its root, the Runner must spend [click]."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 1,
+  "persistent_after_trash": true,
+  "built_from": 4091,
+  "is_playable": true
+}
