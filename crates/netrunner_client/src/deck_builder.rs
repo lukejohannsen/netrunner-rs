@@ -368,7 +368,7 @@ impl PoolSort {
 /// building a deck is building it for a format — the one Settings names
 /// to start with — and a set outside that format has nothing they can
 /// use, so "Legal in" is the leftmost filter and decides which sets the
-/// Set filter offers ([`sets`]). There is no "any format": Casual lists
+/// Set filter offers ([`sets`]). There is no "any format": Unrestricted lists
 /// no pool, so it is already every card. The filter was "Only `<the
 /// Settings format>`" or everything, then a format and a set as two
 /// unrelated drop-downs, which let a Startup builder pick the Core Set
@@ -476,7 +476,7 @@ fn printed_cost(card: &CardDefinition) -> u32 {
 
 /// The sets the Set filter offers a deck of `side` built for `format`:
 /// those with a card the pool would hold with no set chosen, newest
-/// first (`cards::sets_of`). Startup's are its three; Casual's are every
+/// first (`cards::sets_of`). Startup's are its three; Unrestricted's are every
 /// set a playable card of the side was printed in.
 pub fn sets(book: CardBook, side: Side, format: NsgFormat) -> Vec<String> {
     let rules = format.rules();
@@ -1094,14 +1094,14 @@ mod tests {
             for set in &eternal {
                 assert!(!pool(book, &PoolFilter { set: Some(set.clone()), ..PoolFilter::new(side, NsgFormat::Eternal) }).is_empty(), "{set} is offered with nothing behind it");
             }
-            // Casual lists no pool, so it is every card, and offers one set
+            // Unrestricted lists no pool, so it is every card, and offers one set
             // Eternal does not: Terminal Directive Cards, which no format's
             // set list names, though its cards are in both pools by their
             // other printings (FFG plan, Stage 0a-i).
-            let casual = sets(book, side, NsgFormat::Casual);
-            let beyond: Vec<&String> = casual.iter().filter(|set| !eternal.contains(set)).collect();
-            assert_eq!(beyond, [&"terminal_directive_cards".to_string()], "{side:?}: Casual is every card");
-            assert!(eternal.iter().all(|set| casual.contains(set)), "{side:?}: Casual is every card");
+            let unrestricted = sets(book, side, NsgFormat::Unrestricted);
+            let beyond: Vec<&String> = unrestricted.iter().filter(|set| !eternal.contains(set)).collect();
+            assert_eq!(beyond, [&"terminal_directive_cards".to_string()], "{side:?}: Unrestricted is every card");
+            assert!(eternal.iter().all(|set| unrestricted.contains(set)), "{side:?}: Unrestricted is every card");
         }
     }
 

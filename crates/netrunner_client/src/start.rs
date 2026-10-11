@@ -26,8 +26,12 @@ use crate::record::LocalRecord;
 
 /// The decks a flag-less game plays: the terminal's `--corp-deck` and
 /// `--runner-deck` defaults, and where the desktop's cursors start. One
-/// pair, so the two clients cannot default to different games.
-pub const DEFAULT_CORP_DECK: &str = "discretion_advised";
+/// pair, so the two clients cannot default to different games, and both
+/// legal in Startup, Standard and Eternal, so the pair plays at the
+/// default table whatever format it is set to (Phase 4 §8: the Corp deck
+/// was Discretion Advised, legal in Eternal alone since NetrunnerDB's
+/// lists banned a card it holds, which a Standard table refuses).
+pub const DEFAULT_CORP_DECK: &str = "brick_stack";
 pub const DEFAULT_RUNNER_DECK: &str = "stolen_goods";
 
 /// One deck the screen can offer, with what a player needs to tell decks

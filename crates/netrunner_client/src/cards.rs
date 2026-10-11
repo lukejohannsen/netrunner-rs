@@ -20,7 +20,7 @@ use crate::settings::FORMATS;
 /// Whether the format's tables allow `card`: in its pool and not banned,
 /// by its id. The validator makes the same two checks and is still what
 /// decides. A card no NetrunnerDB pool lists (homebrew, a test fixture) is
-/// legal only in Casual, which lists no pool.
+/// legal only in Unrestricted, which lists no pool.
 pub fn legal_in(card: &CardDefinition, rules: &FormatRules) -> bool {
     !rules.banned.contains(&card.id) && rules.in_pool(&card.id)
 }
@@ -39,7 +39,7 @@ pub fn set_name(set: &str) -> &str {
 
 /// The sets a Set filter offers over `cards` in a format: those any of
 /// the cards was printed in and the format draws from (`FormatRules::sets`,
-/// NetrunnerDB's statement; none listed, as Casual's, is every set), by
+/// NetrunnerDB's statement; none listed, as Unrestricted's, is every set), by
 /// v3 id, newest first — the catalog's order (`catalog::sets`, by release
 /// date). Both halves matter: the deck builder passes the pool its format
 /// and side leave, the browser every card its format leaves, so neither
@@ -182,16 +182,16 @@ mod tests {
     /// outside Startup and Standard (Null Signal Games' pools) and inside
     /// Snapshot, whose Revised Core Set reprints it; Tithe (System Gateway)
     /// is in every format but Snapshot, a Fantasy Flight Games pool.
-    /// Casual holds both.
+    /// Unrestricted holds both.
     #[test]
     fn a_cards_legal_formats_follow_its_pool() {
-        use NsgFormat::{Casual, Eternal, Snapshot, Standard, Startup};
+        use NsgFormat::{Unrestricted, Eternal, Snapshot, Standard, Startup};
         let registry = playable();
         let catalog = catalog(&registry);
         let ice_wall = catalog.iter().find(|card| card.id.0 == "ice_wall").unwrap();
-        assert_eq!(legal_formats(ice_wall), vec![Eternal, Snapshot, Casual]);
+        assert_eq!(legal_formats(ice_wall), vec![Eternal, Snapshot, Unrestricted]);
         let tithe = catalog.iter().find(|card| card.title == "Tithe").unwrap();
-        assert_eq!(legal_formats(tithe), vec![Startup, Standard, Eternal, Casual]);
+        assert_eq!(legal_formats(tithe), vec![Startup, Standard, Eternal, Unrestricted]);
         assert_eq!(set_name("system_gateway"), "System Gateway");
         assert_eq!(set_name("xyz"), "xyz");
     }
@@ -200,7 +200,7 @@ mod tests {
     /// them was printed in is not offered, and nor is one the format is
     /// not drawn from: the whole catalog is every set, Startup's pool is
     /// its three though Hedge Fund in it was printed in all four core sets, and
-    /// Casual, which lists no sets, is every set its cards were printed in.
+    /// Unrestricted, which lists no sets, is every set its cards were printed in.
     #[test]
     fn the_sets_of_a_pool_are_the_ones_its_cards_were_printed_in_newest_first() {
         let registry = playable();
@@ -218,7 +218,7 @@ mod tests {
             vec!["vantage_point", "elevation", "system_gateway", "system_core_2019", "revised_core_set", "core_set"],
             "with no format, every core set that printed Hedge Fund"
         );
-        assert_eq!(sets_of(catalog.iter(), Some(NsgFormat::Casual.rules())), every);
+        assert_eq!(sets_of(catalog.iter(), Some(NsgFormat::Unrestricted.rules())), every);
         assert!(sets_of(std::iter::empty(), None).is_empty());
     }
 

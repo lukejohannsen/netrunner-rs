@@ -2,7 +2,7 @@
 //! does to the shared `Settings`, and what a commit of the name means.
 
 use netrunner_client::peer::Relay;
-use netrunner_client::settings::{format_name, CardBacks, Settings, Skin, Table, FORMATS};
+use netrunner_client::settings::{format_name, CardBacks, Settings, Skin, Table, DEFAULT_FORMAT, FORMATS};
 
 /// The rows, in the order the screen shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,7 +125,7 @@ pub fn table_cycle(installed: &[String]) -> Vec<Table> {
 pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: &[String]) -> bool {
     match intent {
         Intent::Step(Row::Format, delta) => {
-            let current = settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
+            let current = settings.format.unwrap_or(DEFAULT_FORMAT);
             let index = FORMATS.iter().position(|f| *f == current).unwrap_or(0) as i32;
             let next = FORMATS[(index + delta).rem_euclid(FORMATS.len() as i32) as usize];
             settings.format = Some(next);
@@ -238,7 +238,7 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
     let prefs = &settings.desktop;
     match row {
         Row::Player => settings.player.clone().unwrap_or_else(|| format!("{login_name} (login name)")),
-        Row::Format => format_name(settings.format.unwrap_or(FORMATS[0])).to_string(),
+        Row::Format => format_name(settings.format.unwrap_or(DEFAULT_FORMAT)).to_string(),
         Row::AnimationSpeed => {
             if prefs.animation_speed == 0.0 {
                 "instant".to_string()
@@ -278,13 +278,15 @@ mod tests {
     #[test]
     fn the_format_cycles_both_ways_and_wraps() {
         let mut settings = Settings::default();
-        // Unset is Casual (`DEFAULT_FORMAT`), the last of the five, so one
-        // step on wraps to Startup and two back from there is Snapshot.
-        assert!(apply(&mut settings, Intent::Step(Row::Format, 1), &[], &[]));
-        assert_eq!(settings.format, Some(NsgFormat::Startup), "wraps forwards from Casual");
-        assert!(apply(&mut settings, Intent::Step(Row::Format, -2), &[], &[]));
-        assert_eq!(settings.format, Some(NsgFormat::Snapshot), "wraps backwards");
-        assert_eq!(value(&settings, Row::Format, "luke"), "snapshot");
+        // Unset is Standard (`DEFAULT_FORMAT`), the second of the five, and
+        // the row says so; one step back is Startup, and one more wraps to
+        // Unrestricted, the last.
+        assert_eq!(value(&settings, Row::Format, "luke"), "standard");
+        assert!(apply(&mut settings, Intent::Step(Row::Format, -1), &[], &[]));
+        assert_eq!(settings.format, Some(NsgFormat::Startup), "one back from Standard");
+        assert!(apply(&mut settings, Intent::Step(Row::Format, -1), &[], &[]));
+        assert_eq!(settings.format, Some(NsgFormat::Unrestricted), "wraps backwards");
+        assert_eq!(value(&settings, Row::Format, "luke"), "unrestricted");
     }
 
     #[test]

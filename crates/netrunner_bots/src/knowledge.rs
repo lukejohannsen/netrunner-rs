@@ -12,8 +12,14 @@
 //! has:
 //!
 //! - **The format.** A card outside the format's pool, or on its ban
-//!   list, is never in the opponent's deck (`NsgFormat::rules`). `Casual`
-//!   is every playable card, which is what the registry fallback was.
+//!   list, is never in the opponent's deck (`NsgFormat::rules`). It is
+//!   the match's — the table's setting, the lobby's, or for a sweep the
+//!   narrowest format both decks are legal in (`decks::match_format`) —
+//!   and there is no default (Phase 4 §8, 11 October 2026): the one there
+//!   was, `Unrestricted` under its old name Casual, is every playable
+//!   card, which is what the registry fallback had been, and it had become
+//!   every bot's pool. A seat nobody told its match — a test fixture, a
+//!   client's preview — says Unrestricted at the site that builds it.
 //! - **The opponent's identity**, which is public: its faction says which
 //!   cards cost nothing to include, and its influence budget bounds how
 //!   many out-of-faction cards there can be. A card seen spends its
@@ -51,10 +57,10 @@ use netrunner_core::view::ClientView;
 use crate::determinize::visible_cards;
 
 /// The format, the seat's own deck and what it has seen — see the module
-/// docs. `Default` is a seat that knows nothing: `Casual`, no deck, no
-/// memory, which is a test fixture or a client sampling for a preview
-/// (`netrunner_client::board::preview`, whose sample reads public
-/// information only).
+/// docs. No `Default`: a seat's format is the match's, and a fixture or a
+/// client sampling for a preview (`netrunner_client::board::preview`,
+/// whose sample reads public information only) names Unrestricted where
+/// it is built, so no match is ever played against a pool nobody chose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Knowledge {
     /// The format the game is played in: the pool the opponent's hidden
@@ -68,12 +74,6 @@ pub struct Knowledge {
     /// visible cards and cards shown in an access alike, so a card that
     /// went back into HQ is still known to be somewhere.
     seen: BTreeMap<CardId, usize>,
-}
-
-impl Default for Knowledge {
-    fn default() -> Self {
-        Self::new(NsgFormat::Casual, None)
-    }
 }
 
 impl Knowledge {
@@ -132,7 +132,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.corp.archives = vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))];
 
-        let mut knowledge = Knowledge::default();
+        let mut knowledge = Knowledge::new(NsgFormat::Unrestricted, None);
         assert_eq!(knowledge.seen(&CardId("hedge_fund".to_string())), 0);
         knowledge.observe(&build_client_view(&state, &registry, Side::Runner));
         assert_eq!(knowledge.seen(&CardId("hedge_fund".to_string())), 1);
@@ -150,9 +150,9 @@ mod tests {
     }
 
     #[test]
-    fn a_seat_that_knows_nothing_is_casual_with_no_deck() {
-        let knowledge = Knowledge::default();
-        assert_eq!(knowledge.format, NsgFormat::Casual);
+    fn a_seat_begins_with_its_format_and_no_memory() {
+        let knowledge = Knowledge::new(NsgFormat::Unrestricted, None);
+        assert_eq!(knowledge.format, NsgFormat::Unrestricted);
         assert_eq!(knowledge.own_deck, None);
         assert_eq!(knowledge.cards_seen(), 0);
     }

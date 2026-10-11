@@ -7,13 +7,15 @@ are built through stage 5 (the client core stays attached across games, both cli
 on it, and a lobby says whether its games count, 8 October 2026) with 6 open. §5 closed with the free
 take-back online (8 October 2026). **§8–§12 are the person's 11 October plan for the server** —
 four formats, play modes and queues, a database behind the daemon, events with incentives,
-administration — recorded and not begun; the notes they resolve to are
-[`docs/online-play-design-2026-10-11.md`](../online-play-design-2026-10-11.md). The closed record is in
+administration; the notes they resolve to are
+[`docs/online-play-design-2026-10-11.md`](../online-play-design-2026-10-11.md). **§8 is built (11
+October 2026): the four Null Signal Games formats and `Unrestricted`, every card, which was `Casual`;
+Standard the default; a bot's prior the match's format.** The closed record is in
 [the archive](archive/phase-4-network.md).
 
 ## Open
 
-- **§8–§12** (11 October 2026, not begun, in this order after Phase 7 §4bo): §8 four formats and no `Casual`; §10 the store and the profile, then Phase 7 §14's connections manager; §9 the queues and modes, then the dashboard; §11 events and incentives; §12 administration.
+- **§9–§12** (11 October 2026, not begun, in this order): §10 the store and the profile, then Phase 7 §14's connections manager; §9 the queues and modes, then the dashboard; §11 events and incentives; §12 administration. §8, the formats, is built (11 October 2026).
 - **§5 leftovers**: key rotation (the old key signing the new) is recorded and not designed; an undo past the free line in a rated game is refused rather than asked of the other seat.
 - **§7 stage 6**, tournaments: (a) registration, (b) the pages and single-sided Swiss and (c) the seed commit-reveal are built; (d) the cut, then double-sided Swiss and asynchronous rounds are open (design below). Everything left from (b) — a drop mid-event, the players' intentional draw, the round clock and its end-of-round rule — is built (9 October 2026).
 - **§3 leftovers**: no graceful server shutdown; no delayed omniscient stream (~~no spectator count cap~~: done, `feat/spectator-cap`, 9 October 2026 — a match takes `DEFAULT_MAX_SPECTATORS` watchers, 32, or what `--max-spectators` says, 0 for no limit; the session answers a watcher itself, `Spectating` first or `ConnectRejected` at the cap); ~~`netrunner_single_player/tests/common/mod.rs` still carries a filler fixture~~ (gone, `chore/drop-the-filler-fixture`, 9 October 2026: its three tests play the System Gateway decks beside it); ~~The TUI header does not show the matchup.~~ Done (`feat/tui-header-names-the-matchup`, 9 October 2026): the header is two rows, the two identities on the first and the numbers on the second.
@@ -27,6 +29,7 @@ administration — recorded and not begun; the notes they resolve to are
 - **§3** — the multi-match daemon: a `Registry` under one mutex with lobby, rooms, cap and per-match seed; per-decision turn timers that forfeit; spectators masked as the intersection of both views; the daemon deals the published pool; a player brings their own deck (Phase 6 §3).
 - **§5 (a)–(d)** — the server keeps match records; `netrunner_identity` and the Identify/Challenge/Prove handshake with `--data-dir`; seat commitments, signed receipts, `Rated` and `results.jsonl` as the truth; the clients' rated and standing lines and the player's own receipts (26 September 2026).
 - **§6** — a host reachable from outside: IPv6 and one dual-stack socket with the router asked to open the port; a sans-IO client connection and its tokio driver; a peer-to-peer transport joined by ticket over iroh (25 September 2026). Rejected: STUN alone, raw WireGuard, Tailscale as a feature (it is the documented fallback, `docs/playing-online.md`).
+- **§8** — four formats, and casual is a mode: `NsgFormat` is Startup, Standard, Eternal, Snapshot and `Unrestricted` — every card, no list, this project's own, named Casual until now and kept at the person's request because no published format admits every card; Standard is the default table and nothing defaults to Unrestricted; a bot's prior is the match's format, the narrowest both decks are legal in (`decks::match_format`); the daemon offers all five and serves a format it can deal no bot in for people; the flag-less game's Corp deck is Brick Stack (11 October 2026).
 
 ## 4. Transport Efficiency — deferred
 - [ ] State deltas instead of full snapshots — only once profiling shows full `ClientView` broadcasts are a bottleneck. Do not trade simple-and-correct away speculatively.
@@ -160,16 +163,6 @@ Asked for as: a server that simply exists on the internet, where people join a l
    - Rejected: the nonce inside the seat statement alone, as the design first said — the statement is signed after `MatchJoined`, when the game is already dealt, so the nonce has to arrive with the `Sit`; the statement then binds it. And the reveal as a message of its own: a result already publishes the tournament, and the reveal is a fact about the table.
    - Tests: the statements' (the commitment holds only for its secret, the seed moves with each part and with the chairs swapped, a reveal with no game, the nonce's alphabet); the machine's (a table seat signed only for its commitment, nonce and registered deck, never through `submit`); the server's over real sockets (a commitment per table and no secret before a result; another table's commitment and a spaced nonce refused; the played table's reveal checking, each chair's own nonce in it, the unplayed table's with none; the kept receipt signed and naming the seed, the record's hash its own and its header's seed the derived one); the terminal's end-to-end round, through the real driver (the reveal checking, and both seats' signed statements in the daemon's receipt naming the table's commitment); the words'.
    - **Left:** a player's record and receipt for a tournament game sent to the player (the server keeps both, and a player cannot yet fetch them to replay their draws themselves), and the page checking the player's own nonce against the reveal (the client does not keep the nonce past the game).
-
-## 8. Four formats, and casual is a mode — OPEN (11 October 2026)
-
-The person's notes of 11 October 2026 ([`docs/online-play-design-2026-10-11.md`](../online-play-design-2026-10-11.md)) begin: "Change Deck type legality to just be STANDARD, STARTUP, SNAPSHOT, ETERNAL - no CASUAL (casual will be mode of play but still use legality)."
-
-**Casual is not a Null Signal Games format.** `NsgFormat::Casual` is this project's own variant — every card the catalog knows, no ban list, no restriction list (`crates/netrunner_core/src/format.rs`) — and it became the default everywhere a person had not chosen a format: `settings::DEFAULT_FORMAT`, the terminal's and the daemon's `--format`, every bot's `Knowledge::default()` (the pool it samples the opponent's hidden cards from), `DeckCategory::format()` for every deck but the Sweep decks, the daemon's `DEFAULT_FORMATS` and so a permanent lobby whose id is `casual`. Meanwhile "casual" is the protocol's word for an unrated lobby (`CreateLobby::casual`), and the Server page was already saying "unrated" instead because the two collided (§7 stage 5). Snapshot, which *is* a format, has its pool and both lists in `data/formats.json` and is left out of the daemon's defaults.
-
-**Decided (11 October 2026):** `NsgFormat { Standard, Startup, Snapshot, Eternal }` — exactly what NetrunnerDB publishes — and `Casual` deleted with every default that leaned on it. Standard is the default format; `DeckCategory::format()` becomes the narrowest format the deck is legal in, or an explicit field on the deck file; `Knowledge` takes its format from the match and has no default; the daemon offers all four; a settings file naming `casual` is a load error, as any unknown name is (nothing is released, so nothing is migrated). The word "casual" then means one thing: a game that is not rated (§9's Casual queue). Rejected: keeping `Casual` as an "any card" sandbox format behind another name — a deck legal in no published format is a deck the builder should refuse, and the sandbox was never asked for.
-
-**Measurement rule:** the bots' hidden-card prior changes with the pool, so every planner number moves; take `scripts/coverage_identical.py` before and after, expect the planner seatings to differ and the random ones not, and record the deltas here. Every pinned legality test, the `matchups_in` test that asserts Casual is the whole pool, the TUI menu's cycle test, the desktop Settings row's display (it shows `FORMATS[0]` for an unset format that was in fact Casual) and the lobby-id tests move with it.
 
 ## 9. Play modes and queues — OPEN (11 October 2026)
 

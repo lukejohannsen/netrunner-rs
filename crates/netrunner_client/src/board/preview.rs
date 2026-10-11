@@ -34,6 +34,7 @@
 //! view arrives and keeps it, the way it keeps `breaks::routes`.
 
 use netrunner_bots::{determinize, Knowledge};
+use netrunner_core::format::NsgFormat;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{apply_action, PendingDecision, PlayerAction, Viewer};
 use netrunner_core::view::{build_client_view, ClientView};
@@ -57,7 +58,10 @@ impl Asks {
         if candidates.is_empty() {
             return Self::default();
         }
-        let sample = determinize(view, registry, &Knowledge::default(), &mut StdRng::seed_from_u64(0));
+        // The hidden cards are irrelevant to a preview — only what is
+        // public is read off the sample — so the pool is every card; the
+        // view carries no format to ask.
+        let sample = determinize(view, registry, &Knowledge::new(NsgFormat::Unrestricted, None), &mut StdRng::seed_from_u64(0));
         let asked = candidates
             .into_iter()
             .filter_map(|action| {

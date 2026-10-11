@@ -209,6 +209,11 @@ fn start_a_game_as(app: &mut App, human: Side) {
 }
 
 fn start_a_game_with(app: &mut App, human: Side, corp_deck: &str) {
+    // The tests pick decks for the board states they need, not for a
+    // list: Not So Subtle holds a card Standard bans, and the scratch
+    // settings' table is Standard (`DEFAULT_FORMAT`), so the table is
+    // set to the format that admits every deck.
+    app.world_mut().resource_mut::<ClientCore>().settings.format = Some(netrunner_core::format::NsgFormat::Unrestricted);
     app.world_mut().write_message(Navigate(AppScreen::NewGame));
     app.update();
     app.update();
@@ -333,7 +338,7 @@ fn a_model_opponent_names_itself_says_when_it_failed_and_what_it_cost() {
     let mut scripted = ScriptedTransport::answering(&["nope", "nope", "1", "1", "1"]);
     scripted.exhausted = Some(Err(TransportError::Timeout));
     let opponent = Opponent::model_opponent(Preset::Custom.profile("scripted"), None, ModelLink::Scripted(scripted), Level::Novice);
-    let spec = LocalMatchSpec { registry, corp, runner, human: Side::Runner, opponent, style: None, seed: TEST_SEED, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
+    let spec = LocalMatchSpec { registry, corp, runner, human: Side::Runner, opponent, style: None, seed: TEST_SEED, rules: Default::default(), format: netrunner_core::format::NsgFormat::Unrestricted, record: None };
     let handle = MatchHandle::start_local(spec).expect("the default decks start a game");
     app.world_mut().insert_resource(ActiveMatch { handle, choice: None, lesson: None, starter: None, online: None });
     app.world_mut().write_message(Navigate(AppScreen::Game));

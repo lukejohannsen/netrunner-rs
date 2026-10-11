@@ -1,4 +1,4 @@
-//! Null Signal Games (NSG) competitive format definitions, and Casual.
+//! Null Signal Games (NSG) competitive format definitions, and Unrestricted.
 //!
 //! Distinct from `cards::catalog` (the cards, printings and sets) and
 //! `cards::CardRegistry` (the full card pool) — this module answers "given a
@@ -29,16 +29,31 @@
 //! deck that holds it illegal in Standard — refused at a Standard table and
 //! in a Standard lobby — and legal in Eternal, where it plays. A ban never
 //! reaches past its own list. A deck is legal in exactly the formats whose
-//! lists it satisfies (`DeckFile::legal_formats`), and `Casual`, every card
+//! lists it satisfies (`DeckFile::legal_formats`), and `Unrestricted`, every card
 //! with no list, is open to every card.
 //!
-//! **Casual lifts card legality and nothing else** (the person, the same
+//! **Unrestricted lifts card legality and nothing else** (the person, the same
 //! day): the pool and the lists. The deckbuilding rules still hold there as
 //! everywhere — three copies of a card by name (its own `deck_limit` where
 //! it prints one), the identity's influence and minimum deck size, the
 //! agenda-point range — and the validator's construction tests run under
-//! Casual for that reason (`too_many_copies_is_rejected`,
+//! Unrestricted for that reason (`too_many_copies_is_rejected`,
 //! `influence_exceeded_is_rejected`).
+//!
+//! **Unrestricted is this project's own, kept, renamed, and no longer the
+//! default** (Phase 4 §8, 11 October 2026). It was `Casual`, and the plan
+//! of that day was to delete it, because it is not a Null Signal Games
+//! format and it had become the default of every table, deck and bot
+//! prior — "any card ever printed" rather than a format anyone plays. The
+//! person kept it on learning that no published format admits every card:
+//! Eternal, the widest, bans seven and holds a deck to a points budget, so
+//! a homebrew card or a deck over the points list is legal nowhere else.
+//! It is named for what it is — no pool, no list — so that "casual" means
+//! one thing, the Phase 4 §9 queue whose games are not rated. What changed
+//! besides the name is the default: Standard everywhere a person has
+//! chosen nothing, a bot's prior the match's format (`decks::match_format`,
+//! narrowest first, Unrestricted last), and no `Knowledge::default()` to
+//! fall back on.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -47,7 +62,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::CardId;
 
-/// A format a deck is judged in: Null Signal Games' four, and Casual.
+/// A format a deck is judged in: Null Signal Games' four, and Unrestricted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NsgFormat {
     /// The rotating, small-card-pool entry format.
@@ -63,14 +78,25 @@ pub enum NsgFormat {
     /// What a deck is legal in when every list refuses it, which is why a
     /// ban never refuses a deck outright. Card legality only: the
     /// deckbuilding rules (copies, influence, deck size, agenda points)
-    /// hold here as in every format.
-    Casual,
+    /// hold here as in every format. Named Casual until Phase 4 §8 (11
+    /// October 2026), when Casual became the unrated queue's word.
+    Unrestricted,
 }
 
 impl NsgFormat {
     /// Every format, in the order a list of them is shown.
     pub const ALL: [NsgFormat; 5] =
-        [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot, NsgFormat::Casual];
+        [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot, NsgFormat::Unrestricted];
+
+    /// Every format, narrowest pool first — the order a match's format is
+    /// chosen in when two decks are legal in several (`decks::match_format`):
+    /// a pair of Startup decks plays Startup, as two people would agree to,
+    /// so a bot imagines Startup cards behind the ice rather than Eternal's
+    /// two thousand. Snapshot's pool is a fixed Fantasy Flight Games one,
+    /// inside Eternal's and beside the other two; Unrestricted, every card, is
+    /// last, for a deck no published list admits.
+    pub const NARROWEST_FIRST: [NsgFormat; 5] =
+        [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Snapshot, NsgFormat::Eternal, NsgFormat::Unrestricted];
 }
 
 /// The legality rules for one `NsgFormat`: which cards are in the pool,
@@ -109,7 +135,7 @@ pub struct FormatRules {
 }
 
 impl Default for FormatRules {
-    /// Every card legal and nothing restricted — Casual's rules.
+    /// Every card legal and nothing restricted — Unrestricted's rules.
     /// Hand-written rather than derived because `restriction_budget` must
     /// default to "unlimited" and `u32`'s own default is 0, which would make
     /// every deck illegal the moment a card was listed.
@@ -184,7 +210,7 @@ impl NsgFormat {
             NsgFormat::Standard => Some("standard"),
             NsgFormat::Eternal => Some("eternal"),
             NsgFormat::Snapshot => Some("snapshot"),
-            NsgFormat::Casual => None,
+            NsgFormat::Unrestricted => None,
         }
     }
 
@@ -220,7 +246,7 @@ mod tests {
 
     /// The pools, read off NetrunnerDB on 26 September 2026: Startup is
     /// System Gateway, Elevation and Vantage Point; Standard adds Ashes,
-    /// Borealis and Liberation; Casual is everything. A re-sync that moves
+    /// Borealis and Liberation; Unrestricted is everything. A re-sync that moves
     /// a pool fails here, so a rotation is read before it is shipped.
     #[test]
     fn each_format_holds_the_pool_netrunnerdb_publishes() {
@@ -234,7 +260,7 @@ mod tests {
             ]
         );
         assert!(NsgFormat::Eternal.rules().sets.iter().any(|set| set == "core_set"));
-        assert!(NsgFormat::Casual.rules().cards.is_none());
+        assert!(NsgFormat::Unrestricted.rules().cards.is_none());
         assert_eq!(NsgFormat::Startup.rules().cards.as_ref().map(HashSet::len), Some(225));
         // Hedge Fund is in Startup; Ice Wall, printed only in the Core Set,
         // is not, and is Eternal.
@@ -253,7 +279,7 @@ mod tests {
     }
 
     /// The lists: Startup's balance update bans Cleaver and Standard's ban list does too; Eternal is a points budget
-    /// of 7; Snapshot's restricted list is a budget of one; Casual lists
+    /// of 7; Snapshot's restricted list is a budget of one; Unrestricted lists
     /// nothing.
     #[test]
     fn each_format_holds_the_list_netrunnerdb_publishes() {
@@ -265,8 +291,8 @@ mod tests {
         assert!(!NsgFormat::Eternal.rules().restriction_points.is_empty());
         assert_eq!(NsgFormat::Snapshot.rules().restriction_budget, 1);
         assert!(NsgFormat::Snapshot.rules().restriction_points.values().all(|points| *points == 1));
-        let casual = NsgFormat::Casual.rules();
-        assert!(casual.banned.is_empty() && casual.restriction_points.is_empty());
-        assert_eq!(casual.restriction_budget, u32::MAX);
+        let unrestricted = NsgFormat::Unrestricted.rules();
+        assert!(unrestricted.banned.is_empty() && unrestricted.restriction_points.is_empty());
+        assert_eq!(unrestricted.restriction_budget, u32::MAX);
     }
 }

@@ -149,7 +149,9 @@ impl MctsAgent {
             cycle: CycleGuard::default(),
             weights: Weights::default(),
             shared_sample: false,
-            knowledge: Knowledge::default(),
+            // Until the driver says otherwise (`with_knowledge`, which every
+            // driver in the workspace calls): every card.
+            knowledge: Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None),
         }
     }
 

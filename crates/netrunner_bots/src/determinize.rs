@@ -110,7 +110,7 @@ impl Prior {
     /// shows for that side and what the seat knows.
     ///
     /// The candidates are every playable non-identity card of `side` the
-    /// format admits (`FormatRules::in_pool`, minus its ban list; `Casual`
+    /// format admits (`FormatRules::in_pool`, minus its ban list; `Unrestricted`
     /// is every card), **sorted by `CardId` before anything is drawn.**
     /// `CardRegistry::iter` is `HashMap::values()`, whose order differs
     /// from one process to the next, and a seeded draw only reproduces
@@ -140,7 +140,7 @@ impl Prior {
             .iter()
             .filter(|card| card.side == side && !matches!(card.card_type, CardType::Identity))
             // A card no NetrunnerDB pool lists (a test fixture, homebrew) is
-            // in no format's pool; `Casual` alone holds it.
+            // in no format's pool; `Unrestricted` alone holds it.
             .filter(|card| rules.in_pool(&card.id) && !rules.banned.contains(&card.id))
             .collect();
         candidates.sort_by(|a, b| a.id.cmp(&b.id));
@@ -1397,6 +1397,12 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A seat that knows nothing: every card, no deck, no memory — what
+    /// `Knowledge::default()` was while there was one.
+    fn naive() -> Knowledge {
+        Knowledge::new(NsgFormat::Unrestricted, None)
+    }
     use netrunner_core::dsl::{CardDefinition, CardType, IceType, Prohibition};
     use netrunner_core::rules::{
         AgendaPoints as AP, Clicks as C, CorpState as CS, Credits as Cr, GamePhase, GameState as CoreGameState,
@@ -1537,8 +1543,8 @@ mod tests {
     #[test]
     fn the_seats_own_deck_partitions_exactly_into_the_sample_and_the_opponents_does_not() {
         let (mut state, registry) = sample_game("agency", "stolen_goods");
-        let corp_knows = Knowledge::new(NsgFormat::Casual, Some(netrunner_core::decks::by_id("agency").unwrap().to_deck()));
-        let runner_knows = Knowledge::new(NsgFormat::Casual, Some(netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck()));
+        let corp_knows = Knowledge::new(NsgFormat::Unrestricted, Some(netrunner_core::decks::by_id("agency").unwrap().to_deck()));
+        let runner_knows = Knowledge::new(NsgFormat::Unrestricted, Some(netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck()));
         let mut rng = StdRng::seed_from_u64(11);
 
         let view = build_client_view(&state, &registry, Side::Corp);
@@ -1597,7 +1603,7 @@ mod tests {
     fn a_masked_access_is_named_as_a_card_of_the_samples_own_zone_that_the_decision_is_true_of() {
         use netrunner_core::rules::{AccessPhase, AccessState, InstallId, PlayerAction, RunPhase, RunState, ServerId};
         let (mut state, registry) = sample_game("quick_and_dirty", "tickets_please");
-        let knows = Knowledge::new(NsgFormat::Casual, Some(netrunner_core::decks::by_id("quick_and_dirty").unwrap().to_deck()));
+        let knows = Knowledge::new(NsgFormat::Unrestricted, Some(netrunner_core::decks::by_id("quick_and_dirty").unwrap().to_deck()));
         let mut deck: Vec<CardId> = state.corp.hq.drain(..).chain(state.corp.r_and_d.drain(..)).collect();
         let mut take = |id: &str| deck.remove(deck.iter().position(|card| card.0 == id).unwrap());
         // One agenda in a hand of cards that are not, and the one card of
@@ -1682,7 +1688,7 @@ mod tests {
         state.corp.identity = None;
         let view = build_client_view(&state, &registry, Side::Corp);
         for seed in 0..32 {
-            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed));
             let definition = registry.get(&named(&sample)).unwrap();
             assert_eq!((definition.agenda_points, definition.trash_cost), (None, Some(4)), "seed {seed}: {}", definition.id.0);
         }
@@ -1697,7 +1703,7 @@ mod tests {
     fn a_seat_without_a_deck_finds_its_own_by_identity_and_never_the_opponents() {
         let (state, registry) = sample_game("agency", "stolen_goods");
         let view = build_client_view(&state, &registry, Side::Runner);
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(1));
+        let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(1));
         assert_eq!(
             multiset(sample.runner.grip.iter().chain(&sample.runner.stack).cloned()),
             decklist("stolen_goods"),
@@ -1707,7 +1713,7 @@ mod tests {
 
         let (state, registry) = sample_game("discretion_advised", "stolen_goods");
         let view = build_client_view(&state, &registry, Side::Corp);
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(2));
+        let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(2));
         assert_eq!(every_corp_card(&sample), decklist("discretion_advised"), "the hand the Corp sees picks its own list");
     }
 
@@ -1723,7 +1729,7 @@ mod tests {
         for viewer in [Side::Corp, Side::Runner] {
             let view = build_client_view(&state, &registry, viewer);
             assert_eq!(view.corp.identity, state.corp.identity, "the view carries it");
-            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(1));
+            let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(1));
             assert_eq!(sample.corp.identity, state.corp.identity, "{viewer:?}");
             assert_eq!(sample.runner.identity, state.runner.identity, "{viewer:?}");
         }
@@ -1736,7 +1742,7 @@ mod tests {
     }
 
     /// Under Startup the opponent's hidden cards are Startup cards, every
-    /// one; under Casual the same seat imagines cards from every set.
+    /// one; under Unrestricted the same seat imagines cards from every set.
     #[test]
     fn the_opponents_hidden_cards_come_from_the_formats_pool() {
         let (state, registry) = sample_game("agency", "stolen_goods");
@@ -1748,10 +1754,10 @@ mod tests {
             assert_eq!(sample.corp.r_and_d.len(), state.corp.r_and_d.len());
         }
         let outside_startup = (0..8).any(|seed| {
-            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed));
             !corp_cards_in_pool(&sample, &registry, NsgFormat::Startup)
         });
-        assert!(outside_startup, "Casual is every card, and the registry holds cards from every set");
+        assert!(outside_startup, "Unrestricted is every card, and the registry holds cards from every set");
     }
 
     /// A seat never imagines its own side's cards in the other side's
@@ -1803,7 +1809,7 @@ mod tests {
             sample.corp.hq.iter().chain(&sample.corp.r_and_d).filter(|c| c.0 == card).count()
         };
 
-        let mut seen = Knowledge::default();
+        let mut seen = naive();
         state.corp.archives = vec![netrunner_core::rules::ArchivedCard::faceup(CardId("op_3".to_string()))];
         seen.observe(&build_client_view(&state, &registry, Side::Runner));
         state.corp.archives.clear();
@@ -1813,7 +1819,7 @@ mod tests {
         let (mut with, mut without) = (0, 0);
         for seed in 0..64 {
             with += hidden(&determinize(&view, &registry, &seen, &mut StdRng::seed_from_u64(seed)), "op_3");
-            without += hidden(&determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed)), "op_3");
+            without += hidden(&determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed)), "op_3");
         }
         assert!(with > without, "seen {with} against unseen {without}");
         // Fifteen slots over thirty copies: about a copy and a half of
@@ -1863,7 +1869,7 @@ mod tests {
 
         let (mut jinteki, mut nbn) = (0, 0);
         for seed in 0..32 {
-            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed));
             let hidden = multiset(sample.corp.hq.iter().chain(&sample.corp.r_and_d).cloned());
             for (card, count) in &hidden {
                 assert!(*count <= 3, "seed {seed}: {} copies of {}", count, card.0);
@@ -1884,7 +1890,7 @@ mod tests {
         let (mut state, registry) = sample_game("agency", "stolen_goods");
         state.corp.r_and_d.extend(std::iter::repeat_n(CardId("hedge_fund".to_string()), 10));
         let view = build_client_view(&state, &registry, Side::Runner);
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(4));
+        let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(4));
         assert_eq!(sample.corp.r_and_d.len(), state.corp.r_and_d.len());
         assert!(sample.corp.r_and_d.iter().all(|card| registry.get(card).is_some_and(|c| c.side == Side::Corp)));
     }
@@ -1908,10 +1914,10 @@ mod tests {
         let state = state_with_hidden_zones();
         let view = build_client_view(&state, &registry, Side::Runner);
         let mut rng = StdRng::seed_from_u64(3);
-        let mut sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let mut sample = determinize(&view, &registry, &naive(), &mut rng);
         let before = sample.clone();
 
-        resample_hidden(&mut sample, &view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(11));
+        resample_hidden(&mut sample, &view, &registry, &naive(), &mut StdRng::seed_from_u64(11));
 
         assert_eq!(sample.corp.hq.len(), before.corp.hq.len());
         assert_eq!(sample.corp.r_and_d.len(), before.corp.r_and_d.len());
@@ -1929,7 +1935,7 @@ mod tests {
             "a different draw tells a different story about the hidden cards"
         );
         let mut again = before.clone();
-        resample_hidden(&mut again, &view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(11));
+        resample_hidden(&mut again, &view, &registry, &naive(), &mut StdRng::seed_from_u64(11));
         assert_eq!(again, sample, "the redraw is a pure function of its seed");
     }
 
@@ -1940,7 +1946,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         let mut rng = StdRng::seed_from_u64(1);
 
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sample = determinize(&view, &registry, &naive(), &mut rng);
         assert_eq!(sample.runner.grip, vec![CardId("sure_gamble".to_string())]);
     }
 
@@ -1954,10 +1960,10 @@ mod tests {
         let registry = registry();
         let view = build_client_view(&state, &registry, Side::Runner);
         for seed in 0..16 {
-            let mut sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let mut sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed));
             assert!(sample.corp.hq.contains(&revealed), "seed {seed}");
             assert_eq!(sample.corp.hq.len(), view.corp.hq_count);
-            resample_hidden(&mut sample, &view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed + 100));
+            resample_hidden(&mut sample, &view, &registry, &naive(), &mut StdRng::seed_from_u64(seed + 100));
             assert!(sample.corp.hq.contains(&revealed), "seed {seed}, redrawn");
         }
     }
@@ -1969,7 +1975,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         let mut rng = StdRng::seed_from_u64(2);
 
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sample = determinize(&view, &registry, &naive(), &mut rng);
         assert_eq!(sample.corp.hq.len(), view.corp.hq_count);
         assert_eq!(sample.corp.r_and_d.len(), view.corp.rd_count);
         assert_eq!(sample.corp.installed.len(), 1);
@@ -1983,8 +1989,8 @@ mod tests {
 
         let mut rng_a = StdRng::seed_from_u64(10);
         let mut rng_b = StdRng::seed_from_u64(20);
-        let sample_a = determinize(&view, &registry, &Knowledge::default(), &mut rng_a);
-        let sample_b = determinize(&view, &registry, &Knowledge::default(), &mut rng_b);
+        let sample_a = determinize(&view, &registry, &naive(), &mut rng_a);
+        let sample_b = determinize(&view, &registry, &naive(), &mut rng_b);
 
         assert_ne!(sample_a.corp.hq, sample_b.corp.hq);
     }
@@ -2005,8 +2011,8 @@ mod tests {
 
         let state = state_with_hidden_zones();
         let view = build_client_view(&state, &forward, Side::Runner);
-        let sample_a = determinize(&view, &ascending, &Knowledge::default(), &mut StdRng::seed_from_u64(7));
-        let sample_b = determinize(&view, &descending, &Knowledge::default(), &mut StdRng::seed_from_u64(7));
+        let sample_a = determinize(&view, &ascending, &naive(), &mut StdRng::seed_from_u64(7));
+        let sample_b = determinize(&view, &descending, &naive(), &mut StdRng::seed_from_u64(7));
 
         assert_eq!(sample_a.corp.hq, sample_b.corp.hq);
         assert_eq!(sample_a.corp.r_and_d, sample_b.corp.r_and_d);
@@ -2026,7 +2032,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
 
         for seed in 0..64 {
-            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let sample = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(seed));
             let hidden = sample
                 .corp
                 .hq
@@ -2050,7 +2056,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         let mut rng = StdRng::seed_from_u64(3);
 
-        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sample = determinize(&view, &registry, &naive(), &mut rng);
         for card_id in &sample.corp.hq {
             assert_eq!(registry.get(card_id).unwrap().side, Side::Corp);
         }
@@ -2133,7 +2139,7 @@ mod tests {
         // of them, not most.
         for seed in 0..25u64 {
             let mut rng = StdRng::seed_from_u64(seed);
-            let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+            let sampled = determinize(&view, &registry, &naive(), &mut rng);
             assert_eq!(
                 sampled.runner.stack.len(),
                 state.runner.stack.len(),
@@ -2204,7 +2210,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         for seed in 0..25u64 {
             let mut rng = StdRng::seed_from_u64(seed);
-            let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+            let sampled = determinize(&view, &registry, &naive(), &mut rng);
             assert_eq!(sampled.runner.stack[3], target, "seed {seed}: the selected card stays where it was selected");
         }
     }
@@ -2275,7 +2281,7 @@ mod tests {
         for side in [Side::Corp, Side::Runner] {
             let view = build_client_view(&state, &registry, side);
             let mut rng = StdRng::seed_from_u64(7);
-            let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+            let sampled = determinize(&view, &registry, &naive(), &mut rng);
 
             let run = sampled.active_run.as_ref().expect("the run survives");
             assert_eq!(run.bad_publicity_credits, 2, "{side:?}");
@@ -2337,7 +2343,7 @@ mod tests {
 
         for side in [Side::Corp, Side::Runner] {
             let view = build_client_view(&state, &registry, side);
-            let sampled = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(7));
+            let sampled = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(7));
             assert_eq!(sampled.this_turn, state.this_turn, "{side:?}");
             assert_eq!(sampled.this_turn.agenda_points_scored(), 2, "{side:?}");
             assert_eq!(sampled.last_turn.times(Trigger::OnSuccessfulRun), 2, "{side:?}");
@@ -2401,7 +2407,7 @@ mod tests {
             assert_eq!(view.runner.rig[0].current_strength, 2, "{side:?}: Echelon, +1 for each of two icebreakers");
             assert_eq!(view.runner.rig[1].current_strength, 4, "{side:?}: Corroder, 2 printed and +2 paid for");
 
-            let mut sampled = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(7));
+            let mut sampled = determinize(&view, &registry, &naive(), &mut StdRng::seed_from_u64(7));
             assert_eq!(sampled.lingering, state.lingering, "{side:?}");
             assert_eq!(sampled.runner.rig[0].base_strength, 0, "{side:?}: the printed number, not the shown one");
             assert_eq!(sampled.runner.rig[1].base_strength, 2, "{side:?}");
@@ -2489,7 +2495,7 @@ mod tests {
         );
 
         let mut rng = StdRng::seed_from_u64(7);
-        let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sampled = determinize(&view, &registry, &naive(), &mut rng);
         let ice = &sampled.active_run.as_ref().expect("the run survives the sample").ice[0];
 
         assert_eq!(ice.ice_type, IceType::Sentry, "the sample's subtype must follow the card it drew, not a placeholder");
@@ -2517,12 +2523,12 @@ mod tests {
 
         let view = build_client_view(&state, &registry, Side::Runner);
         let mut rng = StdRng::seed_from_u64(7);
-        let sampled = determinize(&view, &registry, &Knowledge::default(), &mut rng);
+        let sampled = determinize(&view, &registry, &naive(), &mut rng);
         assert_eq!(sampled.corp.installed[0].counters, 0);
 
         let corp_view = build_client_view(&state, &registry, Side::Corp);
         let mut rng = StdRng::seed_from_u64(7);
-        let sampled = determinize(&corp_view, &registry, &Knowledge::default(), &mut rng);
+        let sampled = determinize(&corp_view, &registry, &naive(), &mut rng);
         assert_eq!(sampled.corp.installed[0].counters, 5, "the owner sees its own counters");
     }
 }

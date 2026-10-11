@@ -52,13 +52,16 @@ pub const SETTINGS_FILE: &str = "settings.toml";
 /// Every format, in the order a settings screen cycles them.
 pub const FORMATS: [NsgFormat; 5] = NsgFormat::ALL;
 
-/// The format a table is set to when the person has chosen none: Casual,
-/// every deck the engine can run (the person's decision, 26 September
-/// 2026). It was Startup, which was every shipped deck until NetrunnerDB's
-/// lists arrived (Phase 1 §9 Stage 0b) and banned cards thirteen of the
-/// published lists hold; against a bot, a deck a list refuses is still a
-/// deck to play. Choosing a format is choosing to be held to its list.
-pub const DEFAULT_FORMAT: NsgFormat = NsgFormat::Casual;
+/// The format a table is set to when the person has chosen none:
+/// Standard, the format Null Signal Games' events are played in (Phase 4
+/// §8, the person's decision, 11 October 2026). It was Unrestricted —
+/// then named Casual — every card and no list, chosen on 26 September
+/// 2026 so that a published deck a new ban list refused was still a deck
+/// to play against a bot; that made "any card ever printed" the pool of
+/// every new table, deck and bot prior. A deck a list refuses now plays in
+/// the format that admits it, Eternal for every shipped one. Choosing a
+/// format is choosing to be held to its list.
+pub const DEFAULT_FORMAT: NsgFormat = NsgFormat::Standard;
 
 /// The lowercase name a format is stored and shown under — the CLI's
 /// `--format` value.
@@ -68,7 +71,7 @@ pub fn format_name(format: NsgFormat) -> &'static str {
         NsgFormat::Standard => "standard",
         NsgFormat::Eternal => "eternal",
         NsgFormat::Snapshot => "snapshot",
-        NsgFormat::Casual => "casual",
+        NsgFormat::Unrestricted => "unrestricted",
     }
 }
 
@@ -80,7 +83,7 @@ pub fn format_label(format: NsgFormat) -> &'static str {
         NsgFormat::Standard => "Standard",
         NsgFormat::Eternal => "Eternal",
         NsgFormat::Snapshot => "Snapshot",
-        NsgFormat::Casual => "Casual",
+        NsgFormat::Unrestricted => "Unrestricted",
     }
 }
 

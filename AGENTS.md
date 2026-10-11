@@ -225,11 +225,11 @@ This matters because the range was once 8, and two of the deadlocks sat outside 
 **Measure a rules change before and after it**, the way the memory-cost fix was measured ("0 program installs → 3"):
 
 ```bash
-cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 \
+cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 --format unrestricted \
   --corp random --runner random --seed 1 --report target/coverage/<branch>-random-random.json
 ```
 
-`--all-matchups` plays `matchups[index % len]`, so **`--games` below `decks::matchups().len()` leaves the tail of the pool unplayed** — at 23 Corp × 17 Runner, 96 games stop six Corp decks in and a whole deck's cards read as zero. Size the run to at least one pass of the cross product (391 today, since the Standard tournament lists joined the pool; 192 before) whenever the point of the measurement is per-card coverage.
+`--all-matchups` plays `matchups[index % len]`, so **`--games` below `decks::matchups().len()` leaves the tail of the pool unplayed** — at 23 Corp × 17 Runner, 96 games stop six Corp decks in and a whole deck's cards read as zero. Size the run to at least one pass of the cross product (391 today, since the Standard tournament lists joined the pool; 192 before) whenever the point of the measurement is per-card coverage, and name `--format unrestricted` for the whole pool: the flag's default is Standard, the table's default (Phase 4 §8), and Unrestricted — every card, no list, named Casual before §8 — is the pool every recorded number was taken over.
 
 and `diff` the JSON against the previous report. **When the claim is that nothing moved, do not do that by hand:**
 

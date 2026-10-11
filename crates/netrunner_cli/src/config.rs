@@ -245,13 +245,16 @@ pub struct Config {
     /// Which format to check deck legality against, and — for
     /// `--all-matchups`, `bench` and every `diag` — which sample matchups
     /// to play: only the pairings both decks are legal in (`startup` is 90
-    /// of the 192).
+    /// of the 391; `unrestricted` is the whole pool, as every recorded
+    /// measurement was taken).
     ///
-    /// Casual is the default (`netrunner_client::settings::DEFAULT_FORMAT`):
-    /// every deck the engine can run. It was Startup, until NetrunnerDB's
-    /// ban lists arrived and refused published decks this engine ships
-    /// (Phase 1 §9 Stage 0b). Naming a format holds a deck to its list.
-    #[arg(long, value_enum, default_value_t = FormatArg::Casual, global = true)]
+    /// Standard is the default (`netrunner_client::settings::DEFAULT_FORMAT`,
+    /// Phase 4 §8). It was Unrestricted, then named Casual: every deck the
+    /// engine can run, chosen when NetrunnerDB's ban lists arrived and
+    /// refused published decks this engine ships (Phase 1 §9 Stage 0b).
+    /// A measurement over the whole pool names `--format unrestricted`.
+    /// Naming a format holds a deck to its list.
+    #[arg(long, value_enum, default_value_t = FormatArg::Standard, global = true)]
     pub format: FormatArg,
 }
 
@@ -267,7 +270,7 @@ pub enum FormatArg {
     Standard,
     Eternal,
     Snapshot,
-    Casual,
+    Unrestricted,
 }
 
 impl From<FormatArg> for NsgFormat {
@@ -277,7 +280,7 @@ impl From<FormatArg> for NsgFormat {
             FormatArg::Standard => NsgFormat::Standard,
             FormatArg::Eternal => NsgFormat::Eternal,
             FormatArg::Snapshot => NsgFormat::Snapshot,
-            FormatArg::Casual => NsgFormat::Casual,
+            FormatArg::Unrestricted => NsgFormat::Unrestricted,
         }
     }
 }
@@ -292,7 +295,7 @@ impl From<NsgFormat> for FormatArg {
             NsgFormat::Standard => FormatArg::Standard,
             NsgFormat::Eternal => FormatArg::Eternal,
             NsgFormat::Snapshot => FormatArg::Snapshot,
-            NsgFormat::Casual => FormatArg::Casual,
+            NsgFormat::Unrestricted => FormatArg::Unrestricted,
         }
     }
 }
@@ -970,7 +973,7 @@ impl Config {
     /// The sample matchups a pass of the pool plays under `--format`:
     /// `decks::matchups_in`, so `--all-matchups`, `bench` and the `diag`s
     /// all read the one flag and a Startup measurement is the same 90
-    /// pairings everywhere (Phase 5 §25 Stage 0). Casual is `matchups()`
+    /// pairings everywhere (Phase 5 §25 Stage 0). Unrestricted is `matchups()`
     /// game for game. An error rather than an empty list, because every
     /// caller indexes `matchups[game % len]`.
     /// What a bot seat dealt `deck` knows (`netrunner_bots::Knowledge`):

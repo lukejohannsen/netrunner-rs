@@ -81,8 +81,8 @@ pub struct AgentSetup {
     pub style: Style,
     /// What the seat samples hidden cards from: the format's pool, its
     /// own deck and what it has seen — `Config::knowledge` for a seat the
-    /// CLI deals a deck. `Knowledge::default()` (Casual, no deck) is a
-    /// seat nobody dealt, which no measurement should build.
+    /// CLI deals a deck. A seat nobody dealt knows every card and no
+    /// deck, which no measurement should build.
     pub knowledge: Knowledge,
 }
 
@@ -97,7 +97,7 @@ impl AgentSetup {
             shared_sample: false,
             mcts_depth: None,
             style: Style::BALANCED,
-            knowledge: Knowledge::default(),
+            knowledge: Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None),
         }
     }
 
@@ -291,7 +291,7 @@ mod tests {
             panic!("a missing model cannot produce an agent");
         };
         assert!(!error.is_empty());
-        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::default()) else {
+        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None)) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());
@@ -320,20 +320,20 @@ mod tests {
     #[test]
     fn the_scripted_kinds_all_produce_drivers() {
         for kind in [BotKind::Random, BotKind::Planner, BotKind::Mcts, BotKind::Puct] {
-            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Style::BALANCED, Knowledge::default()).is_ok(), "{kind:?}");
+            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None)).is_ok(), "{kind:?}");
         }
     }
 
     #[test]
     fn asking_for_a_driver_for_the_human_seat_is_an_error() {
-        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx", Style::BALANCED, Knowledge::default()).is_err());
+        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx", Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None)).is_err());
     }
 
     /// Whether the feature is on or off, a missing model must surface as a
     /// readable message rather than a panic.
     #[test]
     fn a_missing_onnx_model_is_a_readable_error() {
-        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::default()) else {
+        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None)) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());

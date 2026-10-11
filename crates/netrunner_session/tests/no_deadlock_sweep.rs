@@ -20,8 +20,7 @@
 
 use netrunner_bots::{BotAgent, Knowledge, PlanningAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
-use netrunner_core::decks::{self, DeckFile};
-use netrunner_core::format::NsgFormat;
+use netrunner_core::decks::{self, match_format, DeckFile};
 use netrunner_core::rules::{AccessCandidate, Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
 use netrunner_session::coverage::played_pool_card_ids;
 use netrunner_session::{in_parallel, Coverage, PublicHistoryEntry, Seat, Session, SessionStep};
@@ -78,10 +77,12 @@ impl Seating {
     const ALL: [Seating; 3] = [Seating::PlannerCorpRandomRunner, Seating::RandomCorpPlannerRunner, Seating::RandomBoth];
 
     /// Each planner seat knows the deck it plays (`Knowledge`), the
-    /// way every driver in the workspace seats it; the sweep's pool is
-    /// played under no format, so the other chair's cards are Casual's.
-    fn agents(self, seed: u64, corp_deck: &DeckFile, runner_deck: &DeckFile) -> (Box<dyn BotAgent>, Box<dyn BotAgent>) {
-        let knowing = |deck: &DeckFile| Knowledge::new(NsgFormat::Casual, Some(deck.to_deck()));
+    /// way every driver in the workspace seats it, and the match's
+    /// format: the narrowest both decks are legal in, as two people
+    /// would play it (`decks::match_format`, Phase 4 §8).
+    fn agents(self, seed: u64, corp_deck: &DeckFile, runner_deck: &DeckFile, registry: &CardRegistry) -> (Box<dyn BotAgent>, Box<dyn BotAgent>) {
+        let format = match_format(&corp_deck.to_deck(), &runner_deck.to_deck(), registry).expect("every shipped deck is legal in a published format");
+        let knowing = |deck: &DeckFile| Knowledge::new(format, Some(deck.to_deck()));
         match self {
             Seating::PlannerCorpRandomRunner => {
                 (Box::new(PlanningAgent::new(Side::Corp, seed).with_knowledge(knowing(corp_deck))), Box::new(RandomAgent::new(seed)))
@@ -117,7 +118,7 @@ fn view_based_agents_never_reach_a_state_with_no_legal_action() {
                 GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
                     .expect("sample decks are legal by construction");
 
-            let (corp, runner) = seating.agents(seed, &corp_deck, &runner_deck);
+            let (corp, runner) = seating.agents(seed, &corp_deck, &runner_deck, &registry);
             let mut session = Session::new(state, registry, Seat::Agent(corp), Seat::Agent(runner));
             let outcome = session.run();
             // No seating may stall, for any reason. Random-vs-random used
@@ -256,7 +257,8 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
         // here as there. A uniform random picker would confound a genuine
         // stall with "random play is just slow", which it did: it hit the
         // step budget on ordinary positions.
-        let mut corp = PlanningAgent::new(Side::Corp, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(corp_deck.to_deck())));
+        let format = match_format(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry).expect("every shipped deck is legal in a published format");
+        let mut corp = PlanningAgent::new(Side::Corp, seed).with_knowledge(Knowledge::new(format, Some(corp_deck.to_deck())));
         let mut runner = RandomAgent::new(seed);
         let universe = deck_card_universe(&corp_deck.to_deck(), &runner_deck.to_deck());
         let mut session = Session::new(state, registry, Seat::External, Seat::External);

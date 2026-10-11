@@ -613,7 +613,7 @@ impl PuctAgent {
             dirichlet_epsilon: config.dirichlet_epsilon.clamp(0.0, 1.0),
             ..config
         };
-        Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default(), knowledge: Knowledge::default() }
+        Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default(), knowledge: Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None) }
     }
 
     /// The same search, sampling from what `knowledge` admits.
@@ -1893,7 +1893,7 @@ mod tests {
 
         let evaluator = UniformPolicyEvaluator::new(Side::Runner);
         let mut rng = StdRng::seed_from_u64(1);
-        let knowledge = Knowledge::default();
+        let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None);
         let sample = determinize(&view, &registry, &knowledge, &mut rng);
         let anchor = evaluator.anchor(&sample, &registry);
         let search = Search {

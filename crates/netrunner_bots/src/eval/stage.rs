@@ -51,7 +51,7 @@ impl Stage {
 /// How many more of its own turns a seat should expect from a state in
 /// each stage — the horizon an installed economy card pays over (Phase 5
 /// §25 Stage 5, the first term to read the stage). Read off the
-/// baseline's own-turn counts a game (`diag precepts`, Casual, the
+/// baseline's own-turn counts a game (`diag precepts`, Unrestricted, the
 /// one-ply reference both chairs): early 7.3–7.4, middle 4.6–5.1, late
 /// 3.6–4.5 — so from an early state about half of early and all of the
 /// rest remain, from a middle state half of middle and late, from a

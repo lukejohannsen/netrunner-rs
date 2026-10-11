@@ -1099,11 +1099,11 @@ fn play(
     let mut watcher = Watcher::new(registry, corp_faction);
     // What each seat knows, kept beside the bot and shown the same views
     // (`Session::last_view`), so the guess-quality line samples with the
-    // memory the seat had; `naive` is a seat that knows nothing — Casual,
+    // memory the seat had; `naive` is a seat that knows nothing — Unrestricted,
     // no deck, no memory — sampled from the same views, the line Stage 2
     // is measured against.
     let mut knowledge = [config.knowledge(corp_deck), config.knowledge(runner_deck)];
-    let naive = Knowledge::default();
+    let naive = Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None);
     let decks = [corp_deck.to_deck(), runner_deck.to_deck()];
     let mut guess_rng = StdRng::seed_from_u64(seed ^ 0x6E55_0000_0000_0000);
     let mut turn_sampled = 0;

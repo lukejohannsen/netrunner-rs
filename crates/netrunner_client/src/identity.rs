@@ -191,8 +191,9 @@ impl StandingHere {
 /// (`LobbyInfo::rated`) at a server this connection stands at as
 /// `standing`; `hosting` names the case where the server is the person's
 /// own, which never rates. One sentence, because the page is read before
-/// a game, not after one. The word is "unrated", never "casual": a format
-/// is named Casual, and "Casual · casual" on its lobby's row said nothing.
+/// a game, not after one. The word is "unrated", never "casual": while a
+/// format was named Casual (Unrestricted since Phase 4 §8), "Casual ·
+/// casual" on its lobby's row said nothing.
 pub fn lobby_rating_line(rated: bool, hosting: bool, standing: &StandingHere) -> String {
     if hosting {
         return "Unrated: a game hosted from this machine is never rated.".to_string();

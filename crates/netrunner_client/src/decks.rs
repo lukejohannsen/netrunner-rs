@@ -71,6 +71,7 @@ pub fn decks_for_match(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::start::{DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
     use netrunner_core::dsl::CardId;
     use netrunner_core::rules::{validate_deck, Deck, GameState};
 
@@ -88,31 +89,37 @@ mod tests {
     #[test]
     fn built_in_decks_resolve_and_are_legal() {
         let registry = sample_deck_registry();
-        let (corp_deck, runner_deck) = resolve("discretion_advised", "stolen_goods").expect("both ids exist");
+        let (corp_deck, runner_deck) = resolve(DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK).expect("both ids exist");
 
         assert_eq!(validate_deck(&corp_deck, Side::Corp, &registry), Ok(()));
         assert_eq!(validate_deck(&runner_deck, Side::Runner, &registry), Ok(()));
         assert!(GameState::setup(&corp_deck, &runner_deck, &registry, 5).is_ok());
     }
 
+    /// Keeps `Config::corp_deck`/`runner_deck`'s defaults honest — a
+    /// renamed deck file would otherwise break the CLI's no-flag path —
+    /// and holds the pair to every Null Signal Games pool (Snapshot is a
+    /// Fantasy Flight Games one no shipped deck is legal in), so the
+    /// flag-less game is dealt whatever the table is set to.
     #[test]
-    fn the_cli_defaults_name_real_decks() {
-        // Keeps `Config::corp_deck`/`runner_deck`'s defaults honest — a
-        // renamed deck file would otherwise break the CLI's no-flag path.
-        assert!(resolve("discretion_advised", "stolen_goods").is_ok());
+    fn the_cli_defaults_name_real_decks_legal_in_every_nsg_format() {
+        for format in [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Unrestricted] {
+            let resolved = decks_for_match(&no_saved_decks(), DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK, &sample_deck_registry(), format);
+            assert!(resolved.is_ok(), "{format:?}: {:?}", resolved.err());
+        }
     }
 
     /// A ban makes a deck illegal in the format that bans it and nowhere
     /// else (the person's decision, 26 September 2026): Discretion Advised
     /// holds Seamless Launch, which Startup's balance update bans, so a
-    /// Startup table refuses it and a Casual one — the default — deals it.
+    /// Startup table refuses it and an Unrestricted one deals it.
     #[test]
-    fn a_deck_a_list_bans_is_refused_at_that_table_and_plays_at_a_casual_one() {
+    fn a_deck_a_list_bans_is_refused_at_that_table_and_plays_at_an_unrestricted_one() {
         let registry = sample_deck_registry();
         let startup = decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Startup);
         let error = startup.expect_err("Seamless Launch is banned in Startup");
         assert!(error.contains("banned in Startup"), "{error}");
-        assert!(decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Casual).is_ok());
+        assert!(decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Unrestricted).is_ok());
     }
 
     /// **A ban is the banning format's alone** (the person's words, 26
@@ -120,15 +127,15 @@ mod tests {
     /// Eternal then a deck built with the banned card can be played in
     /// Eternal but cannot be played in Standard"). Touch-ups is on
     /// Standard's ban list and no other, and Pork Chops holds it: a
-    /// Standard table refuses the deck, and Startup, Eternal and Casual
-    /// tables deal it. Casual is open to everything.
+    /// Standard table refuses the deck, and Startup, Eternal and Unrestricted
+    /// tables deal it. Unrestricted is open to everything.
     #[test]
     fn a_ban_refuses_a_deck_in_the_banning_format_and_no_other() {
         let registry = sample_deck_registry();
         let at = |format| decks_for_match(&no_saved_decks(), "pork_chops", "stolen_goods", &registry, format);
         let error = at(NsgFormat::Standard).expect_err("Touch-ups is banned in Standard");
         assert!(error.contains("banned in Standard"), "{error}");
-        for format in [NsgFormat::Startup, NsgFormat::Eternal, NsgFormat::Casual] {
+        for format in [NsgFormat::Startup, NsgFormat::Eternal, NsgFormat::Unrestricted] {
             assert!(at(format).is_ok(), "{format:?} does not ban Touch-ups: {:?}", at(format).err());
         }
     }
@@ -156,7 +163,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).expect("create temp dir");
 
-        let mut saved = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck");
+        let mut saved = netrunner_core::decks::by_id(DEFAULT_CORP_DECK).expect("built-in deck");
         saved.id = "my_corp_deck".to_string();
         saved.category = netrunner_core::decks::DeckCategory::Custom;
         std::fs::write(dir.join("my_corp_deck.json"), saved.to_json().expect("serializes")).expect("write");

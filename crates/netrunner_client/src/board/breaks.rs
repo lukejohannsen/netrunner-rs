@@ -45,6 +45,7 @@
 //! and whether to use another card before moving on is the person's call.
 
 use netrunner_bots::{determinize, Knowledge};
+use netrunner_core::format::NsgFormat;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardId, Effect, Trigger};
 use netrunner_core::rules::{apply_action, GameState, InstallId, PlayerAction, RunPhase, Side, SubroutineStatus};
@@ -154,8 +155,11 @@ fn has_pending(view: &ClientView) -> bool {
         .is_some_and(|identity| identity.subroutines.iter().any(|sub| sub.status == SubroutineStatus::Pending))
 }
 
+/// A route is priced on a sample, never on the view; the hidden cards
+/// the sample draws play no part in the encounter, so the pool is every
+/// card — the view carries no format to ask.
 fn sample(view: &ClientView, registry: &CardRegistry) -> GameState {
-    determinize(view, registry, &Knowledge::default(), &mut StdRng::seed_from_u64(0))
+    determinize(view, registry, &Knowledge::new(NsgFormat::Unrestricted, None), &mut StdRng::seed_from_u64(0))
 }
 
 /// The cheapest sequence of `target`'s abilities that leaves `ice` with no
