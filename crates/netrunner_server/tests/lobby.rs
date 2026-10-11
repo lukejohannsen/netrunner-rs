@@ -479,14 +479,15 @@ async fn spectating_an_unknown_match_is_refused() {
 }
 
 /// A game against a seated bot is practice wherever it is played: a bot
-/// daemon given a data directory never writes a rating book into it. The match leaving
-/// `MatchList` is the session task's exit, which is where a human match
-/// is rated, so the file's absence after it is the claim.
+/// daemon given a data directory never writes a rating into its store.
+/// The match leaving `MatchList` is the session task's exit, which is
+/// where a human match is rated, so the empty table after it is the
+/// claim.
 #[tokio::test]
 async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let dir = std::env::temp_dir().join(format!("netrunner_ratings_bot_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ratings.json");
     let url = start_server(ServeOptions {
         bot_level: Some(netrunner_bots::Level::Operator),
         bot_style: Some(Style::BALANCED),
@@ -510,7 +511,9 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     .await
     .expect("the match ends within 10s");
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!path.exists(), "a bot game wrote a rating book");
+    let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+    assert!(store.ratings().await.unwrap().is_empty(), "a bot game wrote a rating");
+    store.close().await;
     let _ = std::fs::remove_dir_all(&dir);
 }
 

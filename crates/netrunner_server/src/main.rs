@@ -128,10 +128,13 @@ struct Config {
 
 
     /// (serve mode) Where the daemon keeps what outlives it: its own key
-    /// (`identity.key`, made on first start), the players it has seen
-    /// (`players.json`), the Glicko-2 rating book (`ratings.json`) and a
-    /// record of every finished match (`matches/<yyyy-mm>/<id>.jsonl`,
-    /// which `netrunner_cli replay` opens).
+    /// (`identity.key`, made on first start), the store (`store.sqlite`,
+    /// made on first start unless `--database` names another: the
+    /// players it has seen, a Glicko-2 ladder per format, the results,
+    /// the tournaments), the results log (`results.jsonl`, the signed
+    /// receipts the store is rebuilt from) and a record of every
+    /// finished match (`matches/<yyyy-mm>/<id>.jsonl`, which
+    /// `netrunner_cli replay` opens).
     /// With it the daemon's key is the same every run, which clients
     /// remember, and every finished match between two identified people
     /// (`--bot-runner none`) is rated — surrenders, disconnects and
@@ -141,13 +144,22 @@ struct Config {
     #[arg(long)]
     data_dir: Option<std::path::PathBuf>,
 
-    /// (serve mode) Rebuild `ratings.json` from `results.jsonl` in the
-    /// data directory before serving. The results log is the truth and the
-    /// book a cache of it: a corrupt book, a change to the rating system,
-    /// or a game voided by deleting its line is put right by this, and
-    /// every receipt is checked against the daemon's key as it is folded.
+    /// (serve mode) The store's database, as a URL: `postgres://…` for a
+    /// server that has outgrown a file, or a `sqlite://…` elsewhere than
+    /// the data directory. Without it the store is `store.sqlite` in the
+    /// data directory, and nothing has to be set up.
     #[arg(long, requires = "data_dir")]
-    rebuild_ratings: bool,
+    database: Option<String>,
+
+    /// (serve mode) Rebuild the store's ratings and results from
+    /// `results.jsonl` in the data directory before serving. The results
+    /// log is the truth and the store its index: a corrupt store, a
+    /// change to the rating system, or a game voided by deleting its line
+    /// is put right by this, and every receipt is checked against the
+    /// daemon's key as it is folded. The players, the awards, the pairing
+    /// memory and the tournaments are not the log's and are kept.
+    #[arg(long, requires = "data_dir")]
+    rebuild: bool,
 }
 
 /// `NsgFormat` as a command-line value — a separate enum for the same
@@ -242,9 +254,9 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
 
 async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    if let (true, Some(dir)) = (config.rebuild_ratings, &config.data_dir) {
-        let folded = netrunner_server::serve::rebuild_ratings(dir)?;
-        tracing::info!(folded, "rating book rebuilt from the results log");
+    if let (true, Some(dir)) = (config.rebuild, &config.data_dir) {
+        let folded = netrunner_server::serve::rebuild(dir, config.database.as_deref()).await?;
+        tracing::info!(folded, "the store's ratings and results were rebuilt from the results log");
     }
     let options = ServeOptions {
         bot_runner: config.bot_runner,
@@ -264,6 +276,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         runner_deck: config.runner_deck.clone(),
         formats: config.formats.iter().map(|&format| format.into()).collect(),
         data_dir: config.data_dir.clone(),
+        database: config.database.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
     server.run().await?;

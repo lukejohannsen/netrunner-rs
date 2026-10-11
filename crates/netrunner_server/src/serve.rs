@@ -76,14 +76,15 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, DeckOrder, GameState, MatchRules, Side};
 use netrunner_identity::{Identity, Nonce, PublicKey, Signature, Signed};
 use netrunner_rating::Rating;
-use netrunner_rating::{Outcome, RatingBook, Track};
+use netrunner_rating::{Outcome, RatingBook};
+use netrunner_store::{ResultRow, Store, TournamentRow};
 use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
+use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, FormatStanding, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
@@ -163,12 +164,12 @@ pub struct ServeOptions {
     /// first, matching `netrunner_cli --format`'s default; a game hosted
     /// from a client's menu offers only the host's.
     pub formats: Vec<NsgFormat>,
-    /// Where the daemon keeps what outlives it (Phase 4 §5): its own key
-    /// (`identity.key`, made on first start, mode 0600), the players it
-    /// has seen (`players.json`), the rating book (`ratings.json`) and
+    /// Where the daemon keeps what outlives it (Phase 4 §5, §10): its own
+    /// key (`identity.key`, made on first start, mode 0600), the store
+    /// (`store.sqlite`, made on first start unless `database` names
+    /// another: the players it has seen, a ladder per format, the
+    /// results, the tournaments), the results log (`results.jsonl`) and
     /// every match's record (`matches/<yyyy-mm>/<match id>.jsonl`).
-    /// Each is written with a temp file and a rename, like the deck store
-    /// and the card cache.
     ///
     /// `None` is a stateless daemon, which is what every test and every
     /// game hosted from a client's menu wants: a key made fresh at bind,
@@ -183,6 +184,12 @@ pub struct ServeOptions {
     /// unidentified seat plays unrated: a rating is filed under a key the
     /// player proved, never under the name they typed.
     pub data_dir: Option<PathBuf>,
+    /// The store's database, as a URL (`postgres://…`, or a
+    /// `sqlite://…` elsewhere than the data directory). `None` with a
+    /// data directory is the zero-setup default: an SQLite file in it
+    /// (`netrunner_store::SQLITE_FILE`). Ignored with no data directory,
+    /// which keeps nothing. Phase 4 §10.
+    pub database: Option<String>,
 }
 
 impl Default for ServeOptions {
@@ -201,6 +208,7 @@ impl Default for ServeOptions {
             runner_deck: None,
             formats: DEFAULT_FORMATS.to_vec(),
             data_dir: None,
+            database: None,
         }
     }
 }
@@ -358,6 +366,9 @@ impl SeatTicket {
 }
 
 mod attached;
+mod store;
+
+use store::Writer;
 
 /// A running match as `MatchList` reports it. Holds the session's
 /// `ReattachHandle` so a `Spectate { match_id }` can reach the pump; the
@@ -455,10 +466,10 @@ struct PlayerLobby {
 /// A tournament the daemon holds (Phase 4 §7 stage 6a): what
 /// `ClientMessage::CreateTournament` made, with every entrant's two decks
 /// — which the daemon deals from and never sends — beside the commitment
-/// that names them. Kept whole in `tournaments.json`, rewritten on every
-/// change like the players file: a tournament outlives any socket, and
-/// a daemon restarted mid-registration must still hold the lists it
-/// promised to deal from.
+/// that names them. Kept whole as one document in the store's tournaments
+/// table, written on every change (`Shared::save_tournament`): a
+/// tournament outlives any socket, and a daemon restarted
+/// mid-registration must still hold the lists it promised to deal from.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Tournament {
     name: String,
@@ -657,10 +668,6 @@ impl Tournaments {
         all.sort_by_key(|(id, tournament)| (tournament.created_at, (*id).clone()));
         all.into_iter().map(|(id, tournament)| tournament.info(id)).collect()
     }
-
-    fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("tournaments serialize")
-    }
 }
 
 /// A player about to be seated: the name `MatchList` will show, the key
@@ -702,10 +709,10 @@ impl SeatedPlayer {
 struct Registry {
     matches: HashMap<Uuid, MatchEntry>,
     seats: HashMap<Uuid, SeatTicket>,
-    /// Every rating the daemon holds; see `ServeOptions::data_dir`.
+    /// Every rating the daemon holds, loaded from the store at bind and
+    /// written back to it row by row (`store`); see
+    /// `ServeOptions::data_dir`.
     ratings: RatingBook,
-    /// Every key that has attached, with the name it last gave.
-    players: Players,
     /// Arrival order; pairing takes the first waiter in the newcomer's lobby.
     lobby: Vec<PendingHuman>,
     /// The lobbies players made, by id.
@@ -841,6 +848,9 @@ struct Shared {
     /// receipt names: a record replays only against the pool it was
     /// played with.
     card_pool: Arc<str>,
+    /// The store behind its one writer; `None` for a daemon that keeps
+    /// nothing (no data directory).
+    store: Option<Writer>,
 }
 
 impl Shared {
@@ -895,25 +905,26 @@ impl Shared {
         registry.match_list(&self.options)
     }
 
-    /// Rates one finished match and rewrites the book. Under the registry
-    /// lock, so two matches ending at once serialize their updates; the
-    /// write is a few kilobytes and the lock is never held across an
-    /// await, so that is fine. A failed write is logged, not fatal: the
-    /// ratings are already applied in memory and the next match's write
-    /// carries them.
+    /// Rates one finished match on its format's ladder and queues the
+    /// rows for the store. Under the registry lock, so two matches ending
+    /// at once serialize their updates, and the rows are queued in that
+    /// order (`store::Writer`); the lock is never held across an await.
+    /// A failed row write is logged, not fatal: the ratings are already
+    /// applied in memory and `rebuild` puts the store right from the log.
     ///
     /// **The receipt is appended to `results.jsonl` under the same lock**,
     /// so the log's order is the order the book was folded in, and
-    /// `rebuild_ratings` reproduces it exactly. Returns each side's
-    /// rating before and after; `None` when the daemon keeps nothing.
-    fn rate(&self, corp: &str, runner: &str, outcome: Outcome, receipt: &Signed) -> Option<[(Rating, Rating); 2]> {
+    /// `rebuild` reproduces it exactly. Returns each side's rating before
+    /// and after; `None` when the daemon keeps nothing.
+    fn rate(&self, corp: &str, runner: &str, format: NsgFormat, outcome: Outcome, receipt: &Signed, ended_at: u64) -> Option<[(Rating, Rating); 2]> {
         let dir = self.options.data_dir.as_ref()?;
+        let track = store::ladder(format);
         let mut registry = self.lock();
-        let corp_before = registry.ratings.standing(Track::HumanVsHuman, corp).unwrap_or_default().corp.rating;
-        let runner_before = registry.ratings.standing(Track::HumanVsHuman, runner).unwrap_or_default().runner.rating;
-        let (corp_after, runner_after) = registry.ratings.record(Track::HumanVsHuman, corp, runner, outcome);
+        let corp_before = registry.ratings.standing(track, corp).unwrap_or_default().corp.rating;
+        let runner_before = registry.ratings.standing(track, runner).unwrap_or_default().runner.rating;
+        let (corp_after, runner_after) = registry.ratings.record(track, corp, runner, outcome);
         tracing::info!(
-            corp, runner, ?outcome,
+            corp, runner, ?format, ?outcome,
             corp_rating = corp_after.corp.rating.rating, runner_rating = runner_after.runner.rating.rating,
             "match rated"
         );
@@ -926,17 +937,55 @@ impl Shared {
         if let Err(error) = appended {
             tracing::warn!(path = %results.display(), ?error, "could not append to the results log");
         }
-        let path = dir.join(RATINGS_FILE);
-        if let Err(error) = save_ratings(&path, &registry.ratings) {
-            tracing::warn!(path = %path.display(), ?error, "could not save the rating book");
+        // The rows that record what the book just took, in the order it
+        // took them (`store::Writer`): both keys' standings whole, and the
+        // game in the results index with its receipt.
+        if let Some(writer) = &self.store {
+            let mut rows = store::rows_of(track, corp, &corp_after);
+            rows.extend(store::rows_of(track, runner, &runner_after));
+            let result = ResultRow {
+                match_id: receipt_match_id(receipt),
+                ended_at: ended_at as i64,
+                format: format_lobby_id(format),
+                corp: corp.to_string(),
+                runner: runner.to_string(),
+                winner: Some(match outcome {
+                    Outcome::CorpWin => "corp",
+                    Outcome::RunnerWin => "runner",
+                    Outcome::Draw => "none",
+                }
+                .to_string()),
+                receipt: line,
+            };
+            writer.write("a rated game", move |store| async move { store.record_game(&rows, &result).await });
         }
         Some([(corp_before, corp_after.corp.rating), (runner_before, runner_after.runner.rating)])
     }
 
-    /// `key`'s standing on the book between people, as `Standing` says it.
+    /// `key`'s standing on every ladder it has a rated game on, as
+    /// `Standing` says it: one entry per format, in the formats' order.
     fn standing_of(&self, key: Option<PublicKey>) -> ServerMessage {
-        let standing = key.filter(|_| self.options.data_dir.is_some()).and_then(|key| self.lock().ratings.standing(Track::HumanVsHuman, &key.rating_id()));
-        ServerMessage::Standing { key, standing }
+        let standings = match key.filter(|_| self.options.data_dir.is_some()) {
+            Some(key) => {
+                let id = key.rating_id();
+                let registry = self.lock();
+                NsgFormat::ALL
+                    .into_iter()
+                    .filter_map(|format| registry.ratings.standing(store::ladder(format), &id).map(|standing| FormatStanding { format, standing }))
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        ServerMessage::Standing { key, standings }
+    }
+
+    /// Remembers which chairs two keys took against each other, so the
+    /// next pairing of the two can swap them (Phase 4 §9); every game
+    /// between two keys, rated or not.
+    fn remember_pairing(&self, corp: &str, runner: &str, played_at: u64) {
+        let Some(writer) = &self.store else { return };
+        let (corp, runner) = (corp.to_string(), runner.to_string());
+        writer.write("a pairing", move |store| async move { store.put_pairing(&corp, &runner, played_at as i64).await });
     }
 
     /// A seat's signature over the statement it was sent, kept if it is
@@ -1024,33 +1073,35 @@ impl Shared {
             slot.result = Some(outcome);
         }
         tournament.draw_offers.retain(|offer| offer.table != table.table);
-        self.save_tournaments(&registry);
+        self.save_tournament(&registry, &table.tournament);
         self.announce(&registry, &table.tournament, None);
     }
 
-    /// Rewrites the tournaments file after a change, under the caller's
-    /// lock. A failed write is logged, as a failed rating write is; a
-    /// daemon with no data directory holds no tournament (`attached`
-    /// refuses to make one), so there is nothing to write.
-    fn save_tournaments(&self, registry: &Registry) {
-        let Some(dir) = &self.options.data_dir else { return };
-        let path = dir.join(TOURNAMENTS_FILE);
-        if let Err(error) = write_atomically(&path, &registry.tournaments.to_json()) {
-            tracing::warn!(path = %path.display(), ?error, "could not save the tournaments file");
-        }
+    /// Writes the tournament `id` to the store after a change, under the
+    /// caller's lock — the document as it now stands, one row, so the
+    /// store holds it in the order the registry changed it. A daemon
+    /// with no data directory holds no tournament (`attached` refuses to
+    /// make one), so there is nothing to write.
+    fn save_tournament(&self, registry: &Registry, id: &str) {
+        let (Some(writer), Some(tournament)) = (&self.store, registry.tournaments.0.get(id)) else { return };
+        let row = TournamentRow { id: id.to_string(), document: serde_json::to_string(tournament).expect("a tournament serializes"), updated_at: unix_now() as i64 };
+        writer.write("a tournament", move |store| async move { store.put_tournament(&row).await });
     }
 
-    /// Notes that `key` has attached as `name`, and rewrites the players
-    /// file. A failed write is logged, as a failed rating write is.
+    /// Notes that `key` has attached as `name`, in the store's players
+    /// table: a first visit makes the row, a later one updates the name
+    /// and the time (`Store::saw_player`).
     fn saw_player(&self, key: PublicKey, name: &str) {
-        let Some(dir) = &self.options.data_dir else { return };
-        let mut registry = self.lock();
-        registry.players.saw(key, name, unix_now());
-        let path = dir.join(PLAYERS_FILE);
-        if let Err(error) = write_atomically(&path, &registry.players.to_json()) {
-            tracing::warn!(path = %path.display(), ?error, "could not save the players file");
-        }
+        let Some(writer) = &self.store else { return };
+        let (key, name) = (key.rating_id(), name.to_string());
+        writer.write("a player seen", move |store| async move { store.saw_player(&key, &name, unix_now() as i64).await });
     }
+}
+
+/// The match id a signed receipt names, for the results index; the
+/// receipt was made by this daemon a moment ago, so it parses.
+fn receipt_match_id(receipt: &Signed) -> String {
+    serde_json::from_str::<Receipt>(&receipt.payload).map(|receipt| receipt.match_id.to_string()).unwrap_or_default()
 }
 
 const IDENTITY_FILE: &str = "identity.key";
@@ -1074,15 +1125,17 @@ fn card_pool_hash(cards: &CardRegistry) -> String {
     netrunner_identity::sha256_hex(text.as_bytes())
 }
 
-/// Rebuilds `ratings.json` in `data_dir` from `results.jsonl`, folding
-/// every rated receipt through `RatingBook::record` in the order it was
-/// appended — the book is a cache of the log, and this is how a corrupt
-/// book, a change to the rating system's parameters, or a voided game
-/// (its line deleted) is put right. Every receipt must be this daemon's
-/// key's; one that is not, or that does not verify, stops the rebuild
-/// and names its line, rather than fold a result nobody signed. Returns
-/// how many games were folded.
-pub fn rebuild_ratings(data_dir: &Path) -> std::io::Result<usize> {
+/// Rebuilds the store's ratings and results from `results.jsonl` in
+/// `data_dir`, folding every rated receipt through `RatingBook::record` in
+/// the order it was appended — the store is an index of the log, and this
+/// is how a corrupt store, a change to the rating system's parameters, or
+/// a voided game (its line deleted) is put right. Every receipt must be
+/// this daemon's key's; one that is not, or that does not verify, stops
+/// the rebuild and names its line, rather than fold a result nobody
+/// signed. The players, the awards, the pairings and the tournaments are
+/// not the log's and are left as they are. Returns how many games were
+/// folded. `database` is `ServeOptions::database`.
+pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result<usize> {
     let invalid = |line: usize, error: String| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{RESULTS_FILE} line {line}: {error}"));
     let identity_path = data_dir.join(IDENTITY_FILE);
     let identity = Identity::from_file_text(&std::fs::read_to_string(&identity_path)?)
@@ -1091,7 +1144,7 @@ pub fn rebuild_ratings(data_dir: &Path) -> std::io::Result<usize> {
     let results = data_dir.join(RESULTS_FILE);
     let text = if results.exists() { std::fs::read_to_string(&results)? } else { String::new() };
     let mut book = RatingBook::default();
-    let mut folded = 0;
+    let mut rows = Vec::new();
     for (index, line) in text.lines().enumerate().filter(|(_, line)| !line.trim().is_empty()) {
         let signed: Signed = serde_json::from_str(line).map_err(|error| invalid(index + 1, error.to_string()))?;
         let receipt = Receipt::read(&signed, &server_key).map_err(|error| invalid(index + 1, error))?;
@@ -1103,15 +1156,39 @@ pub fn rebuild_ratings(data_dir: &Path) -> std::io::Result<usize> {
             Side::Corp => Outcome::CorpWin,
             Side::Runner => Outcome::RunnerWin,
         };
-        book.record(Track::HumanVsHuman, &corp.rating_id(), &runner.rating_id(), outcome);
-        folded += 1;
+        book.record(store::ladder(receipt.format), &corp.rating_id(), &runner.rating_id(), outcome);
+        rows.push(ResultRow {
+            match_id: receipt.match_id.to_string(),
+            ended_at: receipt.ended_at as i64,
+            format: format_lobby_id(receipt.format),
+            corp: corp.rating_id(),
+            runner: runner.rating_id(),
+            winner: Some(match winner {
+                Side::Corp => "corp",
+                Side::Runner => "runner",
+            }
+            .to_string()),
+            receipt: line.to_string(),
+        });
     }
-    save_ratings(&data_dir.join(RATINGS_FILE), &book)?;
-    Ok(folded)
+    let store = open_store(data_dir, database).await?;
+    let ratings: Vec<netrunner_store::RatingRow> = book.entries().flat_map(|(track, key, standing)| store::rows_of(track, key, standing)).collect();
+    let written = store.replace_rebuilt(&ratings, &rows).await;
+    store.close().await;
+    written.map_err(|error| std::io::Error::other(format!("rebuilding the store: {error}")))?;
+    Ok(rows.len())
 }
-const PLAYERS_FILE: &str = "players.json";
-const RATINGS_FILE: &str = "ratings.json";
-const TOURNAMENTS_FILE: &str = "tournaments.json";
+
+/// Opens the daemon's store: the database `database` names, or the
+/// SQLite file in `data_dir` (`netrunner_store::SQLITE_FILE`), made on
+/// first start.
+async fn open_store(data_dir: &Path, database: Option<&str>) -> std::io::Result<Store> {
+    let url = match database {
+        Some(url) => url.to_string(),
+        None => netrunner_store::sqlite_url(&data_dir.join(netrunner_store::SQLITE_FILE)),
+    };
+    Store::open(&url).await.map_err(|error| std::io::Error::other(format!("opening the store at {url}: {error}")))
+}
 
 /// Where a match's record lives: a directory per month, so a daemon that
 /// runs for years never holds one directory of every match it played.
@@ -1139,68 +1216,36 @@ fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
-/// Every key a daemon has seen, with the name it last gave and when.
-///
-/// **A JSON map rewritten whole, not an append-only `players.jsonl`** as
-/// `docs/identity-and-rating.md` first sketched: a player's last-seen
-/// time changes on every visit, so a log would grow a line per
-/// connection to say one fact per key. The results log is where the
-/// append-only truth belongs (stage c); this is a label table, rebuilt
-/// by the next visit of anyone it loses.
-#[derive(Default, serde::Serialize, serde::Deserialize)]
-struct Players(std::collections::BTreeMap<String, PlayerEntry>);
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PlayerEntry {
-    /// The name the key last attached with. A label: two keys may share
-    /// one, and a key may change it without changing who it is.
-    name: String,
-    first_seen: u64,
-    last_seen: u64,
-}
-
-impl Players {
-    fn saw(&mut self, key: PublicKey, name: &str, now: u64) {
-        let entry = self.0.entry(key.rating_id()).or_insert_with(|| PlayerEntry { name: String::new(), first_seen: now, last_seen: now });
-        entry.name = name.to_string();
-        entry.last_seen = now;
-    }
-
-    fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).expect("a map of strings and numbers serializes")
-    }
-}
-
 /// What a daemon reads from its data directory at bind, making the
-/// directory and the key on first start.
+/// directory, the key and the store on first start.
 struct Kept {
     identity: Identity,
     lasting: bool,
     ratings: RatingBook,
-    players: Players,
     tournaments: Tournaments,
+    store: Option<Store>,
 }
 
-fn load_kept(data_dir: Option<&Path>) -> std::io::Result<Kept> {
-    let Some(dir) = data_dir else {
-        return Ok(Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), players: Players::default(), tournaments: Tournaments::default() });
-    };
+impl Kept {
+    /// A daemon that keeps nothing: a key made at bind, no book, no store.
+    fn nothing() -> Kept {
+        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), store: None }
+    }
+}
+
+async fn load_kept(data_dir: Option<&Path>, database: Option<&str>) -> std::io::Result<Kept> {
+    let Some(dir) = data_dir else { return Ok(Kept::nothing()) };
     std::fs::create_dir_all(dir)?;
     let identity = load_or_make_identity(&dir.join(IDENTITY_FILE))?;
-    let ratings = load_ratings(&dir.join(RATINGS_FILE))?;
-    let players_path = dir.join(PLAYERS_FILE);
-    let players = if players_path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(&players_path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
-    } else {
-        Players::default()
-    };
-    let tournaments_path = dir.join(TOURNAMENTS_FILE);
-    let tournaments = if tournaments_path.exists() {
-        serde_json::from_str(&std::fs::read_to_string(&tournaments_path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
-    } else {
-        Tournaments::default()
-    };
-    Ok(Kept { identity, lasting: true, ratings, players, tournaments })
+    let store = open_store(dir, database).await?;
+    let invalid = |what: &str, error: String| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("reading the store's {what}: {error}"));
+    let ratings = store::book_from(&store.ratings().await.map_err(|error| invalid("ratings", error.to_string()))?);
+    let mut tournaments = Tournaments::default();
+    for row in store.tournaments().await.map_err(|error| invalid("tournaments", error.to_string()))? {
+        let tournament: Tournament = serde_json::from_str(&row.document).map_err(|error| invalid("tournaments", format!("{}: {error}", row.id)))?;
+        tournaments.0.insert(row.id, tournament);
+    }
+    Ok(Kept { identity, lasting: true, ratings, tournaments, store: Some(store) })
 }
 
 /// The daemon's key: read, or made and written with only its owner able
@@ -1229,20 +1274,6 @@ fn write_secret(path: &Path, text: &str) -> std::io::Result<()> {
     options.open(path)?.write_all(text.as_bytes())
 }
 
-fn load_ratings(path: &Path) -> std::io::Result<RatingBook> {
-    if !path.exists() {
-        return Ok(RatingBook::default());
-    }
-    let json = std::fs::read_to_string(path)?;
-    RatingBook::from_json(&json).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-}
-
-/// Temp file plus rename, so a crash mid-write leaves the previous book
-/// intact rather than half a JSON document.
-fn save_ratings(path: &Path, book: &RatingBook) -> std::io::Result<()> {
-    write_atomically(path, &book.to_json())
-}
-
 fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, text)?;
@@ -1260,7 +1291,8 @@ impl Server {
     pub async fn bind(addr: &str, options: ServeOptions) -> std::io::Result<Self> {
         Self::check_options(&options)?;
         let listener = TcpListener::bind(addr).await?;
-        Self::with_listener(listener, options)
+        let kept = load_kept(options.data_dir.as_deref(), options.database.as_deref()).await?;
+        Self::with_listener(listener, options, kept)
     }
 
     /// Serves on a listener somebody else bound. It exists for a host that
@@ -1269,10 +1301,19 @@ impl Server {
     /// IPv6 on every platform (Windows defaults the option on). The option
     /// is set by the caller rather than here so this crate takes no socket
     /// dependency of its own. Must be called inside a tokio runtime.
+    ///
+    /// **A host keeps nothing**, so this refuses a data directory: opening
+    /// a store is an await, and both clients call this from a function
+    /// that is not one — and a game hosted from a player's own machine is
+    /// never rated (`docs/identity-and-rating.md` §5), so there is
+    /// nothing a store would hold for it.
     pub fn from_listener(listener: std::net::TcpListener, options: ServeOptions) -> std::io::Result<Self> {
         Self::check_options(&options)?;
+        if options.data_dir.is_some() {
+            return Err(std::io::Error::other("a server on a listener somebody else bound keeps no data directory; use `bind`"));
+        }
         listener.set_nonblocking(true)?;
-        Self::with_listener(TcpListener::from_std(listener)?, options)
+        Self::with_listener(TcpListener::from_std(listener)?, options, Kept::nothing())
     }
 
     fn check_options(options: &ServeOptions) -> std::io::Result<()> {
@@ -1285,9 +1326,9 @@ impl Server {
         Ok(())
     }
 
-    fn with_listener(listener: TcpListener, options: ServeOptions) -> std::io::Result<Self> {
+    fn with_listener(listener: TcpListener, options: ServeOptions, kept: Kept) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let Kept { identity, lasting, ratings, players, tournaments } = load_kept(options.data_dir.as_deref())?;
+        let Kept { identity, lasting, ratings, tournaments, store } = kept;
         let cards = fixtures::sample_registry();
         // The rotating pool is gated per format, and for a better reason
         // than a pinned deck: an operator who pins a deck names it and
@@ -1314,7 +1355,7 @@ impl Server {
         let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
-            registry: Arc::new(StdMutex::new(Registry { ratings, players, tournaments, ..Registry::default() })),
+            registry: Arc::new(StdMutex::new(Registry { ratings, tournaments, ..Registry::default() })),
             options,
             base_seed,
             pinned,
@@ -1322,6 +1363,7 @@ impl Server {
             card_pool: card_pool_hash(&cards_for_hash).into(),
             identity: Arc::new(identity),
             lasting,
+            store: store.map(Writer::start),
         };
         Ok(Server { listener, shared })
     }
@@ -1815,6 +1857,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             winner: outcome.and_then(|(winner, _)| winner),
             reason: outcome.map(|(_, reason)| reason),
             rated,
+            format,
             engine: ENGINE.to_string(),
             card_pool: shared.card_pool.to_string(),
             record: netrunner_identity::sha256_hex(&record),
@@ -1842,7 +1885,11 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             };
             shared.table_ended(table, result);
         }
-        let ([Some(corp), Some(runner)], Some((Some(winner), _))) = (keys, outcome) else { return };
+        let [Some(corp), Some(runner)] = keys else { return };
+        if corp != runner {
+            shared.remember_pairing(&corp.rating_id(), &runner.rating_id(), ended_at);
+        }
+        let Some((Some(winner), _)) = outcome else { return };
         if !rated {
             return;
         }
@@ -1850,7 +1897,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             Side::Corp => Outcome::CorpWin,
             Side::Runner => Outcome::RunnerWin,
         };
-        let Some(changes) = shared.rate(&corp.rating_id(), &runner.rating_id(), outcome, &signed) else { return };
+        let Some(changes) = shared.rate(&corp.rating_id(), &runner.rating_id(), format, outcome, &signed, ended_at) else { return };
         // To each seat's current connection, which a resume may have
         // replaced; the match has already let go of it.
         for ticket in tickets {

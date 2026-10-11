@@ -233,7 +233,16 @@ async fn a_tournament_outlives_the_daemon_that_took_its_registrations() {
     )
     .await;
     let ServerMessage::Tournament { tournament: before } = next(&mut entrant).await else { panic!() };
-    assert!(std::fs::read_to_string(dir.join("tournaments.json")).unwrap().contains(&made.id));
+    // The store's writer lands the row a moment after the answer.
+    let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !store.tournaments().await.unwrap().iter().any(|row| row.id == made.id && row.document.contains(&bo.public_key().to_string())) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the tournament is in the store, with its entrant");
+    store.close().await;
 
     let (again, same_key) = start(Some(dir.clone())).await;
     assert_eq!(same_key, server_key, "the same data directory is the same server");

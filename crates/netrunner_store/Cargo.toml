@@ -1,0 +1,23 @@
+[package]
+name = "netrunner_store"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# `any` is the one API over both databases; which drivers are compiled in
+# is this crate's own features, so a consumer that opens no database (the
+# desktop's in-process host) builds none of them.
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "any"] }
+
+[features]
+default = []
+# The zero-setup database: a file under the daemon's data directory,
+# SQLite bundled so nothing has to be installed on the machine.
+sqlite = ["sqlx/sqlite"]
+# The popular server's, by `--database postgres://…`.
+postgres = ["sqlx/postgres", "sqlx/tls-rustls"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

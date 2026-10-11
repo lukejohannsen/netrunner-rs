@@ -796,10 +796,10 @@ impl OnlineScreen {
                         }
                     }
                 }
-                AttachedEvent::Standing { key, standing } => {
+                AttachedEvent::Standing { key, standings } => {
                     if let Some(page) = self.page_mut() {
                         page.key = key;
-                        page.standing = StandingHere::from_reply(key, standing);
+                        page.standing = StandingHere::from_reply(key, standings);
                     }
                 }
                 AttachedEvent::Link(Link::Down(error)) => {
@@ -1573,7 +1573,7 @@ impl OnlineScreen {
             head.extend(self.hosting_lines.lines().map(|line| Line::from(line.to_string())));
         }
         if let Some(lobby) = &page.lobby {
-            head.push(Line::from(netrunner_client::identity::lobby_rating_line(lobby.rated, page.hosting, &page.standing)));
+            head.push(Line::from(netrunner_client::identity::lobby_rating_line(lobby.rated, page.hosting, lobby.format, &page.standing)));
         }
         let [top, list] = Layout::default()
             .direction(Direction::Vertical)

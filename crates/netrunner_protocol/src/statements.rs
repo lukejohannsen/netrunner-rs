@@ -19,6 +19,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, Side};
 use netrunner_identity::{sha256_hex, PublicKey, Signed};
 use netrunner_session::GameEndReason;
@@ -198,6 +199,10 @@ pub struct Receipt {
     pub reason: Option<GameEndReason>,
     /// Whether the game counts: two different proved keys, and a winner.
     pub rated: bool,
+    /// The format the game was played in, which is the ladder a rated
+    /// one counts toward (Phase 4 §10) — so the results log folds into a
+    /// ladder per format with nothing but the log.
+    pub format: NsgFormat,
     /// The server's build, and a hash of the card pool it played with:
     /// "this record replays" is only checkable against the rules it was
     /// played under, and a record older than a rules change fails replay

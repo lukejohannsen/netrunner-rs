@@ -15,7 +15,7 @@ use netrunner_core::decks;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_identity::{Identity, PublicKey, Signed};
-use netrunner_rating::{RatingBook, Track};
+use netrunner_store::{RatingRow, Store};
 use netrunner_server::protocol::statements::{Receipt, SeatStatement, SEAT_TAG};
 use netrunner_server::protocol::Chair;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
@@ -137,22 +137,32 @@ async fn play_one(url: &str, corp_seat: (Option<&Identity>, &str), runner_seat: 
     }
 }
 
-/// The daemon writes the book after the session task ends, a moment after
-/// the players see `GameEnded`; poll for it.
-async fn wait_for_book(path: &Path, ready: impl Fn(&RatingBook) -> bool) -> RatingBook {
+/// The store the daemon in `dir` writes, opened beside it (SQLite takes
+/// a second reader; the daemon's writer is the only writer).
+async fn store_in(dir: &Path) -> Store {
+    Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.expect("the daemon's store opens")
+}
+
+/// The daemon's writer lands the rows after the session task ends, a
+/// moment after the players see `GameEnded`; poll for them.
+async fn wait_for_rows(store: &Store, ready: impl Fn(&[RatingRow]) -> bool) -> Vec<RatingRow> {
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            if let Ok(json) = std::fs::read_to_string(path)
-                && let Ok(book) = RatingBook::from_json(&json)
-                && ready(&book)
+            if let Ok(rows) = store.ratings().await
+                && ready(&rows)
             {
-                return book;
+                return rows;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
     .await
-    .expect("the rating book is written within 10s")
+    .expect("the rating rows are written within 10s")
+}
+
+/// `key`'s row in `rows` for `format` and `role`.
+fn row<'a>(rows: &'a [RatingRow], key: &str, format: &str, role: &str) -> Option<&'a RatingRow> {
+    rows.iter().find(|row| row.key == key && row.format == format && row.role == role)
 }
 
 /// A match that should go unrated has ended when the list is empty; a
@@ -173,7 +183,10 @@ async fn assert_nothing_rated(url: &str, dir: &Path) {
     .await
     .expect("the match ends within 10s");
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!dir.join("ratings.json").exists(), "an unrated game wrote a rating book");
+    let store = store_in(dir).await;
+    assert!(store.ratings().await.unwrap().is_empty(), "an unrated game wrote a rating");
+    assert_eq!(store.result_count().await.unwrap(), 0, "an unrated game is not in the results index");
+    store.close().await;
 }
 
 #[tokio::test]
@@ -275,13 +288,21 @@ async fn a_rating_follows_the_key_and_never_the_name() {
     for (round, (ann_name, bo_name)) in [(1u32, ("ann", "bo")), (2, ("annie", "bo"))] {
         let (url, _) = start(Some(dir.clone())).await;
         play_one(&url, (Some(&ann), ann_name), (Some(&bo), bo_name)).await;
-        let book = wait_for_book(&dir.join("ratings.json"), |book| book.standing(Track::HumanVsHuman, &ann_id).is_some_and(|standing| standing.corp.wins == round)).await;
-        assert_eq!(book.standing(Track::HumanVsHuman, &bo_id).unwrap().runner.losses, round);
-        assert!(book.standing(Track::HumanVsHuman, ann_name).is_none(), "nothing is filed under a name");
+        // The games were in the Startup lobby, so the Startup ladder is
+        // the one that moved (Phase 4 §10: a ladder per format).
+        let store = store_in(&dir).await;
+        let rows = wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == i64::from(round))).await;
+        assert_eq!(row(&rows, &bo_id, "startup", "runner").unwrap().losses, i64::from(round));
+        assert!(rows.iter().all(|row| row.format == "startup"), "no other ladder moved: {rows:?}");
+        assert!(rows.iter().all(|row| row.key != ann_name), "nothing is filed under a name");
+        store.close().await;
     }
-    let players: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("players.json")).unwrap()).unwrap();
-    assert_eq!(players[&ann_id]["name"], "annie", "the name a key gave last");
-    assert_eq!(players[&bo_id]["name"], "bo");
+    let store = store_in(&dir).await;
+    assert_eq!(store.player(&ann_id).await.unwrap().unwrap().name, "annie", "the name a key gave last");
+    assert_eq!(store.player(&bo_id).await.unwrap().unwrap().name, "bo");
+    let pairing = store.last_pairing(&ann_id, &bo_id).await.unwrap().expect("the pair is remembered");
+    assert_eq!((pairing.corp.as_str(), pairing.runner.as_str()), (ann_id.as_str(), bo_id.as_str()), "which chairs they took");
+    store.close().await;
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -472,12 +493,15 @@ async fn a_rated_game_ends_in_a_signed_receipt_both_players_get() {
     // nothing for a connection that proved none.
     let (mut socket, _) = identify(&url, &ann).await;
     send(&mut socket, ClientMessage::MyStanding).await;
-    let ServerMessage::Standing { key, standing } = next(&mut socket).await else { panic!("expected Standing") };
+    let ServerMessage::Standing { key, standings } = next(&mut socket).await else { panic!("expected Standing") };
     assert_eq!(key, Some(ann.public_key()));
-    assert_eq!(standing.expect("a rated game").corp.wins, 1);
+    assert_eq!(standings.len(), 1, "one ladder played on: {standings:?}");
+    assert_eq!(standings[0].format, NsgFormat::Startup, "the lobby's format is the ladder");
+    assert_eq!(read.format, NsgFormat::Startup, "and the receipt names it");
+    assert_eq!(standings[0].standing.corp.wins, 1);
     let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     send(&mut socket, ClientMessage::MyStanding).await;
-    assert!(matches!(next(&mut socket).await, ServerMessage::Standing { key: None, standing: None }));
+    assert!(matches!(next(&mut socket).await, ServerMessage::Standing { key: None, standings } if standings.is_empty()));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -496,25 +520,30 @@ async fn a_withheld_seat_signature_is_still_rated_and_the_receipt_says_so() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The book is a cache of the results log: removed, it is rebuilt exactly;
-/// and a line nobody signed stops the rebuild rather than count.
+/// The store is an index of the results log: emptied, it is rebuilt
+/// exactly; and a line nobody signed stops the rebuild rather than count.
 #[tokio::test]
-async fn the_rating_book_is_rebuilt_exactly_from_the_results_log() {
+async fn the_store_is_rebuilt_exactly_from_the_results_log() {
     let dir = scratch("rebuild");
     let (url, _) = start(Some(dir.clone())).await;
+    let ann = player(1).public_key().rating_id();
     play_rated(&url, &player(1), &player(2), true).await;
     play_rated(&url, &player(1), &player(2), true).await;
-    let ratings = dir.join("ratings.json");
-    let book = std::fs::read_to_string(&ratings).unwrap();
-    std::fs::remove_file(&ratings).unwrap();
-    assert_eq!(netrunner_server::serve::rebuild_ratings(&dir).unwrap(), 2);
-    assert_eq!(std::fs::read_to_string(&ratings).unwrap(), book, "the same book, byte for byte");
+    let store = store_in(&dir).await;
+    let rows = wait_for_rows(&store, |rows| row(rows, &ann, "startup", "corp").is_some_and(|row| row.wins == 2)).await;
+    let results = store.results_of(&ann).await.unwrap();
+    assert_eq!(results.len(), 2);
+    store.replace_rebuilt(&[], &[]).await.unwrap();
+    assert_eq!(netrunner_server::serve::rebuild(&dir, None).await.unwrap(), 2);
+    assert_eq!(store.ratings().await.unwrap(), rows, "the same rows, number for number");
+    assert_eq!(store.results_of(&ann).await.unwrap(), results, "the same results, receipt for receipt");
+    store.close().await;
 
     let results = dir.join("results.jsonl");
     let forged = std::fs::read_to_string(&results).unwrap().replacen("\"rated\\\":true", "\"rated\\\":false", 1);
     assert_ne!(forged, std::fs::read_to_string(&results).unwrap(), "the test edited a line");
     std::fs::write(&results, forged).unwrap();
-    let error = netrunner_server::serve::rebuild_ratings(&dir).unwrap_err().to_string();
+    let error = netrunner_server::serve::rebuild(&dir, None).await.unwrap_err().to_string();
     assert!(error.contains("line 1"), "{error}");
     let _ = std::fs::remove_dir_all(&dir);
 }

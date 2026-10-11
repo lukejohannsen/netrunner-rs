@@ -26,7 +26,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use netrunner_core::format::NsgFormat;
 use netrunner_identity::Identity;
+use netrunner_protocol::FormatStanding;
 /// Re-exported for the two clients, which name a key only to say whose a
 /// tournament entry is and never depend on the identity crate themselves.
 pub use netrunner_identity::{PublicKey, Signed};
@@ -162,8 +164,10 @@ pub fn rated_line(side: netrunner_core::rules::Side, before: &netrunner_protocol
 /// What a server has said about this connection's standing, as the
 /// Server page keeps it between the answer and the next game (Phase 4 §7
 /// stage 5). The server's `Standing` reply folds "no key" and "no rated
-/// game yet" into one `None`; the key it echoes tells them apart, and the
-/// page wants a third state for the moment before any answer.
+/// game yet" into one empty list; the key it echoes tells them apart, and
+/// the page wants a third state for the moment before any answer. A
+/// server's ladders are one per format (Phase 4 §10), so a rated key has
+/// a standing per format it has played in.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum StandingHere {
     /// Not answered yet.
@@ -173,28 +177,38 @@ pub enum StandingHere {
     NoKey,
     /// A key, and no rated game at this server yet.
     Unrated,
-    Rated(netrunner_protocol::Standing),
+    Rated(Vec<FormatStanding>),
 }
 
 impl StandingHere {
-    /// The server's `Standing { key, standing }`, read.
-    pub fn from_reply(key: Option<PublicKey>, standing: Option<netrunner_protocol::Standing>) -> Self {
-        match (key, standing) {
+    /// The server's `Standing { key, standings }`, read.
+    pub fn from_reply(key: Option<PublicKey>, standings: Vec<FormatStanding>) -> Self {
+        match (key, standings.is_empty()) {
             (None, _) => StandingHere::NoKey,
-            (Some(_), None) => StandingHere::Unrated,
-            (Some(_), Some(standing)) => StandingHere::Rated(standing),
+            (Some(_), true) => StandingHere::Unrated,
+            (Some(_), false) => StandingHere::Rated(standings),
+        }
+    }
+
+    /// This key's standing in `format` here, if it has one.
+    pub fn in_format(&self, format: NsgFormat) -> Option<&netrunner_protocol::Standing> {
+        match self {
+            StandingHere::Rated(standings) => standings.iter().find(|entry| entry.format == format).map(|entry| &entry.standing),
+            _ => None,
         }
     }
 }
 
-/// The line over Find a game, for a lobby whose games are `rated` or not
-/// (`LobbyInfo::rated`) at a server this connection stands at as
-/// `standing`; `hosting` names the case where the server is the person's
-/// own, which never rates. One sentence, because the page is read before
-/// a game, not after one. The word is "unrated", never "casual": while a
-/// format was named Casual (Unrestricted since Phase 4 §8), "Casual ·
-/// casual" on its lobby's row said nothing.
-pub fn lobby_rating_line(rated: bool, hosting: bool, standing: &StandingHere) -> String {
+/// The line over Find a game, for a lobby in `format` whose games are
+/// `rated` or not (`LobbyInfo::rated`) at a server this connection stands
+/// at as `standing`; `hosting` names the case where the server is the
+/// person's own, which never rates. One sentence, because the page is
+/// read before a game, not after one, and the lobby's format's standing
+/// alone, because that is the ladder a game here moves. The word is
+/// "unrated", never "casual": while a format was named Casual
+/// (Unrestricted since Phase 4 §8), "Casual · casual" on its lobby's row
+/// said nothing.
+pub fn lobby_rating_line(rated: bool, hosting: bool, format: NsgFormat, standing: &StandingHere) -> String {
     if hosting {
         return "Unrated: a game hosted from this machine is never rated.".to_string();
     }
@@ -205,14 +219,25 @@ pub fn lobby_rating_line(rated: bool, hosting: bool, standing: &StandingHere) ->
         StandingHere::Unasked => "Rated here.".to_string(),
         StandingHere::NoKey => "Unrated for you: this client has no key, so nothing here counts.".to_string(),
         StandingHere::Unrated => "Rated here. No rated games here yet.".to_string(),
-        StandingHere::Rated(standing) => format!("Rated here. {}", standing_lines(Some(standing)).join(" · ")),
+        StandingHere::Rated(_) => match standing.in_format(format) {
+            Some(standing) => format!("Rated here. In {format:?}: {}", role_lines(standing).join(" · ")),
+            None => format!("Rated here. No rated games in {format:?} yet."),
+        },
     }
 }
 
-/// A standing a server reported, one line per side it has played:
-/// `As Corp: 1612 ± 120 (3–1–0)`. Empty for a key with no rated game.
-pub fn standing_lines(standing: Option<&netrunner_protocol::Standing>) -> Vec<String> {
-    let Some(standing) = standing else { return vec!["No rated games there yet".to_string()] };
+/// The standings a server reported, one line per format and per side
+/// played in it: `Standard · As Corp: 1612 ± 120 (3–1–0)`. One line
+/// saying so for a key with no rated game.
+pub fn standing_lines(standings: &[FormatStanding]) -> Vec<String> {
+    if standings.is_empty() {
+        return vec!["No rated games there yet".to_string()];
+    }
+    standings.iter().flat_map(|entry| role_lines(&entry.standing).into_iter().map(move |line| format!("{:?} · {line}", entry.format))).collect()
+}
+
+/// One standing's sides, each that has played: `As Corp: 1612 ± 120 (3–1–0)`.
+fn role_lines(standing: &netrunner_protocol::Standing) -> Vec<String> {
     [("Corp", &standing.corp), ("Runner", &standing.runner)]
         .into_iter()
         .filter(|(_, record)| record.games() > 0)
@@ -359,17 +384,20 @@ mod tests {
         standing.runner.wins = 2;
         standing.runner.losses = 1;
         standing.runner.rating = rating(1580.0, 200.0);
-        assert_eq!(standing_lines(Some(&standing)), vec!["As Runner: 1580 ± 200 (2–0–1)"], "a side never played is left out");
-        assert_eq!(standing_lines(None), vec!["No rated games there yet"]);
+        let standings = vec![FormatStanding { format: NsgFormat::Standard, standing }];
+        assert_eq!(standing_lines(&standings), vec!["Standard · As Runner: 1580 ± 200 (2–0–1)"], "a side never played is left out");
+        assert_eq!(standing_lines(&[]), vec!["No rated games there yet"]);
         // The lobby's line: what the lobby offers first, then what this
-        // connection stands to gain there.
-        assert_eq!(lobby_rating_line(true, true, &StandingHere::Unasked), "Unrated: a game hosted from this machine is never rated.");
-        assert_eq!(lobby_rating_line(false, false, &StandingHere::Rated(standing)), "Unrated: nothing in this lobby is rated.");
-        assert_eq!(lobby_rating_line(true, false, &StandingHere::NoKey), "Unrated for you: this client has no key, so nothing here counts.");
-        assert_eq!(lobby_rating_line(true, false, &StandingHere::Unrated), "Rated here. No rated games here yet.");
-        assert_eq!(lobby_rating_line(true, false, &StandingHere::Rated(standing)), "Rated here. As Runner: 1580 ± 200 (2–0–1)");
-        assert_eq!(StandingHere::from_reply(None, None), StandingHere::NoKey);
-        assert_eq!(StandingHere::from_reply(Some(Identity::from_secret([7; 32]).public_key()), None), StandingHere::Unrated);
+        // connection stands to gain there — on the lobby's own ladder.
+        assert_eq!(lobby_rating_line(true, true, NsgFormat::Standard, &StandingHere::Unasked), "Unrated: a game hosted from this machine is never rated.");
+        assert_eq!(lobby_rating_line(false, false, NsgFormat::Standard, &StandingHere::Rated(standings.clone())), "Unrated: nothing in this lobby is rated.");
+        assert_eq!(lobby_rating_line(true, false, NsgFormat::Standard, &StandingHere::NoKey), "Unrated for you: this client has no key, so nothing here counts.");
+        assert_eq!(lobby_rating_line(true, false, NsgFormat::Standard, &StandingHere::Unrated), "Rated here. No rated games here yet.");
+        assert_eq!(lobby_rating_line(true, false, NsgFormat::Standard, &StandingHere::Rated(standings.clone())), "Rated here. In Standard: As Runner: 1580 ± 200 (2–0–1)");
+        assert_eq!(lobby_rating_line(true, false, NsgFormat::Startup, &StandingHere::Rated(standings.clone())), "Rated here. No rated games in Startup yet.");
+        assert_eq!(StandingHere::from_reply(None, Vec::new()), StandingHere::NoKey);
+        assert_eq!(StandingHere::from_reply(Some(Identity::from_secret([7; 32]).public_key()), Vec::new()), StandingHere::Unrated);
+        assert_eq!(StandingHere::from_reply(Some(Identity::from_secret([7; 32]).public_key()), standings.clone()), StandingHere::Rated(standings));
     }
 
     #[test]

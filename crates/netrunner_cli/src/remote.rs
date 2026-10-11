@@ -21,7 +21,7 @@ pub async fn print_standing(url: &str) -> Result<(), Box<dyn std::error::Error>>
     }
     let standing = netrunner_client::remote::standing(url, &credentials).await?;
     println!("At {url}");
-    for line in netrunner_client::identity::standing_lines(standing.as_ref()) {
+    for line in netrunner_client::identity::standing_lines(&standing) {
         println!("  {line}");
     }
     Ok(())

@@ -8,9 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::glicko2::{Glicko2, Rating, Score};
 
-/// Which ladder a match counts toward. Two, and they never mix: a bot's
-/// benchmark standing must not move because a person played it, and a
-/// person's standing is against people.
+/// Which ladder a match counts toward. A ladder per format between
+/// people, and the bots' benchmark, and they never mix: a bot's benchmark
+/// standing must not move because a person played it, and a person's
+/// standing is against people — **in one format** (Phase 4 §10,
+/// 11 October 2026): a Startup deck says nothing about a Standard one,
+/// and the person's own ladder reads "1450 (Standard Ladder)". Decided
+/// over one rating across formats, which was `HumanVsHuman` until then.
 ///
 /// **There is no people-against-bots track, and there was one.** A rating
 /// is a claim to someone else, so it means something only between people
@@ -20,12 +24,81 @@ use crate::glicko2::{Glicko2, Rating, Score};
 /// which is a win/loss record (`netrunner_client::record`) and never was
 /// the Glicko-2 number. `HumanVsBot` was retired for that reason; a book
 /// written while it existed still loads (see [`RatingBook`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+///
+/// **Written as one word** — `ladder:standard`, `bot_benchmark` — in the
+/// book's JSON and in a store's `format` column, because a track is a map
+/// key there and JSON keys are strings; `Display` and `FromStr` are that
+/// spelling, and serde goes through them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Track {
-    /// People against people — the competitive ladder, kept by a server.
-    HumanVsHuman,
+    /// People against people in one format — the competitive ladder,
+    /// kept by a server.
+    Ladder(Format),
     /// Bots against bots, offline: `netrunner_cli bench`.
     BotBenchmark,
+}
+
+/// A format, as a ladder names one. The crate's own type rather than the
+/// engine's `NsgFormat`, so this crate stays engine-free; consumers
+/// convert, and the spelling is the engine's lowercase name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Format {
+    Startup,
+    Standard,
+    Eternal,
+    Snapshot,
+    Unrestricted,
+}
+
+impl Format {
+    pub const ALL: [Format; 5] = [Format::Startup, Format::Standard, Format::Eternal, Format::Snapshot, Format::Unrestricted];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::Startup => "startup",
+            Format::Standard => "standard",
+            Format::Eternal => "eternal",
+            Format::Snapshot => "snapshot",
+            Format::Unrestricted => "unrestricted",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Format> {
+        Format::ALL.into_iter().find(|format| format.name() == name)
+    }
+}
+
+impl std::fmt::Display for Track {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Track::Ladder(format) => write!(f, "ladder:{}", format.name()),
+            Track::BotBenchmark => f.write_str("bot_benchmark"),
+        }
+    }
+}
+
+impl std::str::FromStr for Track {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text == "bot_benchmark" {
+            return Ok(Track::BotBenchmark);
+        }
+        text.strip_prefix("ladder:").and_then(Format::from_name).map(Track::Ladder).ok_or_else(|| format!("no track is called {text:?}"))
+    }
+}
+
+impl Serialize for Track {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Track {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 /// The chair a participant sat in. The crate's own type rather than the
@@ -129,7 +202,7 @@ fn known_tracks<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTr
     Ok(by_name
         .into_iter()
         .filter_map(|(name, standings)| {
-            let track = serde_json::from_value(serde_json::Value::String(name)).ok()?;
+            let track: Track = name.parse().ok()?;
             Some((track, standings))
         })
         .collect())
@@ -176,6 +249,20 @@ impl RatingBook {
         self.tracks.values().all(BTreeMap::is_empty)
     }
 
+    /// Files `standing` under `participant` on `track` as it is, replacing
+    /// what was there: how a book is loaded from a store that keeps one
+    /// row per rating rather than the whole book (Phase 4 §10). Never how
+    /// a game is counted — that is `record`.
+    pub fn insert(&mut self, track: Track, participant: &str, standing: Standing) {
+        self.track_mut(track).insert(participant.to_string(), standing);
+    }
+
+    /// Every standing in the book, by track then participant: what a
+    /// store writes out when the book is rebuilt from the log.
+    pub fn entries(&self) -> impl Iterator<Item = (Track, &str, &Standing)> {
+        self.tracks.iter().flat_map(|(track, standings)| standings.iter().map(move |(name, standing)| (*track, name.as_str(), standing)))
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("a RatingBook serializes")
     }
@@ -217,17 +304,17 @@ mod tests {
     #[test]
     fn tracks_never_mix() {
         let mut book = RatingBook::default();
-        book.record(Track::HumanVsHuman, "ann", "bo", Outcome::CorpWin);
+        book.record(Track::Ladder(Format::Standard), "ann", "bo", Outcome::CorpWin);
         assert!(book.standing(Track::BotBenchmark, "ann").is_none());
-        assert!(book.standing(Track::HumanVsHuman, "bo").unwrap().runner.rating.rating < 1500.0);
+        assert!(book.standing(Track::Ladder(Format::Standard), "bo").unwrap().runner.rating.rating < 1500.0);
     }
 
     #[test]
     fn a_book_holding_a_retired_track_loads_with_the_kept_tracks_intact() {
         let mut book = RatingBook::default();
-        book.record(Track::HumanVsHuman, "ann", "bo", Outcome::CorpWin);
+        book.record(Track::Ladder(Format::Standard), "ann", "bo", Outcome::CorpWin);
         let mut json: serde_json::Value = serde_json::from_str(&book.to_json()).unwrap();
-        let ann = json["tracks"]["HumanVsHuman"].clone();
+        let ann = json["tracks"]["ladder:standard"].clone();
         json["tracks"]["HumanVsBot"] = ann;
         assert_eq!(RatingBook::from_json(&json.to_string()).unwrap(), book);
     }
@@ -252,7 +339,7 @@ mod tests {
     #[test]
     fn the_book_round_trips_through_json() {
         let mut book = RatingBook::default();
-        book.record(Track::HumanVsHuman, "ann", "bo", Outcome::Draw);
+        book.record(Track::Ladder(Format::Standard), "ann", "bo", Outcome::Draw);
         book.record(Track::BotBenchmark, "bot:mcts@32", "bot:random", Outcome::CorpWin);
         let json = book.to_json();
         assert_eq!(RatingBook::from_json(&json).unwrap(), book);

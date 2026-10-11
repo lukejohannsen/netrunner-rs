@@ -418,7 +418,7 @@ impl ServerState {
     /// The line over Find a game: what the lobby offers and what this
     /// person stands to gain there (`identity::lobby_rating_line`).
     pub fn rating_line(&self, lobby: &LobbyInfo) -> String {
-        netrunner_client::identity::lobby_rating_line(lobby.rated, self.hosting, &self.standing)
+        netrunner_client::identity::lobby_rating_line(lobby.rated, self.hosting, lobby.format, &self.standing)
     }
 
     pub fn corp_decks(&self) -> Vec<&DeckFile> {

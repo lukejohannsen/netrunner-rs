@@ -168,6 +168,15 @@ jobs:
         run: cargo test -p netrunner_cli --features onnx --locked
       - name: netrunner_selfplay with ONNX
         run: cargo check -p netrunner_selfplay --features onnx --locked
+      # The store's own tests need a driver, so they are the `sqlite`
+      # feature's; a workspace build turns it on through the daemon's
+      # default features, and this proves the crate alone does too. The
+      # `postgres` driver is checked for compiling; its tests against a
+      # live server are Phase 4 §10 stage 3.
+      - name: netrunner_store with SQLite, and Postgres compiling
+        run: |
+          cargo test -p netrunner_store --features sqlite --locked
+          cargo check -p netrunner_store --features postgres --locked
       # Check, not test, and deliberately: with `extension-module` PyO3 does
       # not link libpython, so no runnable test binary exists by design. What
       # this proves is that the maturin wheel path still compiles.
