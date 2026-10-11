@@ -222,10 +222,11 @@ pub(crate) fn encounter_ability(state: &mut GameState, registry: &CardRegistry, 
 pub(crate) fn trace(
     state: &mut GameState,
     registry: &CardRegistry,
-    base: u32,
-    on_success: &Effect,
+    trace: &Effect,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Effect::Trace { base, .. } = trace else { return Ok(None) };
+    let base = *base;
     let what = WouldHappen::Trace { base };
     let Some(card) = ctx.acting_card else { return Ok(None) };
     if base == 0 || state.pending_prevention.is_some() || !could_prevent(state, registry, &what) {
@@ -239,7 +240,7 @@ pub(crate) fn trace(
         target: None,
         target_install: None,
         event: ctx.triggering_event.cloned(),
-        continuation: Some(Effect::Trace { base, on_success: Box::new(on_success.clone()) }),
+        continuation: Some(trace.clone()),
         heard: Default::default(),
         not_the_first_this_turn: false,
         fired: 0,
@@ -478,9 +479,9 @@ fn finish_within(
     // Started here rather than resolved again as `Effect::Trace`, which
     // would ask again.
     if let (WouldHappen::Trace { base }, Some(due)) = (&pending.what, &pending.waiting) {
-        if let Some(Effect::Trace { on_success, .. }) = &due.continuation {
+        if let Some(Effect::Trace { on_success, on_failure, .. }) = &due.continuation {
             let base = if prevented > 0 { 0 } else { *base };
-            events.extend(ability::start_trace(state, base, on_success, Some(due.card.clone()), due.install));
+            events.extend(ability::start_trace(state, base, on_success, on_failure.as_deref(), Some(due.card.clone()), due.install));
         }
     } else if let (WouldHappen::Draw { .. }, true) = (&pending.what, left > 0) {
         // The cards are drawn first, and then what was waiting on them

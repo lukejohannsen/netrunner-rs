@@ -1,0 +1,43 @@
+{
+  "id": "spinal_modem",
+  "title": "Spinal Modem",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    {
+      "Using": "Icebreaker"
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTraceSuccessful",
+      "requirement": "DuringRun",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever there is a successful trace during a run, suffer 1 core damage."
+    }
+  ],
+  "built_from": 2002,
+  "is_playable": true
+}

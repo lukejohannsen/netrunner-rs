@@ -1312,6 +1312,7 @@ mod tests {
             corp_bid: None,
             effect_on_success: DslEffect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
+            effect_on_failure: None,
         });
 
         assert_roundtrips(&state, &registry);

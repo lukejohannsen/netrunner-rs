@@ -289,7 +289,17 @@ pub enum Effect {
     /// returns immediately; `rules::trace::submit_runner_bid` is what
     /// eventually evaluates `on_success`, if the trace succeeds. `Box`ed
     /// since this is the first `Effect` variant that nests another `Effect`.
-    Trace { base: u32, on_success: Box<Effect> },
+    /// `on_failure` is the trace's other outcome, resolved instead when the
+    /// Runner's total meets the Corp's — Bernice Mai's "If unsuccessful,
+    /// trash Bernice Mai" (CR 10.8.4). Composition didn't work: an avoided
+    /// trace resolved nothing, and no effect after the trace could ask how
+    /// it ended, since the trace parks for two bids.
+    Trace {
+        base: u32,
+        on_success: Box<Effect>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on_failure: Option<Box<Effect>>,
+    },
     /// Grants `count` additional cards accessed from `server` on top of the
     /// normal single-card access, for the remainder of the current run —
     /// e.g. a Runner program's "access 1 additional card from HQ" ability.
@@ -3105,8 +3115,13 @@ impl Effect {
                     otherwise.for_each_effect(f);
                 }
             }
-            Effect::Trace { on_success: effect, .. }
-            | Effect::SetRunEndedEffect(effect)
+            Effect::Trace { on_success, on_failure, .. } => {
+                on_success.for_each_effect(f);
+                if let Some(on_failure) = on_failure {
+                    on_failure.for_each_effect(f);
+                }
+            }
+            Effect::SetRunEndedEffect(effect)
             | Effect::Unpreventable(effect)
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
@@ -3368,7 +3383,7 @@ mod tests {
 
     #[test]
     fn trace_round_trips_through_json() {
-        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) };
+        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None };
         let trace_json = serde_json::to_string(&trace).unwrap();
         assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":{"Fixed":1}}}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&trace_json).unwrap(), trace);
@@ -3441,7 +3456,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![
-                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) },
+                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None },
                     Effect::SetAccessReplacement { server: Some(ServerId::Hq), effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
                 texts: Vec::new(),
