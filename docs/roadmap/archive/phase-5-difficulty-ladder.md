@@ -3851,3 +3851,19 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 
 **Verified.** `a_replaced_breach_is_read_as_what_replaces_it` (Stargate three looks, Khusyuk two over two Corroders and a Cleaver, Bank Job's 8[credit] on a remote and nothing on HQ, and its 8[credit] held) and `stargate_is_worth_its_looks_over_a_breach`. Engine untouched; `netrunner_bots` only.
 
+## 67. A card that lowers the strength of ice is the break credits it saves: The Tungsten Tailor and Monkeywrench are installed — DONE (`claude/bot-blindness-strength-cuts`, 11 October 2026)
+
+**The debt.** Two cards on the blind list lower the strength of ice for as long as they are on the table: The Tungsten Tailor's "each piece of ice gets −1 strength" (random seats 10, the planner 0) and Monkeywrench's "host ice gets −2 strength" (5).
+
+**Why.** A strength is asked of the table (`continuous::ice_strength`), so an installed reducer did lower every break the run leaf priced — but only on a run made in the same line as the install, and the card itself read as its price and its memory. Nothing it does pays a credit, draws a card or breaks a subroutine, so `install_delta` had nothing to credit it with.
+
+**What is read now.** `strength_cut_value`: the break credits a run costs less with the card on the table than without it (`server_break_cost`, both ways), on the server where it saves the most — a run a turn over the horizon at `future_credit_weight`, read as income is — and a server it opens, one no breaker in the rig could get through before, at what the Corp's table charges for ice the rig cannot break (`unbreakable_ice_weight`, in credits). A card hosted on ice (Monkeywrench) is tried on every rezzed piece. The held card and the installed one are read alike (`rig_strength_cut_value` takes the card off the table to compare), as `access_trash_value` is. A reducer with no breaker to pump saves nothing, the cheaper direction.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` (737b0d3) against this branch, the same games:
+
+- Seed 2: **The Tungsten Tailor 0 → 12**, Monkeywrench 0 → 1, Parasite 17 → 14; Corp share 0.467 → 0.467 (+3 / −3).
+- Seed 3: **The Tungsten Tailor 0 → 10**, Monkeywrench 0 → 3, Chisel 3 → 4; Corp share 0.514 → 0.514 (+6 / −6).
+- Pooled +9 / −9, z 0.00.
+
+**Verified.** `a_strength_cut_is_the_pumps_it_saves`: over a rezzed Tollbooth with Gordian Blade the Tailor saves one pump and a hosted Monkeywrench two, held and installed alike, and nothing with no breaker. Engine untouched; `netrunner_bots` only.
+

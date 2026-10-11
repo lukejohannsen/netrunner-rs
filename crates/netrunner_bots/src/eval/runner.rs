@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -498,6 +498,103 @@ pub(super) fn run_replacement_value(state: &GameState, registry: &CardRegistry, 
 /// `run_replacement_value` summed over the rig (Phase 5 §66).
 pub(super) fn rig_run_replacement_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| run_replacement_value(state, registry, def, w, horizon)).sum()
+}
+
+/// What a card that lowers the strength of ice saves the Runner, a run a
+/// turn over the horizon at `future_credit_weight`, read as income is
+/// (Phase 5 §67): the break credits of the server where it saves the most
+/// (`server_break_cost` with the card on the table against without it),
+/// and a server it opens — one no breaker of the rig could get through
+/// before — at what the Corp's table charges for ice the rig cannot
+/// break (`unbreakable_ice_weight`), in credits. The Tungsten Tailor's
+/// "each piece of ice gets −1 strength" and Monkeywrench's "host ice gets
+/// −2 strength", tried on every rezzed piece it could be hosted on. **Why
+/// it is read:** a strength is asked of the table (`continuous::
+/// ice_strength`), so an installed reducer did lower every break the run
+/// leaf priced — but only on a run in the same line, and the card itself
+/// read as its price and its memory, so the planner never installed
+/// either (random seats 10 and 5 plays in 630 games, the planner 0).
+/// Read for the held card and the installed one alike, as
+/// `access_trash_value` is.
+pub(super) fn strength_cut_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 || !lowers_ice_strength(def) {
+        return 0.0;
+    }
+    let held = |host: Option<netrunner_core::rules::InstallId>| {
+        let mut after = state.clone();
+        after.runner.rig.push(netrunner_core::rules::InstalledRunnerCard {
+            card: def.id.clone(),
+            install_id: netrunner_core::rules::InstallId(u32::MAX),
+            hosted_on_ice: host,
+            ..Default::default()
+        });
+        best_break_saving(state, &after, registry, w)
+    };
+    let saving = if hosted_on_ice(def) {
+        state
+            .corp
+            .installed
+            .iter()
+            .filter(|ice| ice.rezzed && ice.slot == netrunner_core::rules::InstallSlot::Ice)
+            .map(|ice| held(Some(ice.install_id)))
+            .fold(0.0, f64::max)
+    } else {
+        held(None)
+    };
+    saving * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `strength_cut_value` for each such card in the rig: the table with it
+/// against the table without it (Phase 5 §67).
+pub(super) fn rig_strength_cut_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let mut value = 0.0;
+    for (index, card) in state.runner.rig.iter().enumerate() {
+        if !registry.get(&card.card).is_some_and(lowers_ice_strength) {
+            continue;
+        }
+        let mut before = state.clone();
+        before.runner.rig.remove(index);
+        value += best_break_saving(&before, state, registry, w) * f64::from(horizon) * w.future_credit_weight;
+    }
+    value
+}
+
+/// Whether `def` declares a lower strength for ice: a `Strength` of a
+/// negative number on anything but itself or its controller.
+fn lowers_ice_strength(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::{ContinuousKind, Scope};
+    def.continuous.iter().any(|effect| {
+        matches!(effect.kind, ContinuousKind::Strength(ref number) if number.per < 0) && !matches!(effect.applies_to, Scope::This | Scope::Controller)
+    })
+}
+
+/// Whether `def` is installed on a piece of ice: what it declares is
+/// about its host.
+fn hosted_on_ice(def: &CardDefinition) -> bool {
+    def.continuous.iter().any(|effect| effect.applies_to == netrunner_core::dsl::Scope::Host)
+}
+
+/// The most break credits one server's run costs less on `after` than on
+/// `before`, a server opened counted at `unbreakable_ice_weight` in
+/// credits.
+fn best_break_saving(before: &GameState, after: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    let mut servers = Vec::new();
+    for ice in before.corp.installed.iter().filter(|ice| ice.rezzed && ice.slot == netrunner_core::rules::InstallSlot::Ice) {
+        if !servers.contains(&ice.server) {
+            servers.push(ice.server);
+        }
+    }
+    servers
+        .into_iter()
+        .map(|server| match (server_break_cost(before, server, registry), server_break_cost(after, server, registry)) {
+            (Some(was), Some(is)) => f64::from(was.saturating_sub(is)),
+            (None, Some(_)) => w.unbreakable_ice_weight / w.own_credit_weight.max(f64::EPSILON),
+            _ => 0.0,
+        })
+        .fold(0.0, f64::max)
 }
 
 /// What installing a held card would cost the Runner, as the engine asks
@@ -739,6 +836,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A click ability whose run's breach is replaced is that replacement
     // a turn (`run_replacement_value`, Phase 5 §66).
     *score += rig_run_replacement_value(state, registry, w, horizon);
+    // A card that lowers the strength of ice is the break credits it
+    // saves (`strength_cut_value`, Phase 5 §67).
+    *score += rig_strength_cut_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
@@ -850,6 +950,31 @@ mod tests {
     /// opponent's rate over the turns after its count, discounted, and
     /// nothing while no piece is rezzed; hosted, the counters it holds
     /// shorten the wait, and a 5[c] host pays five times a 1[c] one.
+    /// A card that lowers the strength of ice is the break credits it
+    /// saves (Phase 5 §67): over a rezzed Tollbooth (strength 5) Gordian
+    /// Blade pumps three times; The Tungsten Tailor saves one pump and
+    /// Monkeywrench, hosted on it, two — held and installed alike, and
+    /// nothing with no breaker to pump.
+    #[test]
+    fn a_strength_cut_is_the_pumps_it_saves() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![InstalledCard { card: CardId("tollbooth".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let per_turn = 5.0 * guide.future_credit_weight;
+        assert_eq!(strength_cut_value(&state, &pool, card("the_tungsten_tailor"), &guide, 5), 0.0, "no breaker, nothing to pump");
+        let rig = |id: &str, install: u32, host: Option<u32>| InstalledRunnerCard { card: CardId(id.to_string()), install_id: InstallId(install), hosted_on_ice: host.map(InstallId), ..Default::default() };
+        state.runner.rig = vec![rig("gordian_blade", 10, None)];
+        assert!((strength_cut_value(&state, &pool, card("the_tungsten_tailor"), &guide, 5) - per_turn).abs() < 1e-9);
+        assert!((strength_cut_value(&state, &pool, card("monkeywrench"), &guide, 5) - 2.0 * per_turn).abs() < 1e-9);
+        assert_eq!(strength_cut_value(&state, &pool, card("the_tungsten_tailor"), &Weights::default(), 5), 0.0);
+        state.runner.rig.push(rig("monkeywrench", 11, Some(1)));
+        assert!((rig_strength_cut_value(&state, &pool, &guide, 5) - 2.0 * per_turn).abs() < 1e-9, "installed, credited the same");
+    }
+
     /// A click ability whose run's breach is replaced is worth what the
     /// replacement adds over the breach, a turn at a time (Phase 5 §66):
     /// Stargate's three looks at R&D over one hidden access, at the
