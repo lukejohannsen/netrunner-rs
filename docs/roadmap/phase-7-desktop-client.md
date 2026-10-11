@@ -66,15 +66,17 @@ keep their addresses however long §4's alphabet runs.*
 
 ---
 
-**Where it stands (29 September 2026).** §1–§3 and §5–§7 are built; §4 has sixty-four lettered
+**Where it stands (11 October 2026).** §1–§3 and §5–§7 are built; §4 has sixty-four lettered
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
 settled are AGENTS.md §5, which is where to read them. **§4's movement, owed since §3, is
 done (§4bm, 8 October 2026), and so are §8's replay notes (§4bn) and §9's search half in the desktop.
-Open: §9's and §10's terminal share, and the owed list.**
+Open: §9's and §10's terminal share, the owed list, and the 11 October plan — §4bo, then §14–§16 with Phase 4 §8–§12.**
 
 ## Owed
 
+- **§4bo — a prompt says what it is for, and whose card asks** (reported 11 October 2026, the first item of the person's plan that day; `docs/online-play-design-2026-10-11.md`): a card-selection prompt is headed "Cultivate: choose 1 card" three times over — never "trash", "add to HQ" or "arrange" — though the parked decision carries `destination`, `source`, `min`, `max` and the pick order, and `view_ledger.rs` claimed `destination` drawn when nothing reads it; the arrangement step ("arrange the rest in any order", which the engine does by pick order, first pick on top) is unusable because the clients list a deck deepest-first, number nothing and offer "Choose none"; and no prompt says *whose* card asks ("Nuvem SA: Law of the Land: choose" — your identity, the opponent's, a piece of ice). Decided: derive the words from the fields on the view (`selection::purpose`, `prose::asker`), no new DSL text, an arrangement listed top-first with each pick numbered and "Leave them as they are" for none, in both clients. Not begun.
+- **§14, §15, §16** (11 October 2026, below): the online dashboard with the profile and connections manager; the Local / P2P hub; the deck builder in three columns, the deck picker and the active decks. In the order §16 (picker and active decks first), §14 with Phase 4 §9–§10, §15.
 - **Movement** (§3 → §4): **built** (§4bm, `feat/card-movement`, 8 October 2026): every `CardMoved` transition is a flight over the board (`screens::flight`, `models::flight`), the card at its destination hidden until it lands; a rez is still a highlight rather than a flip. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with six AI-assisted tracks (the sounds themselves were Kenney's CC0 recordings until §13 replaced them with a set synthesized here); five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
 - **§3's other gaps**: ~~the log keeps 80 lines.~~ Done (`fix/desktop-log-keeps-the-match`, 9 October 2026): the log list remembers how many lines it drew and a fingerprint of them, so a view appends its new lines and only a log that no longer begins with the drawn ones (a take-back, a reconnect) is rebuilt; the whole match is readable, and the scroll follows the new lines only for a reader who was at the end, where every view used to snap them back. ~~A `ChooseCards` prompt's positions are reachable only from the panel.~~ Done in §4x (18 September 2026): the decision pop-up draws each candidate as its card, and the card is its own button; the line outlived the fix.
 - **§4m**: a 3D or perspective board — deferred, not refused; revisit when a run should feel dramatic.
@@ -505,3 +507,26 @@ number), streaming, a terminal editor for profiles, a price readout, a
 native Gemini protocol if the OpenAI-compatible endpoint ever falls
 short, and the model's own memory of the opponent's moves beyond the
 view (it sees the board, not the log).
+
+## 14. The online dashboard, and the profile and connections manager — OPEN (11 October 2026)
+
+The person's notes of 11 October 2026 ([`docs/online-play-design-2026-10-11.md`](../online-play-design-2026-10-11.md)) draw Play Online as a dashboard: the **active decks** always in view (one Corp, one Runner — §16), three doors — **Ranked**, **Casual**, **Tournaments & Events** — and a profile tag; a door opens a form rather than a page — the format as pills, greyed where the active decks are not legal with the reason, and the role preference (Any, Prefer Corp, Prefer Runner) — then the queue state (what is being looked for, the time waited, Abort), then the board. Casual's form adds "Play a friend": make a friend queue, or join one by its code (Phase 4 §9). The tournament pages (Phase 4 §7 stage 6b) keep their place behind the third door, with events beside them (Phase 4 §11). A **server profile page** shows the titles and badges earned, the active title and badge, and Save (Phase 4 §10).
+
+**The profile and connections manager** replaces the Join form's one address field: named server profiles (a name, the address, the relay), one marked Default that Play Online connects to on opening, Connect and Disconnect one at a time, and under each server what it holds of the person — the active title and badge, the rank per format — beside the local facts (the key file's path, the card cache, the record against the bots). `known_servers.json` (address → key, no name, no UI) becomes a row of this; `Settings::server` (the last address) goes.
+
+**Decided (11 October 2026):** the dashboard supersedes the Server page's layout and keeps its design — the connection is a resource the board plays on and comes back to (`screens::online::Connected`, Phase 4 §7 stage 4c), a deck is asked for only when a game is looked for, the queue's word on rating is the lobby's. Built after Phase 4 §9 and §10, each half with its server half; the terminal client draws the same as rows.
+
+## 15. The Local / P2P hub — OPEN (11 October 2026)
+
+From the same notes: "Local / P2P Play" as a hub with two cards, **Host a session** and **Join a session**, and under them **saved peers and recent connections** with Quick Connect. Hosting: the decks (via the picker, §16), the protocol — LAN only, direct address and port, or an iroh ticket — then the waiting room: the ticket with Copy and the direct address, the participants with a ready state, Start when both are ready. Joining: the decks, one target field with the protocol detected (an address or a ticket), Connect.
+
+**Decided (11 October 2026):** the hub stands on what §7 and Phase 4 §6 built — `hosting::Reach`, the dual-stack socket, the router asked, `peer`'s ticket — and adds the saved peers (a file beside `known_servers.json`), the ready state and the detected protocol. "LAN only, zero-config broadcast" means discovery on the local network (mDNS), which nothing has today (`Reach::Network` needs the address typed) and is a later stage of this entry. Built after §16.
+
+## 16. The deck builder in three columns, the deck picker, and the active decks — OPEN (11 October 2026)
+
+From the same notes, three things:
+- **The builder in three columns:** a thin left column for search and the filters (the format's pool, faction, type, sort), the pool as a grid of card faces taking most of the width, and a right column with the identity's face, the legality per format, the metrics (size, influence, agenda points) and the current list. Today (§5, §10) the identity and the numbers are a header across the top, the filters a toolbar over the pool, and the list a 400 px right column. **No hover preview** (decided 11 October 2026, as on 24 September, §5b): the wireframe's "[Hover Card Preview]" is not built; a secondary click reads a card, centred.
+- **The deck picker:** a modal reused by every place a deck is chosen — New game, Host, Join, the dashboard — one row per deck with the identity's art, the deck's own name beside the identity's, the faction's colour, a legality badge per format, the status (valid, or why not) with an illegal deck dimmed and unselectable, a format filter and a search, and "Create a new deck in the builder". It replaces the drop-down of names (`screens::new_game::deck_picker`, the Server page's `deck_dropdown`).
+- **The active decks:** `Settings::active_corp_deck` and `active_runner_deck`, the ids of one deck a side, shown on the dashboard and the default wherever a deck is asked; the picker sets them. Today nothing persists a chosen deck (the new-game form's "play again" is in memory).
+
+**Decided (11 October 2026):** the picker and the active decks first (client-only, and §14 and §15 both stand on them), then the three columns. The terminal client gets the picker as a list and, with it, its builder moved onto the shared `deck_builder` API (its own pool logic uses only `unique_id` of it today).

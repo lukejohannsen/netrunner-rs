@@ -252,9 +252,9 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 max: _,            // drawn: as min
                 reveal: _,         // engine's: the reveal is an event the log words
                 shuffle_after: _,  // engine's: the shuffle is an event the log words
-                destination: _,    // drawn: selection's words for where the cards go
+                destination: _,    // OWED: nothing reads it — a selection never says trash / add to HQ / arrange (Phase 7 §4bo)
                 then: _,           // engine's: what follows the choice
-                selected: _,       // drawn: selection's summary, a count to the other seat
+                selected: _,       // drawn: selection's summary, a count to the other seat; OWED: its order, the deck's for an arrangement (Phase 7 §4bo)
                 source_card: _,    // drawn: Prompt::of
                 prompting_card: _, // drawn: Prompt::of
                 source_install: _, // engine's
