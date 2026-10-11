@@ -385,19 +385,7 @@ fn spawn_row(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
             words.spawn((Text::new(format!("{}{saved}", row.deck.name)), theme.font(size::BODY), TextColor(text)));
             words.spawn(widgets::dim(theme, row.identity.clone()));
             words.spawn(widgets::dim(theme, format!("{} cards  ·  a bot plays it {}", row.deck.size(), row.style())));
-            words.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(4), margin: UiRect::top(px(2)), ..default() }).with_children(|badges| {
-                for format in FORMATS {
-                    let legal = row.status.legal_in.contains(&format);
-                    let colour = if legal { theme.legal } else { theme.text_dim.with_alpha(0.5) };
-                    badges.spawn((
-                        Text::new(format_label(format)),
-                        theme.font(size::SMALL),
-                        TextColor(colour),
-                        Node { padding: UiRect::axes(px(6), px(1)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(8)), ..default() },
-                        BorderColor::all(colour.with_alpha(0.6)),
-                    ));
-                }
-            });
+            widgets::format_badges(words, theme, &row.status.legal_in);
             if let Some(problem) = row.problem() {
                 words.spawn((Text::new(format!("Can't be played here: {problem}")), theme.font(size::SMALL), TextColor(theme.caution)));
             }

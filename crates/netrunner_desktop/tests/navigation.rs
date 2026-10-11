@@ -1012,6 +1012,83 @@ fn copy_to_edit_in_the_viewer_opens_the_copy_with_a_pool() {
     assert!(app.world_mut().query::<&PoolCard>().iter(app.world()).count() > 20, "the pool is there");
 }
 
+/// The builder in three columns (Phase 7 §16, stage (b)): a filter is a
+/// pill, and a press narrows the pool; the search is a field that is
+/// always open, filtering as it is typed; its Escape clears the query
+/// first and leaves the screen only once it is empty; Clear filters
+/// empties the field with the filters; and Rename takes the keyboard
+/// from the search while its pop-up is open, which gets it back after.
+#[test]
+fn the_builders_filters_are_pills_and_its_search_is_always_open() {
+    use netrunner_desktop::models::deck_editor::Intent;
+    use netrunner_desktop::screens::decks::{Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::{Control, FilterPill, Model as EditorModel, PoolCard, SearchField};
+    use netrunner_desktop::widgets::text_field::TextField;
+    use netrunner_core::dsl::CardType;
+    let (mut app, _dir) = headless_client();
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let copy = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Copy).unwrap();
+    tap(&mut app, copy);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    let pool = |app: &mut App| app.world_mut().query::<&PoolCard>().iter(app.world()).map(|c| c.0.clone()).collect::<Vec<_>>();
+    let whole = pool(&mut app).len();
+
+    let events = find::<FilterPill>(&mut app, |pill| pill.0 == Intent::Kind(Some("Event"))).expect("the type filter is pills");
+    tap(&mut app, events);
+    let editor = &app.world().resource::<EditorModel>().0;
+    assert_eq!(editor.filter.kind, Some("Event"));
+    let registry = netrunner_client::decks::sample_deck_registry();
+    let narrowed = pool(&mut app);
+    assert!(narrowed.len() < whole && !narrowed.is_empty());
+    assert!(narrowed.iter().all(|id| registry.get(id).is_some_and(|card| card.card_type == CardType::Event)), "every card left is an event");
+
+    let field = find::<SearchField>(&mut app, |_| true).expect("the search is always open");
+    assert!(app.world().get::<TextField>(field).is_some(), "and is live");
+    for c in "gamble".chars() {
+        press(&mut app, KeyCode::KeyA, Key::Character(c.to_string().into()));
+        app.update();
+    }
+    app.update();
+    assert_eq!(app.world().resource::<EditorModel>().0.filter.query, "gamble", "typed straight into the pool's filter");
+    assert_eq!(pool(&mut app).len(), 1, "Sure Gamble alone");
+
+    let rename = find::<Control>(&mut app, |c| *c == Control::Rename).unwrap();
+    tap(&mut app, rename);
+    assert!(app.world().get::<TextField>(field).is_none(), "the rename pop-up has the keyboard");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    app.update();
+    assert!(app.world().get::<TextField>(field).is_some(), "and the search has it back");
+    assert_eq!(app.world().resource::<EditorModel>().0.filter.query, "gamble", "with its words kept");
+
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::DeckEditor, "Escape with a query clears it, and stays");
+    assert_eq!(app.world().resource::<EditorModel>().0.filter.query, "");
+    assert!(pool(&mut app).len() > 1);
+
+    for c in "ga".chars() {
+        press(&mut app, KeyCode::KeyA, Key::Character(c.to_string().into()));
+        app.update();
+    }
+    app.update();
+    let clear = find::<Control>(&mut app, |c| *c == Control::Clear).unwrap();
+    tap(&mut app, clear);
+    app.update();
+    let editor = &app.world().resource::<EditorModel>().0;
+    assert_eq!(editor.filter.query, "", "Clear filters empties the field too");
+    assert_eq!(editor.filter.kind, None);
+    assert_eq!(pool(&mut app).len(), whole);
+
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Decks, "Escape with nothing to clear leads back");
+}
+
 /// The strategy guide is reached from Learn to Play and leads back
 /// there: its first chapter opens with the guide's introduction, a
 /// chapter's pill turns the page, a card the chapter names opens to

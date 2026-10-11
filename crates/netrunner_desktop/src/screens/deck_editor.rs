@@ -1,5 +1,15 @@
-//! The deck editor: the deck's identity, numbers and verdict along the
-//! top, the card pool on the left and the deck on the right.
+//! The deck editor, in three columns (Phase 7 §16, stage (b)): the
+//! search and the filters down a thin left column, the card pool as a
+//! grid of faces taking the width between, and the deck down the right
+//! — its identity's face, a badge per format, the metrics, the list and
+//! the screen's buttons. Before (§5, §10) the identity and the numbers
+//! were a header across the top, the filters a toolbar over the pool and
+//! the list a column at the right; the header and the toolbar were the
+//! pool's rows, and the person asked for them to be columns (11 October
+//! 2026). The search is a field that is always open, filtering as it is
+//! typed — it was a button that unfolded one — and the filters are pills
+//! under an overline where a handful of choices fit as pills (the house
+//! rule), with Set the one drop-down, since a format offers a dozen.
 //!
 //! **A press on a card in the pool adds a copy; the deck's rows take one
 //! away or add one back.** The pool is what a match can deal in the
@@ -12,16 +22,26 @@
 //! the card is in. Each card in the pool carries its count in the deck,
 //! so the pool is also the list of what is left to add. A secondary
 //! click on a card, in the pool or the deck, reads it (the game's rule:
-//! the right button, or Ctrl or Cmd with the primary).
+//! the right button, or Ctrl or Cmd with the primary). A hover shows
+//! nothing (§5b, and again 11 October 2026).
 //!
 //! **Every edit is saved as it is made** (`models::deck_editor`), and the
-//! verdict under the name is re-read with it: the validators' words, in
-//! the format Settings names, and every other format the deck is legal
-//! in. A deck is saved whatever it says — only starting a game refuses
-//! an illegal one.
+//! verdict in the deck column is re-read with it: the validators' words,
+//! in the format Settings names, and a badge lit for every format the
+//! deck is legal in — the same badges the deck picker draws
+//! (`widgets::format_badges`). A deck is saved whatever it says — only
+//! starting a game refuses an illegal one.
 //!
-//! **A built-in deck opens read-only**: the list, the verdict and how to
-//! play it, with Copy to edit in place of the pool.
+//! **A built-in deck opens read-only** in the same three columns: its
+//! notes down the left where the filters would be, its own cards as the
+//! spread in the middle, and Copy to edit in the deck column's foot.
+//!
+//! **The search field and the pop-ups take turns at the keyboard**
+//! (`text_fields`): one `TextField` exists at a time, so while a pop-up
+//! is open the search keeps its words and gives up its field, and takes
+//! it back when the pop-up closes. Its Escape closes a card being read,
+//! else clears the query, else leaves the screen — the field holds the
+//! keys, so `nav`'s Escape would never see the editor.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -58,7 +78,12 @@ impl Plugin for DeckEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::DeckEditor), spawn)
             .add_systems(Update, escape_closes_the_popup.in_set(Captures).run_if(in_state(AppScreen::DeckEditor)))
-            .add_systems(Update, (controls, file_answers, text_fields, rebuild, fit_pool, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
+            // The search field's Escape is the way out of the screen, so
+            // its answer is read the frame the field gives it, inside
+            // `Captures` after the field, where a Navigate still lands
+            // this frame.
+            .add_systems(Update, text_fields.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::DeckEditor)))
+            .add_systems(Update, (controls, file_answers, rebuild, fit_pool, redraw_new_art, refresh).chain().after(text_fields).run_if(in_state(AppScreen::DeckEditor)));
     }
 }
 
@@ -77,9 +102,13 @@ pub enum Control {
     Rename,
     ChangeIdentity,
     Style(Option<String>),
-    Search,
     Clear,
 }
+
+/// A filter pill: a press applies its intent. Each group's chosen pill
+/// is drawn filled, so a group reads as one choice.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct FilterPill(pub Intent);
 
 /// A card in the pool: a press adds a copy.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
@@ -105,15 +134,9 @@ enum PopupButton {
     Cancel,
 }
 
-/// Which filter a drop-down is, in the order they are laid out.
+/// The Set filter's drop-down, the one filter too long for pills.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-enum Filter {
-    Format,
-    Set,
-    Faction,
-    Kind,
-    Sort,
-}
+struct SetDropdown;
 
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 enum Popup {
@@ -123,12 +146,16 @@ enum Popup {
     Identity,
 }
 
+/// The deck column's head: the name, the identity, the badges, the
+/// metrics and the style — everything over the list that an edit moves.
 #[derive(Component)]
-struct Header;
+struct DeckHead;
 #[derive(Component)]
 struct Filters;
-#[derive(Component)]
-struct SearchSlot;
+/// The search field's node, always drawn; its `TextField` comes and goes
+/// with the pop-ups (`text_fields`).
+#[derive(Component, Clone, Copy)]
+pub struct SearchField;
 #[derive(Component)]
 struct PoolGrid;
 #[derive(Component)]
@@ -155,12 +182,11 @@ struct Dirty {
     notice: bool,
 }
 
-/// Set by the Search button; `text_fields` opens the field.
-#[derive(Resource, Default)]
-struct SearchRequested(bool);
-
 const MAX_QUERY_LEN: usize = 40;
-/// The deck list's column.
+/// The filter column, thin: a search field and pills two to a row.
+const FILTER_WIDTH: f32 = 236.0;
+/// The deck column: wide enough for the five format badges in one row
+/// beside its padding, and what the list had before the columns.
 const LIST_WIDTH: f32 = 400.0;
 
 fn book(core: &ClientCore) -> CardBook<'_> {
@@ -235,92 +261,81 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     editor.filter.sort = sort;
     commands.insert_resource(Popup::None);
     commands.insert_resource(Dirty::default());
-    commands.insert_resource(SearchRequested::default());
     commands.init_resource::<Rebuild>();
     commands.insert_resource(PoolFace::default());
 
-    let header = commands.spawn((Header, Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(18), align_items: AlignItems::FlexStart, ..default() })).id();
-    commands.entity(header).with_children(|parent| spawn_header(parent, theme, core, &editor, images));
-
-    let left = commands.spawn(Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), height: percent(100), flex_direction: FlexDirection::Column, row_gap: px(10), ..default() }).id();
+    // The left column: the search and the filters, or a built-in
+    // deck's notes.
+    let left = commands.spawn(column(theme, FILTER_WIDTH)).id();
     if editor.read_only {
-        // The notes, then the deck itself as its cards, each with its
-        // count: a published list is read as a spread of cards.
-        commands.entity(left).with_children(|parent| spawn_notes(parent, theme, &editor));
-        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(layout::DECK_GAP), row_gap: px(layout::DECK_GAP), padding: UiRect::all(px(GRID_PADDING)), ..default() })).id();
-        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images, PoolFace::default()));
-        let scroll = scroll_column(commands, grid);
-        let spread = commands
-            .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), ..default() })
-            .add_child(scroll)
-            .with_children(|parent| {
-                parent.spawn(widgets::scrollbar(theme, scroll));
-            })
-            .id();
-        commands.entity(left).add_child(spread);
+        let notes = commands.spawn(Node { width: percent(100), flex_direction: FlexDirection::Column, ..default() }).id();
+        commands.entity(notes).with_children(|parent| spawn_notes(parent, theme, &editor));
+        let scroll = scroll_column(commands, notes);
+        commands.entity(left).add_child(scroll);
     } else {
-        let filters = commands.spawn((Filters, Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(8), row_gap: px(6), ..default() })).id();
+        commands.entity(left).with_children(|parent| {
+            parent.spawn(widgets::overline(theme, "Search"));
+            parent.spawn((
+                SearchField,
+                TextField::new(editor.filter.query.clone(), MAX_QUERY_LEN),
+                widgets::field_node(percent(100)),
+                BackgroundColor(theme.glass_strong),
+                BorderColor::all(theme.accent),
+                children![(Text::new(format!("{}|", editor.filter.query)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::AnyCharacter))],
+            ));
+        });
+        let filters = commands.spawn((Filters, Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })).id();
         commands.entity(filters).with_children(|parent| spawn_filters(parent, theme, core, &editor));
-        let search = commands.spawn((SearchSlot, Node { flex_direction: FlexDirection::Row, ..default() })).id();
-        commands.entity(search).with_children(|parent| {
-            parent.spawn(widgets::button(theme, "Search", Val::Auto, Control::Search));
-        });
-        let toolbar = commands
-            .spawn(Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(8), row_gap: px(6), ..default() })
-            .add_child(filters)
-            .add_child(search)
-            .id();
-        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(layout::DECK_GAP), row_gap: px(layout::DECK_GAP), padding: UiRect::all(px(GRID_PADDING)), ..default() })).id();
-        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images, PoolFace::default()));
-        let scroll = scroll_column(commands, grid);
-        let pool = commands
-            .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), ..default() })
-            .add_child(scroll)
-            .with_children(|parent| {
-                parent.spawn(widgets::scrollbar(theme, scroll));
-            })
-            .id();
-        commands.entity(left).add_child(toolbar).add_child(pool).with_children(|parent| {
-            parent.spawn(widgets::dim(theme, "A press on a card adds a copy · a secondary click (right button, or Ctrl-click) reads it"));
-        });
+        commands.entity(left).add_child(filters);
     }
 
+    // The middle: the pool, or a built-in deck's own cards as a spread.
+    let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(layout::DECK_GAP), row_gap: px(layout::DECK_GAP), padding: UiRect::all(px(GRID_PADDING)), ..default() })).id();
+    commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images, PoolFace::default()));
+    let scroll = scroll_column(commands, grid);
+    let pool = commands
+        .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), ..default() })
+        .add_child(scroll)
+        .with_children(|parent| {
+            parent.spawn(widgets::scrollbar(theme, scroll));
+        })
+        .id();
+    let middle = commands
+        .spawn(Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), height: percent(100), flex_direction: FlexDirection::Column, row_gap: px(6), ..default() })
+        .add_child(pool)
+        .with_children(|parent| {
+            parent.spawn(widgets::notice(theme, editor.note.clone().unwrap_or_default(), NoticeLine));
+            let hint = if editor.read_only { "A press on a card reads it" } else { "A press on a card adds a copy · a secondary click (right button, or Ctrl-click) reads it" };
+            parent.spawn(widgets::dim(theme, hint));
+        })
+        .id();
+
+    // The right column: the deck — its head, its list, the buttons.
+    let head = commands.spawn((DeckHead, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(6), ..default() })).id();
+    commands.entity(head).with_children(|parent| spawn_head(parent, theme, core, &editor, images));
     let list = commands.spawn((DeckList, Node { width: percent(100), flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(4)), ..default() })).id();
     commands.entity(list).with_children(|parent| spawn_deck_list(parent, theme, core, &editor));
     let list_scroll = scroll_column(commands, list);
-    let right = commands
-        .spawn((
-            Node {
-                width: px(LIST_WIDTH),
-                flex_shrink: 0.0,
-                height: percent(100),
-                flex_direction: FlexDirection::Row,
-                column_gap: px(6),
-                padding: UiRect::all(px(10)),
-                border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(crate::theme::shape::PANEL_RADIUS)),
-                ..default()
-            },
-            BackgroundColor(theme.glass),
-            BorderColor::all(theme.glass_border),
-        ))
+    let listing = commands
+        .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), border: UiRect::top(px(1)), padding: UiRect::top(px(6)), ..default() })
+        .insert(BorderColor::all(theme.glass_border))
         .add_child(list_scroll)
         .with_children(|parent| {
             parent.spawn(widgets::scrollbar(theme, list_scroll));
         })
         .id();
-    let body = commands.spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(14), ..default() }).add_child(left).add_child(right).id();
+    let foot = commands.spawn(Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Stretch, row_gap: px(8), ..default() }).id();
+    commands.entity(foot).with_children(|parent| spawn_foot(parent, theme, &editor));
+    let right = commands.spawn(column(theme, LIST_WIDTH)).add_child(head).add_child(listing).add_child(foot).id();
 
-    let column = commands
-        .spawn(Node { width: percent(100), max_width: px(2400), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })
-        .add_child(header)
-        .with_children(|parent| {
-            parent.spawn(widgets::notice(theme, editor.note.clone().unwrap_or_default(), NoticeLine));
-        })
-        .add_child(body)
+    let body = commands
+        .spawn(Node { width: percent(100), max_width: px(2600), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(14), ..default() })
+        .add_child(left)
+        .add_child(middle)
+        .add_child(right)
         .id();
     let popup = commands.spawn((PopupLayer, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), display: Display::None, ..default() })).id();
-    commands.spawn(screen_root(AppScreen::DeckEditor, theme)).add_child(column).add_child(popup);
+    commands.spawn(screen_root(AppScreen::DeckEditor, theme)).add_child(body).add_child(popup);
     let read_only = editor.read_only;
     commands.insert_resource(Model(editor));
     read_only
@@ -344,88 +359,149 @@ fn scroll_column(commands: &mut Commands, content: Entity) -> Entity {
         .id()
 }
 
-const HEADER_FACE: u16 = 118;
+/// A side column of the three: a fixed width, the window's height, on
+/// the glass, its children stacked.
+fn column(theme: &Theme, width: f32) -> impl Bundle + use<> {
+    (
+        Node {
+            width: px(width),
+            flex_shrink: 0.0,
+            height: percent(100),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(10),
+            padding: UiRect::all(px(10)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(crate::theme::shape::PANEL_RADIUS)),
+            ..default()
+        },
+        BackgroundColor(theme.glass),
+        BorderColor::all(theme.glass_border),
+    )
+}
 
-fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, images: &CardImages) {
+/// The identity's face in the deck column: small, because the list
+/// below it is what the column is for, and a secondary click reads the
+/// card large.
+const HEADER_FACE: u16 = 100;
+
+/// The deck column's head: the name with Rename and Change identity,
+/// the identity's face beside its words and the metrics, a badge per
+/// format with the verdict's reason where there is one, and the style a
+/// bot plays it in. It is kept short on purpose — the list under it is
+/// what the column is for, and a head that took half the column left
+/// three rows of the deck in view at 900 px.
+fn spawn_head(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, images: &CardImages) {
     let book = book(core);
     let deck = editor.deck();
     let identity = book.get(&deck.identity);
-    match identity {
-        Some(card) => {
-            let drawn = Face::of(card, &core.settings.art);
-            let image = images.of(&drawn, FaceSize::Board(HEADER_FACE));
-            spawn_face(parent, theme, &drawn, FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() }).with_children(|row| {
+        row.spawn((widgets::heading(theme, deck.name.clone()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        if !editor.read_only {
+            row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Rename", Control::Rename));
+            row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Change identity", Control::ChangeIdentity));
         }
-        None => {
-            parent.spawn((Node { width: px(HEADER_FACE as f32), height: px(HEADER_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
-        }
-    }
-    parent.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(5), ..default() }).with_children(|words| {
-        words.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
-            row.spawn(widgets::heading(theme, deck.name.clone()));
-            if !editor.read_only {
-                row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Rename", Control::Rename));
-                row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Change identity", Control::ChangeIdentity));
+    });
+    parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(12), align_items: AlignItems::FlexStart, ..default() }).with_children(|row| {
+        match identity {
+            Some(card) => {
+                let drawn = Face::of(card, &core.settings.art);
+                let image = images.of(&drawn, FaceSize::Board(HEADER_FACE));
+                spawn_face(row, theme, &drawn, FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
             }
-        });
-        let faction = identity.and_then(|card| card.faction).map_or("", faction_label);
-        let read_only = if editor.read_only { " · built-in, read-only" } else { "" };
-        words.spawn(widgets::dim(theme, format!("{:?} · {} · {faction}{read_only}", deck.side, book.title(&deck.identity))));
-        words.spawn(widgets::label(theme, numbers_line(editor, book)));
-        spawn_standing(words, theme, &editor.status.standing, editor.format);
-        let others: Vec<&str> = editor.status.legal_in.iter().filter(|other| **other != editor.format).map(|other| format_label(*other)).collect();
-        if !others.is_empty() {
-            words.spawn(widgets::dim(theme, format!("Also legal in {}", others.join(", "))));
-        }
-        words.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(6), row_gap: px(6), margin: UiRect::top(px(4)), ..default() }).with_children(|row| {
-            row.spawn(widgets::overline(theme, "A bot plays it"));
-            for style in editor.styles() {
-                let name = style.map(|style| style.name().to_string());
-                let label = name.as_deref().map_or("Balanced".to_string(), capitalised);
-                let chosen = deck.style == name.iter().cloned().collect::<Vec<_>>();
-                if editor.read_only && !chosen {
-                    continue;
-                }
-                let kind = if chosen { ButtonKind::Secondary } else { ButtonKind::Quiet };
-                let mut button = row.spawn(widgets::small_button(theme, kind, label, Control::Style(name)));
-                if chosen {
-                    button.insert(BorderColor::all(theme.accent));
-                }
+            None => {
+                row.spawn((Node { width: px(HEADER_FACE as f32), height: px(HEADER_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
             }
+        }
+        row.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(3), ..default() }).with_children(|words| {
+            let faction = identity.and_then(|card| card.faction).map_or("", faction_label);
+            let read_only = if editor.read_only { " · built-in, read-only" } else { "" };
+            words.spawn(widgets::dim(theme, format!("{:?} · {faction}{read_only}", deck.side)));
+            words.spawn((widgets::label(theme, book.title(&deck.identity)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            words.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(1), margin: UiRect::top(px(6)), ..default() }).with_children(|rows| {
+                for (what, value) in metrics(editor, book) {
+                    rows.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..default() }).with_children(|row| {
+                        row.spawn((widgets::dim(theme, what), Node { width: px(104), flex_shrink: 0.0, ..default() }));
+                        row.spawn((Text::new(value), theme.font(size::SMALL), TextColor(theme.text)));
+                    });
+                }
+            });
         });
     });
-    parent.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, row_gap: px(8), flex_shrink: 0.0, ..default() }).with_children(|buttons| {
-        if editor.read_only {
-            buttons.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Copy to edit", px(250), Control::Copy));
-        } else {
-            buttons.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Done", px(250), Control::Done));
-            buttons.spawn(widgets::button(theme, "Save a copy", px(250), Control::Copy));
-        }
-        buttons.spawn(widgets::button(theme, "Export to file…", px(250), Control::Export));
-        if editor.read_only {
-            buttons.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", px(250), (Control::Done, ButtonSound(Sfx::Back))));
-        } else {
-            buttons.spawn(widgets::dim(theme, "Every change is saved as it is made"));
+    parent.spawn((widgets::overline(theme, "Legal in"), Node { margin: UiRect::top(px(4)), ..default() }));
+    widgets::format_badges(parent, theme, &editor.status.legal_in);
+    // The badges say where it is legal; the verdict's words are drawn
+    // only where there is a reason to read.
+    if !editor.status.standing.is_legal() {
+        spawn_standing(parent, theme, &editor.status.standing, editor.format);
+    }
+    parent.spawn((widgets::overline(theme, "A bot plays it"), Node { margin: UiRect::top(px(4)), ..default() }));
+    if editor.read_only {
+        // A published list's style is read, not chosen — and may be a
+        // stack ("glacier then fast advance") no single pill says.
+        parent.spawn(widgets::label(theme, capitalised(&deck.style_label())));
+        return;
+    }
+    parent.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(6), row_gap: px(6), ..default() }).with_children(|row| {
+        for style in editor.styles() {
+            let name = style.map(|style| style.name().to_string());
+            let label = name.as_deref().map_or("Balanced".to_string(), capitalised);
+            let chosen = deck.style == name.iter().cloned().collect::<Vec<_>>();
+            pill(row, theme, label, chosen, Control::Style(name));
         }
     });
 }
 
-/// "45 cards (45 minimum) · 13 of 15 influence · 20 agenda points
-/// (20–21)": the running totals against the identity's limits.
-fn numbers_line(editor: &Editor, book: CardBook) -> String {
+/// The deck column's foot: the screen's buttons, Done the one primary
+/// on an editable deck and Copy to edit on a built-in one.
+fn spawn_foot(parent: &mut ChildSpawnerCommands, theme: &Theme, editor: &Editor) {
+    if editor.read_only {
+        parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..default() }).with_children(|row| {
+            row.spawn(widgets::button(theme, "Export to file…", percent(50), Control::Export));
+            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", percent(50), (Control::Done, ButtonSound(Sfx::Back))));
+        });
+        parent.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Copy to edit", percent(100), Control::Copy));
+    } else {
+        parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..default() }).with_children(|row| {
+            row.spawn(widgets::button(theme, "Export to file…", percent(50), Control::Export));
+            row.spawn(widgets::button(theme, "Save a copy", percent(50), Control::Copy));
+        });
+        parent.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Done", percent(100), Control::Done));
+        parent.spawn((widgets::dim(theme, "Every change is saved as it is made"), Node { align_self: AlignSelf::Center, ..default() }));
+    }
+}
+
+/// A pill: `small_button`, filled and ringed in the accent when chosen,
+/// quiet otherwise — the picker's "Legal in" pills, and every filter
+/// group here.
+fn pill(parent: &mut ChildSpawnerCommands, theme: &Theme, label: impl Into<String>, chosen: bool, marker: impl Bundle) {
+    let kind = if chosen { ButtonKind::Secondary } else { ButtonKind::Quiet };
+    let mut button = parent.spawn(widgets::small_button(theme, kind, label, marker));
+    if chosen {
+        button.insert(BorderColor::all(theme.accent));
+    }
+}
+
+/// The running totals against the identity's limits, as rows: "Cards"
+/// "44 (40 minimum)", "Influence" "15 of 15", "Agenda points" "18
+/// (18–19)". One sentence of them was the header's; a column reads them
+/// as a table.
+fn metrics(editor: &Editor, book: CardBook) -> Vec<(String, String)> {
     let deck = editor.deck();
     let Some(tally) = editor.draft.tally(book) else {
-        return format!("{} cards", deck.size());
+        return vec![("Cards".to_string(), format!("{}", deck.size()))];
     };
-    let mut parts = vec![format!("{} cards ({} minimum)", tally.size, tally.min_size)];
-    parts.push(match tally.influence_limit {
-        Some(limit) => format!("{} of {limit} influence", tally.influence_spent),
-        None => format!("{} influence, no limit", tally.influence_spent),
-    });
+    let mut rows = vec![("Cards".to_string(), format!("{} ({} minimum)", tally.size, tally.min_size))];
+    rows.push((
+        "Influence".to_string(),
+        match tally.influence_limit {
+            Some(limit) => format!("{} of {limit}", tally.influence_spent),
+            None => format!("{}, no limit", tally.influence_spent),
+        },
+    ));
     if let Some(agenda) = tally.agenda {
-        parts.push(format!("{} agenda points ({}–{})", agenda.points, agenda.min, agenda.max));
+        rows.push(("Agenda points".to_string(), format!("{} ({}–{})", agenda.points, agenda.min, agenda.max)));
     }
-    parts.join(" · ")
+    rows
 }
 
 fn capitalised(word: &str) -> String {
@@ -455,64 +531,54 @@ fn spawn_notes(parent: &mut ChildSpawnerCommands, theme: &Theme, editor: &Editor
         });
 }
 
-/// A filter's drop-down: its choices, the intent each one applies, and
-/// which is chosen now. The format and the sort are always one of their
-/// values; the set, faction and type narrow the pool and start at "All".
-/// The sets are the format's (`deck_builder::sets`), each under its mark.
-fn filter_entries(theme: &Theme, core: &ClientCore, editor: &Editor, filter: Filter) -> (Vec<Choice>, Vec<Intent>, usize) {
+/// The Set drop-down's choices: every set the format offers
+/// (`deck_builder::sets`), each under its mark, after "All sets"; the
+/// intent each applies, and which is chosen now.
+fn set_entries(theme: &Theme, core: &ClientCore, editor: &Editor) -> (Vec<Choice>, Vec<Intent>, usize) {
     let side = editor.deck().side;
-    let mut entries: Vec<(Choice, Intent, bool)> = Vec::new();
-    match filter {
-        Filter::Format => {
-            for format in FORMATS {
-                entries.push((Choice::plain(format_label(format)), Intent::Format(format), editor.filter.format == format));
-            }
-        }
-        Filter::Set => {
-            entries.push((Choice::plain("All sets"), Intent::Set(None), editor.filter.set.is_none()));
-            for set in deck_builder::sets(book(core), side, editor.filter.format) {
-                let chosen = editor.filter.set.as_deref() == Some(set.as_str());
-                let icon = theme.set_icon(&set, size::SMALL).map(|(glyph, _)| glyph);
-                entries.push((Choice::with_icon(set_name(&set), icon, theme.text), Intent::Set(Some(set)), chosen));
-            }
-        }
-        Filter::Faction => {
-            entries.push((Choice::plain("All"), Intent::Faction(None), editor.filter.faction.is_none()));
-            for faction in deck_builder::factions(book(core), side) {
-                let icon = theme.faction_icon(faction, size::SMALL).map(|(glyph, _)| glyph);
-                entries.push((Choice::with_icon(faction_label(faction), icon, theme.faction(Some(faction))), Intent::Faction(Some(faction)), editor.filter.faction == Some(faction)));
-            }
-        }
-        Filter::Kind => {
-            entries.push((Choice::plain("All"), Intent::Kind(None), editor.filter.kind.is_none()));
-            for kind in deck_builder::kinds(side) {
-                entries.push((Choice::plain(*kind), Intent::Kind(Some(kind)), editor.filter.kind == Some(*kind)));
-            }
-        }
-        Filter::Sort => {
-            for sort in PoolSort::ALL {
-                entries.push((Choice::plain(sort.label()), Intent::Sort(sort), editor.filter.sort == sort));
-            }
-        }
+    let mut entries: Vec<(Choice, Intent, bool)> = vec![(Choice::plain("All sets"), Intent::Set(None), editor.filter.set.is_none())];
+    for set in deck_builder::sets(book(core), side, editor.filter.format) {
+        let chosen = editor.filter.set.as_deref() == Some(set.as_str());
+        let icon = theme.set_icon(&set, size::SMALL).map(|(glyph, _)| glyph);
+        entries.push((Choice::with_icon(set_name(&set), icon, theme.text), Intent::Set(Some(set)), chosen));
     }
     let current = entries.iter().position(|(_, _, chosen)| *chosen).unwrap_or(0);
     let (choices, intents) = entries.into_iter().map(|(choice, intent, _)| (choice, intent)).unzip();
     (choices, intents, current)
 }
 
-/// The filters, "Legal in" first (the person's ask, 30 September 2026):
-/// the format decides which sets the Set filter offers, so it reads
-/// before Set; then the faction and the type, which narrow within the
-/// format; then how the pool is sorted; then Clear.
-fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor) {
-    let filters = [(Filter::Format, "Legal in"), (Filter::Set, "Set"), (Filter::Faction, "Faction"), (Filter::Kind, "Type"), (Filter::Sort, "Sort by")];
-    for (filter, label) in filters {
-        let (choices, _, current) = filter_entries(theme, core, editor, filter);
-        spawn_dropdown(parent, theme, label, choices, current, filter);
-    }
-    parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Clear", Val::Auto, Control::Clear));
+/// A group of pills under its overline, one filled.
+fn pill_group(parent: &mut ChildSpawnerCommands, theme: &Theme, title: &str, choices: Vec<(String, bool, Intent)>) {
+    parent.spawn(widgets::overline(theme, title));
+    parent.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(6), ..default() }).with_children(|row| {
+        for (label, chosen, intent) in choices {
+            pill(row, theme, label, chosen, FilterPill(intent));
+        }
+    });
 }
 
+/// The filters down the column, "Legal in" first (the person's ask, 30
+/// September 2026): the format decides which sets the Set filter
+/// offers, so it reads before Set; then the faction and the type, which
+/// narrow within the format; then how the pool is sorted; then how many
+/// cards are left, and Clear.
+fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor) {
+    let book = book(core);
+    let side = editor.deck().side;
+    pill_group(parent, theme, "Legal in", FORMATS.into_iter().map(|format| (format_label(format).to_string(), editor.filter.format == format, Intent::Format(format))).collect());
+    let (choices, _, current) = set_entries(theme, core, editor);
+    spawn_dropdown(parent, theme, "Set", choices, current, SetDropdown);
+    let mut factions = vec![("All".to_string(), editor.filter.faction.is_none(), Intent::Faction(None))];
+    factions.extend(deck_builder::factions(book, side).into_iter().map(|faction| (faction_label(faction).to_string(), editor.filter.faction == Some(faction), Intent::Faction(Some(faction)))));
+    pill_group(parent, theme, "Faction", factions);
+    let mut kinds = vec![("All".to_string(), editor.filter.kind.is_none(), Intent::Kind(None))];
+    kinds.extend(deck_builder::kinds(side).iter().map(|kind| (kind.to_string(), editor.filter.kind == Some(*kind), Intent::Kind(Some(kind)))));
+    pill_group(parent, theme, "Type", kinds);
+    pill_group(parent, theme, "Sort by", PoolSort::ALL.into_iter().map(|sort| (sort.label().to_string(), editor.filter.sort == sort, Intent::Sort(sort))).collect());
+    parent.spawn(Node { flex_grow: 1.0, ..default() });
+    parent.spawn(widgets::dim(theme, format!("{} cards", editor.pool(book).len())));
+    parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Clear filters", percent(100), Control::Clear));
+}
 
 /// A card in the identity picker (`layout::DECK_FACE`); its text is
 /// read in the hover preview. The panel is sized to it, so it does not
@@ -647,7 +713,7 @@ fn influence_dots(card: Option<&CardDefinition>, editor: &Editor, book: CardBook
 fn controls(
     mut pressed: MessageReader<Pressed>,
     mut chosen: MessageReader<DropdownChanged>,
-    (marks, rows, filters, popup_buttons): (Query<&Control>, Query<&DeckRowButton>, Query<&Filter>, Query<&PopupButton>),
+    (marks, rows, pills, sets, popup_buttons): (Query<&Control>, Query<&DeckRowButton>, Query<&FilterPill>, Query<(), With<SetDropdown>>, Query<&PopupButton>),
     (pool, reads, picks, wash): (
         Query<(&Interaction, &PoolCard), Changed<Interaction>>,
         Query<(&Interaction, &DeckRowButton), (Changed<Interaction>, Without<widgets::Themed>)>,
@@ -656,7 +722,8 @@ fn controls(
     ),
     (keys, mouse, mut reading): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>, ResMut<Reading>),
     mut editor: ResMut<Model>,
-    (mut popup, mut dirty, mut search, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<SearchRequested>, ResMut<Rebuild>),
+    (mut popup, mut dirty, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<Rebuild>),
+    mut search_field: Query<&mut TextField, With<SearchField>>,
     (core, theme): (Res<ClientCore>, Res<Theme>),
     (mut files, runtime): (ResMut<DeckFiles>, Option<Res<TokioRuntime>>),
     (mut navigate, mut sounds): (MessageWriter<Navigate>, MessageWriter<PlaySfx>),
@@ -701,13 +768,19 @@ fn controls(
         }
     }
     for DropdownChanged { dropdown, index } in chosen.read() {
-        let Ok(filter) = filters.get(*dropdown) else { continue };
-        let (_, filter_intents, _) = filter_entries(&theme, &core, &editor.0, *filter);
-        if let Some(intent) = filter_intents.get(*index) {
+        if sets.get(*dropdown).is_err() {
+            continue;
+        }
+        let (_, set_intents, _) = set_entries(&theme, &core, &editor.0);
+        if let Some(intent) = set_intents.get(*index) {
             intents.push(intent.clone());
         }
     }
     for Pressed(entity) in pressed.read() {
+        if let Ok(FilterPill(intent)) = pills.get(*entity) {
+            intents.push(intent.clone());
+            continue;
+        }
         if let Ok(button) = rows.get(*entity) {
             match button {
                 DeckRowButton::Remove(id) => intents.push(Intent::Remove(id.clone())),
@@ -762,8 +835,14 @@ fn controls(
                 dirty.popup = true;
             }
             Control::Style(style) => intents.push(Intent::Style(style.clone())),
-            Control::Clear => intents.push(Intent::ClearFilters),
-            Control::Search => search.0 = true,
+            Control::Clear => {
+                // The field's words go with the filters, or `text_fields`
+                // would put the query straight back.
+                for mut field in &mut search_field {
+                    field.text.clear();
+                }
+                intents.push(Intent::ClearFilters);
+            }
         }
     }
     for intent in intents {
@@ -789,95 +868,83 @@ fn controls(
 }
 
 /// The search field and the rename field. One text field exists at a
-/// time (`widgets::text_field`), so opening the rename closes the search
-/// — its query stays — and the search reopens from its button.
+/// time (`widgets::text_field`), so the search gives up its `TextField`
+/// while a pop-up is open — its words stay drawn — and takes it back
+/// when the pop-up closes. The search's Escape closes a card being read,
+/// else clears the query, else leaves the screen; its Enter is nothing.
+#[allow(clippy::too_many_arguments)]
 fn text_fields(
     mut commands: Commands,
-    mut fields: Query<(Entity, &mut TextField, Option<&TextFieldEvent>, Has<RenameField>)>,
-    slot: Query<Entity, With<SearchSlot>>,
-    buttons: Query<(Entity, &Control)>,
-    mut search: ResMut<SearchRequested>,
+    mut renames: Query<(Entity, Option<&TextFieldEvent>), (With<TextField>, With<RenameField>)>,
+    mut searches: Query<(Entity, Option<&mut TextField>, Option<&TextFieldEvent>, &Children), With<SearchField>>,
+    mut texts: Query<&mut Text>,
     mut editor: ResMut<Model>,
     mut popup: ResMut<Popup>,
     mut dirty: ResMut<Dirty>,
-    theme: Res<Theme>,
+    mut reading: ResMut<Reading>,
+    mut navigate: MessageWriter<Navigate>,
     core: Res<ClientCore>,
 ) {
     let book = book(&core);
-    let mut search_open = false;
-    for (entity, mut field, event, rename) in &mut fields {
-        if rename {
-            match event {
-                Some(TextFieldEvent::Committed(name)) => {
-                    if editor.0.apply(Intent::Rename(name.clone()), book) == Outcome::Save {
-                        save(&core, &mut editor.0);
-                        dirty.deck = true;
-                        dirty.notice = true;
+    for (_, event) in &mut renames {
+        match event {
+            Some(TextFieldEvent::Committed(name)) => {
+                if editor.0.apply(Intent::Rename(name.clone()), book) == Outcome::Save {
+                    save(&core, &mut editor.0);
+                    dirty.deck = true;
+                    dirty.notice = true;
+                }
+                *popup = Popup::None;
+                dirty.popup = true;
+            }
+            Some(TextFieldEvent::Cancelled) => {
+                *popup = Popup::None;
+                dirty.popup = true;
+            }
+            None => {}
+        }
+    }
+    for (entity, field, event, children) in &mut searches {
+        let Some(mut field) = field else {
+            if *popup == Popup::None {
+                let query = editor.0.filter.query.clone();
+                for child in children.iter() {
+                    if let Ok(mut text) = texts.get_mut(child) {
+                        text.0 = format!("{query}|");
                     }
-                    *popup = Popup::None;
-                    dirty.popup = true;
                 }
-                Some(TextFieldEvent::Cancelled) => {
-                    *popup = Popup::None;
-                    dirty.popup = true;
-                }
-                None => {}
+                commands.entity(entity).insert(TextField::new(query, MAX_QUERY_LEN));
             }
             continue;
+        };
+        if *popup != Popup::None {
+            for child in children.iter() {
+                if let Ok(mut text) = texts.get_mut(child) {
+                    text.0 = field.text.clone();
+                }
+            }
+            commands.entity(entity).remove::<(TextField, TextFieldEvent)>();
+            continue;
         }
-        search_open = true;
-        let close = *popup == Popup::Rename;
         match event {
             Some(TextFieldEvent::Committed(_)) => {
                 commands.entity(entity).remove::<TextFieldEvent>();
             }
-            Some(TextFieldEvent::Cancelled) if !field.text.is_empty() && !close => {
-                field.text.clear();
-                commands.entity(entity).remove::<TextFieldEvent>();
-            }
             Some(TextFieldEvent::Cancelled) => {
-                close_search(&mut commands, entity, &slot, &theme);
-                search_open = false;
-                continue;
-            }
-            None if close => {
-                close_search(&mut commands, entity, &slot, &theme);
-                search_open = false;
-                continue;
+                commands.entity(entity).remove::<TextFieldEvent>();
+                if reading.is_open() {
+                    reading.0 = None;
+                } else if !field.text.is_empty() {
+                    field.text.clear();
+                } else {
+                    navigate.write(Navigate(AppScreen::Decks));
+                }
             }
             None => {}
         }
         if field.text != editor.0.filter.query && editor.0.apply(Intent::Query(field.text.clone()), book) == Outcome::View {
             dirty.pool = true;
         }
-    }
-    if std::mem::take(&mut search.0) && !search_open && *popup == Popup::None {
-        for (entity, control) in &buttons {
-            if *control == Control::Search {
-                commands.entity(entity).despawn();
-            }
-        }
-        if let Ok(slot) = slot.single() {
-            let current = editor.0.filter.query.clone();
-            commands.entity(slot).with_children(|parent| {
-                parent.spawn((
-                    TextField::new(current.clone(), MAX_QUERY_LEN),
-                    widgets::field_node(px(240)),
-                    BackgroundColor(theme.glass_strong),
-                    BorderColor::all(theme.accent),
-                    children![(Text::new(format!("{current}|")), theme.font(size::SMALL), TextColor(theme.text))],
-                ));
-            });
-        }
-    }
-}
-
-fn close_search(commands: &mut Commands, field: Entity, slot: &Query<Entity, With<SearchSlot>>, theme: &Theme) {
-    commands.entity(field).despawn();
-    if let Ok(slot) = slot.single() {
-        commands.entity(slot).with_children(|parent| {
-            parent.spawn(widgets::button(theme, "Search", Val::Auto, Control::Search));
-        });
     }
 }
 
@@ -909,7 +976,7 @@ fn redraw_new_art(mut changed: MessageReader<crate::widgets::art::ArtChanged>, m
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
-    header: Query<Entity, With<Header>>,
+    head: Query<Entity, With<DeckHead>>,
     filters: Query<Entity, With<Filters>>,
     grid: Query<Entity, With<PoolGrid>>,
     list: Query<Entity, With<DeckList>>,
@@ -927,8 +994,8 @@ fn refresh(
     let Dirty { deck, pool, popup: repopup, notice: renotice } = std::mem::take(&mut *dirty);
     let editor = &editor.0;
     if deck {
-        if let Ok(header) = header.single() {
-            commands.entity(header).despawn_children().with_children(|parent| spawn_header(parent, &theme, &core, editor, &images));
+        if let Ok(head) = head.single() {
+            commands.entity(head).despawn_children().with_children(|parent| spawn_head(parent, &theme, &core, editor, &images));
         }
         if let Ok(list) = list.single() {
             commands.entity(list).despawn_children().with_children(|parent| spawn_deck_list(parent, &theme, &core, editor));
