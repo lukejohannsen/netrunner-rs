@@ -237,6 +237,27 @@ pub fn overline<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T>
     (Text::new(text.into().to_uppercase()), theme.font(size::OVERLINE), TextColor(theme.accent.with_alpha(0.85)))
 }
 
+/// A badge per format, lit where the deck is legal in it and dimmed
+/// where it is not — the deck picker's row and the builder's deck
+/// column read the same (Phase 7 §16): one place says what "legal in
+/// Standard" looks like, so a deck looks the same wherever it is judged.
+pub fn format_badges(parent: &mut ChildSpawnerCommands, theme: &Theme, legal_in: &[netrunner_core::format::NsgFormat]) {
+    use netrunner_client::settings::{format_label, FORMATS};
+    parent.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(6), row_gap: px(4), ..default() }).with_children(|badges| {
+        for format in FORMATS {
+            let legal = legal_in.contains(&format);
+            let colour = if legal { theme.legal } else { theme.text_dim.with_alpha(0.5) };
+            badges.spawn((
+                Text::new(format_label(format)),
+                theme.font(size::SMALL),
+                TextColor(colour),
+                Node { padding: UiRect::axes(px(6), px(1)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(8)), ..default() },
+                BorderColor::all(colour.with_alpha(0.6)),
+            ));
+        }
+    });
+}
+
 /// A row that lays its children out left to right.
 pub fn row(gap: f32) -> impl Bundle + use<> {
     Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() }
