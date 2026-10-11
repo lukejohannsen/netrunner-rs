@@ -30383,4 +30383,164 @@ mod revised_core {
         assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 4 + 1 + 1, "and Dyson Mem Chip's");
         assert_eq!(crate::rules::continuous::link(&state, &registry), link + 1, "+1[link]");
     }
+
+    // ---- Stage 2: the Runner's resources, events and hardware ----
+
+    #[test]
+    fn all_nighter_trades_a_click_and_itself_for_two_clicks() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![in_rig("all_nighter", 0, 0)];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("all_nighter"), ability_index: 0 }).expect("[click], [trash]");
+        assert_eq!(used.runner.resources.clicks, Clicks(4 - 1 + 2));
+        assert!(used.runner.rig.is_empty() && used.runner.heap.contains(&id("all_nighter")));
+    }
+
+    #[test]
+    fn doppelganger_gives_a_memory_unit_and_once_per_turn_a_run_after_a_successful_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 4);
+        state.runner.rig = vec![in_rig("doppelganger", 0, 0)];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 4 + 1, "+1[mu]");
+
+        let (ran, _) = run_to_completion(state.clone(), &registry, ServerId::Archives);
+        let (ran, _) = close_all_windows(ran, &registry);
+        assert!(matches!(ran.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "you may run: {:?}", ran.pending_decision);
+        let (asked, _) = apply_action(&ran, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("run");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseServer { .. })), "any server: {:?}", asked.pending_decision);
+        let (again, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("Archives again");
+        assert_eq!(again.active_run.as_ref().map(|run| run.server), Some(ServerId::Archives));
+        assert_eq!(again.runner.resources.clicks, Clicks(3), "no click spent on the second run");
+
+        // Once per turn: the second successful run offers nothing.
+        let (twice, _) = crate::rules::test_support::through_movement(&again, &registry).expect("to success");
+        let (twice, _) = apply_action(&twice, &registry, PlayerAction::CompleteRun).expect("success");
+        let (twice, _) = close_all_windows(twice, &registry);
+        assert!(twice.pending_decision.is_none() && twice.active_run.is_none(), "{:?}", twice.pending_decision);
+
+        let (declined, _) = apply_action(&ran, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(declined.active_run.is_none() && declined.pending_decision.is_none());
+    }
+
+    #[test]
+    fn fall_guy_saves_another_resource_from_being_trashed_or_is_trashed_for_two_credits() {
+        let registry = registry();
+        let trash_one = registry.get(&id("ansel_1_0")).expect("ansel").subroutines[0].effect.clone();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("decoy", 0, 0), in_rig("fall_guy", 0, 0)];
+
+        let (paid, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("fall_guy"), ability_index: 1 }).expect("[trash]: gain 2[credit]");
+        assert_eq!(paid.runner.resources.credits, Credits(22));
+        assert_eq!(paid.runner.heap, vec![id("fall_guy")]);
+
+        state.phase = GamePhase::Action(Side::Corp);
+        crate::rules::evaluate_effect(&mut state, &trash_one, &mut crate::rules::ResolutionContext::for_card(Some(&id("ansel_1_0"))), &registry).expect("the Corp is asked which");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Decoy");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(state.pending_prevention.is_some(), "about to be trashed");
+        let (saved, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("fall_guy"), ability_index: 0 }).expect("prevent it");
+        assert_eq!(saved.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("decoy")]);
+        assert_eq!(saved.runner.heap, vec![id("fall_guy")]);
+    }
+
+    #[test]
+    fn hq_interface_accesses_one_more_card_from_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let (plain, _) = run_to_completion(state.clone(), &registry, ServerId::Hq);
+        let plain = plain.active_run.as_ref().map(|run| run.additional_hq_access).expect("accessing HQ");
+        state.runner.rig = vec![in_rig("hq_interface", 0, 0)];
+        let (more, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(more.active_run.as_ref().map(|run| run.additional_hq_access), Some(plain + 1));
+    }
+
+    #[test]
+    fn mr_li_draws_two_and_puts_one_of_them_on_the_bottom_of_the_stack() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![in_rig("mr_li", 0, 0)];
+        state.runner.grip = vec![];
+        state.runner.stack = vec![id("sure_gamble"), id("corroder"), id("gordian_blade")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("mr_li"), ability_index: 0 }).expect("[click]");
+        assert_eq!(asked.runner.resources.clicks, Clicks(3));
+        assert_eq!(asked.runner.grip.len(), 2);
+        let back = asked.runner.grip[0].clone();
+        let (state, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one of those cards");
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("to the bottom");
+        assert_eq!(done.runner.grip.len(), 1);
+        assert_eq!(done.runner.stack, vec![back, id("sure_gamble")], "the bottom of the stack");
+    }
+
+    fn three_centrals(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for server in [ServerId::Hq, ServerId::Archives] {
+            state = close_all_windows(run_to_completion(state, registry, server).0, registry).0;
+        }
+        let (accessing, _) = run_to_completion(state, registry, ServerId::RnD);
+        let top = accessing.corp.r_and_d.last().cloned().expect("a card in R&D");
+        close_all_windows(apply_action(&accessing, registry, PlayerAction::PassAccessedCard { card_id: top }).expect("pass it").0, registry).0
+    }
+
+    #[test]
+    fn notoriety_joins_the_score_area_as_a_one_point_agenda_after_runs_on_every_central() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("notoriety")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let play = PlayerAction::PlayEvent { card_id: id("notoriety") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "only after successful runs on R&D, HQ and Archives");
+        let ready = three_centrals(state, &registry);
+        let (played, _) = apply_action(&ready, &registry, play).expect("play");
+        assert_eq!(played.runner.resources.agenda_points, AgendaPoints(1));
+        assert_eq!(played.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![id("notoriety")]);
+        assert!(played.runner.heap.is_empty() && played.runner.play_area.is_empty(), "in the score area, not the heap");
+        assert_eq!(played.runner.resources.credits, Credits(20 - 1));
+    }
+
+    #[test]
+    fn singularity_trashes_everything_in_the_root_of_a_remote_instead_of_breaching_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("singularity")];
+        let mut pad = crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() };
+        state.corp.installed = vec![pad.clone()];
+        pad.card = id("hostile_takeover");
+        pad.install_id = fixture_install_id("hostile_takeover");
+        pad.rezzed = false;
+        state.corp.installed.push(pad);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("singularity") }).expect("play");
+        assert_eq!(asked.runner.resources.clicks, Clicks(4 - 2), "[click] and an additional [click]");
+        assert_eq!(asked.runner.resources.credits, Credits(20 - 4));
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &asked.pending_decision else { panic!("{:?}", asked.pending_decision) };
+        assert_eq!(servers, &[ServerId::Remote(0)], "a remote server");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run");
+        let (there, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (done, events) = apply_action(&there, &registry, PlayerAction::CompleteRun).expect("successful");
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardAccessed { .. })), "no breach");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.corp.installed.is_empty(), "both cards in the root trashed");
+        assert!(done.runner.scored_agendas.is_empty(), "an agenda trashed, not stolen");
+    }
+
+    #[test]
+    fn underworld_contact_pays_a_credit_as_the_turn_begins_with_two_link() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("underworld_contact", 0, 0)];
+        let begin = |mut state: GameState| {
+            crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+            close_all_windows(state, &registry).0.runner.resources.credits
+        };
+        let link = crate::rules::continuous::link(&state, &registry);
+        assert!(link < 2, "the fixture's identity has {link}");
+        assert_eq!(begin(state.clone()), Credits(20), "less than 2[link]");
+        state.runner.rig.push(in_rig("the_toolbox", 0, 0));
+        assert_eq!(begin(state), Credits(21), "2[link] or more");
+    }
 }

@@ -3867,3 +3867,20 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 
 **Verified.** `a_strength_cut_is_the_pumps_it_saves`: over a rezzed Tollbooth with Gordian Blade the Tailor saves one pump and a hosted Monkeywrench two, held and installed alike, and nothing with no breaker. Engine untouched; `netrunner_bots` only.
 
+## 68. The steal is part of the taxing window: NAPD Cordon is played — DONE (`claude/bot-blindness-steal-tax`, 11 October 2026)
+
+**The debt.** NAPD Cordon is a 0[c] lockdown whose whole text is a price on stealing: "4[credit] plus 2[credit] for each advancement counter on that agenda". Random seats played it 31 times over the Sweep decks; the planner twice in 1260 games.
+
+**Why.** The Runner already read the price (`can_pay_to_steal`, `continuous::steal_price`), but the Corp's only reading of whether the Runner can get at an installed agenda is the taxing window (`agendas_under_the_window`), and that priced the break alone. A card that makes the steal unaffordable changed nothing the Corp counted, so it was a card spent for nothing.
+
+**What is read now.** `read::steal_credits`: what the table adds to stealing an installed agenda, in credits, asked of a copy of the board with that agenda under access, because NAPD Cordon's count reads the counters of the card being accessed (CR 1.16.2b); a board no card taxes is never copied. A price with anything but credits and clicks in it is taken as unpayable, as the Runner's reading takes it. The window adds it to the break: an agenda the Runner can break into and not pay to steal is as shut as one behind a wall they cannot break. Red Herrings and Magistrate Revontulet are read by the same line.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` (ac540cc) against this branch, the same games:
+
+- Seed 2: **NAPD Cordon 1 → 4**, Magistrate Revontulet 38 → 42, Red Herrings 29 → 29; Corp share 0.467 → 0.471 (+5 / −2).
+- Seed 3: **NAPD Cordon 1 → 5**, Magistrate Revontulet 39 → 41, Red Herrings 32 → 32; Corp share 0.514 → 0.513 (+2 / −3).
+- Pooled +7 / −5, z 0.58.
+
+**Still short.** 9 plays against random's 31: the window counts installed agendas only, so the Cordon is worth something only with an agenda on the table and a Runner the extra price stops. Its reach over HQ and R&D, where every agenda costs the same 4[credit], is not read.
+
+**Verified.** `an_agenda_the_runner_cannot_pay_to_steal_is_under_the_window`: a naked remote holding a one-token Hostile Takeover is open to a 5[c] Runner, shut under NAPD Cordon (6[c]), and open again at 6[c]. Engine untouched; `netrunner_bots` only.

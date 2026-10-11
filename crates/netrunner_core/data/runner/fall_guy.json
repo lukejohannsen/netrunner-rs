@@ -1,0 +1,35 @@
+{
+  "id": "fall_guy",
+  "title": "Fall Guy",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent a player from trashing another installed resource.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Resource"
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Gain 2[credit].",
+      "cost": "TrashSelf",
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          2
+        ]
+      }
+    }
+  ],
+  "built_from": 4106,
+  "is_playable": true
+}

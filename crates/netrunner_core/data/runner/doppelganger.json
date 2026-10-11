@@ -1,0 +1,57 @@
+{
+  "id": "doppelganger",
+  "title": "Doppelgänger",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "LastRunSuccessful",
+          "OncePerTurn"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseServer": {
+                  "chooser": "Runner",
+                  "rez_cost_delta": 0,
+                  "bonus_run_credits": 0
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may run any server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per turn → When a successful run ends, you may run any server."
+    }
+  ],
+  "built_from": 2064,
+  "is_playable": true
+}

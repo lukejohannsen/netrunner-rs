@@ -1266,6 +1266,17 @@ pub fn evaluate_effect(
                 events.push(add_to_score_area_as_agenda(state, Side::Runner, removed.card, *as_agenda));
                 return Ok(events);
             }
+            // A Runner event, as it resolves (Notoriety's "Add Notoriety to
+            // your score area as an agenda"): it is in no zone until its
+            // text has resolved (`engine::play_event` trashes it after), or
+            // waiting in the play area behind what its text parked, so it
+            // leaves for the score area from there and is never trashed.
+            if registry.get(&card_id).is_some_and(|card| card.side == Side::Runner && card.card_type == crate::dsl::CardType::Event) {
+                if let Some(position) = state.runner.play_area.iter().rposition(|card| *card == card_id) {
+                    state.runner.play_area.remove(position);
+                }
+                return Ok(vec![add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda)]);
+            }
             let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else {
                 return Ok(Vec::new());
             };
