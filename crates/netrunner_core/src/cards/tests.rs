@@ -30663,4 +30663,203 @@ mod revised_core {
         assert_eq!(strength(&state, "eli_1_0"), eli + 1, "a bioroid");
         assert_eq!(strength(&state, "ice_wall"), wall, "not a bioroid");
     }
+
+    // ---- Stage 4: the Corp's agendas, assets, upgrades and operations ----
+
+    fn root(card: &str, remote: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id(card) }).expect("score").0
+    }
+
+    #[test]
+    fn ash_traces_on_a_successful_run_and_leaves_only_itself_to_access() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("ash_2x3zb9cy", 0, true), root("hostile_takeover", 0, false)];
+        let (tracing, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(4), "Trace[4]");
+        let (only_ash, events) = bids(&tracing, &registry, 0, 0);
+        assert_eq!(breach(only_ash, &registry, events), [id("ash_2x3zb9cy")], "nothing other than Ash");
+        let (both, events) = bids(&tracing, &registry, 0, 4);
+        assert_eq!(breach(both, &registry, events).len(), 2, "avoided: both");
+    }
+
+    /// Plays out a breach the Runner is in, accessing every card offered
+    /// and passing each, and returns the cards accessed.
+    fn breach(mut state: GameState, registry: &CardRegistry, mut events: Vec<crate::rules::GameEvent>) -> Vec<CardId> {
+        for _ in 0..12 {
+            if state.active_run.is_none() {
+                break;
+            }
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. } | PlayerAction::PassAccessedCard { .. } | PlayerAction::StealAgenda { .. }))
+                .cloned()
+                .or_else(|| state.paid_ability_window.as_ref().map(|window| PlayerAction::PassPriority { side: window.active_priority }))
+                .unwrap_or(PlayerAction::CompleteRun);
+            let (next_state, more) = apply_action(&state, registry, next.clone()).unwrap_or_else(|error| panic!("{next:?}: {error:?}; legal {legal:?}; access {:?}", state.active_run.as_ref().map(|run| &run.access_state)));
+            state = next_state;
+            events.extend(more);
+        }
+        events.iter().filter_map(|event| match event {
+            crate::rules::GameEvent::CardAccessed { card, .. } => Some(card.clone()),
+            _ => None,
+        }).collect()
+    }
+
+    #[test]
+    fn braintrust_counts_every_two_advancements_past_three_and_lowers_every_ice_rez_cost() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 7, ..root("braintrust", 0, false) }, ice_at_hq("ice_wall")];
+        state.corp.installed[1].rezzed = false;
+        let wall = fixture_install_id("ice_wall");
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, wall), 0);
+        let scored = score(&state, &registry, "braintrust");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2, "7 is 4 past 3: two counters");
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&scored, &registry, wall), -2, "lowered by 1 for each");
+
+        state.corp.installed[0].advancement_tokens = 4;
+        assert_eq!(score(&state, &registry, "braintrust").corp.scored_agendas[0].agenda_counters, 0, "1 past 3 is not 2");
+    }
+
+    #[test]
+    fn dedicated_response_team_does_two_meat_damage_as_a_successful_run_ends_on_a_tagged_runner() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("dedicated_response_team", 0, true)];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        let after = |state: &GameState| close_all_windows(run_to_completion(state.clone(), &registry, ServerId::Archives).0, &registry).0;
+        assert_eq!(after(&state).runner.grip.len(), 4, "untagged");
+        state.runner.tags = 1;
+        assert_eq!(after(&state).runner.grip.len(), 2, "2 meat damage");
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(after(&state).runner.grip.len(), 4, "unrezzed");
+    }
+
+    #[test]
+    fn elizabeth_mills_removes_a_bad_publicity_when_rezzed_and_trashes_a_location_for_one() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.bad_publicity = 1;
+        state.corp.installed = vec![root("elizabeth_mills", 0, false)];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("elizabeth_mills") }).expect("rez");
+        let (rezzed, _) = close_all_windows(rezzed, &registry);
+        assert_eq!(rezzed.corp.bad_publicity, 0, "remove 1 bad publicity");
+
+        state.corp.installed[0].rezzed = true;
+        state.runner.rig = vec![in_rig("daily_casts", 0, 0), in_rig("hackerspace", 0, 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("elizabeth_mills"), ability_index: 0 }).expect("[click], [trash]");
+        assert!(asked.corp.installed.is_empty() && asked.corp.archives.iter().any(|card| card.card == id("elizabeth_mills")));
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "Daily Casts is no location");
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Hackerspace");
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!(done.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("daily_casts")]);
+        assert_eq!(done.corp.bad_publicity, 2, "take 1 bad publicity");
+    }
+
+    #[test]
+    fn green_level_clearance_gains_three_and_draws_one() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("green_level_clearance")];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let credits = state.corp.resources.credits.0;
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("green_level_clearance") }).expect("play");
+        assert_eq!(played.corp.resources.credits, Credits(credits - 1 + 3));
+        assert_eq!(played.corp.hq, vec![id("hedge_fund")]);
+    }
+
+    #[test]
+    fn grndl_refinery_can_be_advanced_and_trashes_itself_for_four_credits_a_token() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("grndl_refinery", 0, false)];
+        let advance = PlayerAction::AdvanceCard { target: fixture_install_id("grndl_refinery") };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&advance), "it can be advanced");
+        state.corp.installed[0].advancement_tokens = 3;
+        state.corp.installed[0].rezzed = true;
+        let credits = state.corp.resources.credits.0;
+        let (cashed, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("grndl_refinery"), ability_index: 0 }).expect("[click], [trash]");
+        assert_eq!(cashed.corp.resources.credits, Credits(credits + 12), "4 for each of 3");
+        assert!(cashed.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn project_ares_has_the_runner_trash_an_install_per_counter_past_four_and_the_corp_take_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![in_rig("corroder", 0, 0), in_rig("daily_casts", 0, 0), in_rig("dyson_mem_chip", 0, 0)];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 6, ..root("project_ares", 0, false) }];
+        let asked = score(&state, &registry, "project_ares");
+        assert_eq!(crate::rules::current_actor(&asked), Some(Side::Runner), "the Runner chooses");
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
+        let (done, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("trash both");
+        assert_eq!(done.runner.rig.len(), 1, "6 is 2 past 4");
+        assert_eq!(done.corp.bad_publicity, 1);
+
+        state.corp.installed[0].advancement_tokens = 4;
+        let exactly = score(&state, &registry, "project_ares");
+        assert!(exactly.pending_decision.is_none());
+        assert_eq!((exactly.runner.rig.len(), exactly.corp.bad_publicity), (3, 0), "nothing past 4");
+
+        state.corp.installed[0].advancement_tokens = 6;
+        state.runner.rig.clear();
+        let nothing = score(&state, &registry, "project_ares");
+        assert_eq!(nothing.corp.bad_publicity, 0, "nothing trashed, so no bad publicity");
+    }
+
+    #[test]
+    fn strongbox_costs_a_click_to_steal_from_its_server_even_once_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![root("strongbox", 0, true), root("hostile_takeover", 0, false)];
+        let (breaching, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        let clicks = breaching.runner.resources.clicks;
+        let (agenda, _) = apply_action(&breaching, &registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(fixture_install_id("hostile_takeover")) }).expect("access it");
+        let (stolen, _) = apply_action(&agenda, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal it for [click]");
+        assert_eq!(stolen.runner.resources.clicks, Clicks(clicks.0 - 1));
+
+        let (strongbox, _) = apply_action(&breaching, &registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(fixture_install_id("strongbox")) }).expect("access it");
+        let (trashed, _) = apply_action(&strongbox, &registry, PlayerAction::TrashAccessedCard { card_id: id("strongbox") }).expect("trash it");
+        let trashed = until_offered(trashed, &registry, &PlayerAction::StealAgenda { card_id: id("hostile_takeover") });
+        let (stolen, _) = apply_action(&trashed, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("persistent");
+        assert_eq!(stolen.runner.resources.clicks, Clicks(clicks.0 - 1));
+
+        state.runner.resources.clicks = Clicks(1);
+        let (breaching, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (agenda, _) = apply_action(&breaching, &registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(fixture_install_id("hostile_takeover")) }).expect("access it");
+        assert!(apply_action(&agenda, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).is_err(), "no [click] left to spend");
+    }
+
+    /// Answers whatever the access asks of the Runner (passing, selecting
+    /// the next card) until `action` is offered.
+    fn until_offered(mut state: GameState, registry: &CardRegistry, action: &PlayerAction) -> GameState {
+        for _ in 0..6 {
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            if legal.contains(action) {
+                return state;
+            }
+            let next = legal.into_iter().find(|candidate| matches!(candidate, PlayerAction::SelectCardToAccess { .. })).expect("another card to access");
+            state = apply_action(&state, registry, next).expect("access the next").0;
+        }
+        panic!("{action:?} never offered");
+    }
+
+    #[test]
+    fn tgtbt_is_revealed_in_rnd_and_tags_the_runner_who_accesses_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("tgtbt")];
+        let (accessing, events) = run_to_completion(state, &registry, ServerId::RnD);
+        let (accessing, more) = close_all_windows(accessing, &registry);
+        assert!(events.iter().chain(&more).any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { card, .. } if *card == id("tgtbt"))), "revealed: {events:?}");
+        assert_eq!(accessing.runner.tags, 1, "give them 1 tag");
+    }
 }

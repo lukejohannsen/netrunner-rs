@@ -1,0 +1,67 @@
+{
+  "id": "elizabeth_mills",
+  "title": "Elizabeth Mills",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "RemoveBadPublicity": 1
+        }
+      ],
+      "text": "When you rez this asset, remove 1 bad publicity."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Trash 1 installed location resource. Take 1 bad publicity.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "All": [
+                  {
+                    "CardType": "Resource"
+                  },
+                  {
+                    "HasSubtype": "Location"
+                  }
+                ]
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          },
+          {
+            "GiveBadPublicity": {
+              "Fixed": 1
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "trash_cost": 1,
+  "built_from": 4037,
+  "is_playable": true
+}

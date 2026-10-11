@@ -1,0 +1,31 @@
+{
+  "id": "dedicated_response_team",
+  "title": "Dedicated Response Team",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "LastRunSuccessful",
+          "IsTagged"
+        ]
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "If the Runner is tagged, Dedicated Response Team gains \"Whenever a successful run ends, do 2 meat damage.\""
+    }
+  ],
+  "trash_cost": 3,
+  "built_from": 2118,
+  "is_playable": true
+}
