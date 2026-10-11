@@ -170,7 +170,7 @@ impl Shelf {
             blurb: "Saved in your data directory; the terminal client plays them too.",
             rows: sorted(self.rows.iter().enumerate().filter(|(_, row)| row.saved && visible(row)).map(|(i, _)| i).collect()),
         }];
-        for category in [DeckCategory::Sample, DeckCategory::Starter, DeckCategory::Boosted, DeckCategory::Sweep, DeckCategory::Custom] {
+        for category in [DeckCategory::Sample, DeckCategory::Starter, DeckCategory::Boosted, DeckCategory::Custom] {
             let rows: Vec<usize> = sorted(self.rows.iter().enumerate().filter(|(_, row)| !row.saved && row.deck.category == category && visible(row)).map(|(i, _)| i).collect());
             if rows.is_empty() {
                 continue;
@@ -322,7 +322,10 @@ fn category_words(category: DeckCategory) -> (&'static str, &'static str) {
         DeckCategory::Sample => ("Sample decks", "Published lists: Null Signal Games' sample decklists and Standard tournament lists from NetrunnerDB. Copy one to build from it."),
         DeckCategory::Starter => ("Learn to Play decks", "The starter decks, played to six points."),
         DeckCategory::Boosted => ("Boosted starter decks", "A starter deck with its booster pack."),
-        DeckCategory::Sweep => ("Test decks", "Built to reach rules no published list prints; Eternal-legal only."),
+        // Never listed (`deck_picker::rows` leaves them out, 11 October
+        // 2026): a test deck reaches rules for the sweeps' coverage and
+        // is no good in play or as a design.
+        DeckCategory::Sweep => ("Test decks", "Built to reach rules no published list prints."),
         DeckCategory::Custom => ("Other decks", "Built-in decks with no category."),
     }
 }
@@ -419,18 +422,8 @@ mod tests {
         shelf.apply(Intent::Faction(None), book);
         shelf.apply(Intent::Legal(Some(NsgFormat::Startup)), book);
         let legal = count(&shelf);
-        assert!(legal > 0 && legal < all, "most test decks are Eternal-only: {legal} of {all}");
-        // The test decks that are Startup-legal (Ad Nihilum and Borrowed
-        // Time, all Startup cards) stay; every Eternal-only one is
-        // filtered out.
-        let test_decks: Vec<String> = shelf
-            .sections()
-            .iter()
-            .filter(|section| section.title == "Test decks")
-            .flat_map(|section| section.rows.clone())
-            .map(|i| shelf.rows[i].deck.id.clone())
-            .collect();
-        assert_eq!(test_decks, ["ad_nihilum", "borrowed_time"]);
+        assert!(legal > 0 && legal < all, "some built-in decks are Eternal-only: {legal} of {all}");
+        assert!(shelf.sections().iter().all(|section| section.title != "Test decks"), "a test deck is in no list a person sees");
     }
 
     #[test]
@@ -439,14 +432,14 @@ mod tests {
         let book = CardBook::new(&registry, &catalog);
         let dir = Scratch::new("list");
         let shelf = Shelf::open(Some(dir.0.clone()), book, NsgFormat::Startup);
-        assert_eq!(shelf.rows.len(), netrunner_core::decks::embedded_decks().len());
+        let embedded = netrunner_core::decks::embedded_decks();
+        let shown = embedded.iter().filter(|deck| deck.category != DeckCategory::Sweep).count();
+        assert_eq!(shelf.rows.len(), shown, "every built-in deck but the test decks");
+        assert!(shelf.rows.iter().all(|row| row.deck.category != DeckCategory::Sweep));
         let sections = shelf.sections();
         assert_eq!(sections[0].title, "Your decks");
         assert!(sections[0].rows.is_empty());
         assert!(sections.iter().any(|section| section.title == "Sample decks"));
-        let sweep = shelf.rows.iter().find(|row| row.deck.category == DeckCategory::Sweep).unwrap();
-        assert!(!sweep.status.standing.is_legal(), "a test deck is Eternal-only");
-        assert!(sweep.status.legal_in.contains(&NsgFormat::Eternal));
         let stolen = &shelf.rows[index_of(&shelf, "stolen_goods")];
         assert_eq!(stolen.status.standing, Standing::Legal);
     }

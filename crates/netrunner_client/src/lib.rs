@@ -47,6 +47,7 @@ pub mod card_text;
 pub mod cards;
 pub mod connection;
 pub mod deck_builder;
+pub mod deck_editor;
 pub mod deck_picker;
 pub mod deck_store;
 pub mod placement;

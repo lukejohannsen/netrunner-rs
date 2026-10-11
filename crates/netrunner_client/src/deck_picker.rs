@@ -17,9 +17,13 @@
 //! built — and a person who built one should find it in the list and
 //! read why it is greyed out, not wonder where it went; so an illegal
 //! row stays, dimmed, with its reason, and `Choose` on it is refused
-//! with that reason rather than quietly ignored. A test deck
-//! (`DeckCategory::Sweep`) is left out: it exists to reach rules no
-//! published list prints, and is not a deck anyone picks to play.
+//! with that reason rather than quietly ignored. **A test deck
+//! (`DeckCategory::Sweep`) is in no list a person sees** — not the
+//! picker, not either client's Decks screen (the person asked, 11
+//! October 2026): it exists to reach rules no published list prints for
+//! the sweeps' coverage, and is no good in play or as a design. The one
+//! place that still names them is `netrunner_cli deck list`, the tool
+//! the sweeps' maintainer reads.
 //!
 //! **Choosing a deck makes it the active deck for its side**
 //! (`settings::Settings::set_active_deck`): the one the person last
@@ -121,12 +125,13 @@ pub fn category_order(category: DeckCategory) -> u8 {
     }
 }
 
-/// Every deck, the person's first, then the built-in ones by category,
-/// Corp before Runner and then by name — each with its standing in
-/// `format`. `dir` is the saved-deck directory, `None` when the OS has
-/// none, in which case the built-in decks are the list. A deck file that
-/// cannot be read is a line in the problems, never a reason to list
-/// nothing (`deck_store::list_lenient`).
+/// Every deck a person may see — the test decks left out — the
+/// person's first, then the built-in ones by category, Corp before
+/// Runner and then by name, each with its standing in `format`. `dir`
+/// is the saved-deck directory, `None` when the OS has none, in which
+/// case the built-in decks are the list. A deck file that cannot be
+/// read is a line in the problems, never a reason to list nothing
+/// (`deck_store::list_lenient`).
 pub fn rows(dir: Option<&Path>, book: CardBook, format: NsgFormat) -> (Vec<Row>, Vec<String>) {
     let (stored, problems) = match dir {
         Some(dir) => deck_store::list_lenient(dir),
@@ -134,6 +139,7 @@ pub fn rows(dir: Option<&Path>, book: CardBook, format: NsgFormat) -> (Vec<Row>,
     };
     let mut rows: Vec<Row> = stored
         .into_iter()
+        .filter(|stored| stored.deck.category != DeckCategory::Sweep)
         .map(|stored| {
             let status = deck_builder::status(&stored.deck, book, format);
             let faction = book.get(&stored.deck.identity).and_then(|identity| identity.faction);
@@ -144,9 +150,9 @@ pub fn rows(dir: Option<&Path>, book: CardBook, format: NsgFormat) -> (Vec<Row>,
     (rows, problems)
 }
 
-/// The rows a picker for `side` offers: that side's, test decks left out.
+/// The rows a picker for `side` offers: that side's.
 pub fn rows_for(side: Side, rows: &[Row]) -> Vec<Row> {
-    rows.iter().filter(|row| row.deck.side == side && row.deck.category != DeckCategory::Sweep).cloned().collect()
+    rows.iter().filter(|row| row.deck.side == side).cloned().collect()
 }
 
 /// What a client can do to the picker. The terminal maps keys onto
@@ -178,10 +184,12 @@ pub enum Outcome {
     Refused(String),
 }
 
-/// Choosing one of a side's decks for a table in a format.
+/// Choosing one of a side's decks for a table in a format — or, with no
+/// side, one of every deck, which is how a Decks screen lists them.
 #[derive(Debug, Clone)]
 pub struct Picker {
-    pub side: Side,
+    /// The side the picker was opened for; `None` lists both.
+    pub side: Option<Side>,
     /// The format the table is in: what a row's `playable` answers.
     pub format: NsgFormat,
     pub rows: Vec<Row>,
@@ -201,7 +209,17 @@ impl Picker {
             .and_then(|id| rows.iter().position(|row| row.deck.id == id))
             .or_else(|| rows.iter().position(Row::playable))
             .unwrap_or(0);
-        Picker { side, format, rows, legal: None, query: String::new(), cursor }
+        Picker { side: Some(side), format, rows, legal: None, query: String::new(), cursor }
+    }
+
+    /// A picker over every deck of both sides — the terminal's Decks
+    /// screen, whose list is this picker's search and cursor over
+    /// [`rows`], and whose Enter opens a deck rather than choosing it,
+    /// so an illegal saved deck still opens to be mended.
+    pub fn open_all(format: NsgFormat, rows: Vec<Row>, chosen: Option<&str>) -> Self {
+        let mut picker = Self::open(Side::Corp, format, rows, chosen);
+        picker.side = None;
+        picker
     }
 
     /// The rows the query and the format filter leave, as indices into
