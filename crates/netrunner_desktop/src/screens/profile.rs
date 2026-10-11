@@ -81,7 +81,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
                 let answer = tokio::time::timeout(STANDING_TIMEOUT, remote::standing(&address, &credentials)).await;
                 let mut lines = vec![format!("At {address}")];
                 match answer {
-                    Ok(Ok(standing)) => lines.extend(identity::standing_lines(standing.as_ref())),
+                    Ok(Ok(standings)) => lines.extend(identity::standing_lines(&standings)),
                     Ok(Err(error)) => lines.push(error.to_string()),
                     Err(_) => lines.push(format!("No answer within {}s", STANDING_TIMEOUT.as_secs())),
                 }

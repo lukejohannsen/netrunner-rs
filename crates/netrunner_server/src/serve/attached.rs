@@ -447,8 +447,8 @@ impl Attached {
         };
         let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() };
         let info = tournament.info(&id);
-        registry.tournaments.0.insert(id, tournament);
-        self.shared.save_tournaments(&registry);
+        registry.tournaments.0.insert(id.clone(), tournament);
+        self.shared.save_tournament(&registry, &id);
         Ok(info)
     }
 
@@ -496,7 +496,7 @@ impl Attached {
             None => tournament.entrants.push(entry),
         }
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -558,7 +558,7 @@ impl Attached {
             }
         }
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -622,7 +622,7 @@ impl Attached {
         tournament.clock = Some(RoundClock { began_at: unix_now(), seconds: self.shared.options.round_length.as_secs() });
         tournament.state = TournamentState::Playing { round: tournament.rounds.len() as u32 };
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -645,7 +645,7 @@ impl Attached {
         }
         tournament.state = TournamentState::Finished;
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -679,7 +679,7 @@ impl Attached {
         tournament.rounds[round].tables[table].result = Some(outcome);
         tournament.draw_offers.retain(|offer| offer.table != table);
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -729,7 +729,7 @@ impl Attached {
             tournament.draw_offers.push(DrawOffer { table, by: key });
         }
         let info = tournament.info(&id);
-        self.shared.save_tournaments(&registry);
+        self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -830,7 +830,7 @@ impl Attached {
                         kept.nonces = Some(nonces.clone());
                     }
                 }
-                self.shared.save_tournaments(&registry);
+                self.shared.save_tournament(&registry, &id);
                 let game = TableGame { table: table_ref, round_end, secret, nonces, salts };
                 start_match(&self.shared, &mut registry, match_id, seed, format, corp, runner, false, Some(game));
                 Ok(Playing { token, out, into, lobby })

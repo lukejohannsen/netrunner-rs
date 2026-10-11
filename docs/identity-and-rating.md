@@ -163,32 +163,36 @@ a change to the hottest message in the protocol, and it buys nothing while a
 rating is one operator's claim anyway (§5). The footer reserves
 `action_chain: Option<…>`; nothing else in this design moves when it arrives.
 
-## 4. Storage: the results log is the truth, the book is a cache
+## 4. Storage: the results log is the truth, the store is its index
 
-Under the daemon's `--data-dir`:
+Under the daemon's `--data-dir` (Phase 4 §10, 11 October 2026):
 
 | Path | What |
 |---|---|
 | `identity.key` | The server's keypair. |
-| `players.json` | One entry per key: label, first seen, last seen. A map rewritten whole, not the `players.jsonl` first sketched here: last seen changes on every visit, so a log would grow a line per connection to say one fact per key. |
-| `matches/<yyyy-mm>/<match_id>.jsonl` | Full records: header, history, footer. |
+| `store.sqlite` | The store (`netrunner_store`), made on first start, or elsewhere by `--database`: the players (key, name, first and last seen, the title and badge worn), a rating per key, format and role, the results with their receipts, the awards, which chairs two keys last took against each other, and the tournaments. |
+| `matches/<yyyy-mm>/<match_id>.jsonl` | Full records: header, history, footer; the receipt beside each. |
 | `results.jsonl` | Append-only receipts, one line per rated game, in order. |
-| `ratings.json` | The `RatingBook`, exactly as today. |
 
-- **`ratings.json` is derived.** Folding `results.jsonl` through
-  `RatingBook::record` in order rebuilds it exactly — one game is one rating
-  period, and both updates read the pre-game standings, so nothing else is
-  needed. A corrupted book, a change to `Glicko2::tau`, or voiding a cheater's
-  games is a *rebuild* (`serve --rebuild-ratings`), not surgery on a number
-  nobody can re-derive.
-- **Files, written with a temp file and a rename**, as `save_ratings` does
-  today. **Rejected for now: SQLite.** Nothing yet asks a question a fold over
-  a log cannot answer. It becomes the right move when a ladder page or a match
-  search does, and the log is what it would be loaded from. *Revisited
-  11 October 2026: a profile per key — a name, titles and badges, a ladder per
-  format, the pairing memory the queues balance sides with — is that page, so
-  the store comes (Phase 4 §10: `netrunner_store`, SQLite with no setup and
-  Postgres by flag); the log stays the truth and the store is its index.*
+- **The store's ratings and results are derived.** Folding `results.jsonl`
+  through `RatingBook::record` in order rebuilds them exactly — one game is
+  one rating period, both updates read the pre-game standings, and each
+  receipt names the format its ladder is — so nothing else is needed. A
+  corrupted store, a change to `Glicko2::tau`, or voiding a cheater's games
+  is a *rebuild* (`serve --rebuild`), not surgery on a number nobody can
+  re-derive. The players, the awards, the pairing memory and the
+  tournaments are not the log's and a rebuild keeps them.
+- **One writer, in order.** The book is folded under the registry's lock
+  with the log append, and the rows that record it are queued to one task
+  that lands them in that order (`serve::store::Writer`); the book stays in
+  memory and the store is read for what the book never answered.
+- **SQLite with nothing to set up, Postgres by flag.** SQLite was rejected
+  here at first — "nothing yet asks a question a fold over a log cannot
+  answer; it becomes the right move when a ladder page or a match search
+  does" — and a profile per key, a ladder per format and the pairing memory
+  the queues balance sides with (Phase 4 §9–§11) are that page. Before the
+  store, `players.json`, `ratings.json` and `tournaments.json` were each
+  rewritten whole on every change.
 - **A record holds two whole decklists.** A player may fetch their own
   records; publishing anyone else's is an operator's policy, off by default.
 
@@ -198,7 +202,10 @@ Under the daemon's `--data-dir`:
   seating no bot, **in a lobby that rates** (Phase 4 §7 stage 5): the
   daemon's own lobbies do, and a player's does unless they made it casual —
   `LobbyInfo::rated` says which, and the Server page says it over Find a
-  game. A forfeit — surrender, disconnect, clock — is a loss and a stall is
+  game. **On the lobby's format's ladder** (Phase 4 §10): a server keeps one
+  ladder per format (`Track::Ladder`), a Startup deck says nothing about a
+  Standard one, and `Standing` lists every ladder the key has played on. A
+  forfeit — surrender, disconnect, clock — is a loss and a stall is
   nobody's, as today.
 - **Never rated: a game hosted in-process from the menu** (Phase 6 §3). The
   host's process holds the seed and the unmasked state of a game its own
@@ -255,6 +262,12 @@ Each its own branch, in this order; each is useful without the next.
    free kind in any game and the undo only where the lobby does not rate,
    and answers every seat with the restored view and `TakenBack`. Both
    clients reach it through the take-back they had against a bot.
+
+6. **The store** (Phase 4 §10). *Stage 1 built 11 October 2026*
+   (`feat/store-sqlite`): `netrunner_store` over SQLite, the daemon on it
+   for players, ratings, results, pairings and tournaments, a ladder per
+   format, the receipt naming its format, `--rebuild`. Next: the profile
+   messages, then Postgres.
 
 **Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
 `ServerMessage` live in `netrunner_protocol`, which the server re-exports and

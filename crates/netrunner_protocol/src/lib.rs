@@ -231,6 +231,14 @@ pub fn format_lobby_id(format: NsgFormat) -> String {
     format!("{format:?}").to_lowercase()
 }
 
+/// A key's standing in one format at a server: the server's ladders are
+/// one per format, and `Standing` lists the ones the key has played in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FormatStanding {
+    pub format: NsgFormat,
+    pub standing: Standing,
+}
+
 /// A lobby as `Lobbies` and `LobbyJoined` report it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LobbyInfo {
@@ -305,10 +313,12 @@ pub enum ServerMessage {
     /// Sent after `GameEnded`, only to proved seats of a rated game.
     Rated { receipt: Box<Signed>, before: Rating, after: Rating },
     /// The reply to `MyStanding`: the key this connection proved, if it
-    /// did, and its standing on the server's book between people. `None`
-    /// for a connection that proved no key, on a server that keeps no
-    /// book, or for a key with no rated game there yet.
-    Standing { key: Option<PublicKey>, standing: Option<Standing> },
+    /// did, and its standing in every format it has a rated game in at
+    /// this server — a ladder per format (Phase 4 §10), so a Startup
+    /// standing says nothing about a Standard one. `key: None` for a
+    /// connection that proved no key; an empty list for a server that
+    /// keeps no ladder or a key with no rated game there yet.
+    Standing { key: Option<PublicKey>, standings: Vec<FormatStanding> },
     /// The seat is taken. `session_token` is what `ClientMessage::Resume`
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the

@@ -104,7 +104,7 @@ pub enum AttachedEvent {
     SeekCancelled,
     /// The answer to `standing`: whether this connection proved a key,
     /// and its standing on the server's book if it has one there.
-    Standing { key: Option<netrunner_identity::PublicKey>, standing: Option<netrunner_protocol::Standing> },
+    Standing { key: Option<netrunner_identity::PublicKey>, standings: Vec<netrunner_protocol::FormatStanding> },
     /// The answer to `list_tournaments`.
     Tournaments(Vec<TournamentInfo>),
     /// A tournament as it now stands, after `create_tournament`,
@@ -595,7 +595,7 @@ async fn drive(
                 Event::Queued(position) => AttachedEvent::Queued(position),
                 Event::SeekRefused(reason) => AttachedEvent::SeekRefused(reason),
                 Event::SeekCancelled => AttachedEvent::SeekCancelled,
-                Event::Standing { key, standing } => AttachedEvent::Standing { key, standing },
+                Event::Standing { key, standings } => AttachedEvent::Standing { key, standings },
                 Event::Tournaments(tournaments) => AttachedEvent::Tournaments(tournaments),
                 Event::Tournament(tournament) => AttachedEvent::Tournament(tournament),
                 Event::TournamentRefused(reason) => AttachedEvent::TournamentRefused(reason),
@@ -744,14 +744,14 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
 /// server at this address that proves another key is refused before this
 /// player's key is proved to it, and one met for the first time is
 /// remembered.
-pub async fn standing(address: &str, credentials: &Credentials) -> Result<Option<netrunner_protocol::Standing>, ConnectionError> {
+pub async fn standing(address: &str, credentials: &Credentials) -> Result<Vec<netrunner_protocol::FormatStanding>, ConnectionError> {
     let dialer = Dialer::default();
     let reply = standing_over(Target::of(address.to_string()), address, credentials, &dialer).await;
     dialer.close().await;
     reply
 }
 
-async fn standing_over(target: Target, address: &str, credentials: &Credentials, dialer: &Dialer) -> Result<Option<netrunner_protocol::Standing>, ConnectionError> {
+async fn standing_over(target: Target, address: &str, credentials: &Credentials, dialer: &Dialer) -> Result<Vec<netrunner_protocol::FormatStanding>, ConnectionError> {
     let transport = |error: tokio_tungstenite::tungstenite::Error| ConnectionError::Transport(error.to_string());
     let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
     let send = |message: ClientMessage| WsMessage::Text(serde_json::to_string(&message).expect("a ClientMessage serializes"));
@@ -784,7 +784,7 @@ async fn standing_over(target: Target, address: &str, credentials: &Credentials,
             }
             ServerMessage::Identified { .. } => socket.send(send(ClientMessage::MyStanding)).await.map_err(transport)?,
             ServerMessage::IdentifyRefused { reason } => return Err(ConnectionError::Rejected(reason)),
-            ServerMessage::Standing { standing, .. } => break standing,
+            ServerMessage::Standing { standings, .. } => break standings,
             _ => {}
         }
     };
@@ -1039,7 +1039,7 @@ mod tests {
         tokio::spawn(server.run());
         let url = format!("ws://{addr}");
         let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
-        assert_eq!(standing(&url, &credentials).await.unwrap(), None, "no rated game yet");
+        assert_eq!(standing(&url, &credentials).await.unwrap(), Vec::new(), "no rated game yet");
         let known_path = credentials.known_servers().unwrap();
         assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
 
@@ -1155,11 +1155,11 @@ mod tests {
         // no key, and the daemon keeps no book.
         attached.standing();
         let standing = next_where(&mut attached, |event| match event {
-            AttachedEvent::Standing { key, standing } => Some((key, standing)),
+            AttachedEvent::Standing { key, standings } => Some((key, standings)),
             _ => None,
         })
         .await;
-        assert_eq!(standing, (None, None));
+        assert_eq!(standing, (None, Vec::new()));
         attached.seek(Chair::Corp(Box::new(deck("brick_stack"))));
         let mut joined = next_where(&mut attached, |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),

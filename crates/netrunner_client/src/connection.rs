@@ -223,8 +223,9 @@ pub enum Event {
     /// No longer looking, after `CancelSeek`.
     SeekCancelled,
     /// The answer to `MyStanding`: whether this connection proved a key,
-    /// and its standing on the server's book if it has one there.
-    Standing { key: Option<PublicKey>, standing: Option<netrunner_protocol::Standing> },
+    /// and its standing on each of the server's ladders it has a rated
+    /// game on — one per format (Phase 4 §10), empty for none.
+    Standing { key: Option<PublicKey>, standings: Vec<netrunner_protocol::FormatStanding> },
     /// The answer to `ListTournaments`.
     Tournaments(Vec<TournamentInfo>),
     /// A tournament as it now stands, after making, entering or leaving
@@ -445,8 +446,8 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::TournamentRefused { reason }) => {
                 self.events.push_back(Event::TournamentRefused(reason));
             }
-            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Standing { key, standing }) => {
-                self.events.push_back(Event::Standing { key, standing });
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Standing { key, standings }) => {
+                self.events.push_back(Event::Standing { key, standings });
             }
             (Phase::Attached, ServerMessage::LobbyJoined { lobby }) => {
                 // Asked for by the player, with a password; or put back by
@@ -996,10 +997,10 @@ mod tests {
         // The standing is asked from the lobby too, and answered where
         // the connection stands (Phase 4 §7 stage 5).
         assert!(conn.submit(ClientMessage::MyStanding));
-        conn.on_message(ServerMessage::Standing { key: None, standing: None }, t0);
+        conn.on_message(ServerMessage::Standing { key: None, standings: Vec::new() }, t0);
         let events = events(&mut conn);
         assert!(
-            matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason), Event::Standing { key: None, standing: None }] if *info == made && reason == "no lobby NOWHERE"),
+            matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason), Event::Standing { key: None, standings }] if *info == made && standings.is_empty() && reason == "no lobby NOWHERE"),
             "{events:?}"
         );
         assert!(matches!(sent(&mut conn)[..], [ClientMessage::ListLobbies, ClientMessage::CreateLobby { .. }, ClientMessage::LeaveLobby, ClientMessage::JoinLobby { .. }, ClientMessage::MyStanding]));

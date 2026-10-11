@@ -847,7 +847,7 @@ fn net(
                     connected.attached.standing();
                     Intent::Attached { lobbies, hosting }
                 }
-                AttachedEvent::Standing { key, standing } => Intent::Standing { key, standing: StandingHere::from_reply(key, standing) },
+                AttachedEvent::Standing { key, standings } => Intent::Standing { key, standing: StandingHere::from_reply(key, standings) },
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
                 AttachedEvent::Tournament(info) => Intent::Tournament(info),

@@ -27,5 +27,5 @@
 pub mod book;
 pub mod glicko2;
 
-pub use book::{Outcome, RatingBook, Role, Standing, Track};
+pub use book::{Format, Outcome, RatingBook, Role, RoleRecord, Standing, Track};
 pub use glicko2::{Glicko2, Rating, Score};
