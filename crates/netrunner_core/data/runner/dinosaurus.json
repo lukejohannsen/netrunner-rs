@@ -1,0 +1,55 @@
+{
+  "id": "dinosaurus",
+  "title": "Dinosaurus",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            "Icebreaker",
+            {
+              "Not": {
+                "HasSubtype": "AI"
+              }
+            }
+          ]
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "Dinosaurus can host a single non-AI icebreaker."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 4
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory cost of the hosted icebreaker does not count against your memory limit."
+    },
+    {
+      "kind": {
+        "Strength": {
+          "per": 2
+        }
+      },
+      "applies_to": "Hosted",
+      "text": "Hosted icebreaker has +2 strength."
+    }
+  ],
+  "triggers": [],
+  "built_from": 2048,
+  "is_playable": true
+}

@@ -236,6 +236,13 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 .find(|card| card.install_id == install)
                 .is_some_and(|card| card.hosted_on_rig_card == Some(host) || card.hosted_on_ice == Some(host))
         }
+        // A rig card's word about what it hosts (Dinosaurus's "Hosted
+        // icebreaker has +2 strength"). A piece of ice's (Magnet's) is about
+        // what it loses, which `rules::active` reads, never a number.
+        (Scope::Hosted, Target::Rig { install, .. }) => {
+            let Some(host) = source.install else { return false };
+            state.find_rig_install(*install).is_some_and(|card| card.hosted_on_rig_card == Some(host))
+        }
         (Scope::Controller, Target::Player(side)) => source.side == *side,
         (Scope::Installing(filter), Target::Card(card) | Target::InstallingOnto { card, .. }) => {
             card.side == source.side && card_matches_filter(card, filter)

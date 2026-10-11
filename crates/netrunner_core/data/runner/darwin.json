@@ -1,0 +1,64 @@
+{
+  "id": "darwin",
+  "title": "Darwin",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "X is equal to the number of hosted virus counters."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "AddCounters": 1
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] to place 1 virus counter on this program"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may pay 1[credit] to place 1 virus counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 subroutine.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 2102,
+  "is_playable": true
+}

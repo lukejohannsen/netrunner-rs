@@ -1,0 +1,28 @@
+{
+  "id": "morning_star",
+  "title": "Morning Star",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 8,
+  "strength": 5,
+  "memory_cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break any number of barrier subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 2004,
+  "is_playable": true
+}

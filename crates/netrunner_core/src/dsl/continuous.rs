@@ -246,7 +246,11 @@ pub enum ContinuousKind {
     /// `memory::memory_balance` (the programs it leaves out). One kind for
     /// both sentences because the room is what the memory is free within.
     /// Composition didn't work: `Memory` adds to the limit whatever is
-    /// hosted, and nothing limited what a host may take.
+    /// hosted, and nothing limited what a host may take. Dinosaurus, a
+    /// console, limits a number of cards rather than of [mu] — "a single
+    /// non-AI icebreaker", a `MayHost` whose `while` reads `Amount::
+    /// HostedCards` — so its room is 4, the most [mu] any icebreaker in
+    /// the catalog prints, and never refuses one.
     HostsMemory(Number),
     /// A run it applies to cannot be declared successful — Flagship's
     /// "Runs against this server cannot be declared successful. (This effect
@@ -399,7 +403,10 @@ pub enum Scope {
     /// all abilities and cannot gain abilities". `Host` read from the other
     /// end: the ice says it of what it hosts, where Hush says it of its
     /// host. Composition didn't work: `Host` is read from the hosted card,
-    /// and `Rig(_)` reaches every program, hosted here or not.
+    /// and `Rig(_)` reaches every program, hosted here or not. A rig card
+    /// that hosts says it too — Dinosaurus's "Hosted icebreaker has +2
+    /// strength" — and is read by the scan, where Magnet's loss of
+    /// abilities is read by `rules::active`.
     Hosted,
     /// The player who controls this card.
     Controller,

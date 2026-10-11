@@ -1,0 +1,51 @@
+{
+  "id": "hemorrhage",
+  "title": "Hemorrhage",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you make a successful run, place 1 virus counter on Hemorrhage."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], 2 hosted virus counters: The Corp trashes 1 card from HQ.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 2
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnArchives"
+        }
+      }
+    }
+  ],
+  "built_from": 4082,
+  "is_playable": true
+}

@@ -560,6 +560,9 @@ mod tests {
             // Tranche 8 Stage 11w: Ayla "Bios" Rahim's deck, on Safety
             // Net's frame, so it holds Core Set cards as that one does.
             ("simulant", &neither),
+            // FFG F1 Stage 1: Chaos Theory's deck, of Shaper and neutral
+            // cards; the Revised Core Set is in neither pool.
+            ("head_start", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),
