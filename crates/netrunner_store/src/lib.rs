@@ -246,23 +246,22 @@ impl Store {
     /// Writes one rating row, replacing the one for its key, format and
     /// role.
     pub async fn put_rating(&self, row: &RatingRow) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO ratings (player, format, role, rating, deviation, volatility, wins, draws, losses) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
-             ON CONFLICT (player, format, role) DO UPDATE SET rating = excluded.rating, deviation = excluded.deviation, \
-             volatility = excluded.volatility, wins = excluded.wins, draws = excluded.draws, losses = excluded.losses",
-        )
-        .bind(&row.key)
-        .bind(&row.format)
-        .bind(&row.role)
-        .bind(row.rating)
-        .bind(row.deviation)
-        .bind(row.volatility)
-        .bind(row.wins)
-        .bind(row.draws)
-        .bind(row.losses)
-        .execute(&self.pool)
-        .await?;
+        let mut conn = self.pool.acquire().await?;
+        put_rating_in(&mut conn, row).await
+    }
+
+    /// One rated game's rows in one transaction — both keys' standings
+    /// and the result — so a reader never sees half a game: a ladder read
+    /// between two of the rows would show one player's standing moved and
+    /// the other's not (a test did, on CI). `put_rating` alone is for a
+    /// row with no game behind it, as a rebuild writes them.
+    pub async fn record_game(&self, ratings: &[RatingRow], result: &ResultRow) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for row in ratings {
+            put_rating_in(&mut tx, row).await?;
+        }
+        put_result_in(&mut tx, result).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -295,21 +294,8 @@ impl Store {
     // ----- results --------------------------------------------------
 
     pub async fn put_result(&self, row: &ResultRow) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO results (match_id, ended_at, format, corp, runner, winner, receipt) VALUES ($1, $2, $3, $4, $5, $6, $7) \
-             ON CONFLICT (match_id) DO UPDATE SET ended_at = excluded.ended_at, format = excluded.format, corp = excluded.corp, \
-             runner = excluded.runner, winner = excluded.winner, receipt = excluded.receipt",
-        )
-        .bind(&row.match_id)
-        .bind(row.ended_at)
-        .bind(&row.format)
-        .bind(&row.corp)
-        .bind(&row.runner)
-        .bind(&row.winner)
-        .bind(&row.receipt)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+        let mut conn = self.pool.acquire().await?;
+        put_result_in(&mut conn, row).await
     }
 
     /// The games `key` sat in, newest first.
@@ -337,13 +323,22 @@ impl Store {
         Ok(sqlx::query("SELECT COUNT(*) FROM results").fetch_one(&self.pool).await?.get(0))
     }
 
-    /// Empties the two tables the results log rebuilds — the ratings and
-    /// the results — ahead of folding the log again. The players, the
-    /// awards, the pairings and the tournaments are not the log's and
-    /// are kept.
-    pub async fn clear_rebuilt(&self) -> Result<()> {
-        sqlx::query("DELETE FROM ratings").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM results").execute(&self.pool).await?;
+    /// Replaces the two tables the results log rebuilds — the ratings and
+    /// the results — with the log's fold, in one transaction, so a daemon
+    /// reading beside the rebuild sees the old index or the new and never
+    /// an emptied one. The players, the awards, the pairings and the
+    /// tournaments are not the log's and are kept.
+    pub async fn replace_rebuilt(&self, ratings: &[RatingRow], results: &[ResultRow]) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM ratings").execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM results").execute(&mut *tx).await?;
+        for row in ratings {
+            put_rating_in(&mut tx, row).await?;
+        }
+        for row in results {
+            put_result_in(&mut tx, row).await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -427,6 +422,45 @@ impl Store {
         let rows = sqlx::query("SELECT id, document, updated_at FROM tournaments ORDER BY id").fetch_all(&self.pool).await?;
         Ok(rows.iter().map(|row| TournamentRow { id: row.get(0), document: row.get(1), updated_at: row.get(2) }).collect())
     }
+}
+
+async fn put_rating_in(conn: &mut sqlx::AnyConnection, row: &RatingRow) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO ratings (player, format, role, rating, deviation, volatility, wins, draws, losses) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+         ON CONFLICT (player, format, role) DO UPDATE SET rating = excluded.rating, deviation = excluded.deviation, \
+         volatility = excluded.volatility, wins = excluded.wins, draws = excluded.draws, losses = excluded.losses",
+    )
+    .bind(&row.key)
+    .bind(&row.format)
+    .bind(&row.role)
+    .bind(row.rating)
+    .bind(row.deviation)
+    .bind(row.volatility)
+    .bind(row.wins)
+    .bind(row.draws)
+    .bind(row.losses)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+async fn put_result_in(conn: &mut sqlx::AnyConnection, row: &ResultRow) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO results (match_id, ended_at, format, corp, runner, winner, receipt) VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT (match_id) DO UPDATE SET ended_at = excluded.ended_at, format = excluded.format, corp = excluded.corp, \
+         runner = excluded.runner, winner = excluded.winner, receipt = excluded.receipt",
+    )
+    .bind(&row.match_id)
+    .bind(row.ended_at)
+    .bind(&row.format)
+    .bind(&row.corp)
+    .bind(&row.runner)
+    .bind(&row.winner)
+    .bind(&row.receipt)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 fn rating_row(row: &sqlx::any::AnyRow) -> RatingRow {
@@ -520,8 +554,12 @@ mod tests {
         assert_eq!(store.ratings_in("standard").await.unwrap().len(), 2);
         let standard_corp = &store.ratings_of("key:ann").await.unwrap()[0];
         assert_eq!((standard_corp.format.as_str(), standard_corp.role.as_str(), standard_corp.rating, standard_corp.wins), ("standard", "corp", 1612.5, 1));
-        store.clear_rebuilt().await.unwrap();
+        store.replace_rebuilt(&[], &[]).await.unwrap();
         assert!(store.ratings().await.unwrap().is_empty());
+        let result = ResultRow { match_id: "m1".into(), ended_at: 1, format: "standard".into(), corp: "key:ann".into(), runner: "key:bo".into(), winner: Some("corp".into()), receipt: "{}".into() };
+        store.record_game(&[row.clone(), RatingRow { key: "key:bo".into(), ..row.clone() }], &result).await.unwrap();
+        assert_eq!(store.ratings().await.unwrap().len(), 2);
+        assert_eq!(store.results_of("key:bo").await.unwrap(), vec![result]);
         store.close().await;
         let _ = std::fs::remove_dir_all(dir);
     }

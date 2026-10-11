@@ -957,12 +957,7 @@ impl Shared {
                 .to_string()),
                 receipt: line,
             };
-            writer.write("a rated game", move |store| async move {
-                for row in &rows {
-                    store.put_rating(row).await?;
-                }
-                store.put_result(&result).await
-            });
+            writer.write("a rated game", move |store| async move { store.record_game(&rows, &result).await });
         }
         Some([(corp_before, corp_after.corp.rating), (runner_before, runner_after.runner.rating)])
     }
@@ -1177,19 +1172,8 @@ pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result
         });
     }
     let store = open_store(data_dir, database).await?;
-    let written: netrunner_store::Result<()> = async {
-        store.clear_rebuilt().await?;
-        for (track, key, standing) in book.entries() {
-            for row in store::rows_of(track, key, standing) {
-                store.put_rating(&row).await?;
-            }
-        }
-        for row in &rows {
-            store.put_result(row).await?;
-        }
-        Ok(())
-    }
-    .await;
+    let ratings: Vec<netrunner_store::RatingRow> = book.entries().flat_map(|(track, key, standing)| store::rows_of(track, key, standing)).collect();
+    let written = store.replace_rebuilt(&ratings, &rows).await;
     store.close().await;
     written.map_err(|error| std::io::Error::other(format!("rebuilding the store: {error}")))?;
     Ok(rows.len())

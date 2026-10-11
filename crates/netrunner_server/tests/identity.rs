@@ -533,7 +533,7 @@ async fn the_store_is_rebuilt_exactly_from_the_results_log() {
     let rows = wait_for_rows(&store, |rows| row(rows, &ann, "startup", "corp").is_some_and(|row| row.wins == 2)).await;
     let results = store.results_of(&ann).await.unwrap();
     assert_eq!(results.len(), 2);
-    store.clear_rebuilt().await.unwrap();
+    store.replace_rebuilt(&[], &[]).await.unwrap();
     assert_eq!(netrunner_server::serve::rebuild(&dir, None).await.unwrap(), 2);
     assert_eq!(store.ratings().await.unwrap(), rows, "the same rows, number for number");
     assert_eq!(store.results_of(&ann).await.unwrap(), results, "the same results, receipt for receipt");
