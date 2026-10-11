@@ -30543,4 +30543,124 @@ mod revised_core {
         state.runner.rig.push(in_rig("the_toolbox", 0, 0));
         assert_eq!(begin(state), Credits(21), "2[link] or more");
     }
+
+    // ---- Stage 3: the Corp's ice and Haas-Bioroid: Stronger Together ----
+
+    /// The encounter's window passed until its subroutines park something
+    /// (a trace, a choice) or the encounter is over.
+    fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        pass_until(state.clone(), registry, |state| state.active_trace.is_some() || state.pending_decision.is_some() || state.active_run.as_ref().is_none_or(|run| run.phase != crate::rules::RunPhase::EncounterIce))
+    }
+
+    fn bids(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let (bid, _) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: corp }).expect("the Corp bids");
+        apply_action(&bid, registry, PlayerAction::SubmitRunnerTraceBid { amount: runner }).expect("the Runner bids")
+    }
+
+    #[test]
+    fn caduceus_traces_for_three_credits_and_then_to_end_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("caduceus")];
+        let credits = state.corp.resources.credits;
+        let tracing = fire(&encounter(&state, &registry), &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "Trace[3]");
+        let (paid, _) = bids(&tracing, &registry, 0, 0);
+        assert_eq!(paid.corp.resources.credits, Credits(credits.0 + 3), "the Corp gains 3[credit]");
+        assert_eq!(paid.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Trace[2]");
+        let (ended, _) = bids(&paid, &registry, 0, 0);
+        assert!(ended.active_run.is_none(), "end the run");
+
+        // Matched, neither happens.
+        let (avoided, _) = bids(&tracing, &registry, 0, 3);
+        assert_eq!(avoided.corp.resources.credits, credits);
+        let (avoided, _) = bids(&avoided, &registry, 0, 2);
+        assert!(avoided.active_run.is_some(), "the run goes on");
+    }
+
+    #[test]
+    fn flare_trashes_hardware_does_unpreventable_meat_damage_and_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("flare")];
+        state.runner.rig = vec![in_rig("dyson_mem_chip", 0, 0), in_rig("corroder", 0, 0)];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        let tracing = fire(&encounter(&state, &registry), &registry);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(6), "Trace[6]");
+        let (asked, _) = bids(&tracing, &registry, 0, 0);
+        assert_eq!(crate::rules::current_actor(&asked), Some(Side::Corp), "the Corp picks the hardware");
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Dyson Mem Chip");
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.pending_prevention.is_none(), "cannot be prevented");
+        assert_eq!(done.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("corroder")]);
+        assert_eq!(done.runner.grip.len(), 2, "2 meat damage");
+        assert!(done.active_run.is_none(), "and end the run");
+    }
+
+    #[test]
+    fn himitsu_bako_returns_itself_to_hq_for_a_credit() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice_at_hq("himitsu_bako")];
+        state.corp.hq.clear();
+        let credits = state.corp.resources.credits;
+        let (back, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("himitsu_bako"), ability_index: 0 }).expect("1[credit]");
+        assert!(back.corp.installed.is_empty());
+        assert_eq!(back.corp.hq, vec![id("himitsu_bako")]);
+        assert_eq!(back.corp.resources.credits, Credits(credits.0 - 1));
+
+        state.corp.installed[0].rezzed = false;
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("himitsu_bako"), ability_index: 0 }).is_err(), "only while rezzed");
+    }
+
+    #[test]
+    fn hive_loses_a_printed_end_the_run_for_each_corp_agenda_point() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("hive")];
+        let subroutines = |state: &GameState| {
+            let at_ice = encounter(state, &registry);
+            let run = at_ice.active_run.as_ref().expect("encountering");
+            run.ice[run.position].subroutines.len()
+        };
+        assert_eq!(subroutines(&state), 5);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("accelerated_beta_test"))];
+        state.corp.resources.agenda_points = AgendaPoints(2);
+        assert_eq!(subroutines(&state), 3, "two agenda points");
+        state.corp.scored_agendas.extend(std::iter::repeat_n(crate::rules::ScoredAgenda::plain(id("accelerated_beta_test")), 2));
+        state.corp.resources.agenda_points = AgendaPoints(6);
+        assert_eq!(subroutines(&state), 0, "never fewer than none");
+    }
+
+    #[test]
+    fn yagura_may_bottom_the_top_of_rnd_and_does_a_net_damage() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("yagura")];
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("hostile_takeover")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let asked = fire(&encounter(&state, &registry), &registry);
+        assert_eq!(crate::rules::current_actor(&asked), Some(Side::Corp), "the Corp may add it to the bottom");
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("the top card, the end of R&D");
+        let (bottomed, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("to the bottom");
+        assert_eq!(bottomed.corp.r_and_d, vec![id("hostile_takeover"), id("ice_wall"), id("hedge_fund")]);
+        let (bottomed, _) = close_all_windows(bottomed, &registry);
+        assert_eq!(bottomed.runner.grip.len(), 2, "1 net damage");
+
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("leave it");
+        assert_eq!(kept.corp.r_and_d, state.corp.r_and_d);
+    }
+
+    #[test]
+    fn stronger_together_gives_bioroid_ice_one_more_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("eli_1_0"), ice_at_hq("ice_wall")];
+        let strength = |state: &GameState, card: &str| crate::rules::continuous::installed_ice_strength(state, &registry, &id(card), fixture_install_id(card));
+        let (eli, wall) = (strength(&state, "eli_1_0"), strength(&state, "ice_wall"));
+        state.corp.identity = Some(id("haas_bioroid_stronger_together"));
+        assert_eq!(strength(&state, "eli_1_0"), eli + 1, "a bioroid");
+        assert_eq!(strength(&state, "ice_wall"), wall, "not a bioroid");
+    }
 }

@@ -1,0 +1,26 @@
+{
+  "id": "haas_bioroid_stronger_together",
+  "title": "Haas-Bioroid: Stronger Together",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "HasSubtype": "Bioroid"
+        }
+      },
+      "text": "All bioroid ice has +1 strength."
+    }
+  ],
+  "built_from": 2010,
+  "is_playable": true
+}

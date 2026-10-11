@@ -360,11 +360,24 @@ fn add_gained_for_the_run(run: &mut RunState, position: usize, may_gain: bool) {
 /// stands in CR 9.8.2's order. Marked `gained`, so they go with the
 /// encounter and the next one counts again: read as each encounter begins,
 /// because nothing in the pool moves the count during one (Echo's on a
-/// rez, Envelopment's as a turn begins).
-fn add_own_subroutines(run: &mut RunState, position: usize, (before, after): (Vec<crate::dsl::SubroutineDef>, Vec<crate::dsl::SubroutineDef>)) {
+/// rez, Envelopment's as a turn begins). A printed subroutine the ice
+/// loses (`keep`, Hive's) is taken off its printed list for the rest of
+/// the run. **Not modelled:** a score that falls between two encounters
+/// with the same Hive in one run (a forfeit in the movement phase) gives
+/// the second nothing back.
+fn add_own_subroutines(run: &mut RunState, position: usize, own: continuous::OwnSubroutines) {
     let Some(ice) = run.ice.get_mut(position) else { return };
-    if before.is_empty() && after.is_empty() {
+    let continuous::OwnSubroutines { before, after, keep } = own;
+    if before.is_empty() && after.is_empty() && keep.is_empty() {
         return;
+    }
+    // A printed subroutine lost (Hive's) goes from the back, "beginning
+    // with the last printed subroutine and working backwards" (CR 9.8.2b).
+    for (subroutine, kept) in keep {
+        while ice.subroutines.iter().filter(|s| !s.gained && s.definition == subroutine).count() > kept {
+            let last = ice.subroutines.iter().rposition(|s| !s.gained && s.definition == subroutine).expect("counted above");
+            ice.subroutines.remove(last);
+        }
     }
     let gained = |definition| EncounteredSubroutine { id: 0, definition, status: SubroutineStatus::Pending, gained: true };
     let printed = std::mem::take(&mut ice.subroutines);
