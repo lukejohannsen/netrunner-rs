@@ -503,22 +503,44 @@ pub(crate) fn may_break_using(state: &GameState, registry: &CardRegistry, ice: I
     !any(state, registry, target, |kind| matches!(kind, ContinuousKind::CannotBeBrokenUsing(subtype) if breaker.subtypes.contains(subtype)))
 }
 
-/// The subroutines the ice `install` gains by its own static ability
-/// (`ContinuousKind::Subroutines`, Echo's and Envelopment's), as copies to
-/// put before its printed ones (CR 9.8.3b) and after them (9.8.3d), each
-/// count read as the ice right now. Within a category every copy is the
-/// same subroutine, so the order among them is nothing a player can see.
-pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, install: InstallId) -> (Vec<crate::dsl::SubroutineDef>, Vec<crate::dsl::SubroutineDef>) {
-    let (mut before, mut after) = (Vec::new(), Vec::new());
-    let Some(target) = Target::corp_install(state, registry, install) else { return (before, after) };
+/// What the ice `install`'s own static abilities do to its subroutines
+/// (`ContinuousKind::Subroutines`), each count read as the ice right now.
+#[derive(Debug, Default)]
+pub(crate) struct OwnSubroutines {
+    /// Copies gained before its printed ones (CR 9.8.3b, Envelopment's).
+    pub before: Vec<crate::dsl::SubroutineDef>,
+    /// Copies gained after them (9.8.3d, Echo's). Within a category every
+    /// copy is the same subroutine, so the order among them is nothing a
+    /// player can see.
+    pub after: Vec<crate::dsl::SubroutineDef>,
+    /// A printed subroutine lost, and how many of its printed copies are
+    /// left — Hive's "loses 1 of its printed “[subroutine] End the run.”
+    /// subroutines for each agenda point in your score area", a negative
+    /// count. Said as the number kept rather than the number lost, so an
+    /// encounter that begins again with the ice the run already shortened
+    /// takes nothing more.
+    pub keep: Vec<(crate::dsl::SubroutineDef, usize)>,
+}
+
+/// The subroutines the ice `install` gains, or loses, by its own static
+/// ability (`ContinuousKind::Subroutines`: Echo's, Envelopment's, Hive's).
+pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, install: InstallId) -> OwnSubroutines {
+    let mut own = OwnSubroutines::default();
+    let Some(target) = Target::corp_install(state, registry, install) else { return own };
+    let printed = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)).map(|card| card.subroutines.clone()).unwrap_or_default();
     for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::Subroutines { .. }), |effect, _, ctx| {
         if let ContinuousKind::Subroutines { subroutine, count, before: first } = &effect.kind {
-            let copies = (count.per * ability::resolve_amount(&count.of, ctx, state, registry) as i32).max(0) as usize;
-            let into = if *first { &mut before } else { &mut after };
-            into.extend(std::iter::repeat_n((**subroutine).clone(), copies));
+            let count = count.per * ability::resolve_amount(&count.of, ctx, state, registry) as i32;
+            if count < 0 {
+                let copies = printed.iter().filter(|printed| **printed == **subroutine).count();
+                own.keep.push(((**subroutine).clone(), copies.saturating_sub(count.unsigned_abs() as usize)));
+                return;
+            }
+            let into = if *first { &mut own.before } else { &mut own.after };
+            into.extend(std::iter::repeat_n((**subroutine).clone(), count as usize));
         }
     });
-    (before, after)
+    own
 }
 
 /// Whether a Runner card's abilities may break subroutines on the ice

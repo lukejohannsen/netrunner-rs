@@ -366,7 +366,13 @@ pub enum ContinuousKind {
     /// `GainSubroutine` is triggered, and a "when encountered" trigger is
     /// one AirbladeX could prevent and would sort among another card's
     /// grants; this is a static ability of the ice, and it is never
-    /// prevented, only lost (Hush, which this scan already reads).
+    /// prevented, only lost (Hush, which this scan already reads). A
+    /// negative count is the other half of the same sentence: the ice
+    /// **loses** that many of its printed copies of `subroutine` — Hive's
+    /// "This ice loses 1 of its printed “[subroutine] End the run.”
+    /// subroutines for each agenda point in your score area" (`per: -1`,
+    /// CR 9.8.2b), the last printed first and never below none — and
+    /// `before` says nothing.
     Subroutines {
         subroutine: Box<crate::dsl::SubroutineDef>,
         count: Number,

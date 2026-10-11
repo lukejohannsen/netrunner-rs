@@ -570,6 +570,9 @@ mod tests {
             // FFG F1 Stage 1: Chaos Theory's deck, of Shaper and neutral
             // cards; the Revised Core Set is in neither pool.
             ("head_start", &neither),
+            // FFG F1 Stage 3: Stronger Together's deck, on Retirement
+            // Package's frame; the Revised Core Set is in neither pool.
+            ("stronger_together", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

@@ -1,0 +1,55 @@
+{
+  "id": "hive",
+  "title": "Hive",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 3,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": -1,
+            "of": {
+              "AgendaPoints": "Corp"
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice loses 1 of its printed \"[subroutine] End the run.\" subroutines for each agenda point in your score area."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4117,
+  "is_playable": true
+}
