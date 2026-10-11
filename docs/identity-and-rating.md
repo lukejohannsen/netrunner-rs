@@ -184,7 +184,11 @@ Under the daemon's `--data-dir`:
 - **Files, written with a temp file and a rename**, as `save_ratings` does
   today. **Rejected for now: SQLite.** Nothing yet asks a question a fold over
   a log cannot answer. It becomes the right move when a ladder page or a match
-  search does, and the log is what it would be loaded from.
+  search does, and the log is what it would be loaded from. *Revisited
+  11 October 2026: a profile per key — a name, titles and badges, a ladder per
+  format, the pairing memory the queues balance sides with — is that page, so
+  the store comes (Phase 4 §10: `netrunner_store`, SQLite with no setup and
+  Postgres by flag); the log stays the truth and the store is its index.*
 - **A record holds two whole decklists.** A player may fetch their own
   records; publishing anyone else's is an operator's policy, off by default.
 
