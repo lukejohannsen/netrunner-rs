@@ -1543,7 +1543,17 @@ mod tests {
                             let detail = Prompt::of(&view, registry).expect("a selection is a prompt").detail;
                             match &install {
                                 Some(question) => assert_eq!(detail, crate::prose::install_trash_detail(question), "seed {seed}"),
-                                None => assert!(detail.starts_with("Selected: ") || detail == "Nothing selected yet", "seed {seed}: {detail:?}"),
+                                // The first line is what is chosen so far
+                                // (an arrangement's, its order); a second,
+                                // when there is one, is how the choice
+                                // works, never a card's name.
+                                None => {
+                                    let first = detail.lines().next().unwrap_or_default();
+                                    assert!(
+                                        first.starts_with("Selected: ") || first == "Nothing selected yet" || first.starts_with("Nothing moved yet") || first.starts_with("Top first: "),
+                                        "seed {seed}: {detail:?}"
+                                    );
+                                }
                             }
                             // Titles the chooser's board conceals, less any
                             // the view shows elsewhere (two copies of one ICE).
@@ -1573,13 +1583,16 @@ mod tests {
                             for entry in &map.entries {
                                 let label = &entry.label;
                                 match entry.action {
+                                    // An arrangement's toggles put a card in
+                                    // its place or take it back out.
                                     PlayerAction::ToggleCardSelection { .. } => assert!(
-                                        label.starts_with("Select ") || label.starts_with("Deselect ") || label.starts_with("Trash "),
+                                        label.starts_with("Select ") || label.starts_with("Deselect ") || label.starts_with("Trash ") || label.starts_with("Put ") || label.starts_with("Take "),
                                         "seed {seed}: {label:?}"
                                     ),
-                                    PlayerAction::ConfirmCardSelection => {
-                                        assert!(label.starts_with("Confirm ") || label == "Choose none" || label == "Trash no more", "seed {seed}: {label:?}")
-                                    }
+                                    PlayerAction::ConfirmCardSelection => assert!(
+                                        label.starts_with("Confirm ") || label == "Choose none" || label == "Trash no more" || label == "Leave them as they are",
+                                        "seed {seed}: {label:?}"
+                                    ),
                                     _ => continue,
                                 }
                                 assert!(!is_number(label), "seed {seed}: a selection button is a number: {label:?}");
