@@ -784,7 +784,7 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
 /// Server's "[click] and 1[credit] for each hosted power counter" is that
 /// upgrade's counters — and paid as the number it came to, since the
 /// payment has no card to read it as.
-pub(crate) fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
+pub fn run_costs(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<Cost> {
     fn fixed(cost: &Cost, ctx: &ability::ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> Cost {
         match cost {
             Cost::CreditsAmount(amount) => Cost::Credits(ability::resolve_amount(amount, ctx, state, registry)),
