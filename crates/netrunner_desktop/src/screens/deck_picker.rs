@@ -87,6 +87,8 @@ pub struct NewDeckFor(pub Side);
 #[derive(Resource, Debug, Clone)]
 pub struct Picking {
     pub picker: Picker,
+    /// The side the picker was asked for.
+    pub side: Side,
     pub purpose: Purpose,
     pub notice: Option<String>,
 }
@@ -127,7 +129,7 @@ fn open(mut commands: Commands, mut asked: MessageReader<OpenDeckPicker>, core: 
     let book = CardBook::new(&core.registry, &core.catalog);
     let (rows, _problems) = deck_picker::rows(core.decks_dir.as_deref(), book, ask.format);
     let picker = Picker::open(ask.side, ask.format, deck_picker::rows_for(ask.side, &rows), ask.chosen.as_deref());
-    commands.insert_resource(Picking { picker, purpose: ask.purpose, notice: None });
+    commands.insert_resource(Picking { picker, side: ask.side, purpose: ask.purpose, notice: None });
     redraw.0 = true;
 }
 
@@ -167,7 +169,7 @@ fn controls(
         if let Ok(PickerRow(index)) = rows.get(*entity) {
             match picking.picker.apply(Intent::Choose(*index)) {
                 Outcome::Chosen(id) => {
-                    let side = picking.picker.side;
+                    let side = picking.side;
                     if core.settings.set_active_deck(side, &id) {
                         // A file that cannot be written loses nothing
                         // here: the deck is still picked for this game.
@@ -191,7 +193,7 @@ fn controls(
                 }
             }
             Ok(PickerControl::New) => {
-                commands.insert_resource(NewDeckFor(picking.picker.side));
+                commands.insert_resource(NewDeckFor(picking.side));
                 navigate.write(Navigate(AppScreen::Decks));
                 close = true;
             }
@@ -218,7 +220,7 @@ fn search(mut commands: Commands, fields: Query<(Entity, &TextField, Option<&Tex
                 commands.entity(entity).remove::<TextFieldEvent>();
                 match picking.picker.apply(Intent::ChooseCursor) {
                     Outcome::Chosen(id) => {
-                        let side = picking.picker.side;
+                        let side = picking.side;
                         if core.settings.set_active_deck(side, &id) {
                             let _ = core.save_settings();
                         }
@@ -284,8 +286,8 @@ fn draw(
                 panel.entry::<Node>().and_modify(|mut node| node.max_height = percent(90));
                 panel.with_children(|panel| {
                     let (what, side) = match picking.purpose {
-                        Purpose::NewGame(Pane::OwnDeck) => ("Your deck", picker.side),
-                        Purpose::NewGame(_) => ("The opponent's deck", picker.side),
+                        Purpose::NewGame(Pane::OwnDeck) => ("Your deck", picking.side),
+                        Purpose::NewGame(_) => ("The opponent's deck", picking.side),
                         Purpose::Lobby(side) => ("Your deck for the lobby", side),
                         Purpose::Tournament(side) => ("Your deck for the tournament", side),
                     };

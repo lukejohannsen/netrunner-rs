@@ -519,7 +519,7 @@ fn a_deck_is_chosen_from_the_picker_and_becomes_the_active_deck() {
     assert_eq!(app.world_mut().query::<&PickerWash>().iter(app.world()).count(), 1, "drawn over the form");
     let (side, before, rows) = {
         let picking = app.world().resource::<Picking>();
-        (picking.picker.side, picking.picker.cursor, picking.picker.rows.len())
+        (picking.side, picking.picker.cursor, picking.picker.rows.len())
     };
     assert_eq!(side, Side::Corp, "the form opens on the Corp chair, so its own deck is a Corp deck");
     assert!(rows > 3, "{rows} decks");
