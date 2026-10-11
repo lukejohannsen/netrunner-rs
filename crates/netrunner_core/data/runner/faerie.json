@@ -1,0 +1,56 @@
+{
+  "id": "faerie",
+  "title": "Faerie",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "requirement": "BrokeASubroutineThatEncounter",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Whenever an encounter ends, if you used this program to break a subroutine during that encounter, trash this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 0[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 0
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 2104,
+  "is_playable": true
+}

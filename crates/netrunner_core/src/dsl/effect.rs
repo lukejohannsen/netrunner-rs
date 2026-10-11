@@ -2052,10 +2052,14 @@ pub enum Amount {
     /// `acting_card`'s own hosted advancement token count (Corp installed
     /// cards only) — e.g. Clearinghouse, Urtica Cipher.
     HostedAdvancementTokens,
-    /// How many cards are hosted on `acting_card` without being installed
-    /// (`InstalledRunnerCard::hosted_cards`) — Read-Write Share's "Limit 4
-    /// hosted cards", read through `EffectRequirement::AmountAtLeast`
-    /// under a `Not`. `HostedCounters` counts counters, not cards.
+    /// How many cards are hosted on `acting_card`: those hosted without
+    /// being installed (`InstalledRunnerCard::hosted_cards`) — Read-Write
+    /// Share's "Limit 4 hosted cards", read through `EffectRequirement::
+    /// AmountAtLeast` under a `Not` — and those installed onto it
+    /// (`hosted_on_rig_card`), Dinosaurus's "a single non-AI icebreaker".
+    /// Both are hosted cards, and only a card says how many it may host
+    /// (CR 1.13.5); no card hosts both kinds.
+    /// `HostedCounters` counts counters, not cards.
     HostedCards,
     /// Count of Runner-installed icebreakers (`dsl::zone::CardFilter::
     /// Icebreaker`'s heuristic), including `acting_card` itself if it

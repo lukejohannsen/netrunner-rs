@@ -1,0 +1,30 @@
+{
+  "id": "dyson_mem_chip",
+  "title": "Dyson Mem Chip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 2028,
+  "is_playable": true
+}

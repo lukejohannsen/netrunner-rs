@@ -1,0 +1,22 @@
+{
+  "id": "chaos_theory_wunderkind",
+  "title": "Chaos Theory: Wünderkind",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 2046,
+  "is_playable": true
+}

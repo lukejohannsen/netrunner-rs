@@ -1,0 +1,89 @@
+{
+  "id": "head_start",
+  "name": "Head Start",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Chaos Theory: Wünderkind, the Revised Core Set's Shaper identity, one more [mu] on a forty-card deck, and Dinosaurus, the console that hosts one non-AI icebreaker outside the memory limit at +2 strength. Two Dinosaurus and three Dyson Mem Chip, memory and link, around three Shaper breakers to host — Gordian Blade, Battering Ram and Pipeline — Self-modifying Code to find them, and the money and runs of the Shaper Sweep decks. In faction throughout. Eternal-legal only: Chaos Theory is a Revised Core Set card. FFG F1 Stage 1.",
+  "style": [
+    "rig"
+  ],
+  "identity": "chaos_theory_wunderkind",
+  "cards": [
+    {
+      "card": "dinosaurus",
+      "count": 2
+    },
+    {
+      "card": "dyson_mem_chip",
+      "count": 3
+    },
+    {
+      "card": "gordian_blade",
+      "count": 2
+    },
+    {
+      "card": "battering_ram",
+      "count": 2
+    },
+    {
+      "card": "pipeline",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "daily_casts",
+      "count": 2
+    },
+    {
+      "card": "telework_contract",
+      "count": 2
+    },
+    {
+      "card": "creative_commission",
+      "count": 2
+    },
+    {
+      "card": "jailbreak",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 2
+    },
+    {
+      "card": "dirty_laundry",
+      "count": 2
+    },
+    {
+      "card": "infiltration",
+      "count": 2
+    },
+    {
+      "card": "diesel",
+      "count": 3
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "net_shield",
+      "count": 2
+    },
+    {
+      "card": "rabbit_hole",
+      "count": 2
+    },
+    {
+      "card": "professional_contacts",
+      "count": 2
+    },
+    {
+      "card": "spec_work",
+      "count": 1
+    }
+  ]
+}

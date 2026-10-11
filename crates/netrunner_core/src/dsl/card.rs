@@ -1842,8 +1842,8 @@ impl CardDefinition {
             }
             match (&effect.kind, &effect.applies_to) {
                 (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
-                (_, Scope::Hosted) if !matches!(self.card_type, CardType::Ice(_)) => {
-                    return misfit("Hosted", "only a piece of ice says what becomes of the cards hosted on it");
+                (_, Scope::Hosted) if !matches!(self.card_type, CardType::Ice(_)) && !self.continuous.iter().any(|effect| effect.kind == ContinuousKind::MayHost) => {
+                    return misfit("Hosted", "only a piece of ice, or a card that may host, says what becomes of the cards hosted on it");
                 }
                 (_, Scope::RootOfThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
                     return misfit("RootOfThisServer", "only an asset or an upgrade is in a server's root");
@@ -1860,8 +1860,8 @@ impl CardDefinition {
                 {
                     return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, only a Trojan is hosted on its ice, and only ice protects it");
                 }
-                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice(_) | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
-                (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, ice, or the rig's cards"),
+                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Hosted | Scope::Ice(_) | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
+                (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, what it hosts, ice, or the rig's cards"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
@@ -1949,8 +1949,9 @@ impl CardDefinition {
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
-                (ContinuousKind::HostsMemory(_), Scope::This) if self.card_type == CardType::Program => {}
-                (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program says of itself (`This`) how many [mu] of programs it hosts"),
+                // Djinn, a program, and Dinosaurus, a console.
+                (ContinuousKind::HostsMemory(_), Scope::This) if matches!(self.card_type, CardType::Program | CardType::Hardware) => {}
+                (ContinuousKind::HostsMemory(_), _) => return misfit("HostsMemory", "a program or a piece of hardware says of itself (`This`) how many [mu] of programs it hosts"),
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), Scope::RunsOnThisServer)
                     if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {

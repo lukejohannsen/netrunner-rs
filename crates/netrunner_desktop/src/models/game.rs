@@ -2258,7 +2258,7 @@ mod tests {
         let labels: Vec<String> = game.actions.decisions().iter().map(|i| game.actions.entries[*i].label.clone()).collect();
         assert_eq!(labels, vec!["Install in Remote 0 — trashes Nico Campaign".to_string(), "Install in a new remote server".to_string()]);
         let prompt = game.prompt.as_ref().expect("an install is a prompt");
-        assert_eq!(prompt.title, "Scatter Field: where to install PAD Campaign?");
+        assert_eq!(prompt.title, "Scatter Field (your ice) asks: where to install PAD Campaign?");
         assert!(prompt.detail.starts_with("A new remote server is an option."), "{}", prompt.detail);
     }
 
