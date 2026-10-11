@@ -58,6 +58,7 @@ use crate::models::decks::{Intent, Outcome, Shelf, ShelfRow, ShelfSort};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::netrunnerdb::Decklists;
 use crate::screens::deck_editor::EditDeck;
+use crate::screens::deck_picker::NewDeckFor;
 use crate::screens::online::read_clipboard;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
@@ -216,7 +217,7 @@ fn format_of(core: &ClientCore) -> NsgFormat {
     core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT)
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>, dev: Option<Res<crate::dev::Dev>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>, dev: Option<Res<crate::dev::Dev>>, new_deck: Option<Res<NewDeckFor>>) {
     // The notice an editor's Copy or an import left survives the trip
     // back; the rows are re-read, since the editor wrote to them.
     // So does how the shelf was being looked at: its side, filters and
@@ -242,8 +243,19 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
                 commands.insert_resource(Dirty { shelf: false, popup: true });
             }
             None => {
-                commands.insert_resource(Popup::None);
-                commands.init_resource::<Dirty>();
+                // The deck picker's "New deck in the builder…" (Phase 7
+                // §16): straight to the identity picker for that side.
+                match new_deck.as_deref().copied() {
+                    Some(NewDeckFor(side)) => {
+                        commands.remove_resource::<NewDeckFor>();
+                        commands.insert_resource(Popup::Identity(side));
+                        commands.insert_resource(Dirty { shelf: false, popup: true });
+                    }
+                    None => {
+                        commands.insert_resource(Popup::None);
+                        commands.init_resource::<Dirty>();
+                    }
+                }
             }
         }
     }

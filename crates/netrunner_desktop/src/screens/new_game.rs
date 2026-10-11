@@ -25,7 +25,12 @@ use bevy::prelude::*;
 use netrunner_client::decks::decks_for_match;
 use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
 use netrunner_core::tutorial::Lesson;
+use netrunner_client::card_face::Face;
 use netrunner_client::start::{DeckRow, Level, OpponentChoice, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
+
+use crate::card_images::CardImages;
+use crate::screens::deck_picker::{DeckPicked, OpenDeckPicker, Purpose};
+use crate::widgets::card_face::{spawn_face, FaceSize};
 
 use crate::audio::{ButtonSound, Sfx};
 use crate::core::TokioRuntime;
@@ -36,14 +41,13 @@ use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
 use crate::skin::{Drawn, Slot};
 use crate::theme::{size, Theme};
-use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
 use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct NewGamePlugin;
 
 impl Plugin for NewGamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppScreen::NewGame), spawn).add_systems(Update, (controls, refresh).chain().run_if(in_state(AppScreen::NewGame)));
+        app.add_systems(OnEnter(AppScreen::NewGame), spawn).add_systems(Update, (controls, dev_opens_picker, refresh).chain().run_if(in_state(AppScreen::NewGame)));
     }
 }
 
@@ -86,9 +90,11 @@ enum Control {
     Back,
 }
 
-/// Which pane a drop-down is; on its root. The two deck lists.
+/// A deck slot's Change… button: which of the two deck panes it opens
+/// the deck picker for (`screens::deck_picker`, Phase 7 §16). The slot
+/// replaced a drop-down of names.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PaneDropdown(pub Pane);
+pub struct PaneSlot(pub Pane);
 
 /// One choice drawn as a button of its own — a side card, a rung or a
 /// style pill: its pane and its row.
@@ -114,17 +120,17 @@ struct Dirty {
     notice: Option<String>,
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last: Option<Res<LastGame>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, last: Option<Res<LastGame>>) {
     commands.init_resource::<Dirty>();
     let (mut menu, notice) = match open_menu(&core) {
         Ok(menu) => (menu, String::new()),
-        Err(error) => (StartMenu::with_decks([Vec::new(), Vec::new()], [Level::Operator; 2], defaults()), format!("Decks could not be listed: {error}")),
+        Err(error) => (StartMenu::with_decks([Vec::new(), Vec::new()], [Level::Operator; 2], defaults(&core)), format!("Decks could not be listed: {error}")),
     };
     if let Some(last) = last {
         menu.resume_from(&last.0);
     }
     let form = commands.spawn((Form, Node { flex_direction: FlexDirection::Column, row_gap: px(22), ..default() })).id();
-    commands.entity(form).with_children(|parent| spawn_form(parent, &theme, &menu));
+    commands.entity(form).with_children(|parent| spawn_form(parent, &theme, &core, &images, &menu));
     let buttons = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(12), margin: UiRect::top(px(8)), ..default() })
         .with_children(|parent| {
@@ -149,8 +155,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last:
     commands.insert_resource(Model(menu));
 }
 
-fn defaults() -> [String; 2] {
-    [DEFAULT_CORP_DECK.to_string(), DEFAULT_RUNNER_DECK.to_string()]
+/// Where the deck cursors start: the active deck a side (the one last
+/// chosen anywhere, Phase 7 §16), else the built-in pair a flag-less
+/// game plays.
+fn defaults(core: &ClientCore) -> [String; 2] {
+    [core.settings.active_deck_or_default(Side::Corp), core.settings.active_deck_or_default(Side::Runner)]
 }
 
 /// The form from the client's files: the saved decks beside the built-in
@@ -160,7 +169,7 @@ fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     // listed, so any path that does not exist will do.
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults(), core.settings.opponent_names())
+    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults(core), core.settings.opponent_names())
 }
 
 /// What each side does, in a line, on its card.
@@ -246,39 +255,64 @@ fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index
         });
 }
 
-/// A deck list: a drop-down of its names, and the chosen deck's
-/// identity and style under it.
-fn deck_picker(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, title: String, decks: &[DeckRow], cursor: usize) {
+/// A deck slot: the chosen deck as a person knows it — its identity's
+/// face, its name, the identity, the style a bot plays it in, and why it
+/// cannot start a game here when it cannot — with Change…, which opens
+/// the deck picker (`screens::deck_picker`). A saved deck that cannot
+/// start a game is still shown here if it was chosen, marked, so a
+/// person finds the deck they built and reads why; Start refuses it with
+/// that reason.
+fn deck_slot(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, pane: Pane, title: String, decks: &[DeckRow], cursor: usize) {
     parent.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), row_gap: px(10), ..default() }).with_children(|column| {
         column.spawn(widgets::overline(theme, title));
-        // A saved deck that cannot start a game is listed anyway, marked,
-        // so a person finds the deck they built and reads why; Start
-        // refuses it with that reason.
-        let choices = decks
-            .iter()
-            .map(|deck| {
-                let saved = if deck.saved { " (saved)" } else { "" };
-                let problem = if deck.problem.is_some() { " — not playable" } else { "" };
-                Choice::plain(format!("{}{saved}{problem}", deck.name))
-            })
-            .collect();
-        spawn_dropdown(column, theme, "", choices, cursor, PaneDropdown(pane));
-        if let Some(deck) = decks.get(cursor) {
-            let style = if deck.style.is_empty() { "balanced".to_string() } else { deck.style.join("+") };
-            column.spawn((widgets::dim(theme, format!("{} · plays {style}", deck.identity)), Node { margin: UiRect::left(px(20)), ..default() }));
-            if let Some(problem) = &deck.problem {
-                column.spawn((
-                    Text::new(format!("Can't start a game: {problem}")),
-                    theme.font(size::SMALL),
-                    TextColor(theme.danger),
-                    Node { margin: UiRect::left(px(20)), ..default() },
-                ));
-            }
-        }
+        let Some(deck) = decks.get(cursor) else {
+            column.spawn(widgets::dim(theme, "No deck for this side: build one under Decks."));
+            return;
+        };
+        let identity = core.registry.get(&deck.deck.identity);
+        let faction = theme.faction(deck.faction);
+        column
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(14),
+                    padding: UiRect::all(px(10)),
+                    border: UiRect { left: px(4), right: px(1), top: px(1), bottom: px(1) },
+                    border_radius: BorderRadius::all(px(12)),
+                    ..default()
+                },
+                BackgroundColor(theme.glass),
+                BorderColor { left: faction, right: theme.glass_border, top: theme.glass_border, bottom: theme.glass_border },
+            ))
+            .with_children(|tile| {
+                match identity {
+                    Some(card) => {
+                        let drawn = Face::of(card, &core.settings.art);
+                        let image = images.of(&drawn, FaceSize::Board(SLOT_FACE));
+                        spawn_face(tile, theme, &drawn, FaceSize::Board(SLOT_FACE), image, crate::widgets::reader::Readable(card.id.clone()));
+                    }
+                    None => {
+                        tile.spawn((Node { width: px(SLOT_FACE as f32), height: px(SLOT_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
+                    }
+                }
+                tile.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(3), ..default() }).with_children(|words| {
+                    let saved = if deck.saved { "  ·  yours" } else { "" };
+                    words.spawn((Text::new(format!("{}{saved}", deck.deck.name)), theme.font(size::BODY), TextColor(theme.text)));
+                    words.spawn(widgets::dim(theme, format!("{}  ·  plays {}", deck.identity, deck.style())));
+                    if let Some(problem) = deck.problem() {
+                        words.spawn((Text::new(format!("Can't start a game: {problem}")), theme.font(size::SMALL), TextColor(theme.danger), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
+                });
+                tile.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Change…", PaneSlot(pane)));
+            });
     });
 }
 
-fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu) {
+/// The identity's face in a deck slot.
+const SLOT_FACE: u16 = 64;
+
+fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, menu: &StartMenu) {
     let human = menu.human();
     let bot = menu.bot();
     section(parent, theme, "Your side", |section| {
@@ -331,8 +365,8 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
     });
     }
     parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(24), ..default() }).with_children(|row| {
-        deck_picker(row, theme, Pane::OwnDeck, format!("Your deck · {human:?}"), menu.own_decks(), menu.cursor(Pane::OwnDeck));
-        deck_picker(row, theme, Pane::OpponentDeck, format!("Opponent's deck · {bot:?}"), menu.opponent_decks(), menu.cursor(Pane::OpponentDeck));
+        deck_slot(row, theme, core, images, Pane::OwnDeck, format!("Your deck · {human:?}"), menu.own_decks(), menu.cursor(Pane::OwnDeck));
+        deck_slot(row, theme, core, images, Pane::OpponentDeck, format!("Opponent's deck · {bot:?}"), menu.opponent_decks(), menu.cursor(Pane::OpponentDeck));
     });
 }
 
@@ -420,23 +454,30 @@ pub fn start_dev(core: &ClientCore, side: Side, corp_deck: Option<&str>, runner_
     start_with(core, &choice, seed_from_clock(), None, None).map(|active| ActiveMatch { choice: None, ..active })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn controls(
     mut commands: Commands,
     mut pressed: MessageReader<Pressed>,
-    mut chosen: MessageReader<DropdownChanged>,
+    mut picked: MessageReader<DeckPicked>,
     marks: Query<&Control>,
-    panes: Query<&PaneDropdown>,
+    slots: Query<&PaneSlot>,
     choices: Query<&PaneChoice>,
     mut menu: ResMut<Model>,
     mut dirty: ResMut<Dirty>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
+    mut open_picker: MessageWriter<OpenDeckPicker>,
 ) {
-    for DropdownChanged { dropdown, index } in chosen.read() {
-        let Ok(PaneDropdown(pane)) = panes.get(*dropdown) else { continue };
-        menu.0.set_cursor(*pane, *index);
-        dirty.form = true;
+    // A deck chosen in the picker: the pane's cursor goes to it. The
+    // picker lists the same rows the form holds, so the id is found.
+    for DeckPicked { purpose, id } in picked.read() {
+        let Purpose::NewGame(pane) = purpose else { continue };
+        let rows = if *pane == Pane::OwnDeck { menu.0.own_decks() } else { menu.0.opponent_decks() };
+        if let Some(index) = rows.iter().position(|row| row.deck.id == *id) {
+            menu.0.set_cursor(*pane, index);
+            dirty.form = true;
+        }
     }
     for Pressed(entity) in pressed.read() {
         if let Ok(PaneChoice { pane, index }) = choices.get(*entity) {
@@ -444,6 +485,13 @@ fn controls(
                 menu.0.set_cursor(*pane, *index);
                 dirty.form = true;
             }
+            continue;
+        }
+        if let Ok(PaneSlot(pane)) = slots.get(*entity) {
+            let (side, rows) = if *pane == Pane::OwnDeck { (menu.0.human(), menu.0.own_decks()) } else { (menu.0.bot(), menu.0.opponent_decks()) };
+            let chosen = rows.get(menu.0.cursor(*pane)).map(|row| row.deck.id.clone());
+            let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
+            open_picker.write(OpenDeckPicker { side, format, purpose: Purpose::NewGame(*pane), chosen });
             continue;
         }
         match marks.get(*entity) {
@@ -461,6 +509,12 @@ fn controls(
                 }
                 match start_on(&core, &choice, runtime.as_deref()) {
                     Ok(active) => {
+                        // The decks played are the active decks now,
+                        // whichever way they were chosen.
+                        let changed = core.settings.set_active_deck(Side::Corp, &choice.corp_deck) | core.settings.set_active_deck(Side::Runner, &choice.runner_deck);
+                        if changed {
+                            let _ = core.save_settings();
+                        }
                         commands.insert_resource(active);
                         navigate.write(Navigate(AppScreen::Game));
                     }
@@ -472,17 +526,31 @@ fn controls(
     }
 }
 
+/// `NETRUNNER_DECK_PICKER`: the own-deck slot pressed once the form is
+/// up, for a screenshot of the picker.
+fn dev_opens_picker(dev: Option<Res<crate::dev::Dev>>, mut opened: Local<bool>, menu: Res<Model>, core: Res<ClientCore>, mut open_picker: MessageWriter<OpenDeckPicker>) {
+    if *opened || !dev.is_some_and(|dev| dev.deck_picker) {
+        return;
+    }
+    *opened = true;
+    let chosen = menu.0.own_decks().get(menu.0.cursor(Pane::OwnDeck)).map(|row| row.deck.id.clone());
+    let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
+    open_picker.write(OpenDeckPicker { side: menu.0.human(), format, purpose: Purpose::NewGame(Pane::OwnDeck), chosen });
+}
+
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
     form: Query<Entity, With<Form>>,
     mut notice: Query<&mut Text, With<NoticeLine>>,
     theme: Res<Theme>,
+    core: Res<ClientCore>,
+    images: Res<CardImages>,
     menu: Res<Model>,
 ) {
     let Dirty { form: reform, notice: note } = std::mem::take(&mut *dirty);
     if reform && let Ok(form) = form.single() {
-        commands.entity(form).despawn_children().with_children(|parent| spawn_form(parent, &theme, &menu.0));
+        commands.entity(form).despawn_children().with_children(|parent| spawn_form(parent, &theme, &core, &images, &menu.0));
     }
     if let Some(note) = note {
         for mut text in &mut notice {

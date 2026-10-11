@@ -21,7 +21,6 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
-use crate::deck_store::{self, Origin};
 use crate::record::LocalRecord;
 
 /// The decks a flag-less game plays: the terminal's `--corp-deck` and
@@ -34,30 +33,21 @@ use crate::record::LocalRecord;
 pub const DEFAULT_CORP_DECK: &str = "brick_stack";
 pub const DEFAULT_RUNNER_DECK: &str = "stolen_goods";
 
-/// One deck the screen can offer, with what a player needs to tell decks
-/// apart: the name, the style a bot would play it in, the identity.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeckRow {
-    pub id: String,
-    pub name: String,
-    pub style: Vec<String>,
-    pub identity: String,
-    pub saved: bool,
-    /// Why the deck cannot start a game in the format the form was
-    /// opened for — the validators' first complaint — or `None` for a
-    /// legal deck. A saved deck may be illegal (a builder saves whatever
-    /// is built), and the form lists it anyway, marked, rather than
-    /// leaving a person wondering where their deck went; Start then
-    /// refuses it with this reason (`StartMenu::choice_problem`).
-    pub problem: Option<String>,
-}
+/// One deck the screen can offer: the picker's row
+/// (`deck_picker::Row`), which says what a player needs to tell decks
+/// apart — the name, the style a bot would play it in, the identity —
+/// and why it cannot start a game in the format the form was opened for,
+/// when it cannot (`Row::problem`). A saved deck may be illegal (a
+/// builder saves whatever is built), and the form lists it anyway,
+/// marked, rather than leaving a person wondering where their deck went;
+/// Start then refuses it with that reason (`StartMenu::choice_problem`).
+pub type DeckRow = crate::deck_picker::Row;
 
-impl DeckRow {
-    pub fn label(&self) -> String {
-        let style = if self.style.is_empty() { "balanced".to_string() } else { self.style.join("+") };
-        let saved = if self.saved { " (saved)" } else { "" };
-        let problem = if self.problem.is_some() { " — not playable here" } else { "" };
-        format!("{} · {style} · {}{saved}{problem}", self.name, self.identity)
+/// The built-in deck a flag-less game plays for `side`.
+pub fn default_deck(side: Side) -> &'static str {
+    match side {
+        Side::Corp => DEFAULT_CORP_DECK,
+        Side::Runner => DEFAULT_RUNNER_DECK,
     }
 }
 
@@ -153,8 +143,9 @@ impl StartMenu {
     /// deck cursors start there.
     ///
     /// A deck file that cannot be read is left out rather than emptying
-    /// the form (`deck_store::list_lenient`); each deck is checked in
-    /// `format`, the one a game will be started in.
+    /// the form (`deck_picker::rows`); each deck is checked in `format`,
+    /// the one a game will be started in, and a test deck
+    /// (`DeckCategory::Sweep`) is not offered (`deck_picker::rows_for`).
     pub fn open(
         decks_dir: &Path,
         record_path: Option<&Path>,
@@ -164,27 +155,9 @@ impl StartMenu {
         defaults: [String; 2],
         opponents: Vec<String>,
     ) -> Result<Self, String> {
-        let mut decks: [Vec<DeckRow>; 2] = [Vec::new(), Vec::new()];
-        let (stored_decks, _unreadable) = deck_store::list_lenient(decks_dir);
-        for stored in stored_decks {
-            // A `Sweep` deck is a test deck, legal only in Eternal: listed
-            // here it would be a choice the game then refuses under the
-            // default format. The deck builder still shows it, with its
-            // legality, and a copy of one is the person's own deck.
-            if stored.deck.category == netrunner_core::decks::DeckCategory::Sweep {
-                continue;
-            }
-            let identity =
-                registry.get(&stored.deck.identity).map_or_else(|| stored.deck.identity.0.clone(), |card| card.title.clone());
-            decks[side_index(stored.deck.side)].push(DeckRow {
-                id: stored.deck.id.clone(),
-                name: stored.deck.name.clone(),
-                style: stored.deck.style.clone(),
-                identity,
-                saved: !matches!(stored.origin, Origin::Embedded),
-                problem: stored.deck.validate(registry, format).err().map(|error| error.to_string()),
-            });
-        }
+        let book = crate::deck_builder::CardBook { registry, catalog: &[] };
+        let (rows, _unreadable) = crate::deck_picker::rows(Some(decks_dir), book, format);
+        let decks: [Vec<DeckRow>; 2] = SIDES.map(|side| crate::deck_picker::rows_for(side, &rows));
         let suggested = match record_path.map(LocalRecord::load) {
             Some(Ok(log)) => SIDES.map(|side| log.suggest(player, side)),
             _ => [Level::Operator, Level::Operator],
@@ -317,7 +290,7 @@ impl StartMenu {
     fn reset_for_chair(&mut self) {
         self.level = Level::ALL.iter().position(|l| *l == self.suggested[self.chair]).unwrap_or(2);
         self.style = 0;
-        let default_of = |decks: &[DeckRow], id: &str| decks.iter().position(|d| d.id == id).unwrap_or(0);
+        let default_of = |decks: &[DeckRow], id: &str| decks.iter().position(|d| d.deck.id == id).unwrap_or(0);
         self.opponent_deck = default_of(self.opponent_decks(), &self.defaults[side_index(self.bot())]);
         self.own_deck = default_of(self.own_decks(), &self.defaults[side_index(self.human())]);
     }
@@ -354,8 +327,8 @@ impl StartMenu {
         let opponent = self.opponent_decks().get(self.opponent_deck)?;
         let own = self.own_decks().get(self.own_deck)?;
         let (corp_deck, runner_deck) = match self.human() {
-            Side::Corp => (own.id.clone(), opponent.id.clone()),
-            Side::Runner => (opponent.id.clone(), own.id.clone()),
+            Side::Corp => (own.deck.id.clone(), opponent.deck.id.clone()),
+            Side::Runner => (opponent.deck.id.clone(), own.deck.id.clone()),
         };
         // Behind a model the rung is the chair's suggestion: the planner
         // that plays what the model does not should be the one the
@@ -375,7 +348,7 @@ impl StartMenu {
         [self.own_decks().get(self.own_deck), self.opponent_decks().get(self.opponent_deck)]
             .into_iter()
             .flatten()
-            .find_map(|deck| deck.problem.as_ref().map(|problem| format!("{} cannot be played in this format: {problem}", deck.name)))
+            .find_map(|row| row.problem().map(|problem| format!("{} cannot be played in this format: {problem}", row.deck.name)))
     }
 
     /// One change to the form. The keys that mean these are each
@@ -466,14 +439,7 @@ mod tests {
     use super::*;
 
     fn row(id: &str, side: Side) -> DeckRow {
-        DeckRow {
-            id: id.to_string(),
-            name: id.replace('_', " "),
-            style: vec![if side == Side::Corp { "fast-advance" } else { "pressure" }.to_string()],
-            identity: "Someone".to_string(),
-            saved: false,
-            problem: None,
-        }
+        DeckRow::fixture(id, &id.replace('_', " "), side, "Someone", &[if side == Side::Corp { "fast-advance" } else { "pressure" }], false, None)
     }
 
     fn menu() -> StartMenu {
@@ -643,8 +609,7 @@ mod tests {
     /// An illegal deck is listed, marked, and named when chosen.
     #[test]
     fn a_deck_with_a_problem_is_listed_and_refused_by_name() {
-        let mut illegal = row("my_deck", Side::Runner);
-        illegal.problem = Some("deck has 3 cards".to_string());
+        let illegal = DeckRow::fixture("my_deck", "my deck", Side::Runner, "Someone", &["pressure"], false, Some("deck has 3 cards"));
         let mut menu = StartMenu::with_decks(
             [vec![row("discretion_advised", Side::Corp)], vec![row("stolen_goods", Side::Runner), illegal]],
             [Level::Operator; 2],

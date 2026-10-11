@@ -41,6 +41,18 @@ pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) ->
     {
         config.server = server.clone();
     }
+    // The active decks (Phase 7 §16): what a flag-less game and the
+    // new-game form start from, as on the desktop.
+    if let Some(deck) = &settings.active_corp_deck
+        && !flagged("corp_deck")
+    {
+        config.corp_deck = deck.clone();
+    }
+    if let Some(deck) = &settings.active_runner_deck
+        && !flagged("runner_deck")
+    {
+        config.runner_deck = deck.clone();
+    }
 }
 
 /// The answers a person gave a card's "you may" for good

@@ -75,7 +75,7 @@ use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
-use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
+use crate::screens::deck_picker::{DeckPicked, OpenDeckPicker, Purpose};
 use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
 
@@ -238,12 +238,19 @@ pub enum Control {
     Disconnect,
 }
 
-/// The deck drop-downs, one per side.
-#[derive(Component)]
-struct CorpDeckDropdown;
+/// A deck slot's Change… button: opens the deck picker for this purpose
+/// on the lobby's or the tournament's format, the cursor on the deck
+/// chosen now.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct DeckSlot {
+    pub purpose: Purpose,
+    pub chosen: String,
+    pub format: NsgFormat,
+}
 
-#[derive(Component)]
-struct RunnerDeckDropdown;
+/// The chosen deck's line in a slot, for a test to read.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeckLine(pub Purpose);
 
 /// Where a field's box sits, so a press on it can put the editor there.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,7 +269,8 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
             // Join starts from the last server connected to, which both
             // clients keep in the settings file (Phase 6 §3).
             let address = core.settings.server.clone().unwrap_or_else(|| hosting::normalize_address("127.0.0.1"));
-            commands.insert_resource(Model(OnlineForm::new(address, format)));
+            let preferred = [core.settings.active_deck(Side::Corp).map(str::to_string), core.settings.active_deck(Side::Runner).map(str::to_string)];
+            commands.insert_resource(Model(OnlineForm::new(address, format).with_preferred(preferred)));
         }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
@@ -333,10 +341,10 @@ fn stop(net: &mut Net) {
 fn controls(
     mut commands: Commands,
     mut pressed: MessageReader<Pressed>,
-    mut chosen: MessageReader<DropdownChanged>,
+    mut picked: MessageReader<DeckPicked>,
     marks: Query<&Control>,
-    corp_dropdowns: Query<(), With<CorpDeckDropdown>>,
-    runner_dropdowns: Query<(), With<RunnerDeckDropdown>>,
+    deck_slots: Query<&DeckSlot>,
+    mut open_picker: MessageWriter<OpenDeckPicker>,
     slots: Query<(Entity, &FieldSlot)>,
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
@@ -347,16 +355,35 @@ fn controls(
     mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
-    for DropdownChanged { dropdown, index } in chosen.read() {
-        if corp_dropdowns.contains(*dropdown) {
-            model.0.apply(Intent::SetCorpDeck(*index));
-            dirty.0 = true;
-        } else if runner_dropdowns.contains(*dropdown) {
-            model.0.apply(Intent::SetRunnerDeck(*index));
+    // A deck chosen in the picker: the side's choice goes to it, on the
+    // page the purpose names. The picker offers every deck of the side,
+    // legal or not; one the lobby's list does not hold is not legal in
+    // its format, and the picker refused it already.
+    for DeckPicked { purpose, id } in picked.read() {
+        let Some(server) = &model.0.server else { continue };
+        let intent = match purpose {
+            Purpose::Lobby(Side::Corp) => server.corp_decks().iter().position(|deck| deck.id == *id).map(Intent::SetCorpDeck),
+            Purpose::Lobby(Side::Runner) => server.runner_decks().iter().position(|deck| deck.id == *id).map(Intent::SetRunnerDeck),
+            Purpose::Tournament(side) => {
+                let position = server.tournament_side_decks(*side).iter().position(|deck| deck.id == *id);
+                position.map(if *side == Side::Corp { Intent::SetCorpDeck } else { Intent::SetRunnerDeck })
+            }
+            Purpose::NewGame(_) => None,
+        };
+        if let Some(intent) = intent {
+            model.0.apply(intent);
             dirty.0 = true;
         }
     }
     for Pressed(entity) in pressed.read() {
+        if let Ok(slot) = deck_slots.get(*entity) {
+            let side = match slot.purpose {
+                Purpose::Lobby(side) | Purpose::Tournament(side) => side,
+                Purpose::NewGame(_) => continue,
+            };
+            open_picker.write(OpenDeckPicker { side, format: slot.format, purpose: slot.purpose, chosen: Some(slot.chosen.clone()) });
+            continue;
+        }
         let Ok(control) = marks.get(*entity) else { continue };
         let intent = match *control {
             Control::Open(page) => Intent::Open(page),
@@ -1180,30 +1207,33 @@ fn deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &Serv
         Side::Corp => (server.corp_decks(), server.corp_deck),
         Side::Runner => (server.runner_decks(), server.runner_deck),
     };
-    deck_dropdown_of(parent, theme, decks, chosen, side, format);
+    deck_slot_of(parent, theme, decks, chosen, side, format, Purpose::Lobby(side));
 }
 
 /// The deck this player would lock in for `side` in the open tournament,
-/// from those legal in its format. The same drop-down markers as the
-/// lobby's: the model reads the page to tell whose choice a change is.
+/// from those legal in its format. Its own purpose, so the model can
+/// tell whose choice a pick is.
 fn tournament_deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState, side: Side, format: NsgFormat) {
     let chosen = match side {
         Side::Corp => server.tournament_corp,
         Side::Runner => server.tournament_runner,
     };
-    deck_dropdown_of(parent, theme, server.tournament_side_decks(side), chosen, side, format);
+    deck_slot_of(parent, theme, server.tournament_side_decks(side), chosen, side, format, Purpose::Tournament(side));
 }
 
-fn deck_dropdown_of(parent: &mut ChildSpawnerCommands, theme: &Theme, decks: Vec<&DeckFile>, chosen: usize, side: Side, format: NsgFormat) {
-    if decks.is_empty() {
+/// The chosen deck for a side, in a line, with Change…, which opens the
+/// deck picker (`screens::deck_picker`, Phase 7 §16) on the lobby's or
+/// the tournament's format. It replaced a drop-down of names.
+fn deck_slot_of(parent: &mut ChildSpawnerCommands, theme: &Theme, decks: Vec<&DeckFile>, chosen: usize, side: Side, format: NsgFormat, purpose: Purpose) {
+    let Some(deck) = decks.get(chosen) else {
         parent.spawn(widgets::dim(theme, format!("No {side:?} deck is legal in {}: build one under Decks.", capitalised(format_name(format)))));
         return;
-    }
-    let choices = decks.iter().map(|deck| Choice::plain(online::label(deck))).collect();
-    match side {
-        Side::Corp => spawn_dropdown(parent, theme, "Corp deck", choices, chosen, CorpDeckDropdown),
-        Side::Runner => spawn_dropdown(parent, theme, "Runner deck", choices, chosen, RunnerDeckDropdown),
     };
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
+        row.spawn(widgets::overline(theme, format!("{side:?} deck")));
+        row.spawn((Text::new(online::label(deck)), theme.font(size::BODY), TextColor(theme.text), DeckLine(purpose)));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Change…", DeckSlot { purpose, chosen: deck.id.clone(), format }));
+    });
 }
 
 /// The server's tournaments, each a button to its page, and the way to

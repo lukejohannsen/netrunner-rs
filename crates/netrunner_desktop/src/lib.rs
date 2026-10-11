@@ -160,6 +160,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(card_images::CardImagesPlugin)
             .add(downloads::DownloadsPlugin)
             .add(files::plugin)
+            .add(screens::deck_picker::plugin)
             .add(netrunnerdb::plugin)
             .add(screens::boot::BootPlugin)
             .add(screens::splash::SplashPlugin)

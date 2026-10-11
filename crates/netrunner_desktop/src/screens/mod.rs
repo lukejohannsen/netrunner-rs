@@ -12,6 +12,7 @@ pub mod about;
 pub mod boot;
 pub mod card_browser;
 pub mod deck_editor;
+pub mod deck_picker;
 pub mod first_launch;
 pub mod flight;
 pub mod decks;

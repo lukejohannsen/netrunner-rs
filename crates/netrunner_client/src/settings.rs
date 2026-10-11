@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use netrunner_core::format::NsgFormat;
+use netrunner_core::rules::Side;
 
 use crate::art::ArtChoices;
 use crate::llm::LlmProfile;
@@ -100,6 +101,17 @@ pub struct Settings {
     /// The format decks are checked against — `--format`'s default.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "format_by_name")]
     pub format: Option<NsgFormat>,
+    /// The deck a side the person last chose (Phase 7 §16, 11 October
+    /// 2026): by id, written whenever a deck is picked — the new-game
+    /// form, a lobby's seek, a tournament's entry — and the deck every
+    /// such place starts from, so a person with one deck a side never
+    /// chooses it twice. Shared, like the format: a deck saved from
+    /// either client is listed and played by both. Unset is the built-in
+    /// pair a flag-less game plays (`start::DEFAULT_CORP_DECK`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_corp_deck: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_runner_deck: Option<String>,
     /// The server Join and Watch start from: the address of the last one
     /// the person connected to — written when a connection is made, never
     /// as it is typed — and `--server`'s default in the terminal client.
@@ -143,6 +155,34 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// The active deck for `side`, by id, if one has been chosen.
+    pub fn active_deck(&self, side: Side) -> Option<&str> {
+        match side {
+            Side::Corp => self.active_corp_deck.as_deref(),
+            Side::Runner => self.active_runner_deck.as_deref(),
+        }
+    }
+
+    /// The active deck for `side`, or the built-in deck a flag-less game
+    /// plays: what every place a deck is asked starts from.
+    pub fn active_deck_or_default(&self, side: Side) -> String {
+        self.active_deck(side).map_or_else(|| crate::start::default_deck(side).to_string(), str::to_string)
+    }
+
+    /// Makes `id` the active deck for `side`. True when that changed
+    /// anything, so the caller writes the file only then.
+    pub fn set_active_deck(&mut self, side: Side, id: &str) -> bool {
+        let slot = match side {
+            Side::Corp => &mut self.active_corp_deck,
+            Side::Runner => &mut self.active_runner_deck,
+        };
+        if slot.as_deref() == Some(id) {
+            return false;
+        }
+        *slot = Some(id.to_string());
+        true
+    }
+
     /// The model opponent of that name, if one is set up.
     pub fn opponent(&self, name: &str) -> Option<&LlmProfile> {
         self.opponents.iter().find(|profile| profile.name == name)

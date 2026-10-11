@@ -12,6 +12,7 @@ use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
+use netrunner_core::rules::Side;
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
 use netrunner_desktop::{AppScreen, NetrunnerDesktopPlugins};
@@ -490,52 +491,70 @@ fn the_card_browser_filters_through_drop_downs_that_escape_closes_first() {
     assert_eq!(app.world_mut().query::<&Dropdown>().get(app.world(), side).unwrap().selected, 2, "the respawned drop-down shows Runner");
 }
 
-/// A deck list is browsed with the keys as well as the pointer: the
-/// arrows move a highlight from the chosen deck, Enter chooses it and
-/// closes the list, and the form's own deck changes with it. The deck
-/// lists sit at the foot of the form, where a list that ran off the
-/// window left the pointer nothing to reach; the keys reach every deck
-/// whatever the window.
+/// A deck is chosen from the picker (Phase 7 §16): Change… on the
+/// form's own-deck slot opens it over the form, listing every deck of
+/// the chair's side with its identity, searchable; a row chosen closes
+/// the picker, moves the form's own deck to it and makes it the active
+/// deck in the settings file, which the next form starts from. The
+/// picker lists an illegal deck too, greyed, and refuses it with the
+/// reason; Escape closes it with nothing chosen.
 #[test]
-fn a_deck_list_is_browsed_and_chosen_with_the_keys() {
+fn a_deck_is_chosen_from_the_picker_and_becomes_the_active_deck() {
     use netrunner_client::start::Pane;
-    use netrunner_desktop::screens::new_game::PaneDropdown;
-    use netrunner_desktop::widgets::dropdown::{Dropdown, Head, Item};
+    use netrunner_desktop::screens::deck_picker::{PickerRow, PickerWash, Picking};
+    use netrunner_desktop::screens::new_game::PaneSlot;
     let (mut app, _dir) = headless_client();
     app.update();
     app.update();
     app.world_mut().write_message(Navigate(AppScreen::NewGame));
     app.update();
     app.update();
-    let own = |app: &mut App| app.world_mut().query::<(Entity, &PaneDropdown)>().iter(app.world()).find(|(_, p)| p.0 == Pane::OwnDeck).map(|(e, _)| e).unwrap();
-    let root = own(&mut app);
-    let (before, decks) = {
-        let dropdown = app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap();
-        (dropdown.selected, dropdown.choices.len())
+    let slot = |app: &mut App| app.world_mut().query::<(Entity, &PaneSlot)>().iter(app.world()).find(|(_, p)| p.0 == Pane::OwnDeck).map(|(e, _)| e).unwrap();
+    let own = slot(&mut app);
+    app.world_mut().entity_mut(own).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    app.update();
+    assert!(app.world().contains_resource::<Picking>(), "Change… opened the picker");
+    assert_eq!(app.world_mut().query::<&PickerWash>().iter(app.world()).count(), 1, "drawn over the form");
+    let (side, before, rows) = {
+        let picking = app.world().resource::<Picking>();
+        (picking.picker.side, picking.picker.cursor, picking.picker.rows.len())
     };
-    assert!(decks > 3, "{decks} decks");
-    let head = app.world_mut().query::<(Entity, &Head)>().iter(app.world()).find(|(_, h)| h.0 == root).map(|(e, _)| e).unwrap();
-    app.world_mut().entity_mut(head).insert(Interaction::Pressed);
-    app.update();
-    app.update();
-    assert_eq!(app.world_mut().query::<&Item>().iter(app.world()).count(), decks, "every deck is in the list");
+    assert_eq!(side, Side::Corp, "the form opens on the Corp chair, so its own deck is a Corp deck");
+    assert!(rows > 3, "{rows} decks");
+    let buttons = app.world_mut().query::<&PickerRow>().iter(app.world()).count();
+    assert!(buttons > 0 && buttons <= rows, "{buttons} of {rows} rows can be chosen");
 
-    // Home, then down twice: the third deck, whatever was chosen before.
-    press(&mut app, KeyCode::Home, Key::Home);
-    app.update();
-    press(&mut app, KeyCode::ArrowDown, Key::ArrowDown);
-    press(&mut app, KeyCode::ArrowDown, Key::ArrowDown);
-    app.update();
-    assert_eq!(app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap().highlight, 2);
-    press(&mut app, KeyCode::Enter, Key::Enter);
+    // Choose a row that is not the one the form holds.
+    let target = app.world_mut().query::<&PickerRow>().iter(app.world()).map(|r| r.0).find(|index| *index != before).expect("another playable deck");
+    let id = app.world().resource::<Picking>().picker.rows[target].deck.id.clone();
+    let button = app.world_mut().query::<(Entity, &PickerRow)>().iter(app.world()).find(|(_, r)| r.0 == target).map(|(e, _)| e).unwrap();
+    app.world_mut().entity_mut(button).insert(Interaction::Pressed);
     app.update();
     app.update();
-    assert_eq!(app.world_mut().query::<&Item>().iter(app.world()).count(), 0, "Enter closed the list");
+    app.update();
+    assert!(!app.world().contains_resource::<Picking>(), "a choice closes the picker");
+    assert_eq!(app.world_mut().query::<&PickerWash>().iter(app.world()).count(), 0);
     assert_eq!(screen(&app), AppScreen::NewGame, "and started nothing");
-    // The form respawns on a change, so the drop-down is found again.
-    let root = own(&mut app);
-    let after = app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap().selected;
-    assert_eq!(after, 2, "the third deck is chosen (it was {before})");
+    let core = app.world().resource::<ClientCore>();
+    assert_eq!(core.settings.active_deck(Side::Corp), Some(id.as_str()), "the chosen deck is the active Corp deck");
+    let saved = netrunner_client::settings::Settings::load(core.settings_path.as_deref().expect("a settings path")).expect("the settings file");
+    assert_eq!(saved.active_corp_deck.as_deref(), Some(id.as_str()), "and it is in the file");
+
+    // Escape closes the picker with nothing chosen.
+    let own = slot(&mut app);
+    app.world_mut().entity_mut(own).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    app.update();
+    assert!(app.world().contains_resource::<Picking>());
+    assert_eq!(app.world().resource::<Picking>().picker.cursor, target, "the picker opens on the deck the form now holds");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert!(!app.world().contains_resource::<Picking>(), "Escape closed the picker");
+    assert_eq!(screen(&app), AppScreen::NewGame, "and did not leave the form");
 }
 
 /// About credits every third party the register names, bundled or

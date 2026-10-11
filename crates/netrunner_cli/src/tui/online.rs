@@ -287,11 +287,11 @@ impl ServerPage {
 
     /// The decks legal in the lobby's format, read afresh: each side's
     /// chosen deck stays chosen if it is still among them.
-    fn set_decks(&mut self, decks: Vec<DeckFile>) {
+    fn set_decks(&mut self, decks: Vec<DeckFile>, preferred: &[Option<String>; 2]) {
         let keep = |chosen: Option<&DeckFile>, side: Side| {
-            let id = chosen.map(|deck| deck.id.clone());
             let among: Vec<&DeckFile> = decks.iter().filter(|deck| deck.side == side).collect();
-            id.and_then(|id| among.iter().position(|deck| deck.id == id)).unwrap_or(0)
+            let position = |id: &str| among.iter().position(|deck| deck.id == id);
+            chosen.and_then(|deck| position(&deck.id)).or_else(|| preferred[side as usize].as_deref().and_then(position)).unwrap_or(0)
         };
         let (corp, runner) = (keep(self.chosen(Side::Corp), Side::Corp), keep(self.chosen(Side::Runner), Side::Runner));
         self.decks = decks;
@@ -575,6 +575,9 @@ pub struct OnlineScreen {
     /// server joined proves it; `None` plays unrated. A game hosted here
     /// never does: it is never rated.
     identity_dir: Option<std::path::PathBuf>,
+    /// The active deck a side, which a lobby's and a tournament's choice
+    /// start on (`with_preferred`).
+    preferred: [Option<String>; 2],
 }
 
 impl OnlineScreen {
@@ -602,12 +605,27 @@ impl OnlineScreen {
             notice: None,
             relay,
             identity_dir: None,
+            preferred: [None, None],
         })
     }
 
     pub fn with_identity_dir(mut self, dir: Option<std::path::PathBuf>) -> Self {
         self.identity_dir = dir;
         self
+    }
+
+    /// The active deck a side (`Settings::active_deck`, Phase 7 §16):
+    /// what a lobby's or a tournament's deck starts on.
+    pub fn with_preferred(mut self, preferred: [Option<String>; 2]) -> Self {
+        self.preferred = preferred;
+        self
+    }
+
+    /// Where a side's choice starts among `decks`: the active deck if it
+    /// is among them, else the first.
+    fn preferred_index(&self, decks: &[DeckFile], side: Side) -> usize {
+        let among: Vec<&DeckFile> = decks.iter().filter(|deck| deck.side == side).collect();
+        self.preferred[side as usize].as_deref().and_then(|id| among.iter().position(|deck| deck.id == id)).unwrap_or(0)
     }
 
     /// A connection was made to `url`: the next form starts from it, and
@@ -734,6 +752,7 @@ impl OnlineScreen {
                 AttachedEvent::TournamentRefused(reason) => self.notice = Some(reason),
                 AttachedEvent::LobbyJoined(lobby) => {
                     let decks = self.deck_choices(lobby.format);
+                    let preferred = self.preferred.clone();
                     if let Mode::MakeLobby { page, .. } = &mut self.mode {
                         let page = std::mem::replace(page, ServerPage::new(hosting, Vec::new()));
                         self.mode = Mode::Server(page);
@@ -745,7 +764,7 @@ impl OnlineScreen {
                             *row = lobby.clone();
                         }
                         page.lobby = Some(lobby);
-                        page.set_decks(decks);
+                        page.set_decks(decks, &preferred);
                         page.rest_on(Row::Seek);
                     }
                     self.notice = None;
@@ -847,7 +866,8 @@ impl OnlineScreen {
             Mode::MakeTournament { page, mut list, .. } => {
                 list.put(&info);
                 let decks = self.deck_choices(info.format);
-                self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 }) };
+                let (corp_deck, runner_deck) = (self.preferred_index(&decks, Side::Corp), self.preferred_index(&decks, Side::Runner));
+                self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck, runner_deck, cursor: 0 }) };
             }
             Mode::Tournament { page, mut list, mut tournament } => {
                 list.put(&info);
@@ -1253,7 +1273,8 @@ impl OnlineScreen {
                 TournamentsRow::Entry(index) => {
                     let info = list.list[index].clone();
                     let decks = self.deck_choices(info.format);
-                    self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck: 0, runner_deck: 0, cursor: 0 }) };
+                    let (corp_deck, runner_deck) = (self.preferred_index(&decks, Side::Corp), self.preferred_index(&decks, Side::Runner));
+                    self.mode = Mode::Tournament { page, list, tournament: Box::new(TournamentPage { info, decks, corp_deck, runner_deck, cursor: 0 }) };
                     return;
                 }
                 TournamentsRow::Refresh => attached.list_tournaments(),

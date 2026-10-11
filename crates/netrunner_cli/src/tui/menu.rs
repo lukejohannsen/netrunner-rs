@@ -405,6 +405,7 @@ impl Menu {
                     let relay = netrunner_client::peer::Relay::from_setting(self.settings.relay.as_deref());
                     OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone(), relay)
                         .map(|screen| screen.with_identity_dir(netrunner_client::identity::resolve_identity_dir().ok()))
+                        .map(|screen| screen.with_preferred([self.settings.active_deck(Side::Corp).map(str::to_string), self.settings.active_deck(Side::Runner).map(str::to_string)]))
                 });
                 match opened {
                     Ok(screen) => self.screen = Screen::Online(Box::new(screen)),
@@ -442,6 +443,22 @@ impl Menu {
             Entry::Quit => return MenuStep::Quit,
         }
         MenuStep::Continue
+    }
+
+    /// The decks a game was started with are the active decks (Phase 7
+    /// §16): what the next form, and the desktop's, start from. Written
+    /// into the file, and into `base` so a flag-less launch from this
+    /// session plays them too.
+    fn remember_active_decks(&mut self, corp: &str, runner: &str) {
+        let changed = self.settings.set_active_deck(Side::Corp, corp) | self.settings.set_active_deck(Side::Runner, runner);
+        self.base.corp_deck = corp.to_string();
+        self.base.runner_deck = runner.to_string();
+        if changed
+            && let Some(path) = &self.settings_path
+            && let Err(error) = self.settings.save(path)
+        {
+            self.notice = Some(format!("Not saved: {error}"));
+        }
     }
 
     /// Saves the form's settings and applies them to `base` at once. An
@@ -500,6 +517,7 @@ impl Menu {
                 StartKey::Start(choice) => {
                     let mut config = self.base.clone();
                     start::apply_choice(&choice, &mut config);
+                    self.remember_active_decks(&choice.corp_deck, &choice.runner_deck);
                     self.last_game = Some(choice);
                     MenuStep::Launch(Launch::Local { config: Box::new(config) })
                 }

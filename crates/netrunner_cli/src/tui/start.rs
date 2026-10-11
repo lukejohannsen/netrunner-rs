@@ -136,14 +136,7 @@ mod tests {
     use netrunner_client::start::{DeckRow, Pane};
 
     fn row(id: &str, side: Side) -> DeckRow {
-        DeckRow {
-            id: id.to_string(),
-            name: id.replace('_', " "),
-            style: vec![if side == Side::Corp { "fast-advance" } else { "pressure" }.to_string()],
-            identity: "Someone".to_string(),
-            saved: false,
-            problem: None,
-        }
+        DeckRow::fixture(id, &id.replace('_', " "), side, "Someone", &[if side == Side::Corp { "fast-advance" } else { "pressure" }], false, None)
     }
 
     fn menu() -> StartMenu {
