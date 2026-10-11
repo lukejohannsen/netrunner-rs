@@ -1588,17 +1588,8 @@ pub(super) fn unaffordable_ice(state: &GameState, registry: &CardRegistry) -> us
 /// a copy of the board with this agenda under access; a board no card
 /// taxes is never copied.
 pub(super) fn steal_credits(state: &GameState, registry: &CardRegistry, agenda: &netrunner_core::rules::InstalledCard) -> Option<u32> {
-    use netrunner_core::dsl::Cost;
     use netrunner_core::rules::continuous::steal_price;
     use netrunner_core::rules::{AccessState, RunState};
-    fn credits(cost: &Cost) -> Option<u32> {
-        match cost {
-            Cost::Credits(n) => Some(*n),
-            Cost::Clicks(_) => Some(0),
-            Cost::AllOf(parts) => parts.iter().try_fold(0, |sum, part| credits(part).map(|n| sum + n)),
-            _ => None,
-        }
-    }
     let Some(def) = registry.get(&agenda.card) else { return Some(0) };
     if steal_price(state, registry, def).is_none() {
         return Some(0);
@@ -1607,7 +1598,27 @@ pub(super) fn steal_credits(state: &GameState, registry: &CardRegistry, agenda: 
     let mut run = accessing.active_run.take().unwrap_or_else(|| RunState { server: agenda.server, ..RunState::default() });
     run.access_state = Some(AccessState { server: agenda.server, pending_install: Some(agenda.install_id), ..AccessState::default() });
     accessing.active_run = Some(run);
-    steal_price(&accessing, registry, def).map_or(Some(0), |cost| credits(&cost))
+    steal_price(&accessing, registry, def).map_or(Some(0), |cost| price_credits(&cost))
+}
+
+/// The credits the table adds to running `server` (`continuous::run_costs`,
+/// CR 6.3.2b), `None` when a cost is something other than credits and
+/// clicks, taken as unpayable as `steal_credits` takes one. Phase 5 §70:
+/// Earth Station: SEA Headquarters flipped makes a run on a remote cost
+/// 6[credit], which is the identity's whole point.
+pub(super) fn run_credits(state: &GameState, registry: &CardRegistry, server: netrunner_core::rules::ServerId) -> Option<u32> {
+    netrunner_core::rules::continuous::run_costs(state, registry, server).iter().try_fold(0, |sum, cost| price_credits(cost).map(|n| sum + n))
+}
+
+/// A cost in credits, clicks counted as none; `None` for anything else.
+fn price_credits(cost: &netrunner_core::dsl::Cost) -> Option<u32> {
+    use netrunner_core::dsl::Cost;
+    match cost {
+        Cost::Credits(n) => Some(*n),
+        Cost::Clicks(_) => Some(0),
+        Cost::AllOf(parts) => parts.iter().try_fold(0, |sum, part| price_credits(part).map(|n| sum + n)),
+        _ => None,
+    }
 }
 
 /// What the rig would spend to break into `server` if the Corp rezzed what

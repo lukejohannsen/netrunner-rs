@@ -3902,3 +3902,20 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 **Still blind.** Kompromat: its bad publicity is the Corp's to refuse by derezzing a barrier, and a tally reads an opponent's choice at its worst for the Runner, which the derez — not a credit, a card or a click — reads as nothing.
 
 **Verified.** `the_corps_bad_publicity_is_a_credit_a_run`: two bad publicity raise the Runner's score by twice the worth, nothing at the default weights, and Take a Dive's rider reads as one. Engine untouched; `netrunner_bots` only.
+
+## 70. A run cost is part of the taxing window: Earth Station's flip is read — DONE (`claude/bot-blindness-run-costs`, 11 October 2026)
+
+**The debt.** Earth Station: SEA Headquarters flips for a click so that a run on a remote costs 6[credit] (CR 6.3.2b). Random seats flipped it 36 times over the Sweep decks; the planner never did.
+
+**Why.** The Corp's reading of whether the Runner can get at an installed agenda (`agendas_under_the_window`) priced the break and, since §68, the steal, but not the run itself: a cost paid as the server is announced, before the first piece of ice. A flip that made the remote unaffordable changed nothing the Corp counted.
+
+**What is read now.** `read::run_credits`: what the table adds to running the server (`continuous::run_costs`, made public for it; a cost other than credits and clicks taken as unpayable, as the steal's is), added to the break and the steal in the window.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, the §69 head (722b749) against this branch, the same games:
+
+- Seed 2: Earth Station's flip 0 → 0, Cold Site Server 42 → 45; Corp share 0.527 → 0.522 (+0 / −3).
+- Seed 3: Earth Station's flip 0 → 0, Cold Site Server 34 → 34; Corp share 0.529 → 0.527 (+0 / −1).
+
+**Why the sweep did not move.** Ground Control, the one Earth Station deck, is played in 14 games a seed, and is a glacier deck: its remote is iced past what the Runner holds or open to a Runner holding 6[credit] and more, and the flip is worth a click only between the two. The term is right where it applies, which the scripted turn shows; the sweep rarely deals it.
+
+**Verified.** `a_remote_the_runner_cannot_pay_to_run_is_under_the_window` (the window shut at 5[credit] and open at 6 under the flip, open unflipped) and `flips_earth_station_when_the_runner_cannot_pay_to_run_the_remote` (the planner, with a 5-advancement agenda on a naked remote, flips against a Runner on 5[credit] and not on 8). `netrunner_bots`, and one `pub(crate)` made `pub` in `netrunner_core`.

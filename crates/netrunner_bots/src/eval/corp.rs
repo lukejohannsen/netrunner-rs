@@ -831,6 +831,10 @@ fn between_runs(state: &GameState) -> std::borrow::Cow<'_, GameState> {
 /// Revontulet) is added to the break. Without it the Corp read a 0[c]
 /// operation whose whole text is that price as a card spent for nothing,
 /// and played NAPD Cordon twice in 1260 games to random play's 31.
+/// **So is the run** (§70): what the table adds to running the server
+/// (`read::run_credits` — Earth Station: SEA Headquarters flipped,
+/// 6[credit] on a remote) is paid before the first piece of ice, and a
+/// Corp that read it as nothing never flipped its identity.
 pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistry) -> usize {
     use netrunner_core::rules::InstallSlot;
     let runner = state.runner.resources.credits.0;
@@ -840,7 +844,10 @@ pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistr
         .iter()
         .filter(|card| card.slot == InstallSlot::Root)
         .filter(|card| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
-        .filter(|agenda| taxing_cost(state, agenda.server, registry).zip(steal_credits(state, registry, agenda)).is_none_or(|(cost, steal)| cost + steal > runner))
+        .filter(|agenda| {
+            let price = || Some(taxing_cost(state, agenda.server, registry)? + steal_credits(state, registry, agenda)? + run_credits(state, registry, agenda.server)?);
+            price().is_none_or(|price| price > runner)
+        })
         .count()
 }
 
@@ -1805,6 +1812,27 @@ mod tests {
         assert_eq!(agendas_under_the_window(&state, &pool), 0, "a naked remote is open");
         state.corp.play_area.push(PlayedOperation { card: CardId("napd_cordon".to_string()), handle: InstallId(2) });
         assert_eq!(read::steal_credits(&state, &pool, &state.corp.installed[0]), Some(6), "4 and 2 for the token");
+        assert_eq!(agendas_under_the_window(&state, &pool), 1, "5[c] does not pay 6");
+        state.runner.resources.credits = Credits(6);
+        assert_eq!(agendas_under_the_window(&state, &pool), 0, "6[c] does");
+    }
+
+    /// So is the run (Phase 5 §70): Earth Station: SEA Headquarters
+    /// flipped makes a run on a remote cost 6[credit], which shuts a naked
+    /// remote to a Runner with 5 and not one with 6; unflipped it taxes
+    /// HQ alone and the remote is open.
+    #[test]
+    fn a_remote_the_runner_cannot_pay_to_run_is_under_the_window() {
+        use netrunner_core::rules::ServerId;
+        let pool = pool();
+        let mut state = GameState::new(0);
+        state.corp.identity = Some(CardId("earth_station_sea_headquarters".to_string()));
+        state.corp.installed = vec![InstalledCard { card: CardId("hostile_takeover".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() }];
+        state.runner.resources.credits = Credits(5);
+        assert_eq!(read::run_credits(&state, &pool, ServerId::Remote(0)), Some(0));
+        assert_eq!(agendas_under_the_window(&state, &pool), 0, "unflipped, the remote is open");
+        state.corp.identity_flipped = true;
+        assert_eq!(read::run_credits(&state, &pool, ServerId::Remote(0)), Some(6));
         assert_eq!(agendas_under_the_window(&state, &pool), 1, "5[c] does not pay 6");
         state.runner.resources.credits = Credits(6);
         assert_eq!(agendas_under_the_window(&state, &pool), 0, "6[c] does");
