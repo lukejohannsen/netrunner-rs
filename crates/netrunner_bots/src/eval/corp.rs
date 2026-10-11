@@ -823,6 +823,14 @@ fn between_runs(state: &GameState) -> std::borrow::Cow<'_, GameState> {
 /// break into right now, were the Corp to rez what its credits cover
 /// (`read::taxing_cost`, `None` — a piece no rig card breaks — counted
 /// as shut to the Runner). See `TAXING_WINDOW_WEIGHT`.
+///
+/// **The steal is part of the price** (Phase 5 §68): an agenda the Runner
+/// can break into and not pay to steal is as shut to them as one behind
+/// a wall they cannot break, so what the table adds to stealing it
+/// (`read::steal_credits` — NAPD Cordon, Red Herrings, Magistrate
+/// Revontulet) is added to the break. Without it the Corp read a 0[c]
+/// operation whose whole text is that price as a card spent for nothing,
+/// and played NAPD Cordon twice in 1260 games to random play's 31.
 pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistry) -> usize {
     use netrunner_core::rules::InstallSlot;
     let runner = state.runner.resources.credits.0;
@@ -832,7 +840,7 @@ pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistr
         .iter()
         .filter(|card| card.slot == InstallSlot::Root)
         .filter(|card| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
-        .filter(|agenda| taxing_cost(state, agenda.server, registry).is_none_or(|cost| cost > runner))
+        .filter(|agenda| taxing_cost(state, agenda.server, registry).zip(steal_credits(state, registry, agenda)).is_none_or(|(cost, steal)| cost + steal > runner))
         .count()
 }
 
@@ -1780,6 +1788,26 @@ mod tests {
         let open = board(2, 3) - board(2, 4);
         assert!((open - (w.taxing_window_weight + w.opponent_credit_weight)).abs() < 1e-9, "{open}");
         assert!(((board(0, 0) - board(0, 4)) - 4.0 * w.opponent_credit_weight).abs() < 1e-9, "no window on a naked agenda");
+    }
+
+    /// The steal is part of the window (Phase 5 §68): NAPD Cordon's
+    /// "4[credit] plus 2[credit] for each advancement counter on that
+    /// agenda" shuts a naked remote to a Runner who could walk in, and
+    /// counts the tokens on the agenda the Runner would be stealing.
+    #[test]
+    fn an_agenda_the_runner_cannot_pay_to_steal_is_under_the_window() {
+        use netrunner_core::rules::{PlayedOperation, ServerId};
+        let pool = pool();
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![InstalledCard { card: CardId("hostile_takeover".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), advancement_tokens: 1, ..Default::default() }];
+        state.runner.resources.credits = Credits(5);
+        assert_eq!(read::steal_credits(&state, &pool, &state.corp.installed[0]), Some(0));
+        assert_eq!(agendas_under_the_window(&state, &pool), 0, "a naked remote is open");
+        state.corp.play_area.push(PlayedOperation { card: CardId("napd_cordon".to_string()), handle: InstallId(2) });
+        assert_eq!(read::steal_credits(&state, &pool, &state.corp.installed[0]), Some(6), "4 and 2 for the token");
+        assert_eq!(agendas_under_the_window(&state, &pool), 1, "5[c] does not pay 6");
+        state.runner.resources.credits = Credits(6);
+        assert_eq!(agendas_under_the_window(&state, &pool), 0, "6[c] does");
     }
 
     // ----- The Corp's plans (Stage 6) -----
