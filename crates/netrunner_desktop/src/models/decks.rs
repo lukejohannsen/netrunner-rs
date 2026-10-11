@@ -17,25 +17,18 @@
 use std::path::PathBuf;
 
 use netrunner_client::cards::faction_order;
-use netrunner_client::deck_builder::{self, CardBook, DeckStatus};
+use netrunner_client::deck_builder::{self, CardBook};
 use netrunner_client::settings::FORMATS;
 use netrunner_core::card::Faction;
 use netrunner_core::dsl::{CardDefinition, CardType};
-use netrunner_client::deck_store::{self, Origin};
+use netrunner_client::deck_store;
 use netrunner_core::decks::{DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
-/// One deck as the shelf shows it.
-#[derive(Debug, Clone)]
-pub struct ShelfRow {
-    pub deck: DeckFile,
-    pub saved: bool,
-    pub identity: String,
-    /// The identity's faction, which is the deck's.
-    pub faction: Option<Faction>,
-    pub status: DeckStatus,
-}
+/// One deck as the shelf shows it: the picker's row, which every list of
+/// decks in both clients reads (`netrunner_client::deck_picker`).
+pub use netrunner_client::deck_picker::Row as ShelfRow;
 
 /// The order a section's decks are listed in. Each ends on the name, so
 /// the order is total.
@@ -150,22 +143,10 @@ impl Shelf {
     /// built-in ones by category; within each, Corp before Runner and
     /// then by name.
     pub fn reload(&mut self, book: CardBook) {
-        let (stored, problems) = match &self.dir {
-            Some(dir) => deck_store::list_lenient(dir),
-            None => (deck_store::list_lenient(&std::env::temp_dir().join("netrunner-no-decks")).0, Vec::new()),
-        };
+        let (rows, problems) = netrunner_client::deck_picker::rows(self.dir.as_deref(), book, self.format);
         if !problems.is_empty() {
             self.notice = Some(format!("Some deck files could not be read: {}", problems.join("; ")));
         }
-        let mut rows: Vec<ShelfRow> = stored
-            .into_iter()
-            .map(|stored| {
-                let status = deck_builder::status(&stored.deck, book, self.format);
-                let faction = book.get(&stored.deck.identity).and_then(|identity| identity.faction);
-                ShelfRow { identity: book.title(&stored.deck.identity), faction, saved: !matches!(stored.origin, Origin::Embedded), deck: stored.deck, status }
-            })
-            .collect();
-        rows.sort_by_key(|row| (!row.saved, category_order(row.deck.category), row.deck.side == Side::Runner, row.deck.name.to_lowercase()));
         self.rows = rows;
     }
 
@@ -334,16 +315,6 @@ impl Shelf {
 
 fn no_dir() -> String {
     "no OS data directory is available, so decks cannot be saved; set NETRUNNER_DECKS_DIR".to_string()
-}
-
-fn category_order(category: DeckCategory) -> u8 {
-    match category {
-        DeckCategory::Custom => 0,
-        DeckCategory::Sample => 1,
-        DeckCategory::Starter => 2,
-        DeckCategory::Boosted => 3,
-        DeckCategory::Sweep => 4,
-    }
 }
 
 fn category_words(category: DeckCategory) -> (&'static str, &'static str) {

@@ -469,6 +469,10 @@ pub struct MakeTournament {
 
 #[derive(Debug, Clone)]
 pub struct OnlineForm {
+    /// The active deck a side (`Settings::active_deck`, Phase 7 §16):
+    /// what a lobby's or a tournament's deck starts on when nothing has
+    /// been chosen on this page yet — Corp, then Runner.
+    pub preferred: [Option<String>; 2],
     pub page: Page,
     /// The page Waiting or Server was entered from, which a Stop, a
     /// disconnect or a failure reopens.
@@ -500,6 +504,7 @@ impl OnlineForm {
     /// where Host and Make a lobby start.
     pub fn new(address: String, format: NsgFormat) -> Self {
         OnlineForm {
+            preferred: [None, None],
             page: Page::Home,
             came_from: Page::Home,
             address,
@@ -537,15 +542,23 @@ impl OnlineForm {
         }
     }
 
+    /// The active decks, which a lobby's and a tournament's choice start
+    /// on (`preferred`).
+    pub fn with_preferred(mut self, preferred: [Option<String>; 2]) -> Self {
+        self.preferred = preferred;
+        self
+    }
+
     /// The decks legal in the lobby's format, read afresh: each side's
-    /// chosen deck stays chosen if it is still among them, and the first
-    /// otherwise.
+    /// chosen deck stays chosen if it is still among them, else the
+    /// active deck for the side if it is, and the first otherwise.
     pub fn set_decks(&mut self, decks: Vec<DeckFile>) {
+        let preferred = self.preferred.clone();
         let Some(server) = &mut self.server else { return };
         let keep = |chosen: Option<&DeckFile>, side: Side| {
-            let id = chosen.map(|deck| deck.id.clone());
             let among: Vec<&DeckFile> = decks.iter().filter(|deck| deck.side == side).collect();
-            id.and_then(|id| among.iter().position(|deck| deck.id == id)).unwrap_or(0)
+            let position = |id: &str| among.iter().position(|deck| deck.id == id);
+            chosen.and_then(|deck| position(&deck.id)).or_else(|| preferred[side as usize].as_deref().and_then(position)).unwrap_or(0)
         };
         let (corp, runner) = (keep(server.chosen(Side::Corp), Side::Corp), keep(server.chosen(Side::Runner), Side::Runner));
         server.decks = decks;
@@ -554,13 +567,15 @@ impl OnlineForm {
     }
 
     /// The decks legal in the open tournament's format, read afresh: each
-    /// side's chosen deck stays chosen if it is still among them.
+    /// side's chosen deck stays chosen if it is still among them, else the
+    /// active deck for the side if it is.
     pub fn set_tournament_decks(&mut self, decks: Vec<DeckFile>) {
+        let preferred = self.preferred.clone();
         let Some(server) = &mut self.server else { return };
         let keep = |chosen: Option<&DeckFile>, side: Side| {
-            let id = chosen.map(|deck| deck.id.clone());
             let among: Vec<&DeckFile> = decks.iter().filter(|deck| deck.side == side).collect();
-            id.and_then(|id| among.iter().position(|deck| deck.id == id)).unwrap_or(0)
+            let position = |id: &str| among.iter().position(|deck| deck.id == id);
+            chosen.and_then(|deck| position(&deck.id)).or_else(|| preferred[side as usize].as_deref().and_then(position)).unwrap_or(0)
         };
         let (corp, runner) = (keep(server.tournament_chosen(Side::Corp), Side::Corp), keep(server.tournament_chosen(Side::Runner), Side::Runner));
         server.tournament_decks = decks;

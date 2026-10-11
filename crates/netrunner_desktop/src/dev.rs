@@ -76,6 +76,9 @@
 //! - `NETRUNNER_READ=<n>` — the `n`th card a secondary click can read
 //!   (`widgets::reader`) is opened once, so the centred reader can be
 //!   looked at on the deck editor or over an identity picker.
+//! - `NETRUNNER_DECK_PICKER=1` — with `NETRUNNER_SCREEN=newgame`, the
+//!   form's own-deck slot is pressed once, so the deck picker
+//!   (`screens::deck_picker`) can be looked at.
 //! - `NETRUNNER_IDENTITIES=1` — with `NETRUNNER_SCREEN=deckeditor` on an
 //!   editable deck, Change identity is opened once, so the identity
 //!   picker can be looked at.
@@ -294,6 +297,8 @@ pub struct Dev {
     pub read: Option<usize>,
     /// Open the deck editor's identity picker, once.
     pub identities: bool,
+    /// `NETRUNNER_DECK_PICKER`: open the new-game form's deck picker once.
+    pub deck_picker: bool,
     /// Open the Decks screen's Import from NetrunnerDB… pop-up with this
     /// in its field.
     pub fetch: Option<String>,
@@ -389,6 +394,7 @@ impl Dev {
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             read: std::env::var("NETRUNNER_READ").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             identities: std::env::var_os("NETRUNNER_IDENTITIES").is_some_and(|v| !v.is_empty()),
+            deck_picker: std::env::var_os("NETRUNNER_DECK_PICKER").is_some_and(|v| !v.is_empty()),
             fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
             search: std::env::var("NETRUNNER_SEARCH").ok().filter(|text| !text.trim().is_empty()),
             searched: false,

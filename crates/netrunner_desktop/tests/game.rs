@@ -1599,18 +1599,19 @@ fn the_board_without_a_match_says_so_and_goes_back() {
 
 /// The form: every pane of the shared state machine has its control —
 /// the side as cards, the rung and the style as pills, each deck as a
-/// drop-down — and Start through the button.
+/// slot whose Change… opens the deck picker — and Start through the
+/// button.
 #[test]
 fn the_form_has_a_control_per_pane_and_start_opens_the_board() {
     use netrunner_client::start::Pane;
-    use netrunner_desktop::screens::new_game::{PaneChoice, PaneDropdown};
+    use netrunner_desktop::screens::new_game::{PaneChoice, PaneSlot};
     let (mut app, _dir) = headless_client();
     app.world_mut().write_message(Navigate(AppScreen::NewGame));
     app.update();
     app.update();
-    let dropdowns: Vec<Pane> = app.world_mut().query::<&PaneDropdown>().iter(app.world()).map(|d| d.0).collect();
-    assert_eq!(dropdowns.len(), 2, "{dropdowns:?}");
-    assert!(dropdowns.contains(&Pane::OwnDeck) && dropdowns.contains(&Pane::OpponentDeck), "{dropdowns:?}");
+    let slots: Vec<Pane> = app.world_mut().query::<&PaneSlot>().iter(app.world()).map(|d| d.0).collect();
+    assert_eq!(slots.len(), 2, "{slots:?}");
+    assert!(slots.contains(&Pane::OwnDeck) && slots.contains(&Pane::OpponentDeck), "{slots:?}");
     let choices: Vec<PaneChoice> = app.world_mut().query::<&PaneChoice>().iter(app.world()).copied().collect();
     for pane in [Pane::Chair, Pane::Level, Pane::Style] {
         assert!(choices.iter().any(|c| c.pane == pane), "no control for {pane:?}");
