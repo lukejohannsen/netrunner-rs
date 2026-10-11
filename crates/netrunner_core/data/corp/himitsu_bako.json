@@ -1,0 +1,29 @@
+{
+  "id": "himitsu_bako",
+  "title": "Himitsu-Bako",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: Add Himitsu-Bako to HQ.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": "AddToHand"
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 4013,
+  "is_playable": true
+}

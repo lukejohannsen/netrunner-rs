@@ -1,0 +1,38 @@
+{
+  "id": "caduceus",
+  "title": "Caduceus",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, the Corp gains 3[credit].",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "GainCredits": [
+              "Corp",
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[2]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 2019,
+  "is_playable": true
+}

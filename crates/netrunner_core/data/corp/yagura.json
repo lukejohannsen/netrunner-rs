@@ -1,0 +1,53 @@
+{
+  "id": "yagura",
+  "title": "Yagura",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 0,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Look at the top card of R&D. You may add that card to the bottom of R&D.",
+      "effect": {
+        "Sequence": [
+          {
+            "LookAtTopOfDeck": {
+              "deck": "Corp",
+              "count": 1
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "TopOfZone": 1
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "AddToDeck": "Bottom"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 4093,
+  "is_playable": true
+}
