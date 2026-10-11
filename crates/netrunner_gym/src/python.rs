@@ -222,8 +222,11 @@ mod tests {
     /// 6,423 when `CARD_VOCAB` went 192 → 1024 for the NSG card pool
     /// (Phase 1 §9 Stage 0): five card planes of 832 more slots each, grown
     /// once for all twelve packs so the pool costs one retrain, not twelve.
+    /// Grew 6,423 → 14,103 when `CARD_VOCAB` went 1024 → 2560 for the
+    /// Fantasy Flight Games pool (FFG plan Stage 0b): five card planes of
+    /// 1,536 more slots each, once for the whole of Eternal.
     #[test]
     fn obs_size_constant_is_pinned() {
-        assert_eq!(OBS_SIZE, 6423);
+        assert_eq!(OBS_SIZE, 14103);
     }
 }

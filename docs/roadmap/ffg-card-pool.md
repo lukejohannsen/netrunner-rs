@@ -149,6 +149,19 @@ No cards. Four parts, each its own PR.
   the overflow slot, which would make a thousand cards one card to the
   network; and growing per cycle, which is twelve reshapes and twelve
   retrains (the NSG plan's reason, restated).
+  **0b closed** (11 October 2026): `CARD_VOCAB` 1,024 → 2,560 and
+  `OBS_SIZE` 6,423 → 14,103, with 56 blocks after the Core Set's, slots
+  871 to 2,162, in the tranche order. A block is a set's printed codes
+  (by printing, as the NSG blocks are), so the 1,220-card estimate above
+  was the wrong unit: the FFG sets print 1,577. Two sets get no block, the
+  Revised Core Set (132) and System Core 2019 (147), because every card
+  they print has an earlier printing that has one. Magnum Opus's block is
+  only its two codes Magnum Opus Reprint did not reprint (23100, 23101),
+  since its eight codes run 23001 to 23101. That leaves 396 slots to
+  spare, and every card in the catalog, built or not, has a slot waiting
+  (`every_catalog_card_has_a_slot`). Every slot below 871 is unmoved, and
+  no built card sat after the blocks, so no slot moved at all. No trained
+  network is committed, so there is nothing to retrain yet.
 - **0c — the survey.** Read every new card against the DSL at 0a's commit
   and class it C, V or M as the NSG surveys did, a section per tranche in
   this file, and write each tranche's stage list. Until then the mechanics
