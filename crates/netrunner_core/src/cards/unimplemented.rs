@@ -78,16 +78,8 @@ pub(crate) const CORE_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Revised Core Set* (`revised_core_set`): tranche F1 of the FFG plan.
 pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("singularity", "Singularity"),
     ("spinal_modem", "Spinal Modem"),
-    ("doppelganger", "Doppelgänger"),
-    ("hq_interface", "HQ Interface"),
     ("pheromones", "Pheromones"),
-    ("fall_guy", "Fall Guy"),
-    ("mr_li", "Mr. Li"),
-    ("notoriety", "Notoriety"),
-    ("all_nighter", "All-nighter"),
-    ("underworld_contact", "Underworld Contact"),
     ("haas_bioroid_stronger_together", "Haas-Bioroid: Stronger Together"),
     ("project_ares", "Project Ares"),
     ("hudson_1_0", "Hudson 1.0"),
@@ -1397,12 +1389,10 @@ pub(crate) const FAL_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Double Time* (`double_time`): tranche F10 of the FFG plan.
 pub(crate) const DT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("singularity", "Singularity"),
     ("queens_gambit", "Queen's Gambit"),
     ("dyson_fractal_generator", "Dyson Fractal Generator"),
     ("silencer", "Silencer"),
     ("savoir_faire", "Savoir-faire"),
-    ("fall_guy", "Fall Guy"),
     ("power_nap", "Power Nap"),
     ("paintbrush", "Paintbrush"),
     ("gyri_labyrinth", "Gyri Labyrinth"),
@@ -1443,7 +1433,6 @@ pub(crate) const TA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("vamp", "Vamp"),
     ("satellite_uplink", "Satellite Uplink"),
     ("compromised_employee", "Compromised Employee"),
-    ("notoriety", "Notoriety"),
     ("snowball", "Snowball"),
     ("encryption_protocol", "Encryption Protocol"),
     ("sherlock_1_0", "Sherlock 1.0"),
@@ -1479,12 +1468,9 @@ pub(crate) const CE_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *A Study in Static* (`a_study_in_static`): tranche F11 of the FFG plan.
 pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("disrupter", "Disrupter"),
-    ("doppelganger", "Doppelgänger"),
     ("crescentus", "Crescentus"),
     ("deus_x", "Deus X"),
-    ("all_nighter", "All-nighter"),
     ("inside_man", "Inside Man"),
-    ("underworld_contact", "Underworld Contact"),
     ("green_level_clearance", "Green Level Clearance"),
     ("hourglass", "Hourglass"),
     ("dedicated_server", "Dedicated Server"),
@@ -1501,7 +1487,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
     ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
-    ("hq_interface", "HQ Interface"),
     ("pheromones", "Pheromones"),
     ("quality_time", "Quality Time"),
     ("replicator", "Replicator"),
@@ -1521,7 +1506,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Future Proof* (`future_proof`): tranche F11 of the FFG plan.
 pub(crate) const FP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("data_leak_reversal", "Data Leak Reversal"),
-    ("mr_li", "Mr. Li"),
     ("r_d_interface", "R&D Interface"),
     ("deep_thought", "Deep Thought"),
     ("new_angeles_city_hall", "New Angeles City Hall"),
@@ -1556,10 +1540,8 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),
     ("spear_phishing", "Spear Phishing"),
-    ("hq_interface", "HQ Interface"),
     ("paragon", "Paragon"),
     ("demara", "Demara"),
-    ("notoriety", "Notoriety"),
     ("r_d_interface", "R&D Interface"),
     ("deus_x", "Deus X"),
     ("ice_analyzer", "Ice Analyzer"),

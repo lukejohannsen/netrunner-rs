@@ -3,7 +3,7 @@
   "name": "Cold Reading",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Steve Cambridge: Master Grifter, System Update 2021's Criminal identity, who on the first successful run on HQ each turn chooses 2 cards in the heap, the Corp removes 1 from the game and the Runner takes the other. On Hit List's frame after Tranche 8 Stage 11l, its identity swapped, a Criminal for a Criminal at the same fifteen influence; Hit List runs HQ every turn for Gabriel Santiago, and its events fill the heap Steve draws on. Tranche 8 Stage 11v.",
+  "description": "Not a published list: built so the sweeps reach Steve Cambridge: Master Grifter, System Update 2021's Criminal identity, who on the first successful run on HQ each turn chooses 2 cards in the heap, the Corp removes 1 from the game and the Runner takes the other. On Hit List's frame after Tranche 8 Stage 11l, its identity swapped, a Criminal for a Criminal at the same fifteen influence; Hit List runs HQ every turn for Gabriel Santiago, and its events fill the heap Steve draws on. Tranche 8 Stage 11v. FFG F1 Stage 2: Doppelgänger for its Desperado, a console for a console, which runs again once a turn when a successful run ends; and two Mr. Li for its two Asmund Pudlat, a resource that draws two and puts one back. Hit List keeps both.",
   "style": [
     "pressure"
   ],
@@ -42,7 +42,7 @@
       "count": 2
     },
     {
-      "card": "asmund_pudlat",
+      "card": "mr_li",
       "count": 2
     },
     {
@@ -98,7 +98,7 @@
       "count": 2
     },
     {
-      "card": "desperado",
+      "card": "doppelganger",
       "count": 1
     },
     {
