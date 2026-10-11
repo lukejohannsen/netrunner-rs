@@ -3194,6 +3194,49 @@ mod positions {
         }
     }
 
+    /// A run cost is part of the Corp's window (Phase 5 §70): with a
+    /// 5-advancement agenda on a naked remote it cannot score this turn,
+    /// the Corp flips Earth Station: SEA Headquarters — a click for a
+    /// remote that costs 6[credit] to run — against a Runner on 5[credit],
+    /// and not against one on 8, who can pay it.
+    #[test]
+    fn flips_earth_station_when_the_runner_cannot_pay_to_run_the_remote() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let flip = PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 };
+        let turn = |credits: u32| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.runner = empty_runner();
+            state.runner.resources.credits = Credits(credits);
+            state.corp.identity = Some(CardId("earth_station_sea_headquarters".to_string()));
+            state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+            state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+            state.corp.installed.push(InstalledCard { card: CardId("fujii_asset_retrieval".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() });
+            assert!(build_client_view(&state, &registry, Side::Corp).legal_actions.contains(&flip), "the premise");
+            let mut agent = PlanningAgent::new(Side::Corp, 3);
+            let mut actions = Vec::new();
+            while state.phase == GamePhase::Action(Side::Corp) && state.corp.resources.clicks.0 > 0 && actions.len() < 12 {
+                if current_actor(&state) != Some(Side::Corp) {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }) else { break };
+                    state = next;
+                    continue;
+                }
+                let view = build_client_view(&state, &registry, Side::Corp);
+                agent.observe(&view);
+                let action = agent.select_action(&view, &registry);
+                state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                actions.push(action);
+            }
+            actions
+        };
+        let poor = turn(5);
+        assert!(poor.contains(&flip), "should flip against 5[credit]: {poor:?}");
+        let rich = turn(8);
+        assert!(!rich.contains(&flip), "should not flip against 8[credit]: {rich:?}");
+    }
+
     /// An identity's ability is a step of the plan (Phase 5 §33). Topan's
     /// install at 2[credit] less is the only way to Pennyshaver on 1[credit],
     /// and while samples carried no identity it was in the view's list and
