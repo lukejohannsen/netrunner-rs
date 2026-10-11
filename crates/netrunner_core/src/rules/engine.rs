@@ -1614,7 +1614,13 @@ fn play_event(
     // Heap under-reported by one card per Event, and the card-conservation
     // sweep in `netrunner_session` could not have passed. One that says
     // "Remove this event from the game" leaves it instead.
-    if card_def.removed_after_play {
+    // One its own text added to the score area as an agenda (Notoriety)
+    // left the play as it resolved, and is trashed by nothing.
+    let scored_as_it_resolved = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count()
+        > state.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count();
+    if scored_as_it_resolved {
+        // Nothing to file.
+    } else if card_def.removed_after_play {
         next.runner.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id });
     } else {

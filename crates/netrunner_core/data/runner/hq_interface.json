@@ -1,0 +1,29 @@
+{
+  "id": "hq_interface",
+  "title": "HQ Interface",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ, access 1 additional card."
+    }
+  ],
+  "built_from": 2085,
+  "is_playable": true
+}

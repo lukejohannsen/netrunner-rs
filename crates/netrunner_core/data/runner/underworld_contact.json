@@ -1,0 +1,29 @@
+{
+  "id": "underworld_contact",
+  "title": "Underworld Contact",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          "Link",
+          2
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] if you have at least 2[link]."
+    }
+  ],
+  "built_from": 2069,
+  "is_playable": true
+}

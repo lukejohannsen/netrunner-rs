@@ -1,0 +1,36 @@
+{
+  "id": "singularity",
+  "title": "Singularity",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_in": "Remote",
+            "on_start": {
+              "SetAccessReplacement": {
+                "effect": {
+                  "TrashCard": "AttackedServerRoot"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run a remote server. If successful, instead of breaching that server, trash all cards installed in the root of that server."
+    }
+  ],
+  "built_from": 4101,
+  "is_playable": true
+}
