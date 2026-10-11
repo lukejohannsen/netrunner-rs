@@ -208,9 +208,17 @@ pub const DECISION_BLOCK_LEN: usize = 8 + 2 + 3 + 1 + 1 + 3 + 2 + 1;
 /// retrain of its own. The first 184 slots are the pool as it stood
 /// (`LEGACY_SLOTS`), untouched; the packs take fixed blocks after them
 /// (`RESERVED_BLOCKS`, ending at slot 758, and the Core Set's after them at
-/// 871); the rest is room for the Fantasy
-/// Flight Games cycles' plan to reserve its own.
-pub const CARD_VOCAB: usize = 1024;
+/// 871).
+///
+/// **1024 → 2560 once, for the whole Fantasy Flight Games pool (FFG plan
+/// Stage 0b, 11 October 2026)**, for the same reason: the FFG sets' blocks
+/// follow the Core Set's, one per set in the plan's tranche order, ending at
+/// slot 2,163. That is every card in Eternal (2,017) with a slot, and 396
+/// to spare for the sets Null Signal Games prints next. Every slot below
+/// 871 is where it was. Rejected: letting the FFG cards share the overflow
+/// slot, which would make a thousand cards one card to the network; and
+/// growing per cycle, which is twelve reshapes and twelve retrains.
+pub const CARD_VOCAB: usize = 2560;
 
 const OVERFLOW_SLOT: usize = CARD_VOCAB - 1;
 
@@ -359,7 +367,19 @@ const LEGACY_SLOTS: usize = 184;
 /// 25 legacy Core cards keep their legacy slots, since `vocabulary` asks
 /// whether a card is legacy before it asks for a block, so the block's
 /// slots for their codes stay empty.
-const RESERVED_BLOCKS: [(&str, u32, u32); 13] = [
+///
+/// **The Fantasy Flight Games sets' blocks follow** (FFG plan Stage 0b, 11
+/// October 2026, slots 871..=2162), reserved before any of their cards is
+/// built, in the plan's tranche order. Three sets are not a whole block:
+/// - the Revised Core Set and System Core 2019 have none, since every card
+///   they print was printed first in a set with a block (the Core Set, the
+///   cycles), so a block of theirs would hold only empty slots
+///   (`every_catalog_card_has_a_slot` holds that true);
+/// - Magnum Opus's block is its last two codes (Watch the World Burn,
+///   Hired Help): its other six cards are reprinted in Magnum Opus Reprint
+///   and are built from there, and its codes run 23001 to 23101, so a block
+///   over all of them would be 101 slots for eight cards.
+const RESERVED_BLOCKS: [(&str, u32, u32); 69] = [
     ("vantage_point", 36001, 66),
     ("rebellion_without_rehearsal", 34066, 65),
     ("the_automata_initiative", 34001, 65),
@@ -373,6 +393,62 @@ const RESERVED_BLOCKS: [(&str, u32, u32); 13] = [
     ("salvaged_memories", 29001, 18),
     ("magnum_opus_reprint", 28001, 6),
     ("core_set", 1001, 113),
+    ("reign_and_reverie", 22001, 58),
+    ("sovereign_sight", 21001, 20),
+    ("down_the_white_nile", 21021, 20),
+    ("council_of_the_crest", 21041, 20),
+    ("the_devil_and_the_dragon", 21061, 20),
+    ("whispers_in_nalubaale", 21081, 20),
+    ("kampala_ascendent", 21101, 20),
+    ("daedalus_complex", 12001, 20),
+    ("station_one", 12021, 20),
+    ("earths_scion", 12041, 20),
+    ("blood_and_water", 12061, 20),
+    ("free_mars", 12081, 20),
+    ("crimson_dust", 12101, 20),
+    ("23_seconds", 11001, 20),
+    ("blood_money", 11021, 20),
+    ("escalation", 11041, 20),
+    ("intervention", 11061, 20),
+    ("martial_law", 11081, 20),
+    ("quorum", 11101, 20),
+    ("terminal_directive_cards", 13001, 57),
+    ("kala_ghoda", 10001, 19),
+    ("business_first", 10020, 19),
+    ("democracy_and_dogma", 10039, 19),
+    ("salsette_island", 10058, 19),
+    ("the_liberated_mind", 10077, 19),
+    ("fear_the_masses", 10096, 19),
+    ("data_and_destiny", 9001, 55),
+    ("the_valley", 8001, 20),
+    ("breaker_bay", 8021, 20),
+    ("chrome_city", 8041, 20),
+    ("the_underway", 8061, 20),
+    ("old_hollywood", 8081, 20),
+    ("the_universe_of_tomorrow", 8101, 20),
+    ("order_and_chaos", 7001, 55),
+    ("upstalk", 6001, 20),
+    ("the_spaces_between", 6021, 20),
+    ("first_contact", 6041, 20),
+    ("up_and_over", 6061, 20),
+    ("all_that_remains", 6081, 20),
+    ("the_source", 6101, 20),
+    ("honor_and_profit", 5001, 55),
+    ("creation_and_control", 3001, 55),
+    ("opening_moves", 4001, 20),
+    ("second_thoughts", 4021, 20),
+    ("mala_tempora", 4041, 20),
+    ("true_colors", 4061, 20),
+    ("fear_and_loathing", 4081, 20),
+    ("double_time", 4101, 20),
+    ("what_lies_ahead", 2001, 20),
+    ("trace_amount", 2021, 20),
+    ("cyber_exodus", 2041, 20),
+    ("a_study_in_static", 2061, 20),
+    ("humanitys_shadow", 2081, 20),
+    ("future_proof", 2101, 20),
+    ("napd_multiplayer", 24001, 1),
+    ("magnum_opus", 23100, 2),
 ];
 
 /// The first slot after every reserved block: where a card with neither a
@@ -1186,7 +1262,8 @@ mod tests {
 
     /// Each reserved block is exactly its pack's printed codes, read off the
     /// embedded catalog, so a block cannot be a card short or reach into
-    /// the next pack's numbers.
+    /// the next pack's numbers. Magnum Opus is the one block over part of
+    /// its pack: the two codes Magnum Opus Reprint did not reprint.
     #[test]
     fn each_reserved_block_is_its_packs_printed_codes() {
         for (pack, first, len) in RESERVED_BLOCKS {
@@ -1195,9 +1272,32 @@ mod tests {
                 .map(|printing| printing.id.0)
                 .collect();
             codes.sort_unstable();
+            if pack == "magnum_opus" {
+                codes.retain(|code| *code >= first);
+                assert_eq!(codes, [23100, 23101]);
+            }
             assert!(codes.iter().all(|code| (first..first + len).contains(code)), "{pack}: a code outside {first}..{}", first + len);
             assert_eq!(codes.len(), len as usize, "{pack}: the block is not the pack's printings");
         }
+    }
+
+    /// Every card in the catalog — built or not — has a slot waiting: it is
+    /// a legacy card, or one of its printings is in a reserved block. So
+    /// building any card of Eternal puts it in a slot of its own, never in
+    /// the overflow bucket, and the Revised Core Set and System Core 2019
+    /// need no block, since every card they print is printed in one.
+    #[test]
+    fn every_catalog_card_has_a_slot() {
+        let vocabulary = vocabulary();
+        let mut homeless = Vec::new();
+        for card in netrunner_core::cards::catalog::cards().iter() {
+            let blocked = netrunner_core::cards::catalog::printings_of(&card.id).any(|printing| reserved_slot(printing.id.0).is_some());
+            if !blocked && !vocabulary.contains_key(&card.id) {
+                homeless.push(card.id.0.clone());
+            }
+        }
+        assert!(homeless.is_empty(), "no slot for {homeless:?}");
+        assert_eq!(netrunner_core::cards::catalog::cards().len(), 2017);
     }
 
     /// Pinned by slot: the blocks start where the legacy pool ends, follow
@@ -1212,8 +1312,16 @@ mod tests {
         assert_eq!(reserved_slot(1049), Some(806), "and the Core Set's block follows them");
         assert_eq!(slot_of(&CardId("infiltration".to_string())), 806);
         assert_eq!(slot_of(&CardId("enigma".to_string())), 94, "a legacy Core card keeps its legacy slot");
-        assert_eq!(RESERVED_END, 871);
+        assert_eq!(reserved_slot(1113), Some(870), "the Core Set's last printing closes it");
+        assert_eq!(reserved_slot(22001), Some(871), "Reign and Reverie opens the FFG sets' blocks");
+        assert_eq!(reserved_slot(21001), Some(929), "and Sovereign Sight follows it");
+        assert_eq!(reserved_slot(23100), Some(2161), "Magnum Opus's two unreprinted codes are next to last");
+        assert_eq!(reserved_slot(23101), Some(2162));
+        assert_eq!(RESERVED_END, 2163);
         assert_eq!(reserved_slot(35001), None, "Elevation is legacy");
+        assert_eq!(reserved_slot(20001), None, "the Revised Core Set has no block");
+        assert_eq!(reserved_slot(25001), None, "nor System Core 2019");
+        assert_eq!(reserved_slot(23011), None, "Embolus's Magnum Opus code is outside the block");
     }
 
     // Checked where it is decided, at compile time: the blocks leave room
