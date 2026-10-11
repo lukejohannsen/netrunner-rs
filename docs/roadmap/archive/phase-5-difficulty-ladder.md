@@ -3884,3 +3884,21 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 **Still short.** 9 plays against random's 31: the window counts installed agendas only, so the Cordon is worth something only with an agenda on the table and a Runner the extra price stops. Its reach over HQ and R&D, where every agenda costs the same 4[credit], is not read.
 
 **Verified.** `an_agenda_the_runner_cannot_pay_to_steal_is_under_the_window`: a naked remote holding a one-token Hostile Takeover is open to a 5[c] Runner, shut under NAPD Cordon (6[c]), and open again at 6[c]. Engine untouched; `netrunner_bots` only.
+
+## 69. The Corp's bad publicity is a credit a run to the Runner: Take a Dive is played — DONE (`claude/bot-blindness-bad-publicity`, 11 October 2026)
+
+**The debt.** Take a Dive and Kompromat are run events whose whole point is the Corp's bad publicity. Random seats played them 11 and 8 times over the Sweep decks; the planner never did.
+
+**Why.** The Corp has always counted its own bad publicity (`bad_publicity_weight`), and the Runner never had: a credit on every run for the rest of the game (CR 6.9.1b) read as nothing, so a run event that paid in bad publicity was a run the Runner could make with a click, at 2[credit] more.
+
+**What is read now.** `bad_publicity_worth`: a bad publicity is a credit a run, a run a turn over the horizon at `future_credit_weight`, the rate every income the Runner will collect is read at — zero at the default weights. The Runner's score counts the Corp's bad publicity at that worth, and the run leaf counts what a success rider gives (`read::rider_bad_publicity`, a `bad_publicity` field on the tally, its `EffectIf` taken as holding as every tally's is).
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, `main` (690a6d0) against this branch, the same games:
+
+- Seed 2: **Take a Dive 0 → 8**, Kompromat 0 → 0; Corp share 0.513 → 0.510 (+4 / −6).
+- Seed 3: **Take a Dive 0 → 5**, Kompromat 0 → 0; Corp share 0.511 → 0.513 (+4 / −3).
+- Pooled +8 / −9, z −0.24.
+
+**Still blind.** Kompromat: its bad publicity is the Corp's to refuse by derezzing a barrier, and a tally reads an opponent's choice at its worst for the Runner, which the derez — not a credit, a card or a click — reads as nothing.
+
+**Verified.** `the_corps_bad_publicity_is_a_credit_a_run`: two bad publicity raise the Runner's score by twice the worth, nothing at the default weights, and Take a Dive's rider reads as one. Engine untouched; `netrunner_bots` only.
