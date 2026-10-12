@@ -1,0 +1,77 @@
+{
+  "id": "paragon",
+  "title": "Paragon",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "LookAtTopOfDeck": {
+                      "deck": "Runner",
+                      "count": 1
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnStack",
+                      "filter": {
+                        "TopOfZone": 1
+                      },
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "AddToDeck": "Bottom"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit] and look at the top card of your stack. If you do, you may add that card to the bottom of your stack",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time you make a successful run each turn, you may gain 1[credit] and look at the top card of your stack. If you do, you may add that card to the bottom of your stack."
+    }
+  ],
+  "built_from": 22010,
+  "is_playable": true
+}

@@ -1,0 +1,59 @@
+{
+  "id": "tycoon",
+  "title": "Tycoon",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "requirement": "BrokeASubroutineThatEncounter",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever an encounter ends, if you used this program to break a subroutine during that encounter, the Corp gains 2[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break up to 2 barrier subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 22012,
+  "is_playable": true
+}
