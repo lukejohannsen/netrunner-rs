@@ -1,0 +1,109 @@
+{
+  "id": "go_big",
+  "name": "Go Big",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Sportsmetal: Go Big or Go Home, Reign and Reverie's Haas-Bioroid identity, which gains 2[credit] or draws 2 cards whenever an agenda is scored or stolen. Retirement Package's frame, with two Hyperloop Extension for its two Élivágar Bifurcation, point for point, and two Giordano Memorial Field for its two Experiential Data, an upgrade for an upgrade. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "sportsmetal_go_big_or_go_home",
+  "cards": [
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 2
+    },
+    {
+      "card": "magnet",
+      "count": 2
+    },
+    {
+      "card": "vaporframe_fabricator",
+      "count": 2
+    },
+    {
+      "card": "vulnerability_audit",
+      "count": 2
+    },
+    {
+      "card": "bloop",
+      "count": 2
+    },
+    {
+      "card": "hyperloop_extension",
+      "count": 2
+    },
+    {
+      "card": "marilyn_campaign",
+      "count": 2
+    },
+    {
+      "card": "eli_1_0",
+      "count": 2
+    },
+    {
+      "card": "hakarl_1_0",
+      "count": 2
+    },
+    {
+      "card": "big_deal",
+      "count": 2
+    },
+    {
+      "card": "bass_ch1r180g4",
+      "count": 2
+    },
+    {
+      "card": "drafter",
+      "count": 2
+    },
+    {
+      "card": "tyr",
+      "count": 1
+    },
+    {
+      "card": "next_activation_command",
+      "count": 2
+    },
+    {
+      "card": "napd_cordon",
+      "count": 2
+    },
+    {
+      "card": "megaprix_qualifier",
+      "count": 3
+    },
+    {
+      "card": "project_vacheron",
+      "count": 2
+    },
+    {
+      "card": "viktor_1_0",
+      "count": 2
+    },
+    {
+      "card": "adonis_campaign",
+      "count": 2
+    },
+    {
+      "card": "giordano_memorial_field",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_mirrormorph",
+      "count": 2
+    },
+    {
+      "card": "aggressive_secretary",
+      "count": 2
+    },
+    {
+      "card": "accelerated_beta_test",
+      "count": 2
+    }
+  ]
+}

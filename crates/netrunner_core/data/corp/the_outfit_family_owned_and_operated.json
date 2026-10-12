@@ -1,0 +1,24 @@
+{
+  "id": "the_outfit_family_owned_and_operated",
+  "title": "The Outfit: Family Owned and Operated",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnBadPublicityTaken",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever you take 1 or more bad publicity, gain 3[credit]."
+    }
+  ],
+  "built_from": 22050,
+  "is_playable": true
+}

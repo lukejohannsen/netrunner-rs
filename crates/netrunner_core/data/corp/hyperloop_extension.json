@@ -1,0 +1,39 @@
+{
+  "id": "hyperloop_extension",
+  "title": "Hyperloop Extension",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "When Hyperloop Extension is scored or stolen, the Corp gains 3[credit]."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "When Hyperloop Extension is scored or stolen, the Corp gains 3[credit]."
+    }
+  ],
+  "built_from": 22027,
+  "is_playable": true
+}

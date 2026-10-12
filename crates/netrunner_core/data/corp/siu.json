@@ -1,0 +1,38 @@
+{
+  "id": "siu",
+  "title": "SIU",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "Trace": {
+                "base": 3,
+                "on_success": {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash SIU to Trace[3]. If successful, give the Runner 1 tag"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash SIU to Trace[3]. If successful, give the Runner 1 tag."
+    }
+  ],
+  "built_from": 22044,
+  "is_playable": true
+}

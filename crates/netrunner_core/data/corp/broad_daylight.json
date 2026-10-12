@@ -1,0 +1,70 @@
+{
+  "id": "broad_daylight",
+  "title": "Broad Daylight",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveBadPublicity": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may take 1 bad publicity",
+              ""
+            ]
+          }
+        },
+        {
+          "Repeat": {
+            "times": "BadPublicity",
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may take 1 bad publicity. Place 1 agenda counter on this agenda for each bad publicity you have."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "DealDamage": [
+          "Meat",
+          2
+        ]
+      },
+      "text": "Once per turn → [click], hosted agenda counter: Do 2 meat damage."
+    }
+  ],
+  "built_from": 22051,
+  "is_playable": true
+}

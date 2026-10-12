@@ -1,0 +1,45 @@
+{
+  "id": "neurostasis",
+  "title": "Neurostasis",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 3
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": "Any",
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OpponentDeck",
+                "count": "HostedAdvancementTokens"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "If you pay 3[credit] when the Runner accesses Neurostasis, choose 1 installed Runner card for each advancement token on Neurostasis"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 22037,
+  "is_playable": true
+}
