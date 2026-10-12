@@ -328,7 +328,7 @@ pub(super) fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &Ca
     if pending_on(ice) == 0 {
         return Some(0);
     }
-    let (credits, spent, position) = state
+    let alone = state
         .runner
         .rig
         .iter()
@@ -337,11 +337,56 @@ pub(super) fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &Ca
             let already = stock.get(position).copied().unwrap_or(0);
             break_cost(state, card, ice, registry, already).map(|spend| (spend.credits, spend.stock, position))
         })
-        .min_by_key(|(credits, spent, _)| (*credits, *spent))?;
-    if let Some(slot) = stock.get_mut(position) {
-        *slot += spent;
+        .min_by_key(|(credits, spent, _)| (*credits, *spent));
+    let alone = alone.map(|(credits, spent, position)| (credits, vec![(position, spent)]));
+    let (credits, spends) = [alone, finished(state, ice, registry, stock)].into_iter().flatten().min_by_key(|(credits, spends)| (*credits, spends.iter().map(|(_, spent)| spent).sum::<u32>()))?;
+    for (position, spent) in spends {
+        if let Some(slot) = stock.get_mut(position) {
+            *slot += spent;
+        }
     }
     Some(credits)
+}
+
+/// The cheapest way through `ice` that takes two rig cards: one breaks a
+/// subroutine and another, whose break reads "use this ability only if
+/// you have already broken a subroutine during this encounter", the rest
+/// (Poison Vial; Phase 5 §75). `(credits, [(position, stock drawn)])`, or
+/// `None` when the rig has no such finisher or nothing to start it with.
+/// Only a finisher is paired: two breakers splitting one piece is a
+/// pump paid twice, never cheaper than the better of them alone, and
+/// pricing every pair would cost the search for nothing. Before this the
+/// requirement was not read, so the vial was worth nothing to a run and
+/// the planner never installed it.
+fn finished(state: &GameState, ice: &RunIce, registry: &CardRegistry, stock: &Stock) -> Option<(u32, Vec<(usize, u32)>)> {
+    use netrunner_core::dsl::EffectRequirement;
+    let first = ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)?;
+    if pending_on(ice) < 2 {
+        return None;
+    }
+    let finisher = |def: &CardDefinition| def.abilities.iter().any(|ability| ability.requirement == Some(EffectRequirement::SubroutineBrokenThisEncounter));
+    // The piece with only its first pending subroutine left for the
+    // starter, and with that one broken for the finisher.
+    let mut one = ice.clone();
+    for (index, subroutine) in one.subroutines.iter_mut().enumerate() {
+        if index != first && subroutine.status == SubroutineStatus::Pending {
+            subroutine.status = SubroutineStatus::Resolved;
+        }
+    }
+    let mut rest = ice.clone();
+    rest.subroutines[first].status = SubroutineStatus::Broken;
+    let already = |position: usize| stock.get(position).copied().unwrap_or(0);
+    let (rig, one, already) = (&state.runner.rig, &one, &already);
+    rig.iter()
+        .enumerate()
+        .filter(|(_, card)| registry.get(&card.card).is_some_and(finisher))
+        .filter_map(|(f, card)| break_cost(state, card, &rest, registry, already(f)).map(|end| (f, end)))
+        .flat_map(|(f, end)| {
+            rig.iter().enumerate().filter(move |(s, _)| *s != f).filter_map(move |(s, card)| {
+                break_cost(state, card, one, registry, already(s)).map(|start| (start.credits + end.credits, vec![(s, start.stock), (f, end.stock)]))
+            })
+        })
+        .min_by_key(|(credits, _)| *credits)
 }
 
 /// What a rig card spends breaking one piece of ICE: credits, and the
@@ -430,8 +475,9 @@ fn stocked(cost: Option<&Cost>, card: &InstalledRunnerCard, pending: u32, state:
 /// `price_of`, with `already` units of the card's stock spent on this
 /// server's earlier ICE. `None` if the card has no break matching `ice`'s
 /// subtype, a shortfall and no pump, or too little stock left for the
-/// activations it would take. A requirement on the ability is not read
-/// (Poison Vial's "only if you have already broken a subroutine"). The
+/// activations it would take. A requirement on an outright break is read
+/// by `unconditional_reach` (Poison Vial's "only if you have already
+/// broken a subroutine" off the piece, which `finished` sets up). The
 /// pump and the break are bounded by the same stock separately, which is
 /// exact while no card pays for both out of one pool. `BoostStrengthAmount`
 /// (Unity's +X) is priced as +1 per activation: X counts Unity itself so
@@ -547,6 +593,13 @@ fn bypass(state: &GameState, card: &InstalledRunnerCard, def: &CardDefinition, i
             continue;
         }
         for effect in &trigger.effects {
+            // A bypass behind a condition the piece answers — Backstitching's
+            // "during a run on your mark" (Phase 5 §75) — is read as the
+            // bypass when `bypass_reach` says the condition holds.
+            let effect = match effect {
+                Effect::EffectIf { condition, effect, .. } if bypass_reach(Some(condition), state, card, ice, registry) => effect.as_ref(),
+                effect => effect,
+            };
             match effect {
                 Effect::BypassEncounteredIce => ways.push((0, 0)),
                 Effect::OfferPaidChoice { cost, if_paid, .. } if bypasses(if_paid) => ways.extend(priced(Some(cost))),
@@ -579,6 +632,11 @@ fn bypass_reach(requirement: Option<&EffectRequirement>, state: &GameState, card
             _ => false,
         },
         Some(EffectRequirement::And(a, b)) => bypass_reach(Some(a), state, card, ice, registry) && bypass_reach(Some(b), state, card, ice, registry),
+        // "During a run on your mark" (Backstitching; Phase 5 §75): the
+        // run is on the server the piece protects, which is the run the
+        // piece is priced for, and the mark is the one identified.
+        Some(EffectRequirement::DuringRunOn(server)) => state.find_corp_install(ice.install_id).is_some_and(|installed| installed.server == *server),
+        Some(EffectRequirement::MarkIs(server)) => netrunner_core::rules::lingering::mark(state) == Some(*server),
         requirement => unconditional_reach(requirement, state, card, ice, registry),
     }
 }
@@ -589,8 +647,7 @@ fn bypass_reach(requirement: Option<&EffectRequirement>, state: &GameState, card
 /// has no subtype and no strength, so "use this only during encounters
 /// with that ice" (Boomerang) and "break 1 subroutine on host ice"
 /// (Botulus) are what keep it off every other piece. A requirement this
-/// does not know — Poison Vial's "only if you have already broken a
-/// subroutine", Quetzal's "once per turn" — is not priced, the cheaper
+/// does not know — Quetzal's "once per turn" — is not priced, the cheaper
 /// direction, as an unpriced cost always has been.
 ///
 /// **Why** (Phase 5 §57). `break_cost` read only `BreakSubroutines`, so
@@ -604,6 +661,10 @@ fn unconditional_reach(requirement: Option<&EffectRequirement>, state: &GameStat
         Some(EffectRequirement::EncounteringHostIce) => card.hosted_on_ice == Some(ice.install_id),
         Some(EffectRequirement::EncounteringChosenIce) => netrunner_core::rules::lingering::chosen_card(state, card.install_id) == Some(ice.install_id),
         Some(EffectRequirement::Encountering(subtype)) => ice_is(state, ice, *subtype, registry),
+        // Poison Vial's "only if you have already broken a subroutine
+        // during this encounter", read off the piece (Phase 5 §75):
+        // `finished` hands it one with a subroutine broken.
+        Some(EffectRequirement::SubroutineBrokenThisEncounter) => ice.subroutines.iter().any(|s| s.status == SubroutineStatus::Broken),
         Some(EffectRequirement::And(a, b)) => unconditional_reach(Some(a), state, card, ice, registry) && unconditional_reach(Some(b), state, card, ice, registry),
         Some(_) => false,
     }
@@ -2322,6 +2383,14 @@ mod tests {
         assert_eq!(price(&state, 1), Some(0), "a counter");
         state.runner.rig[0].counters = 0;
         assert_eq!(price(&state, 1), None, "no counter left");
+
+        // Backstitching: "during a run on your mark", at the card.
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("backstitching".to_string()), install_id: InstallId(10), ..Default::default() }];
+        assert_eq!(price(&state, 1), None, "no mark");
+        state.lingering.push(LingeringEffect { what: Lingering::Mark(ServerId::Hq), on: On::Player(Side::Runner), until: Until::EndOfTurn(state.turn), source: CardId("backstitching".to_string()) });
+        assert_eq!(price(&state, 1), Some(2), "the mark's ice, for the card");
+        assert_eq!(price(&state, 2), None, "not the mark");
     }
 
     /// The card that began a run bypasses its first encounter (Phase 5
@@ -2936,13 +3005,13 @@ mod tests {
     /// reaches: Botulus breaks a subroutine on its host ice for a hosted
     /// counter and nothing elsewhere; Boomerang breaks two on the ice it
     /// chose, once, at the card itself; Poison Vial's "only if you have
-    /// already broken a subroutine" is not read, and so not priced.
+    /// already broken a subroutine" reaches a piece with one broken.
     #[test]
     fn an_unconditional_break_is_priced_on_the_ice_its_requirement_reaches() {
         use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
         use netrunner_core::rules::InstallId;
         let pool = pool();
-        let registry = CardRegistry::from_cards(vec![printed(&pool, "botulus"), printed(&pool, "boomerang"), printed(&pool, "poison_vial")]);
+        let registry = CardRegistry::from_cards(vec![printed(&pool, "botulus"), printed(&pool, "boomerang"), printed(&pool, "poison_vial"), printed(&pool, "mimic")]);
         let price = |state: &GameState, ice: &RunIce| {
             let registry = with_printed_ice(&registry, std::slice::from_ref(ice));
             cheapest_break_cost(state, ice, &registry, &mut fresh_stock(state))
@@ -2963,6 +3032,20 @@ mod tests {
         assert_eq!(price(&state, &on(8, 2)), None, "not the chosen ice");
 
         state.runner.rig = vec![InstalledRunnerCard { counters: 3, ..rig_card("poison_vial") }];
-        assert_eq!(price(&state, &on(7, 2)), None, "its requirement is not read");
+        assert_eq!(price(&state, &on(7, 2)), None, "nothing breaks the first subroutine");
+        let mut started = on(7, 3);
+        started.subroutines[0].status = SubroutineStatus::Broken;
+        assert_eq!(price(&state, &started), Some(0), "one broken, a counter breaks the other two");
+
+        let weak = |subroutines: usize| RunIce { install_id: InstallId(9), ..run_ice(2, IceType::Sentry, subroutines, true) };
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![InstalledRunnerCard { base_strength: 3, install_id: InstallId(30), ..rig_card("mimic") }];
+        assert_eq!(price(&state, &weak(3)), Some(3), "Mimic alone, a credit a subroutine");
+        state.runner.rig.push(InstalledRunnerCard { counters: 1, install_id: InstallId(31), ..rig_card("poison_vial") });
+        assert_eq!(price(&state, &weak(3)), Some(1), "Mimic starts, a counter finishes the other two");
+        let mut stock = fresh_stock(&state);
+        let registry = with_printed_ice(&registry, &[weak(3)]);
+        assert_eq!(cheapest_break_cost(&state, &weak(3), &registry, &mut stock), Some(1));
+        assert_eq!(cheapest_break_cost(&state, &weak(3), &registry, &mut stock), Some(3), "the counter is spent on the first piece");
     }
 }
