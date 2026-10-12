@@ -65,7 +65,7 @@ use netrunner_server::MatchSummary;
 
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
-use netrunner_client::identity::{PublicKey, StandingHere};
+use netrunner_client::identity::{ProfileHere, PublicKey};
 use netrunner_client::online;
 use netrunner_client::tournament;
 use netrunner_client::remote::{Attached, AttachedEvent};
@@ -218,7 +218,7 @@ struct ServerPage {
     link: Option<String>,
     /// This person's standing at the server, as it last answered: asked
     /// on attaching and after every game.
-    standing: StandingHere,
+    profile: ProfileHere,
     /// The key this connection proved, as the server named it in that
     /// answer: whose a tournament entry is, and who may hold one.
     key: Option<PublicKey>,
@@ -240,7 +240,7 @@ impl ServerPage {
             code_password: String::new(),
             editing: None,
             link: None,
-            standing: StandingHere::Unasked,
+            profile: ProfileHere::Unasked,
             key: None,
         }
     }
@@ -720,7 +720,7 @@ impl OnlineScreen {
                 AttachedEvent::Attached(lobbies) => {
                     // The standing is asked on attaching and after every
                     // game, so the page shows the number the game moved.
-                    self.attached.as_ref()?.standing();
+                    self.attached.as_ref()?.profile();
                     match &mut self.mode {
                         // A reattach: the list is fresh, the rest stands.
                         Mode::Server(page)
@@ -776,7 +776,10 @@ impl OnlineScreen {
                         page.cursor = 0;
                     }
                 }
-                AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => self.notice = Some(reason),
+                AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) | AttachedEvent::ProfileRefused(reason) => self.notice = Some(reason),
+                // The ladder has no page yet (Phase 7 §14's terminal
+                // rows); `netrunner_cli ladder` prints one.
+                AttachedEvent::Ladder { .. } => {}
                 AttachedEvent::Queued(position) => {
                     if let Some(page) = self.page_mut() {
                         page.seeking = Some(position);
@@ -788,7 +791,7 @@ impl OnlineScreen {
                     }
                 }
                 AttachedEvent::BackInLobby(lobby) => {
-                    self.attached.as_ref()?.standing();
+                    self.attached.as_ref()?.profile();
                     if let Some(page) = self.page_mut() {
                         page.seeking = None;
                         if lobby.is_some() {
@@ -796,10 +799,10 @@ impl OnlineScreen {
                         }
                     }
                 }
-                AttachedEvent::Standing { key, standings } => {
+                AttachedEvent::Profile { key, profile } => {
                     if let Some(page) = self.page_mut() {
                         page.key = key;
-                        page.standing = StandingHere::from_reply(key, standings);
+                        page.profile = ProfileHere::from_reply(key, profile);
                     }
                 }
                 AttachedEvent::Link(Link::Down(error)) => {
@@ -1573,7 +1576,7 @@ impl OnlineScreen {
             head.extend(self.hosting_lines.lines().map(|line| Line::from(line.to_string())));
         }
         if let Some(lobby) = &page.lobby {
-            head.push(Line::from(netrunner_client::identity::lobby_rating_line(lobby.rated, page.hosting, lobby.format, &page.standing)));
+            head.push(Line::from(netrunner_client::identity::lobby_rating_line(lobby.rated, page.hosting, lobby.format, &page.profile)));
         }
         let [top, list] = Layout::default()
             .direction(Direction::Vertical)
@@ -2249,7 +2252,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&keyless_dir);
         let mut keyless = OnlineScreen::open(&keyless_dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, "keyless".to_string(), "ws://127.0.0.1:8080".into(), Ok(Relay::Off)).unwrap();
         join(&mut keyless, &address).await;
-        until(&mut keyless, "the standing", |screen| server_page(screen).is_some_and(|page| page.standing != StandingHere::Unasked)).await;
+        until(&mut keyless, "the standing", |screen| server_page(screen).is_some_and(|page| page.profile != ProfileHere::Unasked)).await;
         open_tournaments(&mut keyless);
         until(&mut keyless, "the list", |screen| matches!(&screen.mode, Mode::Tournaments { list, .. } if list.listed)).await;
         press(&mut keyless, &[KeyCode::Up, KeyCode::Enter]);

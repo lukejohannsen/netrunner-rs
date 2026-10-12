@@ -531,10 +531,16 @@ pub enum Command {
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,
 
-    /// Your key, and your standing at the server at `--server`: fetched
-    /// from its rating book, proving your key, and never stored — the
-    /// server's book is the truth (Phase 4 §5).
-    Standing,
+    /// Your key, and your profile at the server at `--server`: the name
+    /// it knows you by, what you wear, the titles and badges earned and
+    /// your standing on each of its ladders — fetched, proving your key,
+    /// and never stored, because the server's store is the truth
+    /// (Phase 4 §5, §10).
+    Profile,
+
+    /// The ladder at the server at `--server` in `--format`: the keys
+    /// with enough rated games there, best first (Phase 4 §10).
+    Ladder,
 
     /// Your record against the bots: wins and losses against every rung
     /// on each chair, and the rung to try next.

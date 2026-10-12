@@ -8,6 +8,8 @@ repository.workspace = true
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
+# Default features off: the terminal hosts a game in-process with no store,
+# so its binary carries no database driver (Phase 4 §10).
 netrunner_server = { path = "../netrunner_server", default-features = false }
 netrunner_session = { path = "../netrunner_session" }
 netrunner_single_player = { path = "../netrunner_single_player" }
@@ -35,3 +37,8 @@ rayon = "1"
 # trained by `scripts/run_iteration_loop.py`. Off by default because it
 # pulls in the ONNX runtime, which not every build of the TUI wants.
 onnx = ["netrunner_bots/onnx", "netrunner_single_player/onnx", "netrunner_session/onnx"]
+
+[dev-dependencies]
+# The tournament pages' tests start a daemon with a data directory, which
+# needs the store's SQLite driver; the binary above does not.
+netrunner_server = { path = "../netrunner_server", default-features = false, features = ["sqlite"] }

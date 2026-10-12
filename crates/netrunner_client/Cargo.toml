@@ -73,5 +73,6 @@ onnx = ["netrunner_bots/onnx", "netrunner_session/onnx"]
 
 [dev-dependencies]
 # `remote`'s tests drive the driver against a real server on an ephemeral
-# port. A dev-dependency only: the client never names the server.
-netrunner_server = { path = "../netrunner_server", default-features = false }
+# port, some with a data directory, which needs the store's SQLite driver.
+# A dev-dependency only: the client never names the server.
+netrunner_server = { path = "../netrunner_server", default-features = false, features = ["sqlite"] }

@@ -12,17 +12,33 @@
 pub use netrunner_client::remote::{connect, list_matches, seat, seek, spawn, watch, ConnectEvent, Connecting, Joined};
 
 /// `netrunner_cli matches`: what the daemon is hosting, one line each.
-/// `netrunner_cli standing`: the key, then the standing the server at
-/// `url` reports for it. Makes the key if there is none, as joining would.
-pub async fn print_standing(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// `netrunner_cli profile`: the key, then the profile the server at
+/// `url` keeps under it. Makes the key if there is none, as joining would.
+pub async fn print_profile(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let credentials = netrunner_client::identity::Credentials::load()?;
     for line in netrunner_client::identity::key_lines(&credentials) {
         println!("{line}");
     }
-    let standing = netrunner_client::remote::standing(url, &credentials).await?;
+    let profile = netrunner_client::remote::profile(url, &credentials).await?;
     println!("At {url}");
-    for line in netrunner_client::identity::standing_lines(&standing) {
+    for line in netrunner_client::identity::profile_lines(profile.as_ref()) {
         println!("  {line}");
+    }
+    Ok(())
+}
+
+/// `netrunner_cli ladder`: the server's ladder in `format`, one line per
+/// listed key — best first, the name, the rating per chair and the title
+/// worn. Asked on an attached connection with no key, since a ladder is
+/// anyone's to read.
+pub async fn print_ladder(url: &str, format: netrunner_core::format::NsgFormat) -> Result<(), Box<dyn std::error::Error>> {
+    let rows = netrunner_client::remote::ladder(url, format).await?;
+    println!("The {format:?} ladder at {url}");
+    if rows.is_empty() {
+        println!("  Nobody has {} rated games there yet", netrunner_server::protocol::LADDER_MIN_GAMES);
+    }
+    for (index, row) in rows.iter().enumerate() {
+        println!("  {}", netrunner_client::identity::ladder_line(index + 1, row));
     }
     Ok(())
 }

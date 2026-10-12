@@ -477,7 +477,9 @@ impl MatchSession {
                         | ClientMessage::Identify { .. }
                         | ClientMessage::Prove { .. }
                         | ClientMessage::SeatSigned { .. }
-                        | ClientMessage::MyStanding
+                        | ClientMessage::MyProfile
+                        | ClientMessage::SetProfile { .. }
+                        | ClientMessage::Ladder { .. }
                         | ClientMessage::ListLobbies
                         | ClientMessage::CreateLobby { .. }
                         | ClientMessage::JoinLobby { .. }

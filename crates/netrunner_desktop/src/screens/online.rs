@@ -53,7 +53,7 @@ use bevy::prelude::*;
 
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
-use netrunner_client::identity::StandingHere;
+use netrunner_client::identity::ProfileHere;
 use netrunner_client::online;
 use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
@@ -844,21 +844,24 @@ fn net(
                 // The standing is asked on attaching and after every game,
                 // so the page shows the number the game just moved.
                 AttachedEvent::Attached(lobbies) => {
-                    connected.attached.standing();
+                    connected.attached.profile();
                     Intent::Attached { lobbies, hosting }
                 }
-                AttachedEvent::Standing { key, standings } => Intent::Standing { key, standing: StandingHere::from_reply(key, standings) },
+                AttachedEvent::Profile { key, profile } => Intent::Profile { key, profile: ProfileHere::from_reply(key, profile) },
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
                 AttachedEvent::Tournament(info) => Intent::Tournament(info),
                 AttachedEvent::TournamentRefused(reason) => Intent::Refused(reason),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
-                AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) | AttachedEvent::ProfileRefused(reason) => Intent::Refused(reason),
+                // The ladder has no page yet (Phase 7 §14); nothing asks
+                // for it, so nothing is drawn from it.
+                AttachedEvent::Ladder { .. } => continue,
                 AttachedEvent::Queued(position) => Intent::Queued(position),
                 AttachedEvent::SeekCancelled => Intent::SeekCancelled,
                 AttachedEvent::BackInLobby(lobby) => {
-                    connected.attached.standing();
+                    connected.attached.profile();
                     Intent::BackInLobby(lobby)
                 }
                 AttachedEvent::Link(Link::Down(error)) => {

@@ -93,7 +93,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
         Some(Command::Record) => record::print(&config),
-        Some(Command::Standing) => remote::print_standing(&config.server).await,
+        Some(Command::Profile) => remote::print_profile(&config.server).await,
+        Some(Command::Ladder) => remote::print_ladder(&config.server, config.format.into()).await,
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
         Some(Command::Learn { action }) => learn::run(action, &config),
