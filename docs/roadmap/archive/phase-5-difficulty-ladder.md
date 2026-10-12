@@ -3963,3 +3963,21 @@ The two seeds move the Corp in opposite directions by about one and two standard
 **Not taken.** Eye for an Eye's "if successful, take 1 tag and access 1 additional card when you breach HQ" was read too, as an access and a tag on the run the event began, and stayed at 0 → 0 on both seeds: an HQ access is not worth a tag at the leaf's rates. It was dropped rather than kept for nothing.
 
 **Verified.** `a_first_central_run_each_turn_is_income`, `a_redirected_run_is_the_break_it_saves`, `the_card_that_began_the_run_bypasses_its_first_encounter`, `a_payout_on_the_corps_score_is_income_once` and `a_draw_on_the_first_basic_draw_each_turn_is_a_card_a_turn`.
+
+## 73. Three readings, measured as one batch: a rez cost raised for the run, and a counter that buys strength — DONE (`claude/bot-blindness-batch-3`, 12 October 2026)
+
+**The debt.** Three Runner cards in eleven to fifteen decks each that the planner all but never used against random seats that used them dozens of times: Tread Lightly (random seats 60, the planner 3), Leech (167 and 9) and Datasucker. The third batch of Luke's choice of 12 October 2026.
+
+**What is read now.**
+
+- *A rise in the rez cost of ice for the length of the run* (`runner::run_rez_tax`): Tread Lightly's "during that run, the rez cost of each piece of ice is increased by 3[credit]" is the rise on every unrezzed piece the run has still to approach, at `opponent_credit_weight` — the Corp pays it to rez the piece or lets the Runner by. The leaf prices an unrezzed piece as nothing to get past (`remaining_break_cost`'s optimism; `unrezzed_threat_weight` is zero, so making `is_unrezzed_threat` read the rise, tried first, moved nothing), and the event read as a click run at 1[credit] more.
+- *A counter that buys a point of strength off the ice* (`read::declared_income`): Leech's and Datasucker's "hosted virus counter: the ice you are encountering gets −1 strength for the remainder of this encounter" cashes a counter at a credit, a pump the breaker does not buy, and "whenever you make a successful run on a central server, place 1 virus counter" is a run a turn (`about_every_run`, which takes a filter naming all three centrals as it took §72's first time on one). **This corrects §32**, which read Leech's counters as cashed by nothing.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, §72's code (with Eye for an Eye's reading, since dropped) against this branch, the same games:
+
+- Seed 2: Tread Lightly 2 → 119, Leech 23 → 418, Datasucker 9 → 25; Corp share 0.508 → 0.517 (+44 / −38).
+- Seed 3: Tread Lightly 4 → 120, Leech 11 → 399, Datasucker 8 → 52; Corp share 0.449 → 0.471 (+46 / −32).
+
+Leech's count is mostly counters spent in encounters, which `used` counts with installs. The Corp wins a little more on both seeds (z 0.66 and 1.59), which is within the seed-spread band; a Runner that spends a click and a credit on Tread Lightly where a click run would do is the one cost the term does not see, and is the first place to look if a later measurement confirms it.
+
+**Verified.** `a_rez_cost_rise_for_the_run_is_the_corp_credits_it_takes` and `a_first_central_run_each_turn_is_income`, and `a_card_that_pays_on_a_run_is_read_at_a_run_a_turn` with Leech at a credit a central run.
