@@ -1,0 +1,199 @@
+{
+  "id": "peeping_tom",
+  "title": "Peeping Tom",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainSubroutine": {
+                      "subroutine": {
+                        "text": "End the run unless the Runner takes 1 tag.",
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "GiveTags": {
+                                  "Fixed": 1
+                                }
+                              },
+                              "EndTheRun"
+                            ],
+                            "texts": [
+                              "the Runner takes 1 tag",
+                              "End the run"
+                            ]
+                          }
+                        }
+                      },
+                      "after": true,
+                      "duration": "Run",
+                      "count": {
+                        "InZone": {
+                          "zone": "OpponentHand",
+                          "filter": {
+                            "CardType": "Event"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainSubroutine": {
+                      "subroutine": {
+                        "text": "End the run unless the Runner takes 1 tag.",
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "GiveTags": {
+                                  "Fixed": 1
+                                }
+                              },
+                              "EndTheRun"
+                            ],
+                            "texts": [
+                              "the Runner takes 1 tag",
+                              "End the run"
+                            ]
+                          }
+                        }
+                      },
+                      "after": true,
+                      "duration": "Run",
+                      "count": {
+                        "InZone": {
+                          "zone": "OpponentHand",
+                          "filter": {
+                            "CardType": "Hardware"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainSubroutine": {
+                      "subroutine": {
+                        "text": "End the run unless the Runner takes 1 tag.",
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "GiveTags": {
+                                  "Fixed": 1
+                                }
+                              },
+                              "EndTheRun"
+                            ],
+                            "texts": [
+                              "the Runner takes 1 tag",
+                              "End the run"
+                            ]
+                          }
+                        }
+                      },
+                      "after": true,
+                      "duration": "Run",
+                      "count": {
+                        "InZone": {
+                          "zone": "OpponentHand",
+                          "filter": {
+                            "CardType": "Program"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainSubroutine": {
+                      "subroutine": {
+                        "text": "End the run unless the Runner takes 1 tag.",
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "GiveTags": {
+                                  "Fixed": 1
+                                }
+                              },
+                              "EndTheRun"
+                            ],
+                            "texts": [
+                              "the Runner takes 1 tag",
+                              "End the run"
+                            ]
+                          }
+                        }
+                      },
+                      "after": true,
+                      "duration": "Run",
+                      "count": {
+                        "InZone": {
+                          "zone": "OpponentHand",
+                          "filter": {
+                            "CardType": "Resource"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              "choose a card type — event",
+              "choose a card type — hardware",
+              "choose a card type — program",
+              "choose a card type — resource"
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, choose a card type, then reveal all cards in the grip. For the remainder of this run, this ice gains \"[subroutine] End the run unless the Runner takes 1 tag.\" for each revealed card of the chosen type."
+    }
+  ],
+  "built_from": 22045,
+  "is_playable": true
+}
