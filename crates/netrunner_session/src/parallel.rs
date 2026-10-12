@@ -30,6 +30,9 @@ pub fn sweep_threads() -> usize {
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |threads| threads.get()))
 }
 
+/// Each sweep thread's stack (see `in_parallel`).
+const SWEEP_STACK: usize = 16 * 1024 * 1024;
+
 /// Runs `play` on every job across `sweep_threads()` threads and returns
 /// the results in the jobs' order. A job that panics stops the rest from
 /// starting, and the lowest-numbered failing job's panic is re-raised once
@@ -41,7 +44,14 @@ pub fn in_parallel<J: Sync, T: Send>(jobs: &[J], play: impl Fn(&J) -> T + Sync) 
     let slots: Vec<Mutex<Option<std::thread::Result<T>>>> = jobs.iter().map(|_| Mutex::new(None)).collect();
     std::thread::scope(|scope| {
         for _ in 0..workers {
-            scope.spawn(|| {
+            // A spawned thread gets 2 MiB of stack, and an unoptimised
+            // build's frames are many times a release build's: a planner
+            // probing a legal action that replays a parked payment through
+            // a sequence is about 2 MiB deep in a debug build (Bernice Mai
+            // and Spinal Modem's sweep decks reached it), where release
+            // needs a fraction. The main thread's 8 MiB, doubled, is room
+            // for a debug sweep and costs nothing until it is touched.
+            std::thread::Builder::new().stack_size(SWEEP_STACK).spawn_scoped(scope, || {
                 while !stop.load(Ordering::Relaxed) {
                     let index = next.fetch_add(1, Ordering::Relaxed);
                     let Some(job) = jobs.get(index) else { break };
@@ -51,7 +61,7 @@ pub fn in_parallel<J: Sync, T: Send>(jobs: &[J], play: impl Fn(&J) -> T + Sync) 
                     }
                     *slots[index].lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(outcome);
                 }
-            });
+            }).expect("spawn a sweep thread");
         }
     });
     // Jobs are taken in order, so every job below a failing one was taken

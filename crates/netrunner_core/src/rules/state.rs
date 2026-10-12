@@ -977,6 +977,10 @@ pub struct TraceState {
     /// whether the pending action is the Corp's bid or the Runner's.
     pub corp_bid: Option<u32>,
     pub effect_on_success: Effect,
+    /// What resolves instead when the trace is avoided (`Effect::Trace::
+    /// on_failure`, Bernice Mai's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_on_failure: Option<Effect>,
     pub resume: TraceResume,
 }
 

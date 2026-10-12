@@ -434,6 +434,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } | WouldHappen::RunEnds { .. } | WouldHappen::Trace { .. } } => Vec::new(),
         // Only the card itself prints it ("when this asset would be
         // uninstalled"), so the moment is the card's.
+        // "Whenever there is a successful trace": anyone's, about nothing.
+        GameEvent::TraceSuccessful { .. } => vec![moment(Trigger::OnTraceSuccessful, &About::Nothing, None)],
         GameEvent::AboutToBeUninstalled { card: card_id, install } => {
             vec![moment(Trigger::OnWouldBeUninstalled, &card(card_id, Some(*install)), None)]
         }
@@ -466,7 +468,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TraceCorpBidSubmitted { .. }
         | GameEvent::TraceRunnerBidSubmitted { .. }
         | GameEvent::TraceAvoided { .. }
-        | GameEvent::TraceSuccessful { .. }
         | GameEvent::TriggerOrderPending { .. }
         | GameEvent::TriggerOrderChosen { .. }
         | GameEvent::TriggerFired { .. }

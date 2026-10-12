@@ -538,8 +538,13 @@ mod catalog_join_tests {
                         walk(otherwise, out);
                     }
                 }
-                Effect::Trace { on_success: effect, .. }
-                | Effect::SetAccessReplacement { effect, .. }
+                Effect::Trace { on_success, on_failure, .. } => {
+                    walk(on_success, out);
+                    if let Some(on_failure) = on_failure {
+                        walk(on_failure, out);
+                    }
+                }
+                Effect::SetAccessReplacement { effect, .. }
                 | Effect::SetRunEndedEffect(effect)
                 | Effect::Unpreventable(effect)
                 | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),

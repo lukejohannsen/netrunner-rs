@@ -72,8 +72,18 @@ pub(crate) fn submit_runner_bid(
 
     if runner_total >= corp_total {
         events.push(GameEvent::TraceAvoided { corp_total, runner_total });
+        if let Some(on_failure) = &trace.effect_on_failure {
+            events.extend(ability::evaluate_effect(
+                state,
+                on_failure,
+                &mut ability::ResolutionContext::for_parked(trace.initiating_install, trace.initiating_card.as_ref()),
+                registry,
+            )?);
+        }
     } else {
-        events.push(GameEvent::TraceSuccessful { corp_total, runner_total });
+        // Spinal Modem hears it (CR 10.8.6e), beside the trace's own
+        // "if successful".
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceSuccessful { corp_total, runner_total })?;
         events.extend(ability::evaluate_effect(
             state,
             &trace.effect_on_success,
@@ -146,6 +156,7 @@ mod tests {
             corp_bid,
             effect_on_success: on_success,
             resume: TraceResume::None,
+            effect_on_failure: None,
         }
     }
 
@@ -259,7 +270,7 @@ mod tests {
                         id: 0,
                         definition: crate::dsl::SubroutineDef {
                             text: "trace".to_string(),
-                            effect: Effect::Trace { base: 2, on_success: Box::new(on_success) },
+                            effect: Effect::Trace { base: 2, on_success: Box::new(on_success), on_failure: None },
                             only_breakable_by: None,
                         },
                         status: SubroutineStatus::Resolved,
@@ -290,6 +301,7 @@ mod tests {
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
+            effect_on_failure: None,
         });
         let registry = a_runner_with_link(&mut state, 5);
 
@@ -310,6 +322,7 @@ mod tests {
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
+            effect_on_failure: None,
         });
         let registry = a_runner_with_link(&mut state, 0);
 

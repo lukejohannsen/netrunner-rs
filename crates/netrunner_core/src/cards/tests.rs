@@ -7441,6 +7441,7 @@ mod system_gateway {
             corp_bid: None,
             effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
+            effect_on_failure: None,
         });
         let highest = crate::rules::legal_actions(&tracing, &registry)
             .into_iter()
@@ -7529,6 +7530,7 @@ mod system_gateway {
             corp_bid: Some(0),
             effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
+            effect_on_failure: None,
         });
         let bids: Vec<u32> = crate::rules::legal_actions(&state, &registry)
             .into_iter()
@@ -30861,5 +30863,44 @@ mod revised_core {
         let (accessing, more) = close_all_windows(accessing, &registry);
         assert!(events.iter().chain(&more).any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { card, .. } if *card == id("tgtbt"))), "revealed: {events:?}");
         assert_eq!(accessing.runner.tags, 1, "give them 1 tag");
+    }
+
+    // ---- Stage 5: a trace's outcomes as moments ----
+
+    #[test]
+    fn bernice_mai_tags_on_a_successful_trace_and_is_trashed_on_an_unsuccessful_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root("bernice_mai", 0, true)];
+        let (tracing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(5), "Trace[5]");
+
+        let (tagged, _) = bids(&tracing, &registry, 0, 0);
+        assert_eq!(tagged.runner.tags, 1, "if successful, give the Runner 1 tag");
+        assert!(tagged.corp.installed.iter().any(|card| card.card == id("bernice_mai")), "still installed");
+
+        let (avoided, _) = bids(&tracing, &registry, 0, 5);
+        assert_eq!(avoided.runner.tags, 0);
+        assert!(avoided.corp.installed.is_empty(), "if unsuccessful, trash Bernice Mai");
+        assert!(avoided.corp.archives.iter().any(|card| card.card == id("bernice_mai")));
+    }
+
+    #[test]
+    fn spinal_modem_gives_a_memory_unit_and_core_damage_whenever_a_trace_succeeds_during_a_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let memory = crate::rules::memory::available_memory(&state, &registry);
+        state.runner.rig = vec![in_rig("spinal_modem", 0, 2)];
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), memory + 1, "+1[mu]");
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![ice_at_hq("caduceus")];
+        let tracing = fire(&encounter(&state, &registry), &registry);
+
+        let (hurt, _) = bids(&tracing, &registry, 0, 0);
+        assert_eq!(hurt.runner.brain_damage, 1, "suffer 1 core damage");
+        assert_eq!(hurt.runner.grip.len(), 1);
+
+        let (avoided, _) = bids(&tracing, &registry, 0, 3);
+        assert_eq!(avoided.runner.brain_damage, 0, "only a successful trace");
     }
 }

@@ -333,7 +333,14 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             SubroutineBreakCount::All => "break all subroutines".to_string(),
             SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
         },
-        Effect::Trace { base, on_success } => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
+        Effect::Trace { base, on_success, on_failure } => match on_failure {
+            None => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
+            Some(on_failure) => format!(
+                "trace {base}: if successful, {}; if unsuccessful, {}",
+                describe_effect(on_success, registry),
+                describe_effect(on_failure, registry)
+            ),
+        },
         Effect::AddAdditionalAccess { server, count } => {
             format!("access {} additional from {}", plural(*count, "card", "cards"), describe_server(*server))
         }
