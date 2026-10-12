@@ -171,17 +171,51 @@ jobs:
       # The store's own tests need a driver, so they are the `sqlite`
       # feature's; a workspace build turns it on through the daemon's
       # default features, and this proves the crate alone does too. The
-      # `postgres` driver is checked for compiling; its tests against a
-      # live server are Phase 4 §10 stage 3.
-      - name: netrunner_store with SQLite, and Postgres compiling
-        run: |
-          cargo test -p netrunner_store --features sqlite --locked
-          cargo check -p netrunner_store --features postgres --locked
+      # `postgres` driver is the `postgres` job's, against a live server.
+      - name: netrunner_store with SQLite
+        run: cargo test -p netrunner_store --features sqlite --locked
       # Check, not test, and deliberately: with `extension-module` PyO3 does
       # not link libpython, so no runnable test binary exists by design. What
       # this proves is that the maturin wheel path still compiles.
       - name: netrunner_gym as a Python extension module
         run: cargo check -p netrunner_gym --features extension-module --locked
+
+  # The store's Postgres driver against a live server (Phase 4 §10 stage
+  # 3). The store promises one dialect both databases read, and SQLite
+  # alone cannot prove that. NETRUNNER_TEST_POSTGRES is what turns the
+  # Postgres runs on: unset, every test skips them and says so; set in a
+  # build with no Postgres driver, a test fails rather than pass on SQLite
+  # alone. Each test makes a schema of its own and drops it. The store's
+  # tests run every query; the daemon's run the writer, the profile, the
+  # ladder and `--rebuild` over `--database`. Its own job, so a failure
+  # elsewhere in `features` never hides it. The server trusts every local
+  # connection, so no password is written here.
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NETRUNNER_TEST_POSTGRES: postgres://postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - name: netrunner_store on SQLite and Postgres
+        run: cargo test -p netrunner_store --features sqlite,postgres --locked
+      - name: The daemon's store over --database postgres://
+        run: cargo test -p netrunner_server --features postgres --test identity --locked
 
   # Unused dependencies. Found two on its first run (netrunner_gym carried
   # serde and serde_json with no use site), which is the argument for it.

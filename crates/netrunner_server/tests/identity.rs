@@ -15,6 +15,7 @@ use netrunner_core::decks;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_identity::{Identity, PublicKey, Signed};
+use netrunner_store::scratch::PostgresSchema;
 use netrunner_store::{RatingRow, Store};
 use netrunner_server::protocol::statements::{Receipt, SeatStatement, SEAT_TAG};
 use netrunner_server::protocol::Chair;
@@ -25,7 +26,12 @@ type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// A daemon pairing people, and the key it proves itself by.
 async fn start(data_dir: Option<PathBuf>) -> (String, PublicKey) {
-    let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, ..ServeOptions::default() };
+    start_keeping(data_dir, None).await
+}
+
+/// A daemon pairing people over `--database` when it is given one.
+async fn start_keeping(data_dir: Option<PathBuf>, database: Option<String>) -> (String, PublicKey) {
+    let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, database, ..ServeOptions::default() };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let (addr, key) = (server.local_addr().unwrap(), server.public_key());
     tokio::spawn(server.run());
@@ -141,6 +147,51 @@ async fn play_one(url: &str, corp_seat: (Option<&Identity>, &str), runner_seat: 
 /// a second reader; the daemon's writer is the only writer).
 async fn store_in(dir: &Path) -> Store {
     Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.expect("the daemon's store opens")
+}
+
+/// Where a daemon in a test keeps what it keeps: its data directory —
+/// its key and the results log — and its store, the SQLite file in that
+/// directory or a scratch Postgres schema given as `--database` (Phase 4
+/// §10 stage 3).
+struct Keeping {
+    dir: PathBuf,
+    postgres: Option<PostgresSchema>,
+}
+
+impl Keeping {
+    fn database(&self) -> Option<&str> {
+        self.postgres.as_ref().map(|schema| schema.url.as_str())
+    }
+
+    async fn start(&self) -> (String, PublicKey) {
+        start_keeping(Some(self.dir.clone()), self.database().map(str::to_string)).await
+    }
+
+    /// The daemon's store, opened beside it (the daemon's writer is the
+    /// only writer).
+    async fn store(&self) -> Store {
+        match self.database() {
+            Some(url) => Store::open(url).await.expect("the daemon's store opens"),
+            None => store_in(&self.dir).await,
+        }
+    }
+
+    async fn remove(self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+        if let Some(schema) = self.postgres {
+            schema.remove().await;
+        }
+    }
+}
+
+/// One keeping per database a test can reach: SQLite always, and
+/// Postgres when `NETRUNNER_TEST_POSTGRES` names a server.
+async fn every_keeping(name: &str) -> Vec<Keeping> {
+    let mut keepings = vec![Keeping { dir: scratch(name), postgres: None }];
+    if let Some(schema) = netrunner_store::scratch::postgres(&format!("server_{name}")).await {
+        keepings.push(Keeping { dir: scratch(&format!("{name}_postgres")), postgres: Some(schema) });
+    }
+    keepings
 }
 
 /// The daemon's writer lands the rows after the session task ends, a
@@ -282,28 +333,29 @@ async fn a_daemon_with_a_data_directory_keeps_its_key() {
 /// over, and the players file names each key by the name it gave last.
 #[tokio::test]
 async fn a_rating_follows_the_key_and_never_the_name() {
-    let dir = scratch("follows");
     let (ann, bo) = (player(1), player(2));
     let (ann_id, bo_id) = (ann.public_key().rating_id(), bo.public_key().rating_id());
-    for (round, (ann_name, bo_name)) in [(1u32, ("ann", "bo")), (2, ("annie", "bo"))] {
-        let (url, _) = start(Some(dir.clone())).await;
-        play_one(&url, (Some(&ann), ann_name), (Some(&bo), bo_name)).await;
-        // The games were in the Startup lobby, so the Startup ladder is
-        // the one that moved (Phase 4 §10: a ladder per format).
-        let store = store_in(&dir).await;
-        let rows = wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == i64::from(round))).await;
-        assert_eq!(row(&rows, &bo_id, "startup", "runner").unwrap().losses, i64::from(round));
-        assert!(rows.iter().all(|row| row.format == "startup"), "no other ladder moved: {rows:?}");
-        assert!(rows.iter().all(|row| row.key != ann_name), "nothing is filed under a name");
+    for keeping in every_keeping("follows").await {
+        for (round, (ann_name, bo_name)) in [(1u32, ("ann", "bo")), (2, ("annie", "bo"))] {
+            let (url, _) = keeping.start().await;
+            play_one(&url, (Some(&ann), ann_name), (Some(&bo), bo_name)).await;
+            // The games were in the Startup lobby, so the Startup ladder is
+            // the one that moved (Phase 4 §10: a ladder per format).
+            let store = keeping.store().await;
+            let rows = wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == i64::from(round))).await;
+            assert_eq!(row(&rows, &bo_id, "startup", "runner").unwrap().losses, i64::from(round));
+            assert!(rows.iter().all(|row| row.format == "startup"), "no other ladder moved: {rows:?}");
+            assert!(rows.iter().all(|row| row.key != ann_name), "nothing is filed under a name");
+            store.close().await;
+        }
+        let store = keeping.store().await;
+        assert_eq!(store.player(&ann_id).await.unwrap().unwrap().name, "annie", "the name a key gave last");
+        assert_eq!(store.player(&bo_id).await.unwrap().unwrap().name, "bo");
+        let pairing = store.last_pairing(&ann_id, &bo_id).await.unwrap().expect("the pair is remembered");
+        assert_eq!((pairing.corp.as_str(), pairing.runner.as_str()), (ann_id.as_str(), bo_id.as_str()), "which chairs they took");
         store.close().await;
+        keeping.remove().await;
     }
-    let store = store_in(&dir).await;
-    assert_eq!(store.player(&ann_id).await.unwrap().unwrap().name, "annie", "the name a key gave last");
-    assert_eq!(store.player(&bo_id).await.unwrap().unwrap().name, "bo");
-    let pairing = store.last_pairing(&ann_id, &bo_id).await.unwrap().expect("the pair is remembered");
-    assert_eq!((pairing.corp.as_str(), pairing.runner.as_str()), (ann_id.as_str(), bo_id.as_str()), "which chairs they took");
-    store.close().await;
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[tokio::test]
@@ -528,74 +580,76 @@ async fn a_withheld_seat_signature_is_still_rated_and_the_receipt_says_so() {
 /// (Phase 4 §10 stage 2).
 #[tokio::test]
 async fn a_title_earned_is_worn_an_unearned_one_refused_and_the_ladder_lists_ten_games() {
-    use netrunner_server::protocol::{LadderRow, LADDER_MIN_GAMES};
-    let dir = scratch("profile");
-    std::fs::create_dir_all(&dir).unwrap();
-    let (ann, cy, dee) = (player(1), player(3), player(4));
-    let (ann_id, cy_id, dee_id) = (ann.public_key().rating_id(), cy.public_key().rating_id(), dee.public_key().rating_id());
-    // Seeded before the daemon starts, since the book is loaded from the
-    // store at bind: Cy with ten rated Standard games, Dee with nine.
-    let seed = store_in(&dir).await;
-    seed.saw_player(&ann_id, "ann", 1).await.unwrap();
-    seed.grant(&netrunner_store::Award { key: ann_id.clone(), kind: "title".into(), name: "Gauntlet Runner".into(), earned_at: 2, source: "event:abc".into() }).await.unwrap();
-    for (id, name, corp_games, runner_games) in [(&cy_id, "cy", 6, 4), (&dee_id, "dee", 5, 4)] {
-        seed.saw_player(id, name, 1).await.unwrap();
-        for (role, games) in [("corp", corp_games), ("runner", runner_games)] {
-            let row = RatingRow { key: id.clone(), format: "standard".into(), role: role.into(), rating: 1600.0, deviation: 120.0, volatility: 0.06, wins: games, draws: 0, losses: 0 };
-            seed.put_rating(&row).await.unwrap();
+    for keeping in every_keeping("profile").await {
+        use netrunner_server::protocol::{LadderRow, LADDER_MIN_GAMES};
+        std::fs::create_dir_all(&keeping.dir).unwrap();
+        let (ann, cy, dee) = (player(1), player(3), player(4));
+        let (ann_id, cy_id, dee_id) = (ann.public_key().rating_id(), cy.public_key().rating_id(), dee.public_key().rating_id());
+        // Seeded before the daemon starts, since the book is loaded from the
+        // store at bind: Cy with ten rated Standard games, Dee with nine.
+        let seed = keeping.store().await;
+        seed.saw_player(&ann_id, "ann", 1).await.unwrap();
+        seed.grant(&netrunner_store::Award { key: ann_id.clone(), kind: "title".into(), name: "Gauntlet Runner".into(), earned_at: 2, source: "event:abc".into() }).await.unwrap();
+        for (id, name, corp_games, runner_games) in [(&cy_id, "cy", 6, 4), (&dee_id, "dee", 5, 4)] {
+            seed.saw_player(id, name, 1).await.unwrap();
+            for (role, games) in [("corp", corp_games), ("runner", runner_games)] {
+                let row = RatingRow { key: id.clone(), format: "standard".into(), role: role.into(), rating: 1600.0, deviation: 120.0, volatility: 0.06, wins: games, draws: 0, losses: 0 };
+                seed.put_rating(&row).await.unwrap();
+            }
         }
+        seed.close().await;
+        let (url, _) = keeping.start().await;
+
+        let mut socket = attach(&url, Some(&ann), "annie").await;
+        send(&mut socket, ClientMessage::SetProfile { title: Some("Gauntlet Runner".into()), badge: None }).await;
+        let ServerMessage::Profile { key, profile } = next(&mut socket).await else { panic!("expected Profile") };
+        let profile = profile.expect("kept");
+        assert_eq!((key, profile.name.as_str(), profile.title.as_deref()), (Some(ann.public_key()), "annie", Some("Gauntlet Runner")), "worn, under the name given last");
+        assert_eq!(profile.titles.len(), 1);
+        send(&mut socket, ClientMessage::SetProfile { title: None, badge: Some("first-gauntlet".into()) }).await;
+        let ServerMessage::ProfileRefused { reason } = next(&mut socket).await else { panic!("expected ProfileRefused") };
+        assert!(reason.contains("first-gauntlet"), "{reason}");
+        send(&mut socket, ClientMessage::SetProfile { title: None, badge: None }).await;
+        let ServerMessage::Profile { profile, .. } = next(&mut socket).await else { panic!("expected Profile") };
+        assert_eq!(profile.unwrap().title, None, "nothing worn again");
+
+        // The ladder, on a bare socket: anyone's to read.
+        let (mut bare, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+        send(&mut bare, ClientMessage::Ladder { format: NsgFormat::Standard }).await;
+        let ServerMessage::Ladder { format, rows } = next(&mut bare).await else { panic!("expected Ladder") };
+        assert_eq!(format, NsgFormat::Standard);
+        let listed: Vec<(PublicKey, String)> = rows.iter().map(|LadderRow { key, name, .. }| (*key, name.clone())).collect();
+        assert_eq!(listed, vec![(cy.public_key(), "cy".to_string())], "ten games listed, nine not ({LADDER_MIN_GAMES} needed): {rows:?}");
+        assert_eq!(rows[0].standing.corp.wins, 6);
+        keeping.remove().await;
     }
-    seed.close().await;
-    let (url, _) = start(Some(dir.clone())).await;
-
-    let mut socket = attach(&url, Some(&ann), "annie").await;
-    send(&mut socket, ClientMessage::SetProfile { title: Some("Gauntlet Runner".into()), badge: None }).await;
-    let ServerMessage::Profile { key, profile } = next(&mut socket).await else { panic!("expected Profile") };
-    let profile = profile.expect("kept");
-    assert_eq!((key, profile.name.as_str(), profile.title.as_deref()), (Some(ann.public_key()), "annie", Some("Gauntlet Runner")), "worn, under the name given last");
-    assert_eq!(profile.titles.len(), 1);
-    send(&mut socket, ClientMessage::SetProfile { title: None, badge: Some("first-gauntlet".into()) }).await;
-    let ServerMessage::ProfileRefused { reason } = next(&mut socket).await else { panic!("expected ProfileRefused") };
-    assert!(reason.contains("first-gauntlet"), "{reason}");
-    send(&mut socket, ClientMessage::SetProfile { title: None, badge: None }).await;
-    let ServerMessage::Profile { profile, .. } = next(&mut socket).await else { panic!("expected Profile") };
-    assert_eq!(profile.unwrap().title, None, "nothing worn again");
-
-    // The ladder, on a bare socket: anyone's to read.
-    let (mut bare, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    send(&mut bare, ClientMessage::Ladder { format: NsgFormat::Standard }).await;
-    let ServerMessage::Ladder { format, rows } = next(&mut bare).await else { panic!("expected Ladder") };
-    assert_eq!(format, NsgFormat::Standard);
-    let listed: Vec<(PublicKey, String)> = rows.iter().map(|LadderRow { key, name, .. }| (*key, name.clone())).collect();
-    assert_eq!(listed, vec![(cy.public_key(), "cy".to_string())], "ten games listed, nine not ({LADDER_MIN_GAMES} needed): {rows:?}");
-    assert_eq!(rows[0].standing.corp.wins, 6);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The store is an index of the results log: emptied, it is rebuilt
 /// exactly; and a line nobody signed stops the rebuild rather than count.
 #[tokio::test]
 async fn the_store_is_rebuilt_exactly_from_the_results_log() {
-    let dir = scratch("rebuild");
-    let (url, _) = start(Some(dir.clone())).await;
-    let ann = player(1).public_key().rating_id();
-    play_rated(&url, &player(1), &player(2), true).await;
-    play_rated(&url, &player(1), &player(2), true).await;
-    let store = store_in(&dir).await;
-    let rows = wait_for_rows(&store, |rows| row(rows, &ann, "startup", "corp").is_some_and(|row| row.wins == 2)).await;
-    let results = store.results_of(&ann).await.unwrap();
-    assert_eq!(results.len(), 2);
-    store.replace_rebuilt(&[], &[]).await.unwrap();
-    assert_eq!(netrunner_server::serve::rebuild(&dir, None).await.unwrap(), 2);
-    assert_eq!(store.ratings().await.unwrap(), rows, "the same rows, number for number");
-    assert_eq!(store.results_of(&ann).await.unwrap(), results, "the same results, receipt for receipt");
-    store.close().await;
+    for keeping in every_keeping("rebuild").await {
+        let (url, _) = keeping.start().await;
+        let ann = player(1).public_key().rating_id();
+        play_rated(&url, &player(1), &player(2), true).await;
+        play_rated(&url, &player(1), &player(2), true).await;
+        let store = keeping.store().await;
+        let rows = wait_for_rows(&store, |rows| row(rows, &ann, "startup", "corp").is_some_and(|row| row.wins == 2)).await;
+        let results = store.results_of(&ann).await.unwrap();
+        assert_eq!(results.len(), 2);
+        store.replace_rebuilt(&[], &[]).await.unwrap();
+        assert_eq!(netrunner_server::serve::rebuild(&keeping.dir, keeping.database()).await.unwrap(), 2);
+        assert_eq!(store.ratings().await.unwrap(), rows, "the same rows, number for number");
+        assert_eq!(store.results_of(&ann).await.unwrap(), results, "the same results, receipt for receipt");
+        store.close().await;
 
-    let results = dir.join("results.jsonl");
-    let forged = std::fs::read_to_string(&results).unwrap().replacen("\"rated\\\":true", "\"rated\\\":false", 1);
-    assert_ne!(forged, std::fs::read_to_string(&results).unwrap(), "the test edited a line");
-    std::fs::write(&results, forged).unwrap();
-    let error = netrunner_server::serve::rebuild(&dir, None).await.unwrap_err().to_string();
-    assert!(error.contains("line 1"), "{error}");
-    let _ = std::fs::remove_dir_all(&dir);
+        let results = keeping.dir.join("results.jsonl");
+        let forged = std::fs::read_to_string(&results).unwrap().replacen("\"rated\\\":true", "\"rated\\\":false", 1);
+        assert_ne!(forged, std::fs::read_to_string(&results).unwrap(), "the test edited a line");
+        std::fs::write(&results, forged).unwrap();
+        let error = netrunner_server::serve::rebuild(&keeping.dir, keeping.database()).await.unwrap_err().to_string();
+        assert!(error.contains("line 1"), "{error}");
+        keeping.remove().await;
+    }
 }

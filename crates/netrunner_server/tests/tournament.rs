@@ -4,7 +4,7 @@
 //! the server checks and publishes, and the tournament outlives the
 //! daemon that took the registrations.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -24,6 +24,23 @@ use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+/// Waits until the store in `dir` holds tournament `id` with `needle` in
+/// its document. The daemon's writer lands a change a moment after the
+/// players are told of it, so a daemon restarted on the directory before
+/// then loads the state before it: the race this waits out, which lost
+/// once in CI when a restart read round 2 of a finished tournament.
+async fn stored(dir: &Path, id: &str, needle: &str) {
+    let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !store.tournaments().await.unwrap().iter().any(|row| row.id == id && row.document.contains(needle)) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("tournament {id} is in the store with {needle:?} within 10s"));
+    store.close().await;
+}
 
 async fn start(data_dir: Option<PathBuf>) -> (String, PublicKey) {
     start_with(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, ..ServeOptions::default() }).await
@@ -233,16 +250,7 @@ async fn a_tournament_outlives_the_daemon_that_took_its_registrations() {
     )
     .await;
     let ServerMessage::Tournament { tournament: before } = next(&mut entrant).await else { panic!() };
-    // The store's writer lands the row a moment after the answer.
-    let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !store.tournaments().await.unwrap().iter().any(|row| row.id == made.id && row.document.contains(&bo.public_key().to_string())) {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("the tournament is in the store, with its entrant");
-    store.close().await;
+    stored(&dir, &made.id, &bo.public_key().to_string()).await;
 
     let (again, same_key) = start(Some(dir.clone())).await;
     assert_eq!(same_key, server_key, "the same data directory is the same server");
@@ -438,6 +446,7 @@ async fn rounds_are_paired_played_recorded_and_kept() {
     let _ = Role::Corp;
 
     // A daemon restarted on the directory holds the rounds.
+    stored(&dir, &made.id, "Finished").await;
     let (again, _) = start(Some(dir.clone())).await;
     let mut socket = attach(&again, None, "anyone").await;
     send(&mut socket, ClientMessage::ListTournaments).await;
@@ -558,6 +567,7 @@ async fn a_drop_forfeits_its_table_and_is_paired_no_more() {
     assert!(finished.dropped.contains(&table.corp) && finished.dropped.contains(&rematch.runner));
 
     // A daemon restarted on the directory holds who dropped.
+    stored(&dir, &made.id, "Finished").await;
     let (again, _) = start(Some(dir.clone())).await;
     let mut socket = attach(&again, None, "anyone").await;
     send(&mut socket, ClientMessage::ListTournaments).await;

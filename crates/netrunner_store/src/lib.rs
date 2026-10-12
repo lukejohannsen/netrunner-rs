@@ -510,102 +510,216 @@ const SCHEMA: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS tournaments (id TEXT PRIMARY KEY, document TEXT NOT NULL, updated_at BIGINT NOT NULL)",
 ];
 
+/// A namespace of a test's own on a shared Postgres server (Phase 4 §10
+/// stage 3), for this crate's tests and the server's.
+///
+/// The Postgres driver is tested against a live server only where one
+/// is given: `NETRUNNER_TEST_POSTGRES` names it by URL, and the weekly
+/// workflow's `postgres` job sets it to a service container. Nobody has
+/// to install Postgres to run `cargo test`, and a test that finds the
+/// variable unset says it skipped and runs on SQLite alone. Each test
+/// gets a schema of its own, reached by setting the connection's
+/// `search_path` in the URL, so tests run in parallel against one server
+/// and drop what they made. Rejected: a database per test, which needs
+/// the right to create databases and a connection to each.
+pub mod scratch {
+    use sqlx::AssertSqlSafe;
+    use sqlx::any::AnyPoolOptions;
+
+    /// The variable naming the Postgres server tests may use.
+    pub const POSTGRES_ENV: &str = "NETRUNNER_TEST_POSTGRES";
+
+    /// A schema made for one test, and the URL that opens a store in it.
+    #[derive(Debug)]
+    pub struct PostgresSchema {
+        base: String,
+        schema: String,
+        /// The server's URL with the schema as its search path.
+        pub url: String,
+    }
+
+    /// A fresh, empty schema for the test `name` on the server
+    /// `NETRUNNER_TEST_POSTGRES` names, or `None` when it names none.
+    ///
+    /// # Panics
+    ///
+    /// When the variable is set and this build has no Postgres driver —
+    /// a run that asked for Postgres must not pass on SQLite alone — or
+    /// when the server cannot be reached or refuses the schema.
+    pub async fn postgres(name: &str) -> Option<PostgresSchema> {
+        let base = match std::env::var(POSTGRES_ENV) {
+            Ok(url) if !url.is_empty() => url,
+            _ => {
+                eprintln!("{name}: {POSTGRES_ENV} is unset, so this runs on SQLite only");
+                return None;
+            }
+        };
+        if !cfg!(feature = "postgres") {
+            panic!("{POSTGRES_ENV} is set but this build has no Postgres driver: test with the `postgres` feature");
+        }
+        let tidy: String = name.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
+        let schema = format!("test_{tidy}_{}", std::process::id());
+        run(&base, &[format!("DROP SCHEMA IF EXISTS {schema} CASCADE"), format!("CREATE SCHEMA {schema}")]).await;
+        let separator = if base.contains('?') { '&' } else { '?' };
+        let url = format!("{base}{separator}options[search_path]={schema}");
+        Some(PostgresSchema { base, schema, url })
+    }
+
+    impl PostgresSchema {
+        /// Drops the schema and everything in it.
+        pub async fn remove(self) {
+            run(&self.base, &[format!("DROP SCHEMA IF EXISTS {} CASCADE", self.schema)]).await;
+        }
+    }
+
+    /// Runs `statements` on the server at `base`, outside any schema.
+    /// The names in them are made above from `[a-z0-9_]`, which is the
+    /// audit `AssertSqlSafe` asks for.
+    async fn run(base: &str, statements: &[String]) {
+        sqlx::any::install_default_drivers();
+        let pool = AnyPoolOptions::new().max_connections(1).connect(base).await.unwrap_or_else(|error| panic!("{POSTGRES_ENV}: {error}"));
+        for statement in statements {
+            sqlx::query(AssertSqlSafe(statement.clone())).execute(&pool).await.unwrap_or_else(|error| panic!("{statement}: {error}"));
+        }
+        pool.close().await;
+    }
+}
+
 /// The tests need a driver, so they are the `sqlite` feature's — which a
 /// workspace build turns on through the daemon's default features, and
-/// `cargo test -p netrunner_store --features sqlite` runs alone.
+/// `cargo test -p netrunner_store --features sqlite` runs alone. Each runs
+/// once per database it can reach: always SQLite, and Postgres where
+/// `NETRUNNER_TEST_POSTGRES` names a server (`scratch`).
 #[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
 
-    /// A fresh SQLite store in a scratch file of the test's own.
-    async fn fresh(name: &str) -> (Store, std::path::PathBuf) {
+    /// Where a test's store lives, so it can be opened again and removed.
+    enum Place {
+        File(std::path::PathBuf),
+        Postgres(scratch::PostgresSchema),
+    }
+
+    impl Place {
+        fn url(&self) -> String {
+            match self {
+                Place::File(dir) => sqlite_url(&dir.join(SQLITE_FILE)),
+                Place::Postgres(schema) => schema.url.clone(),
+            }
+        }
+
+        async fn remove(self) {
+            match self {
+                Place::File(dir) => {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
+                Place::Postgres(schema) => schema.remove().await,
+            }
+        }
+    }
+
+    /// A fresh store for the test `name` on every database there is: a
+    /// scratch SQLite file of its own, and a scratch schema on Postgres
+    /// when one is given.
+    async fn every_store(name: &str) -> Vec<(Store, Place)> {
         let dir = std::env::temp_dir().join(format!("netrunner_store_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(SQLITE_FILE);
-        let store = Store::open(&sqlite_url(&path)).await.expect("a scratch sqlite store opens");
-        (store, dir)
+        let mut places = vec![Place::File(dir)];
+        if let Some(schema) = scratch::postgres(name).await {
+            places.push(Place::Postgres(schema));
+        }
+        let mut stores = Vec::new();
+        for place in places {
+            let store = Store::open(&place.url()).await.unwrap_or_else(|error| panic!("a scratch store opens at {}: {error}", place.url()));
+            stores.push((store, place));
+        }
+        stores
     }
 
     #[tokio::test]
     async fn a_player_is_seen_twice_under_one_row_and_keeps_what_they_wear() {
-        let (store, dir) = fresh("players").await;
-        store.saw_player("key:ann", "ann", 10).await.unwrap();
-        store.set_worn("key:ann", Some("Gauntlet Runner"), None).await.unwrap();
-        store.saw_player("key:ann", "annie", 20).await.unwrap();
-        let ann = store.player("key:ann").await.unwrap().unwrap();
-        assert_eq!(ann, Player { key: "key:ann".into(), name: "annie".into(), first_seen: 10, last_seen: 20, title: Some("Gauntlet Runner".into()), badge: None });
-        assert_eq!(store.player("key:bo").await.unwrap(), None);
-        store.close().await;
-        let _ = std::fs::remove_dir_all(dir);
+        for (store, place) in every_store("players").await {
+            store.saw_player("key:ann", "ann", 10).await.unwrap();
+            store.set_worn("key:ann", Some("Gauntlet Runner"), None).await.unwrap();
+            store.saw_player("key:ann", "annie", 20).await.unwrap();
+            let ann = store.player("key:ann").await.unwrap().unwrap();
+            assert_eq!(ann, Player { key: "key:ann".into(), name: "annie".into(), first_seen: 10, last_seen: 20, title: Some("Gauntlet Runner".into()), badge: None });
+            assert_eq!(store.player("key:bo").await.unwrap(), None);
+            store.close().await;
+            place.remove().await;
+        }
     }
 
     #[tokio::test]
     async fn a_rating_row_is_replaced_by_its_key_format_and_role() {
-        let (store, dir) = fresh("ratings").await;
-        let mut row = RatingRow { key: "key:ann".into(), format: "standard".into(), role: "corp".into(), rating: 1500.0, deviation: 350.0, volatility: 0.06, wins: 0, draws: 0, losses: 0 };
-        store.put_rating(&row).await.unwrap();
-        row.rating = 1612.5;
-        row.wins = 1;
-        store.put_rating(&row).await.unwrap();
-        store.put_rating(&RatingRow { format: "startup".into(), ..row.clone() }).await.unwrap();
-        store.put_rating(&RatingRow { role: "runner".into(), ..row.clone() }).await.unwrap();
-        assert_eq!(store.ratings().await.unwrap().len(), 3);
-        assert_eq!(store.ratings_in("standard").await.unwrap().len(), 2);
-        let standard_corp = &store.ratings_of("key:ann").await.unwrap()[0];
-        assert_eq!((standard_corp.format.as_str(), standard_corp.role.as_str(), standard_corp.rating, standard_corp.wins), ("standard", "corp", 1612.5, 1));
-        store.replace_rebuilt(&[], &[]).await.unwrap();
-        assert!(store.ratings().await.unwrap().is_empty());
-        let result = ResultRow { match_id: "m1".into(), ended_at: 1, format: "standard".into(), corp: "key:ann".into(), runner: "key:bo".into(), winner: Some("corp".into()), receipt: "{}".into() };
-        store.record_game(&[row.clone(), RatingRow { key: "key:bo".into(), ..row.clone() }], &result).await.unwrap();
-        assert_eq!(store.ratings().await.unwrap().len(), 2);
-        assert_eq!(store.results_of("key:bo").await.unwrap(), vec![result]);
-        store.close().await;
-        let _ = std::fs::remove_dir_all(dir);
+        for (store, place) in every_store("ratings").await {
+            let mut row = RatingRow { key: "key:ann".into(), format: "standard".into(), role: "corp".into(), rating: 1500.0, deviation: 350.0, volatility: 0.06, wins: 0, draws: 0, losses: 0 };
+            store.put_rating(&row).await.unwrap();
+            row.rating = 1612.5;
+            row.wins = 1;
+            store.put_rating(&row).await.unwrap();
+            store.put_rating(&RatingRow { format: "startup".into(), ..row.clone() }).await.unwrap();
+            store.put_rating(&RatingRow { role: "runner".into(), ..row.clone() }).await.unwrap();
+            assert_eq!(store.ratings().await.unwrap().len(), 3);
+            assert_eq!(store.ratings_in("standard").await.unwrap().len(), 2);
+            let standard_corp = &store.ratings_of("key:ann").await.unwrap()[0];
+            assert_eq!((standard_corp.format.as_str(), standard_corp.role.as_str(), standard_corp.rating, standard_corp.wins), ("standard", "corp", 1612.5, 1));
+            store.replace_rebuilt(&[], &[]).await.unwrap();
+            assert!(store.ratings().await.unwrap().is_empty());
+            let result = ResultRow { match_id: "m1".into(), ended_at: 1, format: "standard".into(), corp: "key:ann".into(), runner: "key:bo".into(), winner: Some("corp".into()), receipt: "{}".into() };
+            store.record_game(&[row.clone(), RatingRow { key: "key:bo".into(), ..row.clone() }], &result).await.unwrap();
+            assert_eq!(store.ratings().await.unwrap().len(), 2);
+            assert_eq!(store.results_of("key:bo").await.unwrap(), vec![result]);
+            store.close().await;
+            place.remove().await;
+        }
     }
 
     #[tokio::test]
     async fn results_awards_pairings_and_tournaments_round_trip() {
-        let (store, dir) = fresh("rest").await;
-        let result = ResultRow { match_id: "m1".into(), ended_at: 100, format: "standard".into(), corp: "key:ann".into(), runner: "key:bo".into(), winner: Some("corp".into()), receipt: "{}".into() };
-        store.put_result(&result).await.unwrap();
-        store.put_result(&ResultRow { match_id: "m2".into(), ended_at: 200, winner: None, ..result.clone() }).await.unwrap();
-        let of_bo = store.results_of("key:bo").await.unwrap();
-        assert_eq!(of_bo.iter().map(|row| row.match_id.as_str()).collect::<Vec<_>>(), ["m2", "m1"], "newest first");
-        assert_eq!(of_bo[0].winner, None);
-        assert_eq!(store.result_count().await.unwrap(), 2);
+        for (store, place) in every_store("rest").await {
+            let result = ResultRow { match_id: "m1".into(), ended_at: 100, format: "standard".into(), corp: "key:ann".into(), runner: "key:bo".into(), winner: Some("corp".into()), receipt: "{}".into() };
+            store.put_result(&result).await.unwrap();
+            store.put_result(&ResultRow { match_id: "m2".into(), ended_at: 200, winner: None, ..result.clone() }).await.unwrap();
+            let of_bo = store.results_of("key:bo").await.unwrap();
+            assert_eq!(of_bo.iter().map(|row| row.match_id.as_str()).collect::<Vec<_>>(), ["m2", "m1"], "newest first");
+            assert_eq!(of_bo[0].winner, None);
+            assert_eq!(store.result_count().await.unwrap(), 2);
 
-        let badge = Award { key: "key:ann".into(), kind: "badge".into(), name: "first-gauntlet".into(), earned_at: 150, source: "event:abc".into() };
-        store.grant(&badge).await.unwrap();
-        store.grant(&Award { earned_at: 999, ..badge.clone() }).await.unwrap();
-        assert_eq!(store.awards_of("key:ann").await.unwrap(), vec![badge.clone()], "granted once, kept as first granted");
-        store.revoke("key:ann", "badge", "first-gauntlet").await.unwrap();
-        assert!(store.awards_of("key:ann").await.unwrap().is_empty());
+            let badge = Award { key: "key:ann".into(), kind: "badge".into(), name: "first-gauntlet".into(), earned_at: 150, source: "event:abc".into() };
+            store.grant(&badge).await.unwrap();
+            store.grant(&Award { earned_at: 999, ..badge.clone() }).await.unwrap();
+            assert_eq!(store.awards_of("key:ann").await.unwrap(), vec![badge.clone()], "granted once, kept as first granted");
+            store.revoke("key:ann", "badge", "first-gauntlet").await.unwrap();
+            assert!(store.awards_of("key:ann").await.unwrap().is_empty());
 
-        store.put_pairing("key:ann", "key:bo", 100).await.unwrap();
-        store.put_pairing("key:bo", "key:ann", 200).await.unwrap();
-        let last = store.last_pairing("key:ann", "key:bo").await.unwrap().unwrap();
-        assert_eq!(last, Pairing { corp: "key:bo".into(), runner: "key:ann".into(), played_at: 200 }, "one row for the pair, the later game's chairs");
-        assert_eq!(store.last_pairing("key:bo", "key:ann").await.unwrap(), Some(last));
-        assert_eq!(store.last_pairing("key:ann", "key:cy").await.unwrap(), None);
+            store.put_pairing("key:ann", "key:bo", 100).await.unwrap();
+            store.put_pairing("key:bo", "key:ann", 200).await.unwrap();
+            let last = store.last_pairing("key:ann", "key:bo").await.unwrap().unwrap();
+            assert_eq!(last, Pairing { corp: "key:bo".into(), runner: "key:ann".into(), played_at: 200 }, "one row for the pair, the later game's chairs");
+            assert_eq!(store.last_pairing("key:bo", "key:ann").await.unwrap(), Some(last));
+            assert_eq!(store.last_pairing("key:ann", "key:cy").await.unwrap(), None);
 
-        store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":1}".into(), updated_at: 1 }).await.unwrap();
-        store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }).await.unwrap();
-        assert_eq!(store.tournaments().await.unwrap(), vec![TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }]);
-        store.remove_tournament("T1").await.unwrap();
-        assert!(store.tournaments().await.unwrap().is_empty());
-        store.close().await;
-        let _ = std::fs::remove_dir_all(dir);
+            store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":1}".into(), updated_at: 1 }).await.unwrap();
+            store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }).await.unwrap();
+            assert_eq!(store.tournaments().await.unwrap(), vec![TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }]);
+            store.remove_tournament("T1").await.unwrap();
+            assert!(store.tournaments().await.unwrap().is_empty());
+            store.close().await;
+            place.remove().await;
+        }
     }
 
     #[tokio::test]
-    async fn the_file_is_made_on_open_and_opens_again_at_the_same_version() {
-        let (store, dir) = fresh("reopen").await;
-        store.saw_player("key:ann", "ann", 1).await.unwrap();
-        store.close().await;
-        let again = Store::open(&sqlite_url(&dir.join(SQLITE_FILE))).await.unwrap();
-        assert_eq!(again.player("key:ann").await.unwrap().unwrap().name, "ann");
-        again.close().await;
-        let _ = std::fs::remove_dir_all(dir);
+    async fn the_store_is_made_on_open_and_opens_again_at_the_same_version() {
+        for (store, place) in every_store("reopen").await {
+            store.saw_player("key:ann", "ann", 1).await.unwrap();
+            store.close().await;
+            let again = Store::open(&place.url()).await.unwrap();
+            assert_eq!(again.player("key:ann").await.unwrap().unwrap().name, "ann");
+            again.close().await;
+            place.remove().await;
+        }
     }
 }

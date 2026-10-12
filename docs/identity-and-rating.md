@@ -270,7 +270,9 @@ Each its own branch, in this order; each is useful without the next.
    format, the receipt naming its format, `--rebuild`. *Stage 2 built the
    same day* (`feat/profile-messages`): `MyProfile` / `Profile` in place of
    the standing, `SetProfile` choosing among what was earned, `Ladder` per
-   format for keys with ten rated games. Next: Postgres.
+   format for keys with ten rated games. *Stage 3* (`feat/store-postgres`):
+   the Postgres driver tested against a live server in the weekly
+   workflow, the store's tests and the daemon's over `--database`.
 
 **Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
 `ServerMessage` live in `netrunner_protocol`, which the server re-exports and
