@@ -3981,3 +3981,14 @@ The two seeds move the Corp in opposite directions by about one and two standard
 Leech's count is mostly counters spent in encounters, which `used` counts with installs. The Corp wins a little more on both seeds (z 0.66 and 1.59), which is within the seed-spread band; a Runner that spends a click and a credit on Tread Lightly where a click run would do is the one cost the term does not see, and is the first place to look if a later measurement confirms it.
 
 **Verified.** `a_rez_cost_rise_for_the_run_is_the_corp_credits_it_takes` and `a_first_central_run_each_turn_is_income`, and `a_card_that_pays_on_a_run_is_read_at_a_run_a_turn` with Leech at a credit a central run.
+
+## 74. A card that raises a breaker's strength is the pumps it saves: GAMEDRAGON™ Pro, K2CP Turbine and The Personal Touch — DONE (`claude/bot-blindness-batch-4`, 12 October 2026)
+
+**The debt.** §67 read a card that lowers the strength of ice as the break credits it saves, and the cards that do the same from the other side — a breaker made stronger — stayed at their price: GAMEDRAGON™ Pro (random seats 20, the planner 5, in six decks), K2CP Turbine (on the hand list of hardware the planner never installs) and The Personal Touch.
+
+**What is read now.** `runner::strength_cut_value` takes a `Strength` of a positive number on a card's host or on the rig's breakers (`raises_breaker_strength`) as it takes a negative one on ice: the held card on every icebreaker in the rig it could be hosted on (`InstalledRunnerCard::hosted_on_rig_card`), or in the rig for one that names the rig's breakers, and `best_break_saving` with it against without — a run a turn over the horizon at `future_credit_weight`. Dinosaurus, whose +2 is for the breaker it hosts, is not this shape and is left for the console reading.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §73's code against this branch on seeds 2 / 3: GAMEDRAGON™ Pro 6 → 30 / 5 → 26, K2CP Turbine 1 → 3 / 0 → 0, The Personal Touch 2 → 2 / 1 → 4; Corp share 0.517 → 0.519, 0.471 → 0.475 (z 0.19, 0.41). GAMEDRAGON™ Pro is off the list. K2CP Turbine and The Personal Touch moved by a few uses: each is in one or two decks, and at a pump a run saved over the horizon the price is close to what they cost.
+
+**Verified.** `a_breaker_strength_boost_is_the_pumps_it_saves`: against Tollbooth with Gordian Blade in the rig, GAMEDRAGON™ Pro saves one pump and K2CP Turbine two.
+
