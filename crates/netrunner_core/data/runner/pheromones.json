@@ -1,0 +1,34 @@
+{
+  "id": "pheromones",
+  "title": "Pheromones",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "recurring_credits": "HostedCounters",
+  "pays_for": [
+    {
+      "DuringRunsOn": "Hq"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you make a successful run on HQ, place 1 virus counter on Pheromones."
+    }
+  ],
+  "built_from": 2086,
+  "is_playable": true
+}

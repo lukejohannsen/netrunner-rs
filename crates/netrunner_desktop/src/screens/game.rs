@@ -3380,6 +3380,11 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                     let token = Token { kind: TokenKind::Counter(def.counter_kind), amount: card.counters.to_string() };
                                     spawn_badge(slot, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
                                 }
+                                // Credits kept beside another kind of counter (Pheromones).
+                                if card.credits > 0 {
+                                    let token = Token { kind: TokenKind::Counter(Some(netrunner_core::dsl::CounterKind::Credit)), amount: card.credits.to_string() };
+                                    spawn_badge(slot, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
+                                }
                             });
                         }
                     });

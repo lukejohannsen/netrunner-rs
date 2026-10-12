@@ -1366,7 +1366,9 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
             }
         }
     }
-    income.turn_credits += def.recurring_credits.unwrap_or(0);
+    // An X[recurring-credit] (Pheromones) is read as nothing: X is the
+    // card's counters, which a reading of the card alone does not have.
+    income.turn_credits += def.recurring_credits.and_then(netrunner_core::dsl::RecurringCredits::printed).unwrap_or(0);
     for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
         // "Hosted virus counter: the ice you are encountering gets −1
         // strength for the remainder of this encounter" (Leech,

@@ -457,6 +457,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
+        (PaysFor::DuringRunsOn(server), _) => during_a_run_on(state, server),
         (PaysFor::DuringSuccessfulRuns, _) => during_a_successful_run(state),
         (PaysFor::UsingDuringRuns(filter), Purpose::Ability(card)) => state.active_run.is_some() && card_matches_filter(card, filter),
         (PaysFor::DuringItsRun, _) => {
@@ -486,11 +487,25 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
     }
 }
 
-fn hosted_credits(state: &GameState, side: Side, install: InstallId) -> u32 {
+/// The credits hosted on `install`: its `counters`, or for a card that
+/// keeps them beside another kind of counter (Pheromones), its `credits`.
+fn hosted_credits(state: &GameState, registry: &CardRegistry, side: Side, install: InstallId) -> u32 {
     match side {
         Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map_or(0, |c| c.counters),
-        Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map_or(0, |c| c.counters),
+        Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map_or(0, |c| {
+            if beside_counters(registry, &c.card) { c.credits } else { c.counters }
+        }),
     }
+}
+
+fn beside_counters(registry: &CardRegistry, card: &crate::dsl::CardId) -> bool {
+    registry.get(card).is_some_and(crate::dsl::CardDefinition::hosts_credits_beside_counters)
+}
+
+/// Whether a run on `server` is in progress — Pheromones' "during runs on
+/// HQ" (`PaysFor::DuringRunsOn`).
+fn during_a_run_on(state: &GameState, server: &crate::rules::ServerId) -> bool {
+    state.active_run.as_ref().is_some_and(|run| run.server == *server)
 }
 
 /// Everywhere `side` could take credits from to pay for `purpose`, in the
@@ -545,7 +560,7 @@ pub(crate) fn sources(
     })
     .collect();
     for install in hosts {
-        push(Pool::Hosted(install), hosted_credits(state, side, install));
+        push(Pool::Hosted(install), hosted_credits(state, registry, side, install));
     }
     if let (Side::Runner, Some(run)) = (side, state.active_run.as_ref()) {
         if from.is_none() {
@@ -752,7 +767,7 @@ fn during_a_central_run(state: &GameState) -> bool {
 
 fn pools_could_ask(state: &GameState) -> bool {
     let run_pool = state.active_run.as_ref().is_some_and(|run| run.bad_publicity_credits > 0 || run.bonus_run_credits > 0);
-    let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0).count();
+    let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0 || card.credits > 0).count();
     let corp = usize::from(state.corp.identity_counters > 0) + state.corp.installed.iter().filter(|card| card.rezzed && card.counters > 0).count();
     runner >= 2 || corp >= 2
 }
@@ -772,6 +787,7 @@ pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, p
         // goes before Methuselah's unasked, as it would before the pool's.
         let during_a_run = (state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun)))
             || (during_a_central_run(state) && words.contains(&PaysFor::DuringRunsOnCentralServers))
+            || words.iter().any(|word| matches!(word, PaysFor::DuringRunsOn(server) if during_a_run_on(state, server)))
             || (during_a_successful_run(state) && words.contains(&PaysFor::DuringSuccessfulRuns));
         Class {
             breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
@@ -879,7 +895,7 @@ pub(crate) fn pay_from(
             }
             Pool::Hosted(install) => {
                 from_hosted += spend;
-                let emptied = hosted_credits(state, side, install) == spend;
+                let emptied = hosted_credits(state, registry, side, install) == spend;
                 events.extend(spend_hosted(state, registry, side, install, spend, emptied)?);
             }
             Pool::BadPublicity => {
@@ -912,7 +928,7 @@ pub(crate) fn pay_from(
 /// card holding more than N by some other text keeps them).
 pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side) -> Result<Vec<GameEvent>, RulesError> {
     let recurring = |card: &crate::dsl::CardId| registry.get(card).and_then(|definition| definition.recurring_credits);
-    let due: Vec<(Option<InstallId>, crate::dsl::CardId, u32)> = match side {
+    let due: Vec<(Option<InstallId>, crate::dsl::CardId, crate::dsl::RecurringCredits)> = match side {
         Side::Corp => active::corp(state, registry).collect::<Vec<_>>(),
         Side::Runner => active::runner(state, registry).collect::<Vec<_>>(),
     }
@@ -928,7 +944,7 @@ pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side)
     .collect();
     let mut events = Vec::new();
     for (install, card, credits) in due {
-        events.extend(raise_to(state, side, install, &card, credits)?);
+        events.extend(raise_to(state, registry, side, install, &card, credits)?);
     }
     Ok(events)
 }
@@ -948,30 +964,53 @@ pub(crate) fn place_recurring(
     card: &crate::dsl::CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
     match registry.get(card).and_then(|definition| definition.recurring_credits) {
-        Some(credits) => raise_to(state, side, install, card, credits),
+        Some(credits) => raise_to(state, registry, side, install, card, credits),
         None => Ok(Vec::new()),
     }
 }
 
+/// Raises the credits on `card` to N (CR 1.10.5a), N counted now when the
+/// card counts it (`RecurringCredits::of`, against its own counters).
 fn raise_to(
     state: &mut GameState,
+    registry: &CardRegistry,
     side: Side,
     install: Option<InstallId>,
     card: &crate::dsl::CardId,
-    credits: u32,
+    recurring: crate::dsl::RecurringCredits,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let ctx = match install {
+        Some(install) => ResolutionContext::for_parked(Some(install), Some(card)),
+        None => ResolutionContext::for_card(Some(card)),
+    };
+    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0));
     let held = match install {
-        Some(install) => hosted_credits(state, side, install),
+        Some(install) => hosted_credits(state, registry, side, install),
         None => state.corp.identity_counters,
     };
     if held >= credits {
         return Ok(Vec::new());
     }
-    let ctx = match install {
-        Some(install) => ResolutionContext::for_parked(Some(install), Some(card)),
-        None => ResolutionContext::for_card(Some(card)),
+    change_hosted(state, registry, &ctx, i64::from(credits - held))
+}
+
+/// Puts `delta` credits on (or, negative, takes them off) the card `ctx`
+/// acts as: its `counters` through `ability::modify_counters`, or its
+/// `credits` when it keeps them beside another kind of counter, recorded
+/// the same way.
+fn change_hosted(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>, delta: i64) -> Result<Vec<GameEvent>, RulesError> {
+    let card = ctx.acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+    let beside = ctx.acting_install.and_then(|install| state.runner.rig.iter().position(|c| c.install_id == install)).filter(|_| beside_counters(registry, card));
+    let Some(position) = beside else {
+        return ability::modify_counters(state, ctx, delta);
     };
-    ability::modify_counters(state, &ctx, i64::from(credits - held))
+    let credits = &mut state.runner.rig[position].credits;
+    *credits = u32::try_from((i64::from(*credits) + delta).max(0)).unwrap_or(u32::MAX);
+    Ok(vec![if delta >= 0 {
+        GameEvent::CountersAdded { card: card.clone(), amount: u32::try_from(delta).unwrap_or(u32::MAX) }
+    } else {
+        GameEvent::CountersRemoved { card: card.clone(), amount: u32::try_from(-delta).unwrap_or(u32::MAX) }
+    }])
 }
 
 /// Takes `spend` hosted credits off `install` — through the path
@@ -993,7 +1032,7 @@ fn spend_hosted(
     }
     .ok_or(RulesError::InstallNotFound(install))?;
     let ctx = ResolutionContext::for_parked(Some(install), Some(&card));
-    let mut events = ability::modify_counters(state, &ctx, -i64::from(spend))?;
+    let mut events = change_hosted(state, registry, &ctx, -i64::from(spend))?;
     if emptied && registry.get(&card).is_some_and(|definition| definition.trash_when_empty) {
         // "Trash it when empty" is the card's own clause, but it is met in
         // the middle of a payment, whose events no payer dispatches; it

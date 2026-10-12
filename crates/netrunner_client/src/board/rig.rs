@@ -234,6 +234,7 @@ mod tests {
             turned_facedown: 0,
             hosted_cards_playable: false,
             counters: 0,
+            credits: 0,
         }
     }
 

@@ -563,6 +563,14 @@ pub struct InstalledRunnerCard {
     /// `InstalledCard::counters` there is nothing here to hide.
     #[serde(default)]
     pub counters: u32,
+    /// Credits hosted on a card whose `counters` are another kind
+    /// (`CardDefinition::hosts_credits_beside_counters`: Pheromones' X
+    /// recurring credits beside its virus counters). Placed, refilled and
+    /// spent by `rules::payment` alone, and untouched by a purge, which
+    /// takes virus counters. 0 on every other card, whose hosted credits
+    /// are its `counters`. Public, as the rig is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub credits: u32,
     /// The Corp installed ICE this card is hosted on, if it was installed
     /// via `PlayerAction::InstallProgramOnIce` (a Trojan Program, `dsl::
     /// CardDefinition::installs_on_ice`) — e.g. Botulus, Tranquilizer.
@@ -645,6 +653,7 @@ impl Default for InstalledRunnerCard {
             install_id: InstallId::PLACEHOLDER,
             base_strength: 0,
             counters: 0,
+            credits: 0,
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),

@@ -1032,6 +1032,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
             // unconditionally and so put every Trojan ability out of the
             // search's reach entirely.
             counters: card.counters,
+            credits: card.credits,
             hosted_on_ice: card.hosted_on_ice,
             hosted_on_rig_card: card.hosted_on_rig_card,
             // Cards hosted facedown are only counted for this viewer, and

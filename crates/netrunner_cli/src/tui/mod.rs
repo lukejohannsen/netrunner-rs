@@ -1443,7 +1443,9 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
             if i > 0 {
                 spans.push(Span::raw(" · "));
             }
-            let counters = counter_label(Some(&card.card), card.counters, app.registry());
+            // Credits kept beside another kind of counter (Pheromones).
+            let credits = if card.credits > 0 { format!(", {} credits", card.credits) } else { String::new() };
+            let counters = counter_label(Some(&card.card), card.counters, app.registry()) + &credits;
             let strength = app.registry().get(&card.card).and_then(|def| def.strength).map(|_| format!("str {}", card.current_strength));
             let host = card.hosted_on_ice.map(|ice| format!("on {}", netrunner_client::board::rig::host_label(view, app.registry(), ice)));
             let hosted = netrunner_client::board::rig::hosted_chip(card);
@@ -1871,7 +1873,7 @@ mod tests {
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
         hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true });
-        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1 });
+        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1, credits: 0 });
 
         let mut ui = LocalUiState::new(registry, Side::Runner);
         ui.begin_decision(view);
