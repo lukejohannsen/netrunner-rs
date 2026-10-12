@@ -165,6 +165,10 @@ pub enum RulesError {
     /// another run this turn" (`Prohibition::Run`).
     #[error("the Runner cannot make another run this turn")]
     RunsProhibited,
+    /// The Runner cannot jack out for the rest of this run (Whirlpool,
+    /// `Prohibition::JackOut`).
+    #[error("the Runner cannot jack out of this run")]
+    JackOutProhibited,
 
     /// The additional cost to run the server (CR 6.3.2b: Earth Station: SEA
     /// Headquarters) cannot be paid, so the run cannot be made.

@@ -79,9 +79,7 @@ pub(crate) const CORE_UNIMPLEMENTED: &[(&str, &str)] = &[];
 /// *Revised Core Set* (`revised_core_set`): tranche F1 of the FFG plan.
 pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pheromones", "Pheromones"),
-    ("hudson_1_0", "Hudson 1.0"),
     ("the_cleaners", "The Cleaners"),
-    ("whirlpool", "Whirlpool"),
 ];
 
 /// *Reign and Reverie* (`reign_and_reverie`): tranche F2 of the FFG plan.
@@ -1312,7 +1310,6 @@ pub(crate) const MT_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("woman_in_the_red_dress", "Woman in the Red Dress"),
     ("raymond_flint", "Raymond Flint"),
     ("isabel_mcguire", "Isabel McGuire"),
-    ("hudson_1_0", "Hudson 1.0"),
     ("accelerated_diagnostics", "Accelerated Diagnostics"),
     ("unorthodox_predictions", "Unorthodox Predictions"),
     ("sundew", "Sundew"),
@@ -1464,7 +1461,6 @@ pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kati_jones", "Kati Jones"),
     ("eve_campaign", "Eve Campaign"),
     ("rework", "Rework"),
-    ("whirlpool", "Whirlpool"),
     ("data_hound", "Data Hound"),
     ("salvage", "Salvage"),
     ("simone_diego", "Simone Diego"),

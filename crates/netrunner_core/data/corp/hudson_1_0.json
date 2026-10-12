@@ -1,0 +1,51 @@
+{
+  "id": "hudson_1_0",
+  "title": "Hudson 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner cannot access more than 1 card during this run.",
+      "effect": {
+        "Prohibit": {
+          "what": "AccessMoreThanOneCard",
+          "until": "Run"
+        }
+      }
+    },
+    {
+      "text": "The Runner cannot access more than 1 card during this run.",
+      "effect": {
+        "Prohibit": {
+          "what": "AccessMoreThanOneCard",
+          "until": "Run"
+        }
+      }
+    }
+  ],
+  "built_from": 4051,
+  "is_playable": true
+}

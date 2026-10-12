@@ -108,6 +108,9 @@ fn zone_holds(state: &GameState, server: ServerId, card: &CardId, earlier_copies
 fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: ServerId) {
     let limits = continuous::access_limits(state, registry, server);
     let only_these = crate::rules::lingering::installs_prohibited(state, Prohibition::AccessOthers);
+    // Hudson 1.0's "cannot access more than 1 card during this run".
+    let one_card_and_done = continuous::cannot(state, registry, Prohibition::AccessMoreThanOneCard)
+        && state.active_run.as_ref().is_some_and(|run| run.cards_accessed_count >= 1);
     let not_these = crate::rules::lingering::installs_prohibited(state, Prohibition::Access);
     // Accesses outside a breach name roots in other servers (Pinhole
     // Threading): any root still holds its candidate there.
@@ -151,6 +154,10 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
         access.candidates.retain(|candidate| matches!(candidate, AccessCandidate::Root(root) if root == only));
     }
     access.candidates.retain(|candidate| !matches!(candidate, AccessCandidate::Root(root) if not_these.contains(root)));
+    if one_card_and_done {
+        access.from_zone.clear();
+        access.candidates.clear();
+    }
 }
 
 /// What the Runner may choose among now: the zone, while it has a card

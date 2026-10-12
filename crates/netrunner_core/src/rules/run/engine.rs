@@ -824,7 +824,7 @@ pub fn advance_run(
     }
 
     let mut events = match action {
-        RunAction::JackOut => jack_out(state)?,
+        RunAction::JackOut => jack_out(state, registry)?,
         RunAction::Continue => continue_run(state, registry)?,
         RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true, registry)?,
         RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry)?,
@@ -869,7 +869,11 @@ pub fn advance_run(
 /// `RunState::jack_out_permitted` (`RulesError::IllegalJackOutWindow` if
 /// `false`), which is `true` only in the movement phase before the Runner
 /// has chosen to go on.
-fn jack_out(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+fn jack_out(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    // Whirlpool's "cannot jack out for the remainder of this run".
+    if crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut) {
+        return Err(RulesError::JackOutProhibited);
+    }
     // Safe: advance_run already confirmed active_run is Some before dispatching here.
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
     if !run.jack_out_permitted {

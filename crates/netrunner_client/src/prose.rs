@@ -596,6 +596,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::DeclaredSuccessful, _) => "this run cannot be declared successful",
                 (Prohibition::BreakWithNonIcebreakers, _) => "the Runner cannot use non-icebreaker cards to break subroutines",
                 (Prohibition::RepeatAnAction, _) => "the next action must be one not taken this turn",
+                (Prohibition::JackOut, _) => "the Runner cannot jack out",
+                (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
             };
             format!("{what} {}", duration(until))
         }
@@ -963,6 +965,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::DeclaredSuccessful => "cannot be declared successful",
             Prohibition::BreakWithNonIcebreakers => "cannot use non-icebreaker cards to break subroutines",
             Prohibition::RepeatAnAction => "cannot take an action already taken this turn",
+            Prohibition::JackOut => "cannot jack out",
+            Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

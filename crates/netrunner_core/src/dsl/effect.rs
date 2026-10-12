@@ -2738,12 +2738,29 @@ pub enum Prohibition {
     /// (`EffectDuration::NextAction`). Asked by `engine::apply_action`'s
     /// guard and so by the action list.
     RepeatAnAction,
+    /// The Runner cannot jack out — Whirlpool's "The Runner cannot jack out
+    /// for the remainder of this run". Asked where a jack-out happens
+    /// (`run::engine::jack_out`, so the action list never offers one) and
+    /// where one is paid for (`Cost::JackOut`, Lionsmane's), which is then
+    /// unaffordable. Composition didn't work: `jack_out_permitted` is the
+    /// run's step, and a card's word for a duration is a prohibition.
+    JackOut,
+    /// The Runner cannot access more than 1 card during the run — Hudson
+    /// 1.0's subroutine. Once a card has been accessed this run
+    /// (`RunState::cards_accessed_count`), every candidate left stops being
+    /// one (CR 7.4.2b), as Flagship's limit drops them
+    /// (`run::access::prune_candidates`). Composition didn't work:
+    /// `ContinuousKind::AccessOthersAtMost` is standing and spares the card
+    /// that prints it, and this is made for the run by a subroutine and
+    /// spares nothing. Its 1 is the only number the pool prints after a
+    /// subroutine's "cannot access more than", so it is no payload.
+    AccessMoreThanOneCard,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 17] = [
+    pub const ALL: [Prohibition; 19] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2761,13 +2778,15 @@ impl Prohibition {
         Prohibition::BreakSubroutinesOnIce,
         Prohibition::DeclaredSuccessful,
         Prohibition::BreakWithNonIcebreakers,
+        Prohibition::JackOut,
+        Prohibition::AccessMoreThanOneCard,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard => Side::Runner,
         }
     }
 
@@ -2778,7 +2797,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard => None,
         }
     }
 }
