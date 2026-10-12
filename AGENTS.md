@@ -303,9 +303,19 @@ number moved, so the rules below are mostly about making that possible.
 - Name the subject, not the activity: `feat/corp-pressure-terms`, not
   `feat/update-eval`. A long series splits by stage
   (`feat/elevation-stage-8-quick-returns-glyph-of-warding`).
-- Branch from current `main`. If `main` moves under you, **rebase** — do not
-  merge `main` into the branch, or the `--no-ff` merge stops being a single
-  readable unit.
+- Branch from current `main`. **Do not refresh a branch just because `main`
+  moved.** Several agents land work here at once, and a rebase re-runs the
+  whole CI suite (about 16 minutes) for every open branch each time any one
+  of them merges — three bots spent most of their CI time re-testing code
+  that had already passed. Bring `main` in only when the branch **conflicts**
+  with it, or when it **needs** something that landed there (calls a new API,
+  edits a file `main` rewrote). A green PR whose base is a few merges old is
+  merged as it is: `main` is not required to be up to date with the branch,
+  and the push to `main` runs the suite on the combined tree, which is where
+  an interaction between two branches shows up — whoever's merge turned it
+  red fixes it forward, at once, before anything else lands. When you do
+  bring `main` in, **rebase** — do not merge `main` into the branch, or the
+  `--no-ff` merge stops being a single readable unit.
 
 ### Commits
 
@@ -341,6 +351,11 @@ number moved, so the rules below are mostly about making that possible.
   default seed count: **the desktop crate and the 256-seed runs are still
   yours to do** before merging, and a green PR is not evidence they
   happened.
+- **After a merge, `main`'s own CI run is yours until it is green.** It is
+  the only run that tests your branch together with everything that landed
+  while it was open (see Branches). It is skipped when the merge changed
+  nothing the branch's own green run had not already tested — the branch
+  was rebased onto the `main` it merged into — and runs in full otherwise.
 - Never force-push `main` and never rewrite published history.
 
 ### Pull requests
