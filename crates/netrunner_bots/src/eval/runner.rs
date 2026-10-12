@@ -612,8 +612,16 @@ pub(super) fn run_rez_tax(state: &GameState, w: &Weights) -> f64 {
 /// either (random seats 10 and 5 plays in 630 games, the planner 0).
 /// Read for the held card and the installed one alike, as
 /// `access_trash_value` is.
+///
+/// **A card that raises a breaker's strength is the same saving from the
+/// other side** (Phase 5 §74): GAMEDRAGON™ Pro's and The Personal Touch's
+/// "host icebreaker gets +1 strength" and K2CP Turbine's "each non-AI
+/// icebreaker gets +2 strength" are pumps the breaker does not buy, read
+/// the same way — the held card tried on every icebreaker in the rig it
+/// could be hosted on. K2CP Turbine was on the hand list of hardware the
+/// planner never installs.
 pub(super) fn strength_cut_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
-    if w.future_credit_weight == 0.0 || !lowers_ice_strength(def) {
+    if w.future_credit_weight == 0.0 || !(lowers_ice_strength(def) || raises_breaker_strength(def)) {
         return 0.0;
     }
     let held = |host: Option<netrunner_core::rules::InstallId>| {
@@ -626,7 +634,25 @@ pub(super) fn strength_cut_value(state: &GameState, registry: &CardRegistry, def
         });
         best_break_saving(state, &after, registry, w)
     };
-    let saving = if hosted_on_ice(def) {
+    let on_breaker = |host: netrunner_core::rules::InstallId| {
+        let mut after = state.clone();
+        after.runner.rig.push(netrunner_core::rules::InstalledRunnerCard {
+            card: def.id.clone(),
+            install_id: netrunner_core::rules::InstallId(u32::MAX),
+            hosted_on_rig_card: Some(host),
+            ..Default::default()
+        });
+        best_break_saving(state, &after, registry, w)
+    };
+    let saving = if raises_breaker_strength(def) && hosted_on_ice(def) {
+        state
+            .runner
+            .rig
+            .iter()
+            .filter(|card| registry.get(&card.card).is_some_and(|host| host.subtypes.contains(&netrunner_core::dsl::CardSubtype::Icebreaker)))
+            .map(|card| on_breaker(card.install_id))
+            .fold(0.0, f64::max)
+    } else if hosted_on_ice(def) {
         state
             .corp
             .installed
@@ -648,7 +674,7 @@ pub(super) fn rig_strength_cut_value(state: &GameState, registry: &CardRegistry,
     }
     let mut value = 0.0;
     for (index, card) in state.runner.rig.iter().enumerate() {
-        if !registry.get(&card.card).is_some_and(lowers_ice_strength) {
+        if !registry.get(&card.card).is_some_and(|def| lowers_ice_strength(def) || raises_breaker_strength(def)) {
             continue;
         }
         let mut before = state.clone();
@@ -731,8 +757,18 @@ fn lowers_ice_strength(def: &CardDefinition) -> bool {
     })
 }
 
-/// Whether `def` is installed on a piece of ice: what it declares is
-/// about its host.
+/// Whether `def` declares a higher strength for icebreakers it does not
+/// print: a `Strength` of a positive number on its host or on the rig's
+/// breakers (Phase 5 §74).
+fn raises_breaker_strength(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::{ContinuousKind, Scope};
+    !def.installs_on_ice
+        && def.continuous.iter().any(|effect| matches!(effect.kind, ContinuousKind::Strength(ref number) if number.per > 0) && matches!(effect.applies_to, Scope::Host | Scope::Rig(_)))
+}
+
+/// Whether `def` is installed on a piece of ice — or, for a card that
+/// raises a breaker's strength, on a rig card: what it declares is about
+/// its host.
 fn hosted_on_ice(def: &CardDefinition) -> bool {
     def.continuous.iter().any(|effect| effect.applies_to == netrunner_core::dsl::Scope::Host)
 }
@@ -1265,6 +1301,28 @@ mod tests {
         assert_eq!(run_rez_tax(&state, &w), 0.0, "no rise");
         state.lingering.push(LingeringEffect { what: Lingering::RezCost(3), on: On::EachIce, until: Until::EndOfRun, source: CardId("tread_lightly".to_string()) });
         assert!((run_rez_tax(&state, &w) - 3.0 * w.opponent_credit_weight).abs() < 1e-9);
+    }
+
+    /// A card that raises a breaker's strength is the pumps it saves
+    /// (Phase 5 §74): over a rezzed Tollbooth Gordian Blade pumps three
+    /// times; GAMEDRAGON™ Pro hosted on it saves one, K2CP Turbine two —
+    /// held and installed alike, and nothing with no breaker to host on.
+    #[test]
+    fn a_breaker_strength_boost_is_the_pumps_it_saves() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![InstalledCard { card: CardId("tollbooth".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let per_turn = 5.0 * guide.future_credit_weight;
+        assert_eq!(strength_cut_value(&state, &pool, card("gamedragon_pro"), &guide, 5), 0.0, "no breaker to host on");
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("gordian_blade".to_string()), install_id: InstallId(10), ..Default::default() }];
+        assert!((strength_cut_value(&state, &pool, card("gamedragon_pro"), &guide, 5) - per_turn).abs() < 1e-9);
+        assert!((strength_cut_value(&state, &pool, card("k2cp_turbine"), &guide, 5) - 2.0 * per_turn).abs() < 1e-9);
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("gamedragon_pro".to_string()), install_id: InstallId(11), hosted_on_rig_card: Some(InstallId(10)), ..Default::default() });
+        assert!((rig_strength_cut_value(&state, &pool, &guide, 5) - per_turn).abs() < 1e-9, "installed, credited the same");
     }
 
     /// A click ability whose run's breach is replaced is worth what the
