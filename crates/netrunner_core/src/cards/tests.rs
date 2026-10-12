@@ -11846,7 +11846,7 @@ mod vantage_point {
                 .iter()
                 .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
                 .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
-                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. })))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::SelectCardToAccess { .. })))
                 .cloned()
                 .unwrap_or_else(|| panic!("a way on from {:?}", state.pending_decision));
             let (next_state, more) = apply_action(&state, registry, next).expect("on");
@@ -31447,5 +31447,39 @@ mod reign_and_reverie_stage_2 {
         let (at_root, _) = run_to_completion(state, &registry, ServerId::Remote(0));
         let (emptied, _) = apply_action(&at_root, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("her last 4[credit]");
         assert!(emptied.runner.heap.contains(&id("miss_bones")), "no credits left: trash her");
+    }
+
+    #[test]
+    fn psych_mike_pays_for_each_rnd_access_on_the_first_successful_rnd_run_and_a_failed_one_does_not_spend_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("psych_mike", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("into movement");
+        let (out, _) = apply_action(&state, &registry, PlayerAction::JackOut).expect("jack out");
+        let (out, _) = close_all_windows(out, &registry);
+        assert!(out.pending_decision.is_none(), "an unsuccessful run");
+        assert_eq!(out.runner.resources.credits, Credits(20));
+
+        // Every card the breach offers is passed: one out of the deck, and
+        // an upgrade in the root, which is not "in R&D" (CR 4.6.7b).
+        let pass = |mut state: GameState| {
+            while let Some(passing) = crate::rules::legal_actions(&state, &registry).into_iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::SelectCardToAccess { .. })) {
+                state = close_all_windows(apply_action(&state, &registry, passing).expect("pass the card").0, &registry).0;
+            }
+            state
+        };
+        let mut out = out;
+        out.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("akitaro_watanabe"), card: id("akitaro_watanabe"), server: ServerId::RnD, slot: InstallSlot::Root, ..Default::default() });
+        let asked = pass(run_to_completion(out, &registry, ServerId::RnD).0);
+        assert_eq!(asked.last_completed_run.as_ref().map(|run| run.cards_accessed), Some(2), "the upgrade was accessed");
+        let gained = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain").0;
+        assert_eq!(gained.runner.resources.credits, Credits(21), "one card accessed in R&D");
+
+        let (again, _) = close_all_windows(gained, &registry);
+        let second = pass(run_to_completion(again, &registry, ServerId::RnD).0);
+        assert!(second.active_run.is_none() && second.pending_decision.is_none(), "only the first successful one each turn");
+        assert_eq!(second.runner.resources.credits, Credits(21));
     }
 }

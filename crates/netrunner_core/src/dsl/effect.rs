@@ -2255,6 +2255,13 @@ pub enum Amount {
     /// `Effect::GainCreditsPerCardAccessedThisRun`, a gain that could not
     /// be a threshold; 0 before any run has ended.
     CardsAccessedLastRun,
+    /// The accesses of `CardsAccessedLastRun` that were of a card in R&D,
+    /// out of the deck rather than its root (`CompletedRun::
+    /// rnd_cards_accessed`) — Psych Mike's "for each time you accessed a
+    /// card in R&D during that run". Composition didn't work: the run's
+    /// count holds the upgrades accessed in the root of R&D too, which are
+    /// not in R&D (CR 4.6.7b).
+    RnDCardsAccessedLastRun,
     /// The credits the run's event still hosted when the last run ended
     /// (`CompletedRun::run_credits_left`) — what Trick Shot's "When that run
     /// ends, you may run a remote server" carries into that run, the event

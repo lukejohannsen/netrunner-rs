@@ -661,6 +661,12 @@ pub struct RunState {
     /// lifecycle as `additional_rd_access`.
     #[serde(default)]
     pub cards_accessed_count: u32,
+    /// The accesses among `cards_accessed_count` that were of a card in
+    /// R&D — out of the deck, not the root (CR 4.6.7b keeps "in HQ" and
+    /// "in the root of HQ" apart) — for Psych Mike's "for each time you
+    /// accessed a card in R&D during that run".
+    #[serde(default)]
+    pub rnd_cards_accessed_count: u32,
     /// Where the run goes instead when it would approach its server after
     /// passing every piece of ice — `Effect::RedirectRunOnApproach`
     /// (Maintenance Access). Taken by `run::engine::apply_approach_redirect`
@@ -901,6 +907,7 @@ impl Default for RunState {
             access_replacement_card: None,
             access_replacement_install: None,
             cards_accessed_count: 0,
+            rnd_cards_accessed_count: 0,
             redirect_on_approach: None,
             redirect_at_success: false,
             bonus_run_credits: 0,

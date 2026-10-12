@@ -274,7 +274,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         breach_only: false,
         forced_encounter: false,
         event_counters: 0,
-        cards_accessed_count: 0, bonus_run_credits: 0, run_credits_pay_for: None,
+        cards_accessed_count: 0, rnd_cards_accessed_count: 0, bonus_run_credits: 0, run_credits_pay_for: None,
         begun_as_the_turn_began,
     });
     Ok(paid)

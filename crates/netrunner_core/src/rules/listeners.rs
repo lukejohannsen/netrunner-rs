@@ -106,6 +106,14 @@ pub(crate) struct Moment {
     /// trash off the run, since the card is in Archives by the time either
     /// is heard (`EventFilter::TrashedFromThisServer`).
     pub trashed_install: Option<crate::rules::TrashedInstall>,
+    /// Whether the run that ended was successful (CR 6.9.5a), for a run's
+    /// end (`Trigger::OnRunEnded`) — Psych Mike's "the first time each turn
+    /// a **successful** run on R&D ends" (`EventFilter::Successful`). Read
+    /// off the ended run (`GameState::last_completed_run`), which every
+    /// conclusion snapshots before the end is heard; the event names only
+    /// the server, and a run ended by a card's text may have been
+    /// successful first (CR 6.8.4a).
+    pub successful: Option<bool>,
 }
 
 /// A card that may hear a moment.
@@ -149,7 +157,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -160,7 +168,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -375,7 +383,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
-            vec![moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner))]
+            let successful = state.last_completed_run.as_ref().is_some_and(|ended| ended.successful);
+            vec![Moment { successful: Some(successful), ..moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner)) }]
         }
 
         // "Whenever you do damage" is the responsible player's (CR 10.4.1),
@@ -750,6 +759,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::TrashedFrom(places) = filter {
         return moment.trashed_from.is_some_and(|from| places.contains(&from));
+    }
+    if let EventFilter::Successful = filter {
+        return moment.successful == Some(true);
     }
     let listening = install;
     match (filter, &moment.about) {

@@ -88,7 +88,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("thunder_art_gallery", "Thunder Art Gallery"),
     ("minds_eye", "Mind's Eye"),
     ("mache", "Mâché"),
-    ("psych_mike", "Psych Mike"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
     ("sportsmetal_go_big_or_go_home", "Sportsmetal: Go Big or Go Home"),

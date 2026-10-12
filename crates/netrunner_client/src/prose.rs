@@ -126,6 +126,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
         Amount::Link => "the Runner's link".to_string(),
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
+        Amount::RnDCardsAccessedLastRun => "the cards accessed in R&D during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
         Amount::HostIceStrength => "the strength of host ice".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
@@ -717,6 +718,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::InRootOfThisServer => "by the Corp, in the root of this server".to_string(),
         EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
         EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
+        EventFilter::Successful => "that was successful".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

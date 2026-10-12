@@ -566,6 +566,9 @@ fn present_card_for_access(
     // of which may leave before they are reached (CR 7.4.5).
     if let Some(run) = state.active_run.as_mut() {
         run.cards_accessed_count += 1;
+        if install.is_none() && server == ServerId::RnD {
+            run.rnd_cards_accessed_count += 1;
+        }
     }
     if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
         access.pending_install = install;

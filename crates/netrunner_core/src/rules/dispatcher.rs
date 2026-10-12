@@ -1366,6 +1366,7 @@ mod tests {
             accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, passed: Vec::new(), last_encountered: None,
             server: ServerId::Hq,
             cards_accessed: 0,
+            rnd_cards_accessed: 0,
             agendas_stolen: 0,
             persistent_trashed_upgrades: Vec::new(),
         });
