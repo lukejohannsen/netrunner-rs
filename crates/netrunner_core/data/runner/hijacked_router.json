@@ -1,0 +1,56 @@
+{
+  "id": "hijacked_router",
+  "title": "Hijacked Router",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnServerCreated",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Corp creates a server, they lose 1[credit]."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Archives"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "LoseCredits": [
+                "Corp",
+                3
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash this hardware. If you do, the Corp loses 3[credit]"
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on Archives, you may trash this hardware. If you do, the Corp loses 3[credit]."
+    }
+  ],
+  "built_from": 22005,
+  "is_playable": true
+}

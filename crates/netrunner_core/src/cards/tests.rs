@@ -31270,3 +31270,182 @@ mod reign_and_reverie {
         assert_eq!(second.runner.resources.credits, Credits(21));
     }
 }
+
+mod reign_and_reverie_stage_2 {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    fn in_rig(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), counters, ..Default::default() }
+    }
+
+    fn bid(state: &GameState, registry: &CardRegistry, amount: u32) -> GameState {
+        apply_action(state, registry, PlayerAction::ChooseNumber { amount }).expect("bid").0
+    }
+
+    #[test]
+    fn akiko_nisei_plays_a_psi_game_on_each_rnd_breach_and_accesses_one_more_card_when_the_bids_match() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("akiko_nisei_head_case"));
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let (asked, _) = run_to_completion(state.clone(), &registry, ServerId::RnD);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::PsiGame { .. })), "{:?}", asked.pending_decision);
+        let extra = |state: &GameState| state.active_run.as_ref().map_or(0, |run| run.additional_rd_access);
+        assert_eq!(extra(&bid(&bid(&asked, &registry, 1), &registry, 1)), 1, "the same number: 1 additional card");
+        assert_eq!(extra(&bid(&bid(&asked, &registry, 0), &registry, 2)), 0, "they differ");
+
+        let (hq, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert!(!matches!(hq.pending_decision, Some(PendingDecision::PsiGame { .. })), "R&D only");
+    }
+
+    #[test]
+    fn liza_talking_thunder_draws_two_and_takes_a_tag_on_the_first_successful_central_run_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("liza_talking_thunder_prominent_legislator"));
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        let (first, _) = close_all_windows(run_to_completion(state, &registry, ServerId::Hq).0, &registry);
+        assert_eq!((first.runner.grip.len(), first.runner.tags), (2, 1));
+        let (second, _) = close_all_windows(run_to_completion(first, &registry, ServerId::Archives).0, &registry);
+        assert_eq!((second.runner.grip.len(), second.runner.tags), (2, 1), "only the first time each turn");
+    }
+
+    #[test]
+    fn gnat_gains_a_credit_as_the_turn_begins_with_two_or_fewer_cards_in_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("nathaniel_gnat_hall_one_of_a_kind"));
+        state.runner.resources.credits = Credits(0);
+        let begin = |grip: usize| {
+            let mut turn = state.clone();
+            turn.runner.grip = vec![id("sure_gamble"); grip];
+            turn.corp.r_and_d = vec![id("hedge_fund"); 3];
+            crate::rules::test_support::enter_start_of_turn(&mut turn, &registry, Side::Runner);
+            close_all_windows(turn, &registry).0.runner.resources.credits
+        };
+        assert_eq!(begin(2), Credits(1));
+        assert_eq!(begin(0), Credits(1));
+        assert_eq!(begin(3), Credits(0), "3 cards in the grip");
+    }
+
+    #[test]
+    fn algernon_sells_a_click_for_two_credits_and_is_trashed_at_the_end_of_a_turn_with_no_successful_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("algernon", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let clicks = state.runner.resources.clicks;
+        let asked = {
+            let mut asked = state;
+            for _ in 0..6 {
+                if asked.pending_paid_choice.is_some() {
+                    break;
+                }
+                let side = asked.paid_ability_window.as_ref().expect("a window").active_priority;
+                asked = apply_action(&asked, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+            }
+            asked
+        };
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 2[credit]");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert_eq!(paid.runner.resources.credits, Credits(18));
+        assert_eq!(paid.runner.resources.clicks, Clicks(clicks.0 + 1));
+
+        let end = |state: GameState| {
+            let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+            close_all_windows(state, &registry).0
+        };
+        let idle = end(paid.clone());
+        assert!(idle.runner.heap.contains(&id("algernon")), "no successful run this turn");
+        let (ran, _) = close_all_windows(run_to_completion(paid, &registry, ServerId::Archives).0, &registry);
+        let ran = end(ran);
+        assert!(ran.runner.rig.iter().any(|card| card.card == id("algernon")), "a successful run keeps it");
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let declined = end(close_all_windows(declined, &registry).0);
+        assert!(declined.runner.rig.iter().any(|card| card.card == id("algernon")), "not paid, not trashed");
+    }
+
+    #[test]
+    fn hijacked_router_taxes_each_new_server_and_trashes_itself_on_archives_for_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("hijacked_router", 0)];
+        state.corp.resources.credits = Credits(10);
+        let mut corp = state.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.clicks = Clicks(3);
+        corp.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
+        let install = |state: &GameState, server: ServerId| {
+            let action = PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: server, slot: InstallSlot::Root, trash_first: false };
+            close_all_windows(apply_action(state, &registry, action).expect("install").0, &registry).0
+        };
+        let created = install(&corp, ServerId::Remote(0));
+        assert_eq!(created.corp.resources.credits, Credits(9), "they lose 1[credit]");
+        let mut existing = created.clone();
+        existing.corp.installed.retain(|card| card.card != id("pad_campaign"));
+        existing.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Remote(0), slot: InstallSlot::Ice, ..Default::default() });
+        let into_it = install(&existing, ServerId::Remote(0));
+        assert_eq!(into_it.corp.resources.credits, Credits(9), "an existing server is not created");
+
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let (trashed, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash it");
+        assert_eq!(trashed.corp.resources.credits, Credits(7));
+        assert_eq!(trashed.runner.heap, vec![id("hijacked_router")]);
+    }
+
+    #[test]
+    fn miss_bones_holds_twelve_credits_for_trashing_installed_cards_and_goes_when_they_are_spent() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("miss_bones")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("miss_bones"), host: None }).expect("install");
+        assert_eq!(installed.runner.rig[0].counters, 12);
+
+        state.runner.grip.clear();
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![in_rig("miss_bones", 12)];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (at_root, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        let (trashed, _) = apply_action(&at_root, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("an installed card's trash cost");
+        assert_eq!(trashed.runner.rig[0].counters, 8);
+
+        state.corp.installed.clear();
+        state.corp.hq = vec![id("pad_campaign")];
+        let (in_hq, _) = run_to_completion(state.clone(), &registry, ServerId::Hq);
+        assert!(apply_action(&in_hq, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).is_err(), "a card in HQ is not installed");
+
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state.corp.hq.clear();
+        state.runner.rig = vec![in_rig("miss_bones", 4)];
+        let (at_root, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (emptied, _) = apply_action(&at_root, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("her last 4[credit]");
+        assert!(emptied.runner.heap.contains(&id("miss_bones")), "no credits left: trash her");
+    }
+}

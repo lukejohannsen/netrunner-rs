@@ -451,6 +451,7 @@ pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[u32]) -> 
 fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: &GameState, registry: &CardRegistry) -> bool {
     match (word, purpose) {
         (PaysFor::TrashCosts(filter), Purpose::TrashCost(card)) => card_matches_filter(card, filter),
+        (PaysFor::TrashCostsOfInstalledCards, Purpose::TrashCost(_)) => accessing_an_install(state),
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
         (PaysFor::Using(filter), Purpose::Ability(card)) => card_matches_filter(card, filter),
         (PaysFor::Playing(filter), Purpose::Play(card)) => card_matches_filter(card, filter),
@@ -475,6 +476,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         }
         (
             PaysFor::TrashCosts(_)
+            | PaysFor::TrashCostsOfInstalledCards
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
             | PaysFor::TraceAttempts
@@ -485,6 +487,13 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             _,
         ) => false,
     }
+}
+
+/// Whether the card the Runner is deciding to trash is an install — in a
+/// root, where the access found it — rather than a card in HQ, R&D or
+/// Archives.
+fn accessing_an_install(state: &GameState) -> bool {
+    state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.pending_install.is_some())
 }
 
 /// The credits hosted on `install`: its `counters`, or for a card that

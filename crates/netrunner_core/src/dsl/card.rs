@@ -1079,6 +1079,13 @@ pub enum PaysFor {
     /// (`CardType(Asset)`). Definition-level, read off the card being
     /// accessed. It was a word with no filter until Paricia.
     TrashCosts(crate::dsl::CardFilter),
+    /// The trash cost of an *installed* card the Runner is accessing — Miss
+    /// Bones's "Use these credits to trash installed cards": a card in a
+    /// root, never one in HQ, R&D or Archives. Composition didn't work:
+    /// `TrashCosts`' filter is read off the card's definition, and whether
+    /// it is installed is where the access found it
+    /// (`AccessState::pending_install`), which no definition says.
+    TrashCostsOfInstalledCards,
     /// The install cost of a card the filter admits — Open Market's "You
     /// can spend hosted credits to install connection and job resources".
     /// Definition-level filters only: the card being installed is not on

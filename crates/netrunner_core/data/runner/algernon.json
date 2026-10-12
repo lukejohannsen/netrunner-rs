@@ -1,0 +1,63 @@
+{
+  "id": "algernon",
+  "title": "Algernon",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GainClicks": [
+                    "Runner",
+                    1
+                  ]
+                },
+                {
+                  "LaterThisTurn": {
+                    "when": "OnDiscardPhaseEnd",
+                    "effect": {
+                      "EffectIf": {
+                        "condition": {
+                          "Not": {
+                            "AmountAtLeast": [
+                              {
+                                "TimesThisTurn": "OnSuccessfulRun"
+                              },
+                              1
+                            ]
+                          }
+                        },
+                        "effect": {
+                          "TrashCard": "ThisCard"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to gain [click]"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may pay 2[credit] to gain [click]. If you do, trash Algernon when your turn ends if you did not make a successful run this turn."
+    }
+  ],
+  "built_from": 22022,
+  "is_playable": true
+}

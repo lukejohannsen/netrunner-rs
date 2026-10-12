@@ -1,0 +1,114 @@
+{
+  "id": "one_of_a_kind",
+  "name": "One of a Kind",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Nathaniel “Gnat” Hall: One-of-a-Kind, Reign and Reverie's Anarch identity, a credit each turn the grip holds two cards or fewer. Free Spirit's frame, with two Hijacked Router for its two Chastushka, a credit lost on every server the Corp creates and three for trashing it on Archives, and Algernon, an Adam program at 5 influence, for its Chain Reaction: a click for 2 credits, trashed on a turn with no successful run; 7 of its 15 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "nathaniel_gnat_hall_one_of_a_kind",
+  "cards": [
+    {
+      "card": "cyberfeeder",
+      "count": 2
+    },
+    {
+      "card": "the_toolbox",
+      "count": 1
+    },
+    {
+      "card": "ice_carver",
+      "count": 2
+    },
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "algernon",
+      "count": 1
+    },
+    {
+      "card": "take_a_dive",
+      "count": 2
+    },
+    {
+      "card": "stargate",
+      "count": 2
+    },
+    {
+      "card": "the_tungsten_tailor",
+      "count": 2
+    },
+    {
+      "card": "time_bomb",
+      "count": 2
+    },
+    {
+      "card": "friend_of_a_friend",
+      "count": 2
+    },
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 2
+    },
+    {
+      "card": "banner",
+      "count": 2
+    },
+    {
+      "card": "finality",
+      "count": 2
+    },
+    {
+      "card": "katorga_breakout",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "hijacked_router",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 2
+    },
+    {
+      "card": "utae",
+      "count": 2
+    },
+    {
+      "card": "climactic_showdown",
+      "count": 2
+    },
+    {
+      "card": "mimic",
+      "count": 2
+    },
+    {
+      "card": "liberated_account",
+      "count": 2
+    },
+    {
+      "card": "scrubber",
+      "count": 2
+    },
+    {
+      "card": "xanadu",
+      "count": 2
+    },
+    {
+      "card": "en_passant",
+      "count": 2
+    }
+  ]
+}

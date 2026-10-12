@@ -82,19 +82,13 @@ pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Reign and Reverie* (`reign_and_reverie`): tranche F2 of the FFG plan.
 pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("nathaniel_gnat_hall_one_of_a_kind", "Nathaniel \"Gnat\" Hall: One-of-a-Kind"),
     ("divide_and_conquer", "Divide and Conquer"),
     ("patchwork", "Patchwork"),
-    ("hijacked_router", "Hijacked Router"),
     ("district_99", "District 99"),
-    ("liza_talking_thunder_prominent_legislator", "Liza Talking Thunder: Prominent Legislator"),
     ("thunder_art_gallery", "Thunder Art Gallery"),
-    ("miss_bones", "Miss Bones"),
-    ("akiko_nisei_head_case", "Akiko Nisei: Head Case"),
     ("minds_eye", "Mind's Eye"),
     ("mache", "Mâché"),
     ("psych_mike", "Psych Mike"),
-    ("algernon", "Algernon"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
     ("sportsmetal_go_big_or_go_home", "Sportsmetal: Go Big or Go Home"),
