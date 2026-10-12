@@ -42,23 +42,29 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
     let registry = decks::sample_deck_registry();
     // A directory that does not exist, so only built-in decks resolve and
     // the test never depends on what the developer has saved locally.
+    // Resolved under Unrestricted, every card, because the test is about
+    // the wiring and not a format: it asked for Startup, and failed only
+    // in the weekly ONNX build once a card of the deck left Startup.
     let no_saved_decks = std::env::temp_dir().join("netrunner_cli_onnx_no_decks");
     let (corp_deck, runner_deck) = decks::decks_for_match(
         &no_saved_decks,
         "discretion_advised",
         "stolen_goods",
         &registry,
-        netrunner_core::format::NsgFormat::Startup,
+        netrunner_core::format::NsgFormat::Unrestricted,
     )
     .expect("built-in decks resolve");
-    let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 11).expect("setup");
+    let (corp_deck, runner_deck) = (corp_deck.to_deck(), runner_deck.to_deck());
+    // A bot's prior is the match's format, as every driver gives it.
+    let format = netrunner_core::decks::match_format(&corp_deck, &runner_deck, &registry).expect("the pair is legal somewhere");
+    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup");
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the
     // Runner's, standing in for the human.
-    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None))
+    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Style::BALANCED, Knowledge::new(format, None))
         .expect("the fixture model loads at the current observation/action shape");
     let runner_driver =
-        bots::make_driver(BotKind::Planner, Side::Runner, 2, 8, model_path, Style::BALANCED, Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, None)).expect("planner driver");
+        bots::make_driver(BotKind::Planner, Side::Runner, 2, 8, model_path, Style::BALANCED, Knowledge::new(format, None)).expect("planner driver");
 
     let session = SinglePlayerSession::new(state, registry, corp_driver, runner_driver);
     let (final_state, history) = session.run();
