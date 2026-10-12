@@ -1,0 +1,67 @@
+{
+  "id": "hydra",
+  "title": "Hydra",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 10,
+  "strength": 6,
+  "subroutines": [
+    {
+      "text": "Do 3 net damage if the Runner is tagged; otherwise, give the Runner 1 tag.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": {
+            "DealDamage": [
+              "Net",
+              3
+            ]
+          },
+          "otherwise": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Gain 5[credit] if the Runner is tagged; otherwise, give the Runner 1 tag.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": {
+            "GainCredits": [
+              "Corp",
+              5
+            ]
+          },
+          "otherwise": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged; otherwise, give the Runner 1 tag.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun",
+          "otherwise": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 22046,
+  "is_playable": true,
+  "triggers": []
+}
