@@ -82,9 +82,7 @@ pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Reign and Reverie* (`reign_and_reverie`): tranche F2 of the FFG plan.
 pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("divide_and_conquer", "Divide and Conquer"),
     ("patchwork", "Patchwork"),
-    ("minds_eye", "Mind's Eye"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
     ("gatekeeper", "Gatekeeper"),

@@ -32236,3 +32236,114 @@ mod reign_and_reverie_stage_6 {
         assert!(close_all_windows(again, &registry).0.pending_decision.is_none(), "only the first each turn");
     }
 }
+
+mod reign_and_reverie_stage_7 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn in_rig(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), counters, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("amaze_amusements"),
+            card: id("amaze_amusements"),
+            server: ServerId::RnD,
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state
+    }
+
+    fn candidates(state: &GameState) -> Vec<crate::rules::AccessCandidate> {
+        state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map_or(Vec::new(), |access| access.candidates.clone())
+    }
+
+    #[test]
+    fn minds_eye_breaches_rnd_for_three_counters_and_leaves_its_root_alone_for_that_breach_only() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("minds_eye", 3)];
+        let (breaching, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("minds_eye"), ability_index: 0 }).expect("[click], 3 counters");
+        assert_eq!(breaching.runner.rig[0].counters, 0);
+        assert!(candidates(&breaching).is_empty(), "the root of R&D is closed to this breach");
+        let accessing = breaching.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone());
+        assert!(matches!(accessing, Some(crate::rules::AccessPhase::PendingChoice { ref card_id, .. }) if *card_id == id("hedge_fund")), "{accessing:?}");
+        let (done, _) = apply_action(&breaching, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("pass Hedge Fund");
+        assert!(done.active_run.is_none());
+        assert!(!crate::rules::continuous::cannot(&done, &registry, crate::dsl::Prohibition::AccessRootOfHqOrRnD), "the breach is over");
+
+        // A run on R&D afterwards: a may counter, and the root again.
+        let (breached, _) = run_to_completion(close_all_windows(done, &registry).0, &registry, ServerId::RnD);
+        let asked = close_all_windows(breached, &registry).0;
+        let (counted, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 1");
+        let counted = close_all_windows(counted, &registry).0;
+        assert_eq!(counted.runner.rig[0].counters, 1);
+        assert!(candidates(&counted).iter().any(|candidate| matches!(candidate, crate::rules::AccessCandidate::Root(_))), "a run's breach reaches the root");
+    }
+}
+
+mod reign_and_reverie_stage_7_divide_and_conquer {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Passes whatever card is up, choosing the first candidate when asked.
+    fn pass_through(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<CardId>) {
+        let mut seen = Vec::new();
+        for _ in 0..20 {
+            state = close_all_windows(state, registry).0;
+            let Some(phase) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone()) else { break };
+            state = match phase {
+                crate::rules::AccessPhase::PendingChoice { card_id, .. } => {
+                    seen.push(card_id.clone());
+                    apply_action(&state, registry, PlayerAction::PassAccessedCard { card_id }).expect("pass").0
+                }
+                _ => {
+                    let select = crate::rules::legal_actions_for(&state, registry, Side::Runner)
+                        .into_iter()
+                        .find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. }))
+                        .expect("a card to choose");
+                    apply_action(&state, registry, select).expect("select").0
+                }
+            };
+        }
+        (state, seen)
+    }
+
+    #[test]
+    fn divide_and_conquer_breaches_archives_then_hq_then_rnd_with_their_roots_closed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("divide_and_conquer")];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("hedge_fund"), facedown: false }];
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.r_and_d = vec![id("enigma")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: fixture_install_id("amaze_amusements"), card: id("amaze_amusements"), server: ServerId::Hq, slot: InstallSlot::Root, ..Default::default() },
+            crate::rules::InstalledCard { install_id: fixture_install_id("akitaro_watanabe"), card: id("akitaro_watanabe"), server: ServerId::RnD, slot: InstallSlot::Root, ..Default::default() },
+        ];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("divide_and_conquer") }).expect("play it");
+        let running = close_all_windows(played, &registry).0;
+        let (through, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (breaching, events) = apply_action(&through, &registry, PlayerAction::CompleteRun).expect("successful");
+        let mut begun: Vec<ServerId> = events.iter().filter_map(|event| match event { crate::rules::GameEvent::BreachBegun { server } => Some(*server), _ => None }).collect();
+        let (done, seen) = pass_through(breaching, &registry);
+        assert_eq!(seen, vec![id("hedge_fund"), id("ice_wall"), id("enigma")], "Archives, then HQ, then R&D, and neither central's root");
+        assert!(done.active_run.is_none(), "the run ends after the last breach");
+        begun.dedup();
+        assert_eq!(begun.first(), Some(&ServerId::Archives));
+    }
+}

@@ -883,6 +883,7 @@ fn determinize_run(
         reached_success_phase: run.reached_success_phase,
         // Public, and which server a breach that has begun goes on to.
         breached: run.breached,
+        breaches_after: run.breaches_after.clone(),
         // Public, and what S-Dobrado's "the second time" reads.
         encounters: run.encounters,
         // Public, and what Into the Depths' "for each time you passed ice"

@@ -230,6 +230,12 @@ pub enum Until {
     /// The end of the encounter with this ice.
     EndOfEncounter(InstallId),
     EndOfRun,
+    /// Through the breach that begins after the effect is made, on the
+    /// turn numbered so (`EffectDuration::NextBreach`): `begun` is how many
+    /// breaches had begun this turn when it was made (`OnBreach` in the
+    /// turn log). It holds until the next has begun and ended, so it is in
+    /// force at that breach's first candidate and gone with its last.
+    ThroughNextBreach { turn: u32, begun: u32 },
     /// The end of the turn numbered so, by `GameState::turn`: this turn
     /// for every duration but one, and a later one for "until your next
     /// turn ends" (Klevetnik's, `EffectDuration::ThroughYourNextTurn`),
@@ -273,6 +279,10 @@ impl LingeringEffect {
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|encountered| encountered.install_id == ice)
             }),
             Until::EndOfRun => state.active_run.is_some(),
+            Until::ThroughNextBreach { turn, begun } => {
+                let now = state.this_turn.times(crate::dsl::Trigger::OnBreach);
+                state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.is_some()))
+            }
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
@@ -307,6 +317,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::Turn => Ok(Until::EndOfTurn(state.turn)),
         EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
+        EffectDuration::NextBreach => Ok(Until::ThroughNextBreach { turn: state.turn, begun: state.this_turn.times(crate::dsl::Trigger::OnBreach) }),
         EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
     }
 }

@@ -265,6 +265,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::WhileRezzed => "while this card is rezzed",
         EffectDuration::WhileInstalled => "while this card is installed",
         EffectDuration::NextAction => "for the next action",
+        EffectDuration::NextBreach => "during the next breach",
     }
 }
 
@@ -301,6 +302,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::WhileRezzed => "the time this card is rezzed",
                 EffectDuration::WhileInstalled => "the time this card is installed",
                 EffectDuration::NextAction => "the next action",
+                EffectDuration::NextBreach => "the next breach",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -477,6 +479,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::EndActionPhase => "your action phase ends".to_string(),
         Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
+        Effect::BreachAfter(servers) => format!("after this breach, breach {}", servers.iter().map(|server| describe_server(*server)).collect::<Vec<_>>().join(", then ")),
         Effect::Access { from, filter, count, then } => {
             let which = match filter {
                 CardFilter::Any => String::new(),
@@ -555,6 +558,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::WhileRezzed => "as long as this card is rezzed",
                 netrunner_core::dsl::EffectDuration::WhileInstalled => "as long as this card is installed",
                 netrunner_core::dsl::EffectDuration::NextAction => "the next action",
+                netrunner_core::dsl::EffectDuration::NextBreach => "the next breach",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -604,6 +608,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::RepeatAnAction, _) => "the next action must be one not taken this turn",
                 (Prohibition::JackOut, _) => "the Runner cannot jack out",
                 (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
+                (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
             };
             format!("{what} {}", duration(until))
         }
@@ -978,6 +983,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::RepeatAnAction => "cannot take an action already taken this turn",
             Prohibition::JackOut => "cannot jack out",
             Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
+            Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(
