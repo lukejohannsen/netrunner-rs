@@ -1837,15 +1837,15 @@ pub fn evaluate_effect(
             break_pending(state, registry, pending, count, ctx.acting_install)
         }
 
-        Effect::Trace { base, on_success } => {
+        Effect::Trace { base, on_success, on_failure } => {
             if state.active_trace.is_some() {
                 return Err(RulesError::TraceAlreadyActive);
             }
             // Its base strength can be lowered first (Flip Switch).
-            if let Some(events) = prevention::trace(state, registry, *base, on_success, ctx)? {
+            if let Some(events) = prevention::trace(state, registry, effect, ctx)? {
                 return Ok(events);
             }
-            Ok(start_trace(state, *base, on_success, acting_card.cloned(), ctx.acting_install))
+            Ok(start_trace(state, *base, on_success, on_failure.as_deref(), acting_card.cloned(), ctx.acting_install))
         }
 
         Effect::AddAdditionalAccess { server, count } => {
@@ -4355,13 +4355,14 @@ fn carried_out_by(registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Optio
 /// bids are made. What `Effect::Trace` does once nobody has lowered its
 /// base strength, and what the asking does when it is over
 /// (`prevention::finish`), which must not ask again.
-pub(crate) fn start_trace(state: &mut GameState, base: u32, on_success: &Effect, card: Option<CardId>, install: Option<InstallId>) -> Vec<GameEvent> {
+pub(crate) fn start_trace(state: &mut GameState, base: u32, on_success: &Effect, on_failure: Option<&Effect>, card: Option<CardId>, install: Option<InstallId>) -> Vec<GameEvent> {
     state.active_trace = Some(TraceState {
         initiating_card: card.clone(),
         initiating_install: install,
         base_strength: base,
         corp_bid: None,
         effect_on_success: on_success.clone(),
+        effect_on_failure: on_failure.cloned(),
         resume: TraceResume::None,
     });
     vec![GameEvent::TraceInitiated { base, initiating_card: card }]
@@ -6969,7 +6970,7 @@ mod tests {
     #[test]
     fn trace_effect_parks_pending_state_and_does_not_resolve_immediately() {
         let mut state = game_state();
-        let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) };
+        let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
@@ -6985,11 +6986,11 @@ mod tests {
     #[test]
     fn trace_effect_while_already_active_errors() {
         let mut state = game_state();
-        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
+        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .unwrap();
 
         let result =
-            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(Amount::Fixed(2))) }, &mut ResolutionContext::for_card(None), &CardRegistry::new());
+            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(Amount::Fixed(2))), on_failure: None }, &mut ResolutionContext::for_card(None), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::TraceAlreadyActive));
         assert_eq!(state.active_trace.unwrap().base_strength, 3, "original trace must be untouched");
@@ -7000,7 +7001,7 @@ mod tests {
         let mut state = game_state();
         let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect =
-            Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
+            Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun), on_failure: None };
         ice.subroutines[1].definition.effect = Effect::GiveTags(Amount::Fixed(5));
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
@@ -7022,7 +7023,7 @@ mod tests {
                 GameEvent::SubroutineFired {
                     card_id: CardId("ice_wall".to_string()),
                     index: 0,
-                    effect: Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) },
+                    effect: Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun), on_failure: None },
                 },
                 // `resolve_unbroken_subroutines` now passes the firing ICE
                 // itself as `acting_card` (needed for a subroutine effect

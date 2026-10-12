@@ -5200,6 +5200,7 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
+            effect_on_failure: None,
         });
 
         let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
@@ -5217,7 +5218,7 @@ mod tests {
             subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_discard: false, from_runner_score_area: false, while_unrezzed: false,
             text: None,
             trigger: Trigger::OnPlay,
-            effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(crate::dsl::Amount::Fixed(1))) }],
+            effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(crate::dsl::Amount::Fixed(1))), on_failure: None }],
             requirement: None,
         }];
         registry.insert(card);

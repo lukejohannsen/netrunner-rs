@@ -1,0 +1,33 @@
+{
+  "id": "bernice_mai",
+  "title": "Bernice Mai",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 5,
+            "on_success": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            },
+            "on_failure": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "Whenever there is a successful run on this server, Trace[5]. If successful, give the Runner 1 tag. If unsuccessful, trash Bernice Mai."
+    }
+  ],
+  "trash_cost": 3,
+  "built_from": 2097,
+  "is_playable": true
+}

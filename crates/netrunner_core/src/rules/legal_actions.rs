@@ -1222,6 +1222,7 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            effect_on_failure: None,
         });
         let legal = legal_actions(&awaiting_corp, &CardRegistry::new());
         assert!(!legal.is_empty());
@@ -1238,6 +1239,7 @@ mod tests {
             corp_bid: Some(2),
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            effect_on_failure: None,
         });
         let legal = legal_actions(&awaiting_runner, &CardRegistry::new());
         assert!(!legal.is_empty());
@@ -1504,6 +1506,7 @@ mod tests {
             corp_bid: None,
             effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: TraceResume::None,
+            effect_on_failure: None,
         });
         assert_eq!(current_actor(&state), Some(Side::Corp));
 
