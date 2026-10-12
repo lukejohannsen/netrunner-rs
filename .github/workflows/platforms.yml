@@ -41,11 +41,12 @@ jobs:
   # platform-gated code is linted on the platform where it compiles.
   #
   # Cold-cache durations from the first run, which is what the timeout is
-  # sized against: macos 8m13s, windows 9m43s.
+  # sized against: macos 8m13s, windows 9m43s. By October 2026 Windows took
+  # 26 minutes one week and was cancelled at 30 the next, so it has 60.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     strategy:
       # One platform failing is information about that platform; the other
       # should still report.
@@ -68,7 +69,11 @@ jobs:
   # Linux build of this crate is checked locally; see AGENTS.md.
   #
   # First cold-cache run (PR #23): ubuntu 16m03s, macos 16m42s, windows
-  # 33m35s, against the 45-minute timeout below.
+  # 33m35s, against the 45-minute timeout below. Windows outgrew it: by
+  # October 2026 its test build alone ran past 36 minutes after clippy's
+  # 8, so the job was cancelled every week — and a cancelled job saves no
+  # cache, so every run started cold again. Windows has 120 minutes; the
+  # other two keep 45.
   #
   # Linux needs the ALSA and udev headers at build time (bevy_audio and
   # bevy_gilrs link them through pkg-config); Windows and macOS need
@@ -77,7 +82,7 @@ jobs:
   desktop:
     name: desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:

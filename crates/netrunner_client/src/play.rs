@@ -1737,9 +1737,25 @@ mod lesson_tests {
             }
         }
         drop(handle);
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        while !runtime.block_on(crate::remote::list_matches(&url)).unwrap().0.is_empty() {
-            assert!(std::time::Instant::now() < deadline, "the conceded match is still running");
+        let dropped = std::time::Instant::now();
+        let running = || runtime.block_on(crate::remote::list_matches(&url)).unwrap().0;
+        while !running().is_empty() {
+            if dropped.elapsed() > Duration::from_secs(10) {
+                // It failed once on a macOS runner and never here, so the
+                // failure says which of two things happened: the match
+                // ends at the reconnect grace — the host never read the
+                // concession and let the seat go as a disconnect — or it
+                // outlives that too, and the host is stuck.
+                let still = running();
+                let grace = netrunner_server::DEFAULT_RECONNECT_GRACE + Duration::from_secs(10);
+                while !running().is_empty() && dropped.elapsed() < grace {
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                match running().is_empty() {
+                    true => panic!("the conceded match ran past 10s and ended {:?} after the drop, at the reconnect grace: the host never read the concession ({still:?})", dropped.elapsed()),
+                    false => panic!("the conceded match outlived the reconnect grace: the host is stuck ({still:?})"),
+                }
+            }
             std::thread::sleep(Duration::from_millis(20));
         }
     }
