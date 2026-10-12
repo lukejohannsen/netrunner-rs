@@ -461,6 +461,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RedirectRunOnSuccess(server) => format!("if the run would be declared successful, redirect it to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::Unpreventable(effect) => format!("{}, which cannot be prevented", describe_effect(effect, registry)),
+        // "This card" inside it is the card whose text it is, which is how
+        // the words already read.
+        Effect::AsThisCard(effect) => describe_effect(effect, registry),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
         Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true } => {
             describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry).replace("this turn", "this run")
@@ -535,6 +538,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             let zones: Vec<&str> = zones.iter().map(|zone| if *zone == CardZoneRef::HostedOnSource { "all hosted cards" } else { describe_zone(zone) }).collect();
             format!("shuffle {} into your stack", zones.join(" and "))
         }
+        Effect::AddToScoreAreaAsAgenda(as_agenda) if as_agenda.to_the_runner => format!("add this card to the Runner's score area as {}", as_an_agenda(as_agenda)),
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
         Effect::GainSubroutine { subroutine, after, duration, count } => {
             let order = if *after { "after" } else { "before" };

@@ -7,7 +7,7 @@ use crate::rules::error::RulesError;
 use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, OutsideBreach, RunPhase, RunState, ServerId};
-use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, ScoredAgenda, Side};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, ScoredAgenda, Side};
 use crate::rules::uninstall;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
@@ -267,6 +267,15 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
 /// until `offer_next` hands the run back.
 pub(crate) fn accessing_during_an_encounter(run: &RunState) -> bool {
     run.access_state.as_ref().and_then(|access| access.outside_breach.as_ref()).is_some_and(|outside| outside.during_encounter)
+}
+
+/// Whether the Runner is accessing on the Corp's turn — an access a Corp
+/// card's text gave them (Hangeki), always outside a breach. The access
+/// decisions are the Runner's then (`engine::require_runner_accessing`,
+/// `legal_actions::current_actor`), though the turn is not.
+pub(crate) fn accessing_outside_the_runners_turn(state: &GameState) -> bool {
+    state.phase == GamePhase::Action(Side::Corp)
+        && state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some())
 }
 
 /// Whether the card being accessed is in the Corp's discard pile — out of

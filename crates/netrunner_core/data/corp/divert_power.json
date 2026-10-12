@@ -1,0 +1,86 @@
+{
+  "id": "divert_power",
+  "title": "Divert Power",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "InZone": {
+                "zone": "OwnInstalled",
+                "filter": "Rezzed"
+              }
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "Repeat": {
+                    "times": "ChosenNumber",
+                    "effect": {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OwnInstalled",
+                        "filter": "Rezzed",
+                        "min": 1,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "then": {
+                          "DerezCard": "ThisCard"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnInstalled",
+                    "filter": {
+                      "All": [
+                        "Unrezzed",
+                        {
+                          "Not": {
+                            "CardType": "Agenda"
+                          }
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "RezInstalled": {
+                        "install": 0,
+                        "pay_cost": true,
+                        "discount": {
+                          "Times": {
+                            "amount": "ChosenNumber",
+                            "times": 3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "text": "Derez any number of cards"
+          }
+        }
+      ],
+      "text": "Derez any number of cards. You may rez a card, lowering its rez cost by 3 for each card that you derezzed this way."
+    }
+  ],
+  "built_from": 22030,
+  "is_playable": true
+}
