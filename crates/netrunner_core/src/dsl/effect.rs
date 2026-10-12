@@ -2200,6 +2200,16 @@ pub enum Amount {
     /// card the acting one (`acts_on_subject`) would key Ob's "once per
     /// turn" and its prompt on the card in Archives.
     TriggeringCardPrintedCost,
+    /// The trash cost of the card the triggering access trash is about —
+    /// Mâché's "place power counters on Mâché equal to **that card's trash
+    /// cost**", read off `GameEvent::CardTrashedFromAccess`. What the
+    /// Runner paid, when they paid for it, since that is the trash cost as
+    /// the table made it at that moment (Mahkota Langit Grid's root and
+    /// all); a card trashed by a card's text for nothing still has one, so
+    /// then it is the printed cost and whatever the table still adds. 0 for
+    /// any other event. Composition didn't work: `TriggeringCardPrintedCost`
+    /// is the play or install cost, and `CardTrashed` carries no trash cost.
+    TriggeringCardTrashCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
@@ -2493,10 +2503,20 @@ impl Amount {
     /// installed cards with that printed install cost, up to 6", which is
     /// `Reduced` over `InZone { filter: PrintedCostExactly(ChosenNumber) }`.
     pub fn with_chosen_number(self, number: u32) -> Amount {
-        let boxed = |amount: Box<Amount>| Box::new(amount.with_chosen_number(number));
+        self.filled(&|amount| matches!(amount, Amount::ChosenNumber).then_some(number))
+    }
+
+    /// This amount with every part `fill` answers written over by
+    /// `Fixed` — the walk `with_chosen_number` is one use of, and a
+    /// trigger's choice parking with the moment's numbers the other
+    /// (`Effect::filled`).
+    pub fn filled(self, fill: &dyn Fn(&Amount) -> Option<u32>) -> Amount {
+        if let Some(number) = fill(&self) {
+            return Amount::Fixed(number);
+        }
+        let boxed = |amount: Box<Amount>| Box::new(amount.filled(fill));
         match self {
-            Amount::ChosenNumber => Amount::Fixed(number),
-            Amount::InZone { zone, filter } => Amount::InZone { zone, filter: filter.with_chosen_number(number) },
+            Amount::InZone { zone, filter } => Amount::InZone { zone, filter: filter.filled(fill) },
             Amount::Reduced { amount, by } => Amount::Reduced { amount: boxed(amount), by: boxed(by) },
             Amount::Increased { amount, by } => Amount::Increased { amount: boxed(amount), by: boxed(by) },
             Amount::Times { amount, times } => Amount::Times { amount: boxed(amount), times },
@@ -3018,9 +3038,20 @@ impl Effect {
     /// to it instead — no card's `then` may come out still naming the
     /// placeholder.
     pub fn with_chosen_number(self, number: u32) -> Effect {
-        let amount = |amount: Amount| amount.with_chosen_number(number);
-        let boxed = |effect: Box<Effect>| Box::new(effect.with_chosen_number(number));
-        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_number(number)).collect();
+        self.filled(&|amount| matches!(amount, Amount::ChosenNumber).then_some(number))
+    }
+
+    /// This effect with every amount `fill` answers written over by
+    /// `Fixed`, walked as `with_chosen_number` walks it (which is this
+    /// with the placeholder answered). The other use is a choice a
+    /// trigger parks (`Effect::PresentChoice` in `ability`): the moment it
+    /// heard is gone once the choice is answered, so what the options
+    /// read off it — Mâché's "equal to that card's trash cost" — is
+    /// written in as the choice is made.
+    pub fn filled(self, fill: &dyn Fn(&Amount) -> Option<u32>) -> Effect {
+        let amount = |amount: Amount| amount.filled(fill);
+        let boxed = |effect: Box<Effect>| Box::new(effect.filled(fill));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.filled(fill)).collect();
         match self {
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
@@ -3044,7 +3075,7 @@ impl Effect {
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
                 side,
                 source,
-                filter: filter.with_chosen_number(number),
+                filter: filter.filled(fill),
                 min,
                 max,
                 reveal,
@@ -3057,14 +3088,15 @@ impl Effect {
             // Its `then`'s number is the draw's, as a nested
             // `ChooseNumber`'s `then` is that choice's.
             Effect::IncreaseAboutToResolve { by, then } => Effect::IncreaseAboutToResolve { by: amount(by), then },
-            Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to } => {
-                Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(number), restrict_to }
-            }
+            Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to } => match fill(&Amount::ChosenNumber) {
+                Some(number) => Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(number), restrict_to },
+                None => Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to },
+            },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times: amount(times), effect: boxed(effect) },
-            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition: condition.filled(fill), effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }

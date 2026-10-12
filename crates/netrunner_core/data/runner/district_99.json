@@ -1,0 +1,79 @@
+{
+  "id": "district_99",
+  "title": "District 99",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "Anyone",
+          {
+            "Card": {
+              "CardTypeOneOf": [
+                "Program",
+                "Hardware"
+              ]
+            }
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 power counter on District 99",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn a program or a piece of hardware is trashed (from any location), you may place 1 power counter on District 99."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 3
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": "MatchesOwnIdentitysFaction",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": false,
+          "destination": "OwnGrip"
+        }
+      },
+      "text": "[click], 3 hosted power counters: Add a card that matches the faction of your identity from your heap to your grip."
+    }
+  ],
+  "built_from": 22007,
+  "is_playable": true
+}

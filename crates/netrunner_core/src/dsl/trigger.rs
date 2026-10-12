@@ -219,6 +219,15 @@ pub enum Trigger {
     /// **you** remove 1 or more tags" (Valentina Ferreira Carvalho) is this
     /// trigger with `when: Whose(Runner)` (`Trigger::states_whose`).
     OnTagRemoved,
+    /// "The first time you **avoid** … a tag each turn" (Thunder Art
+    /// Gallery) — `GameEvent::TagsAvoided`, the moment an interrupt
+    /// prevents a tag about to be given (CR 9.9.5: "prevent" and "avoid"
+    /// are synonymous), while the window is still open, so the card
+    /// resolves inside it (the CR 9.9.4 example). Only the Runner is ever
+    /// tagged, so it is theirs and about nothing. Composition didn't work:
+    /// `GameEvent::Prevented` is said once, as the asking ends, and no
+    /// moment was a prevention.
+    OnTagsAvoided,
     /// "The first time each turn you take bad publicity" — fired against
     /// the Corp's cards when the Corp takes bad publicity by any route
     /// (`GameEvent::BadPublicityGiven`): Editorial Division: Ad Nihilum.
@@ -976,7 +985,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 59] = [
+    pub const ALL: [Trigger; 60] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -1005,6 +1014,7 @@ impl Trigger {
         Trigger::OnIceApproached,
         Trigger::OnCardPlayed,
         Trigger::OnTagRemoved,
+        Trigger::OnTagsAvoided,
         Trigger::OnBadPublicityTaken,
         Trigger::OnIcePassed,
         Trigger::OnSubroutineBroken,
@@ -1098,6 +1108,7 @@ impl Trigger {
             | Trigger::OnBasicDrawAction
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
+            | Trigger::OnTagsAvoided
             | Trigger::OnDamageDealt
             | Trigger::OnCardsTrashedFromHq
             | Trigger::OnCardsTrashedFromRnD
@@ -1209,6 +1220,7 @@ impl Trigger {
             | Trigger::OnArchivesTurnedFaceup
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
+            | Trigger::OnTagsAvoided
             | Trigger::OnDamageAboutToResolve
             | Trigger::OnExposeAboutToResolve
             | Trigger::OnVirusCountersPurged
@@ -1244,7 +1256,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

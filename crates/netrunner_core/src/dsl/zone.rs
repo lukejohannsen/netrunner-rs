@@ -450,6 +450,15 @@ pub enum CardFilter {
     /// trashes nothing. Composition didn't work: the type is chosen as the
     /// game goes, and `CardType` is written in the card file.
     OfChosenCardType,
+    /// A card of the faction printed on the chooser's own identity —
+    /// District 99's "add a card that **matches the faction of your
+    /// identity** from your heap to your grip". Instance-level: which
+    /// faction is the identity in play, so `card_matches_filter` lets every
+    /// definition through and `pending_choice`'s instance check compares
+    /// the two. A neutral card matches only a neutral identity. Composition
+    /// didn't work: no filter read a faction, and a faction written in the
+    /// card file would be wrong in every deck that splashes the card.
+    MatchesOwnIdentitysFaction,
     /// A card in this server, its root or its ice. `InRootOf` is the root
     /// alone; a card "protecting" a server is `All([Ice, InServer(..)])`.
     InServer(ServerId),
@@ -589,14 +598,19 @@ impl CardFilter {
     /// (`Amount::with_chosen_number`): Khusyuk's "your installed cards with
     /// that printed install cost".
     pub fn with_chosen_number(self, number: u32) -> CardFilter {
-        let amount = |amount: Box<crate::dsl::Amount>| Box::new(amount.with_chosen_number(number));
+        self.filled(&|amount| matches!(amount, crate::dsl::Amount::ChosenNumber).then_some(number))
+    }
+
+    /// See `Amount::filled`.
+    pub fn filled(self, fill: &dyn Fn(&crate::dsl::Amount) -> Option<u32>) -> CardFilter {
+        let amount = |amount: Box<crate::dsl::Amount>| Box::new(amount.filled(fill));
         match self {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(amount(at_most)),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
-            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
-            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_number(number)).collect()),
-            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_number(number))),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.filled(fill)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.filled(fill)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.filled(fill))),
             other => other,
         }
     }
@@ -635,6 +649,7 @@ impl CardFilter {
         matches!(
             self,
             CardFilter::DiscardedThisDiscardPhase
+                | CardFilter::MatchesOwnIdentitysFaction
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
@@ -742,6 +757,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InChosenServer => true,
         // Written over before it is read; unresolved, nothing was chosen.
         CardFilter::OfChosenCardType => false,
+        // Instance-level: the identity in play is state.
+        CardFilter::MatchesOwnIdentitysFaction => true,
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),

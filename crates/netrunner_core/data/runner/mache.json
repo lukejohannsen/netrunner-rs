@@ -1,0 +1,58 @@
+{
+  "id": "mache",
+  "title": "Mâché",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Repeat": {
+                  "times": "TriggeringCardTrashCost",
+                  "effect": {
+                    "AddCounters": 1
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place power counters on Mâché equal to that card's trash cost",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time you trash an accessed card each turn, you may place power counters on Mâché equal to that card's trash cost."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 3
+      },
+      "effect": {
+        "DrawCards": [
+          "Runner",
+          1
+        ]
+      },
+      "text": "3 hosted power counters: Draw 1 card."
+    }
+  ],
+  "built_from": 22018,
+  "is_playable": true
+}

@@ -407,6 +407,13 @@ pub enum GameEvent {
     /// tags they were and `by` the player who removed them, as on
     /// `TagsRemoved`.
     TagsCleared { side: Side, by: Side },
+    /// An interrupt prevented `amount` of the tags about to be given to the
+    /// Runner, as it resolved and while the prevention window is still
+    /// open (CR 9.9.5) — Thunder Art Gallery's "avoid". `Prevented` says
+    /// the total once the asking is over; this says each use, because a
+    /// card that hears the avoiding resolves inside the window (the CR
+    /// 9.9.4 example).
+    TagsAvoided { amount: u32 },
     /// `card`, `side`'s, went to its owner's discard pile. `by` is the
     /// player who carried the trash out (CR 1.14.5a) — the controller of
     /// the text that trashed it, the chooser of a selection, the payer of
@@ -862,7 +869,7 @@ impl GameEvent {
             | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToDeck { .. }
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::MarkIdentified { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
-            | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
+            | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::TagsAvoided { .. } | GameEvent::CardTrashed { .. }
             | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } | GameEvent::CardAddedToHand { .. }
             | GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityTookCredits { .. } | GameEvent::RunEndedByEffect { .. }
             | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
