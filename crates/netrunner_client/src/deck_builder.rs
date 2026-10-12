@@ -146,7 +146,11 @@ pub fn status(deck: &DeckFile, book: CardBook, format: NsgFormat) -> DeckStatus 
     DeckStatus { format, standing, legal_in }
 }
 
-fn standing(deck: &DeckFile, book: CardBook, format: NsgFormat) -> Standing {
+/// The deck's standing in `format` alone: legal, illegal with the
+/// reason, or unplayable by the engine. `status` reads it for one format
+/// and every other's legality; the dashboard asks it per format, so a
+/// greyed pill can say why (Phase 7 §14).
+pub fn standing(deck: &DeckFile, book: CardBook, format: NsgFormat) -> Standing {
     match deck.validate(book.registry, format) {
         Ok(_) => Standing::Legal,
         Err(error @ (DeckError::UnknownCard(_) | DeckError::Unplayable(_))) => {

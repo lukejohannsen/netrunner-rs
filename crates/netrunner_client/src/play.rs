@@ -1696,7 +1696,21 @@ mod lesson_tests {
             tokio::spawn(server.run());
             url
         });
-        let hello = crate::remote::seat_in_format("tester", netrunner_core::format::NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"))
+        // A bot sits only in a friend lobby that lets bots in: one is
+        // made by a connection kept attached for the game.
+        let (_maker, lobby) = runtime.block_on(async {
+            use crate::connection::{Goal, Who};
+            use crate::remote::AttachedEvent;
+            let mut maker = crate::remote::spawn(url.clone(), Goal::Attach(Who { player_name: "maker".into(), credentials: None }));
+            while !matches!(maker.next().await, Some(AttachedEvent::Attached(_))) {}
+            maker.create_lobby("bots".into(), netrunner_core::format::NsgFormat::Startup, None, true);
+            loop {
+                if let Some(AttachedEvent::LobbyJoined(lobby)) = maker.next().await {
+                    break (maker, lobby.id);
+                }
+            }
+        });
+        let hello = crate::remote::seat("tester", lobby, None, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"))
             .against(netrunner_protocol::Opponent::Bot { level: netrunner_bots::Level::Elite, style: None });
         let joined = runtime.block_on(async { crate::remote::connect(crate::remote::seek(url.clone(), hello), |_| {}).await }).unwrap();
         let registry = Arc::new(crate::decks::sample_deck_registry());

@@ -207,14 +207,6 @@ pub struct Config {
     #[arg(long)]
     pub ranked: bool,
 
-    /// (remote mode) Play a bot at this rung — `novice`, `apprentice`,
-    /// `operator`, `veteran`, `elite`, or `1`-`5` — instead of waiting for
-    /// a person, where the lobby offers one: a server's Casual queue, or a
-    /// friend queue its maker let bots into. The bot plays the style of
-    /// the deck the server deals it. Omitted: a person.
-    #[arg(long)]
-    pub bot: Option<netrunner_bots::Level>,
-
     /// (remote mode) The password of a friend queue that has one.
     #[arg(long)]
     pub password: Option<String>,

@@ -325,10 +325,11 @@ impl Attached {
             && !info.bots.contains(&level)
         {
             return Err(match info.mode {
-                QueueMode::Ranked => "a bot never sits in Ranked: look for a bot in the Casual queue".to_string(),
+                QueueMode::Ranked | QueueMode::Casual => "a bot sits only in a friend lobby that allows one: make one, or look for a person here".to_string(),
+                QueueMode::Friends if info.bots.is_empty() && self.shared.options.bots.is_empty() => "this server offers no bot".to_string(),
+                QueueMode::Friends if info.bots.is_empty() && !self.shared.lock().bots_in(format) => format!("this server offers no bot in {format:?}"),
                 QueueMode::Friends if info.bots.is_empty() => "this lobby's maker kept bots out of it".to_string(),
-                QueueMode::Casual | QueueMode::Friends if info.bots.is_empty() => format!("this server offers no bot in {format:?}"),
-                QueueMode::Casual | QueueMode::Friends => format!("this server offers no {level} bot"),
+                QueueMode::Friends => format!("this server offers no {level} bot"),
             });
         }
         let (out_tx, out) = mpsc::unbounded_channel::<ServerMessage>();

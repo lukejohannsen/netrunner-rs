@@ -164,15 +164,18 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
-//! - `NETRUNNER_ONLINE=host|servers|watch|hosting|ticket|profile|lobby|friend-queue` — with
-//!   `NETRUNNER_SCREEN=online`, that page is opened once (`join` is
-//!   `servers`, the page it became); `profile` waits for the Default the
-//!   screen connects to and opens the profile page there, and
-//!   `profile-titles` / `profile-badges` open its pop-up too; `lobby` waits
-//!   for the Default too and joins its first Casual queue in either chair,
-//!   preferring the Runner's, so the screenshot catches the preference and
-//!   the bots the queue offers, and `friend-queue` opens the form that
-//!   makes one there (Phase 4 §9); `hosting` hosts
+//! - `NETRUNNER_ONLINE=host|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby`
+//!   — with `NETRUNNER_SCREEN=online`, that page is opened once (`join`
+//!   is `servers`, the page it became); `profile` waits for the Default
+//!   the screen connects to and opens the profile page there, and
+//!   `profile-titles` / `profile-badges` open its pop-up too; `dashboard`
+//!   waits for the Default's lobbies, which is the page the screen opens
+//!   on (Phase 7 §14); `queue` opens the Casual door's form over it, and
+//!   `queue-ranked` the Ranked door's, preferring the Runner's chair;
+//!   `searching` presses Find match there, so the screenshot catches the
+//!   search with nobody else looking; `make-lobby` opens the form that
+//!   makes a friend lobby, and `friend-lobby` makes one that lets bots in
+//!   and opens its page; `hosting` hosts
 //!   a game for the network on a free port and shows what to give out,
 //!   and `ticket` the same with a ticket naming this machine's own
 //!   addresses — no relay and no router asked. `spectate` hosts a game

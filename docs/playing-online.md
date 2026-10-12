@@ -12,28 +12,40 @@ yourself. Under **Who can join** pick:
   to forward the port (UPnP, NAT-PMP or PCP), and if the router agrees, an
   address that works from anywhere is listed too.
 
-Start hosting and you are on the server page, in your game's one lobby:
-pick a chair and a deck and press **Find a game**. Your friend chooses
-**Join a server**, pastes the ticket or types the address, and is on the
-same page: they join your lobby, pick their chair and deck, and the game
-starts when you are both looking. When it ends you are both back on that
-page, still connected, and the next game is a chair and a deck away.
+Start hosting and you are on your server's dashboard: your two active
+decks at the top, and **Casual** the one door open, since a game hosted
+from your machine is never rated. Press it, choose the format, and **Find
+match**. Your friend chooses **Join a server**, pastes the ticket or types
+the address, and is on the same dashboard: they press Casual and Find
+match too, and the game starts when you are both looking. When it ends you
+are both back on the dashboard, still connected, and the next game is two
+presses away.
 
-A game hosted this way is never rated, and the page says so. A public
-server has two queues for each format it plays. **Ranked** is rated — only
-on a server that keeps ratings, and only between two players with keys —
-and the line over **Find a game** shows your standing there once you have
-played. **Casual** never is, and there you may ask for a bot at any rung of
-the ladder instead of waiting for a person; a bot never sits in Ranked.
-To play the people you know, make a **friend queue**: it is never listed and
-never rated, your group joins it by the code the server gives it, and
-whoever is looking there plays whoever else is. Whether its members may ask
-for a bot is yours to say when you make it.
+**The dashboard is the Server page** (Phase 7 §14, 12 October 2026). Play
+Online connects to your Default server and shows it: your active Corp and
+Runner decks with the formats each is legal in (Change… opens the deck
+picker), the three doors — **Ranked ladder**, **Casual / unranked**,
+**Tournaments & events** — and a column of ways elsewhere: the deck
+builder, the cards, your profile on this server, watching a game, hosting
+one. A public server has two queues for each format it plays. **Ranked**
+is rated — only on a server that keeps ratings, and only between two
+players with keys. **Casual** never is. Each door opens a form over the
+dashboard: the format as pills, greyed with the reason when one of your
+active decks is not legal there, and a role preference — Prefer Corp,
+**Any / Balanced**, Prefer Runner — which the queue meets where it can and
+never refuses a game over. **Find match** always brings both decks; while
+the server looks, the dashboard shows what it is looking for and how long
+it has been, with **Abort**. Two players who meet again swap the chairs
+they last took.
 
-Bring a deck for each side and choose **Either** to let the queue seat you,
-with a preference for one side if you have one: the queue meets it where it
-can and never refuses a game over it. Two players who meet again swap the
-chairs they last took.
+To play the people you know, open Casual and make a **friend lobby**: it is
+never listed and never rated, your group joins it by the code the server
+gives it (also under Casual), and whoever is looking there plays whoever
+else is. Its page lists who is there, and **Find a game** looks among them.
+**A bot sits only in a friend lobby that allows one**: whether yours does
+is your choice when you make it, and then anyone there may play a bot at
+any rung of the ladder instead of waiting for the group. The server's own
+queues, Ranked and Casual, are between people.
 
 A move can be taken back online as it can at home — **Take it back** on the
 desktop, `u` in the terminal — whenever the host offers it. A move still on
@@ -105,7 +117,7 @@ by default.
 
 `netrunner_server --serve --host :: --port 8080 --data-dir <dir>` pairs
 whoever connects, and with a data directory keeps ratings in a Ranked queue
-per format. `--bots none` offers no bot even to a Casual seek that asks; by
-default every rung of the ladder is offered there. `::` listens on every IPv6 address, and on IPv4 too on
+per format. `--bots none` offers no bot even to a friend lobby that asks
+for one; by default every rung of the ladder is offered there. `::` listens on every IPv6 address, and on IPv4 too on
 Linux and macOS. On Windows, use `0.0.0.0` for IPv4. The server doesn't
 ask the router for anything: forward the port yourself.

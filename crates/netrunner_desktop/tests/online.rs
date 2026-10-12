@@ -1,10 +1,10 @@
 //! Play Online, without a window: the desktop hosts a game on this
-//! machine and is attached to its own server; a second player joins it
-//! through the real connection driver; both are seated; the board opens on
-//! the host's first view; leaving the board concedes — which reaches the
-//! opponent — and leads back to the Server page, still attached, for the
-//! next game. A second client connects by address, browses the lobbies and
-//! makes one of its own.
+//! machine and is attached to its own server; it finds a match from the
+//! dashboard's Casual door; a second player joins through the real
+//! connection driver; both are seated; the board opens on the host's
+//! first view; leaving the board concedes — which reaches the opponent —
+//! and leads back to the dashboard, still attached, for the next game. A
+//! second client connects by address and makes a friend lobby of its own.
 //!
 //! Driven under `MinimalPlugins` like `tests/game.rs`; the server, the
 //! connection and the match thread are real, so the test pumps `update`
@@ -22,7 +22,8 @@ use netrunner_client::play::GameEndReason;
 use netrunner_client::remote;
 use netrunner_core::rules::Viewer;
 use netrunner_desktop::core::ClientCore;
-use netrunner_desktop::models::online::{ChairChoice, Field, Page};
+use netrunner_desktop::models::online::{Field, Page, ServerState};
+use netrunner_server::protocol::QueueMode;
 use netrunner_desktop::nav::Navigate;
 use netrunner_desktop::screens::game::{Click, Model as Board};
 use netrunner_desktop::screens::new_game::ActiveMatch;
@@ -46,7 +47,7 @@ fn headless_client(name: &str) -> (App, std::path::PathBuf) {
     app.world_mut().write_message(Navigate(AppScreen::Online));
     app.update();
     app.update();
-    assert_eq!(page(&app), Page::Home);
+    assert_eq!(page(&app), Page::Servers, "no Default: the servers page");
     (app, dir)
 }
 
@@ -98,9 +99,8 @@ fn texts(app: &mut App) -> Vec<String> {
     app.world_mut().query::<&Text>().iter(app.world()).map(|text| text.0.clone()).collect()
 }
 
-/// Hosts for this machine on a free port: the Server page, attached to
-/// the host's own server and put in its one lobby, with the address to
-/// give out on the page beside a Copy.
+/// Hosts for this machine on a free port: the dashboard, attached to the
+/// host's own server, with the address to give out on it beside a Copy.
 fn host(app: &mut App) -> String {
     tap_control(app, Control::Open(Page::Host));
     assert_eq!(page(app), Page::Host);
@@ -117,8 +117,8 @@ fn host(app: &mut App) -> String {
     tap_control(app, Control::Go);
     // Waiting while the host starts — or already on its page, when it
     // was up within the same frames, a race a fast runner won.
-    assert!(matches!(page(app), Page::Waiting | Page::Server), "{:?} {:?}", page(app), app.world().resource::<Model>().0.notice);
-    until(app, "the host's own lobby", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.hosting && server.lobby.is_some() && !server.decks.is_empty()));
+    assert!(matches!(page(app), Page::Waiting | Page::Dashboard), "{:?} {:?}", page(app), app.world().resource::<Model>().0.notice);
+    until(app, "the host's dashboard", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.hosting && !server.lobbies.is_empty()));
     assert!(app.world().get_resource::<Connected>().is_some_and(Connected::is_hosting));
     let mut address = None;
     until(app, "the host's address", |app| {
@@ -137,11 +137,15 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     let (mut app, _dir) = headless_client("host");
     let address = host(&mut app);
 
-    // The host looks for a game in the Corp chair with the first legal
-    // Corp deck; the deck is the seek's, not the form's.
-    tap_control(&mut app, Control::Seek);
-    until(&mut app, "the host's seek", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.seeking == Some(1)));
-    assert!(find::<Control>(&mut app, |c| *c == Control::CancelSeek).is_some(), "looking can be stopped");
+    // The host finds a match from the Casual door with both active decks;
+    // Ranked is shut on a hosted server.
+    let shown = texts(&mut app);
+    assert!(shown.iter().any(|text| text == "A game hosted from this machine is never rated"), "{shown:?}");
+    tap_control(&mut app, Control::OpenQueue(QueueMode::Casual));
+    assert!(find::<Control>(&mut app, |c| matches!(c, Control::QueueFormat(_))).is_some(), "the form's format pills");
+    tap_control(&mut app, Control::FindMatch);
+    until(&mut app, "the host's search", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.searching.as_ref().is_some_and(|searching| searching.position == Some(1))));
+    assert!(find::<Control>(&mut app, |c| *c == Control::CancelSeek).is_some(), "the search can be aborted");
 
     // The opponent: a seat through the same driver, over the address.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
@@ -175,7 +179,7 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     assert!(board.view.as_ref().unwrap().legal_actions.is_empty() && !board.awaiting, "a spectator is asked nothing");
     press(&mut watcher, KeyCode::Escape, Key::Escape);
     until(&mut watcher, "the spectator back at Play Online", |app| screen(app) == AppScreen::Online);
-    assert_eq!(page(&watcher), Page::Home, "a spectator was never attached");
+    assert_eq!(page(&watcher), Page::Servers, "a spectator was never attached");
 
     // Leaving concedes, and the concession reaches the guest before the
     // host's server lets go.
@@ -197,14 +201,14 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     });
     assert_eq!(ended.expect("the guest heard in time"), Some((Some(host_side.other()), GameEndReason::Surrender)));
 
-    // Back on the Server page, attached still, in the lobby and not
-    // looking: the next game is a press away.
-    assert_eq!(page(&app), Page::Server);
-    until(&mut app, "the host back in its lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.is_some() && server.seeking.is_none()));
+    // Back on the dashboard, attached still, out of the queue and not
+    // looking: the next game is a door away.
+    assert_eq!(page(&app), Page::Dashboard);
+    until(&mut app, "the host out of the queue", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.is_none() && !server.seeking()));
     assert!(app.world().get_resource::<Connected>().is_some());
-    assert!(find::<Control>(&mut app, |c| *c == Control::Seek).is_some());
+    assert!(find::<Control>(&mut app, |c| *c == Control::OpenQueue(QueueMode::Casual)).is_some());
     tap_control(&mut app, Control::Disconnect);
-    assert_eq!(page(&app), Page::Host);
+    assert_eq!(page(&app), Page::Servers, "disconnecting from the dashboard leads to the servers");
     assert!(app.world().get_resource::<Connected>().is_none(), "disconnecting lets the connection and the server go");
 }
 
@@ -228,10 +232,9 @@ fn a_tournament_is_held_entered_and_left_from_the_pages() {
         address
     });
     let join = |app: &mut App| {
-        tap_control(app, Control::Open(Page::Servers));
         app.world_mut().resource_mut::<Model>().0.address = address.clone();
         tap_control(app, Control::Go);
-        until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
+        until(app, "the server's key answer", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
     };
     let tournament = |app: &App| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.open_tournament().cloned());
 
@@ -282,7 +285,7 @@ fn a_tournament_is_held_entered_and_left_from_the_pages() {
     assert_eq!(page(&entrant), Page::Tournaments);
     press(&mut entrant, KeyCode::Escape, Key::Escape);
     entrant.update();
-    assert_eq!(page(&entrant), Page::Server, "Escape walks back a page at a time, attached still");
+    assert_eq!(page(&entrant), Page::Dashboard, "Escape walks back a page at a time, attached still");
     assert!(entrant.world().get_resource::<Connected>().is_some());
     let _ = std::fs::remove_dir_all(&data);
 }
@@ -310,10 +313,9 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
         address
     });
     let join = |app: &mut App| {
-        tap_control(app, Control::Open(Page::Servers));
         app.world_mut().resource_mut::<Model>().0.address = address.clone();
         tap_control(app, Control::Go);
-        until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
+        until(app, "the server's key answer", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
     };
     let tournament = |app: &App| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.open_tournament().cloned());
     let register = |app: &mut App, entrants: usize| {
@@ -351,7 +353,7 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
 
     // Both sit; the board opens for each on the pairing's sides.
     tap_control(&mut organizer, Control::Sit);
-    until(&mut organizer, "the organizer seated", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.seeking.is_some()));
+    until(&mut organizer, "the organizer seated", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(ServerState::seeking));
     assert!(find::<Control>(&mut organizer, |c| *c == Control::CancelSeek).is_some(), "a seat is stood up from");
     tap_control(&mut entrant, Control::Sit);
     until(&mut organizer, "the organizer's board", |app| screen(app) == AppScreen::Game);
@@ -371,7 +373,7 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
     assert_eq!(page(&organizer), Page::Tournament, "back from a tournament game, its page");
     let winner = if expected == netrunner_core::rules::Side::Corp { Outcome::RunnerWon } else { Outcome::CorpWon };
     until(&mut organizer, "the table's result", |app| tournament(app).is_some_and(|info| info.rounds[0].tables[0].result == Some(winner)));
-    until(&mut organizer, "the seat let go", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.seeking.is_none()));
+    until(&mut organizer, "the seat let go", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.seeking()));
     let shown = texts(&mut organizer);
     assert!(shown.iter().any(|text| text.contains("· 3 pts ·")), "{shown:?}");
     assert!(find::<Control>(&mut organizer, |c| *c == Control::BeginRound).is_some());
@@ -402,60 +404,60 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
-/// A second client connects to the host by address: the host's one lobby
-/// is listed, a lobby of the guest's own is made and joined, the host's
-/// is joined back, and Escape disconnects.
+/// A second client connects to the host by address and lands on the
+/// dashboard, where the host's one Casual queue is listed; under the
+/// Casual door it makes a friend lobby of its own and lands on its page;
+/// leaving the lobby is the dashboard again, and Escape there is off the
+/// screen, the connection let go.
 #[test]
-fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
+fn a_guest_lands_on_the_dashboard_and_makes_a_friend_lobby() {
     let (mut host_app, _dir) = headless_client("host");
     let address = host(&mut host_app);
 
     let (mut guest, _dir) = headless_client("guest");
-    tap_control(&mut guest, Control::Open(Page::Servers));
     guest.world_mut().resource_mut::<Model>().0.address = address.clone();
     tap_control(&mut guest, Control::Go);
-    // Waiting while the connection is made — or already on the server's
-    // page, when the host answered within the same frames: a fast runner
-    // did, and the test that asserted Waiting alone lost that race.
-    assert!(matches!(page(&guest), Page::Waiting | Page::Server), "{:?}", page(&guest));
+    // Waiting while the connection is made — or already on the
+    // dashboard, when the host answered within the same frames: a fast
+    // runner did, and the test that asserted Waiting alone lost that race.
+    assert!(matches!(page(&guest), Page::Waiting | Page::Dashboard), "{:?}", page(&guest));
     // The server joined is a row of the person's servers from the moment
-    // the connection is made, and where Join starts next time while none
-    // is the Default, in both clients (Phase 7 §14).
+    // the connection is made, and where Connect once starts next time
+    // while none is the Default, in both clients (Phase 7 §14).
     let book = netrunner_client::servers::ServerBook::load(&netrunner_client::servers::path_in(&_dir.join("identity"))).expect("the list of servers is written");
     assert_eq!(book.start_address(), Some(address.as_str()), "the address joined is kept");
-    until(&mut guest, "the host's lobbies", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.lobbies.is_empty()));
+    until(&mut guest, "the host's queues", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.lobbies.is_empty()));
     let server = guest.world().resource::<Model>().0.server.clone().unwrap();
-    assert!(!server.hosting && server.lobby.is_none(), "a guest picks a lobby");
-    assert_eq!(server.lobbies.len(), 1, "the host's server has the one lobby, its format's");
+    assert!(!server.hosting && server.lobby.is_none(), "a guest is in no queue until it looks");
+    assert_eq!(server.lobbies.len(), 1, "the host's server has the one queue, its format's");
     let format = server.lobbies[0].format;
+    let shown = texts(&mut guest);
+    assert!(shown.iter().any(|text| text == "ACTIVE DECKS") && shown.iter().any(|text| text == "Ranked ladder"), "{shown:?}");
+    assert!(find::<Control>(&mut guest, |c| matches!(c, Control::Nav(AppScreen::Decks))).is_some(), "the deck builder is a row of the column");
 
-    // A friend queue of the guest's own, which the server puts them in.
+    // A friend lobby of the guest's own, from the Casual door, which the
+    // server puts them in.
+    tap_control(&mut guest, Control::OpenQueue(QueueMode::Casual));
     tap_control(&mut guest, Control::Open(Page::MakeLobby));
     assert_eq!(page(&guest), Page::MakeLobby);
     guest.world_mut().resource_mut::<Model>().0.make.name = "Friday".to_string();
     tap_control(&mut guest, Control::LobbyBots(true));
     tap_control(&mut guest, Control::Go);
-    until(&mut guest, "the made lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.name == "Friday")));
+    until(&mut guest, "the made lobby", |app| page(app) == Page::FriendLobby && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.name == "Friday")));
     let made = guest.world().resource::<Model>().0.server.as_ref().unwrap().lobby.clone().unwrap();
     assert!(!made.permanent() && made.id.len() == 6 && made.format == format, "{made:?}");
-    assert!(made.bots.is_empty(), "a hosted server offers no bot, whatever its friend queue asks: {made:?}");
-    assert_eq!(page(&guest), Page::Server);
-    assert!(find::<Control>(&mut guest, |c| matches!(c, Control::Chair(ChairChoice::Runner))).is_some(), "in a lobby, the game to look for");
+    assert!(made.bots.is_empty(), "a hosted server offers no bot, whatever its friend lobby asks: {made:?}");
+    assert!(find::<Control>(&mut guest, |c| *c == Control::Seek).is_some(), "in the lobby, the game to look for");
+    assert!(find::<Control>(&mut guest, |c| matches!(c, Control::Opponent(_))).is_none(), "and no bot to ask for");
+    assert!(texts(&mut guest).iter().any(|text| text == &format!("Code {}", made.id)));
 
-    // Back to the host's lobby by its row.
-    tap_control(&mut guest, Control::JoinLobby(0));
-    until(&mut guest, "the host's lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.permanent())));
-    // The host sees the guest arrive on a refresh.
-    tap_control(&mut host_app, Control::Refresh);
-    until(&mut host_app, "two in the lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobbies.first().is_some_and(|lobby| lobby.players == 2)));
+    // Out of it: the dashboard again.
+    tap_control(&mut guest, Control::LeaveLobby);
+    until(&mut guest, "the dashboard", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.is_none()));
 
     press(&mut guest, KeyCode::Escape, Key::Escape);
-    guest.update();
-    assert_eq!(page(&guest), Page::Servers, "Escape from the Server page disconnects");
-    assert!(guest.world().get_resource::<Connected>().is_none());
-    press(&mut guest, KeyCode::Escape, Key::Escape);
-    guest.update();
-    assert_eq!(page(&guest), Page::Home);
+    until(&mut guest, "the main menu", |app| screen(app) == AppScreen::MainMenu);
+    assert!(guest.world().get_resource::<Connected>().is_none(), "leaving the screen lets the connection go");
 }
 
 /// A Default is connected to on opening the screen (Phase 7 §14), and the
@@ -504,7 +506,8 @@ fn the_default_is_connected_to_on_opening_and_the_profile_page_wears_a_title() {
     app.world_mut().write_message(Navigate(AppScreen::Online));
     app.update();
     app.update();
-    until(&mut app, "the Default, attached", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.known_profile().is_some()));
+    until(&mut app, "the Default, attached", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.known_profile().is_some()));
+    assert!(texts(&mut app).iter().any(|text| text == "ann"), "the person's tag on the dashboard: {:?}", texts(&mut app));
     assert_eq!(app.world().resource::<Model>().0.attached_address(), Some(url.as_str()));
 
     tap_control(&mut app, Control::Open(Page::Profile));

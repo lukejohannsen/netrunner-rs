@@ -24,7 +24,7 @@ use netrunner_core::rules::{
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
-use netrunner_server::protocol::{Opponent, QueueMode};
+use netrunner_server::protocol::QueueMode;
 
 use netrunner_client::board::{offered_label, routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
@@ -106,8 +106,9 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                     None
                 }
             };
-            let opponent = config.bot.map_or(Opponent::Person, |level| Opponent::Bot { level, style: None });
-            let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).against(opponent).with_credentials(credentials);
+            // A person: a bot sits only in a friend lobby that lets bots
+            // in, asked for from the menu's Server page.
+            let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials);
             remote::seek(config.server.clone(), seat)
         }
     };

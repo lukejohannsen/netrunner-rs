@@ -958,14 +958,32 @@ mod tests {
         Opponent::Bot { level: netrunner_bots::Level::Elite, style: None }
     }
 
-    fn corp(url: &str) -> Connecting {
-        seek(url.to_string(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).against(elite()))
+    /// A Startup friend lobby at `url` that lets bots in — the only place
+    /// a bot sits (12 October 2026) — made by a connection kept attached
+    /// in it, so the lobby lives for the test; and its code.
+    async fn bot_lobby(url: &str) -> (Attached, String) {
+        let mut maker = spawn(url.to_string(), Goal::Attach(Who { player_name: "maker".into(), credentials: None }));
+        next_where(&mut maker, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
+        maker.create_lobby("bots".into(), NsgFormat::Startup, None, true);
+        let code = next_where(&mut maker, |event| match event {
+            AttachedEvent::LobbyJoined(lobby) => Some(lobby.id),
+            _ => None,
+        })
+        .await;
+        (maker, code)
+    }
+
+    /// A Corp seat against the elite bot in `lobby`, which `bot_lobby`
+    /// made; with a queue's id, a dial that is expected to fail.
+    fn corp(url: &str, lobby: &str) -> Connecting {
+        seek(url.to_string(), seat("tester", lobby.to_string(), None, deck("brick_stack")).against(elite()))
     }
 
     #[tokio::test]
     async fn a_seat_plays_through_the_driver() {
         let url = format!("ws://{}", start_server().await);
-        let mut joined = connect(corp(&url), |_| {}).await.unwrap();
+        let (_maker, lobby) = bot_lobby(&url).await;
+        let mut joined = connect(corp(&url, &lobby), |_| {}).await.unwrap();
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         assert!(joined.session_token.is_some());
         next_view(&mut joined.rx).await;
@@ -1075,7 +1093,8 @@ mod tests {
         tokio::spawn(server.run());
         let url = format!("ws://{addr}");
         let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
-        let signed_in = || seek(url.clone(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).against(elite()).with_credentials(Some(credentials.clone())));
+        let (_maker, lobby) = bot_lobby(&url).await;
+        let signed_in = || seek(url.clone(), seat("tester", lobby.clone(), None, deck("brick_stack")).against(elite()).with_credentials(Some(credentials.clone())));
 
         let mut joined = connect(signed_in(), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
@@ -1187,7 +1206,8 @@ mod tests {
     #[tokio::test]
     async fn a_cut_socket_is_resumed_under_the_same_channels() {
         let (proxy, url) = Proxy::start(start_server().await).await;
-        let mut joined = connect(corp(&url), |_| {}).await.unwrap();
+        let (_maker, lobby) = bot_lobby(&url).await;
+        let mut joined = connect(corp(&url, &lobby), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
 
         proxy.cut();
@@ -1203,22 +1223,26 @@ mod tests {
     /// a game is then found on it.
     #[tokio::test]
     async fn a_cut_socket_while_in_a_lobby_rejoins_it() {
-        let (proxy, url) = Proxy::start(start_server().await).await;
+        let upstream = start_server().await;
+        let (proxy, url) = Proxy::start(upstream).await;
+        // The lobby's maker is attached straight to the server, so the
+        // cut does not empty the lobby and have it forgotten.
+        let (_maker, lobby) = bot_lobby(&format!("ws://{upstream}")).await;
         let mut attached = spawn(url, Goal::Attach(Who { player_name: "tester".into(), credentials: None }));
         next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
-        attached.join_lobby("casual-startup".into(), None);
+        attached.join_lobby(lobby.clone(), None);
         next_where(&mut attached, |event| matches!(event, AttachedEvent::LobbyJoined(_)).then_some(())).await;
 
         proxy.cut();
         next_where(&mut attached, |event| matches!(event, AttachedEvent::Link(Link::Reconnecting { .. })).then_some(())).await;
         next_where(&mut attached, |event| matches!(event, AttachedEvent::Link(Link::Up)).then_some(())).await;
         next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
-        let lobby = next_where(&mut attached, |event| match event {
+        let rejoined = next_where(&mut attached, |event| match event {
             AttachedEvent::LobbyJoined(lobby) => Some(lobby),
             _ => None,
         })
         .await;
-        assert_eq!(lobby.id, "casual-startup", "rejoined without being asked");
+        assert_eq!(rejoined.id, lobby, "rejoined without being asked");
         // The profile is asked over the same connection; this one proved
         // no key, and the daemon keeps no store.
         attached.profile();
@@ -1268,7 +1292,8 @@ mod tests {
         let ticket = crate::peer::Ticket::parse(&ticket).unwrap().relay_only();
         assert!(ticket.relay().is_some(), "the ticket names the relay: {ticket}");
         let ticket = ticket.to_string();
-        let mut joined = connect(corp(&ticket), |_| {}).await.unwrap();
+        let (_maker, lobby) = bot_lobby(&ticket).await;
+        let mut joined = connect(corp(&ticket, &lobby), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
         next_view(&mut joined.rx).await;
@@ -1282,7 +1307,8 @@ mod tests {
         let (_host, ticket) = start_peer_host().await;
         let (matches, waiting, _) = list_matches(&ticket).await.unwrap();
         assert_eq!((matches.len(), waiting), (0, 0), "a ticket answers ListMatches too");
-        let mut joined = connect(corp(&ticket), |_| {}).await.unwrap();
+        let (_maker, lobby) = bot_lobby(&ticket).await;
+        let mut joined = connect(corp(&ticket, &lobby), |_| {}).await.unwrap();
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         next_view(&mut joined.rx).await;
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
@@ -1297,7 +1323,7 @@ mod tests {
         let (host, ticket) = start_peer_host().await;
         drop(host);
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let result = tokio::time::timeout(Duration::from_secs(30), connect(corp(&ticket), |_| {})).await.expect("the machine bounds the first dial");
+        let result = tokio::time::timeout(Duration::from_secs(30), connect(corp(&ticket, "casual-startup"), |_| {})).await.expect("the machine bounds the first dial");
         assert!(matches!(result, Err(ConnectionError::Transport(_))), "{:?}", result.err());
     }
 
@@ -1306,7 +1332,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("ws://{}", listener.local_addr().unwrap());
         drop(listener);
-        assert!(matches!(connect(corp(&url), |_| {}).await, Err(ConnectionError::Transport(_))));
+        assert!(matches!(connect(corp(&url, "casual-startup"), |_| {}).await, Err(ConnectionError::Transport(_))));
     }
 
     #[tokio::test]

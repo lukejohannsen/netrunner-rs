@@ -2899,7 +2899,7 @@ mod tests {
         until(&mut host, "queue", |host| server_page(host).is_some_and(|page| page.seeking == Some(1))).await;
         let text = drawn(&host);
         assert!(text.contains("Looking for a game — 1 waiting in this queue… (Enter stops)"), "{text}");
-        assert!(text.contains("Preference       ‹ No preference ›"), "either chair draws its preference:\n{text}");
+        assert!(text.contains("Preference       ‹ Any / Balanced ›"), "either chair draws its preference:\n{text}");
         assert!(!text.contains("Against"), "a hosted server offers no bot, so there is no opponent to choose:\n{text}");
         assert!(text.contains("Runner deck      Runner ·") && text.contains("Corp deck        Corp ·"), "either chair draws both decks:\n{text}");
     }

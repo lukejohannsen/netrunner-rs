@@ -17,7 +17,10 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_protocol::{Level, LobbyInfo, QueueMode};
 
+use crate::deck_builder::{self, CardBook, Standing};
+use crate::deck_picker::Row;
 use crate::deck_store;
+use crate::settings::{format_label, FORMATS};
 
 /// How a deck is offered: its side, which is the seat it takes, and its
 /// name.
@@ -35,6 +38,72 @@ pub fn deck_choices(decks_dir: &Path, registry: &CardRegistry, format: NsgFormat
     let mut decks: Vec<DeckFile> = stored.into_iter().map(|stored| stored.deck).filter(|deck| deck.validate(registry, format).is_ok()).collect();
     decks.sort_by_key(|deck| (deck.side == Side::Runner, deck.name.to_lowercase()));
     decks
+}
+
+/// An active deck as the Server Dashboard draws it and a queue checks it
+/// (Phase 7 §14): the file, its identity's name and faction, and its
+/// standing in every format, so a format pill is greyed with the reason
+/// before anything is sent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActiveDeck {
+    pub deck: DeckFile,
+    pub identity: String,
+    pub faction: Option<netrunner_core::card::Faction>,
+    /// The standing per format, in `FORMATS` order.
+    pub standings: Vec<(NsgFormat, Standing)>,
+}
+
+impl ActiveDeck {
+    /// Read off a picker row, which already knows the identity.
+    pub fn of(row: &Row, book: CardBook) -> ActiveDeck {
+        let standings = FORMATS.into_iter().map(|format| (format, deck_builder::standing(&row.deck, book, format))).collect();
+        ActiveDeck { deck: row.deck.clone(), identity: row.identity.clone(), faction: row.faction, standings }
+    }
+
+    /// A deck with nothing behind it but its words — for a test of a
+    /// screen with no registry. `illegal_in` names the formats it is not
+    /// legal in, each with the same reason.
+    #[doc(hidden)]
+    pub fn fixture(deck: DeckFile, identity: &str, illegal_in: &[(NsgFormat, &str)]) -> ActiveDeck {
+        let standings = FORMATS.into_iter().map(|format| (format, illegal_in.iter().find(|(other, _)| *other == format).map_or(Standing::Legal, |(_, reason)| Standing::Illegal(reason.to_string())))).collect();
+        ActiveDeck { deck, identity: identity.to_string(), faction: None, standings }
+    }
+
+    pub fn legal_in(&self, format: NsgFormat) -> bool {
+        self.standings.iter().any(|(other, standing)| *other == format && standing.is_legal())
+    }
+
+    /// Why it cannot be played in `format`, when it cannot.
+    pub fn problem_in(&self, format: NsgFormat) -> Option<&str> {
+        self.standings.iter().find(|(other, _)| *other == format).and_then(|(_, standing)| standing.reason())
+    }
+
+    /// The formats it is legal in, for the badges.
+    pub fn legal_formats(&self) -> Vec<NsgFormat> {
+        self.standings.iter().filter(|(_, standing)| standing.is_legal()).map(|(format, _)| *format).collect()
+    }
+}
+
+/// Why a queue in `format` cannot be joined with these decks, or `None`
+/// when both are legal there: the side and its deck's reason, or that a
+/// side has no deck at all. The dashboard's greyed pill says this.
+pub fn queue_problem(format: NsgFormat, corp: Option<&ActiveDeck>, runner: Option<&ActiveDeck>) -> Option<String> {
+    for (side, deck) in [(Side::Corp, corp), (Side::Runner, runner)] {
+        match deck {
+            None => return Some(format!("No {side:?} deck is chosen")),
+            Some(deck) => {
+                if let Some(problem) = deck.problem_in(format) {
+                    return Some(format!("{side:?} deck: {problem}"));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The queue state's line: "Format: Standard | Role preference: Any".
+pub fn searching_line(format: NsgFormat, prefer: Option<Side>) -> String {
+    format!("Format: {} | Role preference: {}", format_label(format), preference_label(prefer))
 }
 
 /// A lobby as a line names it (Phase 4 §9): the server's queues by their
@@ -67,7 +136,7 @@ pub fn rung_label(level: Level) -> String {
 /// A side preferred by a seek that brought both decks, in a pill's words.
 pub fn preference_label(prefer: Option<Side>) -> &'static str {
     match prefer {
-        None => "No preference",
+        None => "Any / Balanced",
         Some(Side::Corp) => "Prefer Corp",
         Some(Side::Runner) => "Prefer Runner",
     }

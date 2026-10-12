@@ -436,6 +436,76 @@ pub fn disabled_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width
     )
 }
 
+/// A door on the Server Dashboard (Phase 7 §14): a wide glass tile with
+/// a title and one line under it, a button like any other pill — the
+/// same three kinds and the same hover — so the eye lands on the modes
+/// before the rest. `shut` draws it dim with `line` the reason, and it
+/// still presses, so the reason is said again as a notice.
+pub fn tile_button<M: Bundle>(theme: &Theme, kind: ButtonKind, title: &str, line: &str, width: Val, shut: bool, marker: M) -> impl Bundle + use<M> {
+    let ([rest, hover, press], ink) = kind.looks(theme);
+    let (rest, hover, press, ink, dim) = if shut {
+        let fill = theme.secondary.with_alpha(0.05);
+        let rim = theme.glass_border.with_alpha(0.12);
+        (Drawn::new(fill, rim), Drawn::new(fill, rim), Drawn::new(fill, rim), theme.text_dim.with_alpha(0.6), theme.text_dim.with_alpha(0.5))
+    } else {
+        // The line in the title's ink, a little faded: the dim grey read
+        // badly on the lit tile.
+        (rest, hover, press, ink, ink.with_alpha(0.7))
+    };
+    let node = Node {
+        width,
+        min_height: px(96),
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        row_gap: px(6),
+        padding: UiRect::axes(px(18), px(14)),
+        border: UiRect::all(px(1)),
+        border_radius: BorderRadius::all(px(16)),
+        ..default()
+    };
+    (
+        Button,
+        Themed,
+        marker,
+        node,
+        BackgroundColor(rest.bg),
+        BorderColor::all(rest.border),
+        Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
+        children![
+            (Text::new(title.to_string()), theme.font(size::HEADING), TextColor(ink), centred_label()),
+            (Text::new(line.to_string()), theme.font(size::SMALL), TextColor(dim), centred_label()),
+        ],
+    )
+}
+
+/// The pulse the search over the dashboard turns: three quarters of a
+/// ring, painted white on a transparent ground and tinted by the
+/// `ImageNode`, rotated by a `UiTransform` a little each frame. The
+/// procedural tier, like the gear.
+pub const PULSE_SIZE: u32 = 72;
+
+pub fn pulse_image() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    let n = PULSE_SIZE;
+    let centre = (n as f32 - 1.0) / 2.0;
+    let mut data = Vec::with_capacity((n * n * 4) as usize);
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x as f32 - centre, y as f32 - centre);
+            let r = (dx * dx + dy * dy).sqrt();
+            let angle = dy.atan2(dx).rem_euclid(std::f32::consts::TAU);
+            let ring = (28.0..=34.0).contains(&r) && angle < std::f32::consts::TAU * 0.75;
+            // The arc fades along its length, so the turn reads as a
+            // sweep rather than a wobble.
+            let alpha = if ring { (40.0 + 215.0 * (angle / (std::f32::consts::TAU * 0.75))) as u8 } else { 0 };
+            data.extend_from_slice(&[255, 255, 255, alpha]);
+        }
+    }
+    Image::new(Extent3d { width: n, height: n, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
+}
+
 /// The gear, painted: neither bundled font has U+2699 (Noto Sans
 /// Symbols 2 covers 2654–2668, 267f–268f and 269e–26a1 of the block,
 /// Noto Sans none of it — checked with `fc-query`), so the icon is the

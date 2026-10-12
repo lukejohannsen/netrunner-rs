@@ -38,7 +38,7 @@ async fn human_daemon() -> String {
 }
 
 /// A daemon offering bots, which it does by default: a seek meets one
-/// only by asking (`seek_bot`).
+/// only by asking, in a friend lobby that lets them in (`seek_bot`).
 fn bot_daemon() -> ServeOptions {
     ServeOptions { seed: Some(1), ..ServeOptions::default() }
 }
@@ -112,9 +112,10 @@ async fn seek(url: &str, name: &str, chair: Chair) -> Socket {
     seek_in(url, name, "casual-startup", chair).await
 }
 
-/// Attaches as `name`, joins the Casual Startup queue and asks for a game
-/// in `chair` against the elite bot. The next message is `MatchJoined`
-/// or `SeekRefused`.
+/// Attaches as `name`, makes a Startup friend lobby that lets bots in and
+/// asks for a game in `chair` against the elite bot there — a bot sits
+/// nowhere else (12 October 2026). The next message is `MatchJoined` or
+/// `SeekRefused`.
 async fn seek_bot(url: &str, name: &str, chair: Chair) -> Socket {
     seek_bot_at(url, name, chair, Level::Elite, None).await
 }
@@ -122,7 +123,7 @@ async fn seek_bot(url: &str, name: &str, chair: Chair) -> Socket {
 async fn seek_bot_at(url: &str, name: &str, chair: Chair, level: Level, style: Option<Style>) -> Socket {
     let mut socket = open(url, ClientMessage::Attach { player_name: name.into() }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
-    send(&mut socket, ClientMessage::JoinLobby { lobby: "casual-startup".into(), password: None }).await;
+    send(&mut socket, ClientMessage::CreateLobby { name: format!("{name}'s table"), format: NsgFormat::Startup, password: None, bots: true }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
     send(&mut socket, ClientMessage::Seek { chair, opponent: Opponent::Bot { level, style } }).await;
     socket
