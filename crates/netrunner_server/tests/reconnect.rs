@@ -52,12 +52,13 @@ async fn next(socket: &mut Socket) -> ServerMessage {
     }
 }
 
-/// Attaches as `name`, joins the Casual Startup queue and asks for a game
-/// as the Corp against a bot; the next message is `MatchJoined`.
+/// Attaches as `name`, makes a friend lobby that lets bots in and asks
+/// for a game there as the Corp against a bot; the next message is
+/// `MatchJoined`.
 async fn play_corp(url: &str, name: &str) -> Socket {
     let mut socket = open(url, ClientMessage::Attach { player_name: name.into() }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
-    send(&mut socket, ClientMessage::JoinLobby { lobby: "casual-startup".into(), password: None }).await;
+    send(&mut socket, ClientMessage::CreateLobby { name: format!("{name}'s table"), format: netrunner_core::format::NsgFormat::Startup, password: None, bots: true }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
     let deck = Box::new(netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
     send(&mut socket, ClientMessage::Seek { chair: netrunner_server::protocol::Chair::Corp(deck), opponent: netrunner_server::protocol::Opponent::Bot { level: netrunner_bots::Level::Elite, style: None } }).await;

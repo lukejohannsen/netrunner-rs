@@ -41,9 +41,11 @@
 //! holds a Startup queue and a Standard queue side by side. There is no
 //! list of waiters to pick an opponent from (declined, 26 September
 //! 2026): a friend queue is how two people who know each other meet.
-//! **A bot sits only in Casual, and only when a seek asks for one**
-//! (`Opponent::Bot`, decided 11 October 2026); until §9 the daemon seated
-//! one against every seek in every lobby.
+//! **A bot sits only in a friend lobby that lets bots in, and only when
+//! a seek there asks for one** (`Opponent::Bot`; decided 11 October 2026
+//! for Casual, narrowed to friend lobbies on 12 October with the
+//! dashboard, whose path names no bot); until §9 the daemon seated one
+//! against every seek in every lobby.
 //!
 //! **A key is who a player is** (Phase 4 §5). Before attaching, a
 //! connection may prove a key: `Identify`, a `Challenge` naming a nonce
@@ -97,13 +99,14 @@ use crate::{fixtures, net};
 #[derive(Debug, Clone)]
 pub struct ServeOptions {
     /// The rungs of the difficulty ladder this daemon offers (Phase 4
-    /// §9): what a seek in a casual lobby may ask to play
-    /// (`Opponent::Bot`), weakest first, each the same bot as a local game's
-    /// rung of that name. **Never where a bot sits**: a bot sits only in
-    /// Casual and only when a seek asks for one (decided 11 October 2026)
-    /// — until §9, `--bot-runner` seated one against every seek in every
-    /// lobby, so a person on a default daemon never met another. Empty
-    /// offers none. Every rung by default.
+    /// §9): what a seek in a friend lobby that lets bots in may ask to
+    /// play (`Opponent::Bot`), weakest first, each the same bot as a local
+    /// game's rung of that name. **Never where a bot sits**: a bot sits
+    /// only in such a lobby and only when a seek asks for one (decided 11
+    /// October 2026, narrowed from Casual on 12 October) — until §9,
+    /// `--bot-runner` seated one against every seek in every lobby, so a
+    /// person on a default daemon never met another. Empty offers none.
+    /// Every rung by default.
     pub bots: Vec<Level>,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
@@ -767,6 +770,12 @@ impl Registry {
         }
     }
 
+    /// Whether a friend lobby in `format` may offer a bot at all: the
+    /// server offers some and can deal one a deck there.
+    pub(crate) fn bots_in(&self, format: NsgFormat) -> bool {
+        self.bots_by_format.get(&format).is_some_and(|rungs| !rungs.is_empty())
+    }
+
     /// Waiters looking for a game in lobby `id`.
     fn seeking(&self, id: &str) -> usize {
         self.waiting.iter().filter(|waiter| waiter.lobby == id).count()
@@ -777,11 +786,12 @@ impl Registry {
         let offered = |format: NsgFormat| self.bots_by_format.get(&format).cloned().unwrap_or_default();
         let (name, format, mode, password, bots) = match self.player_lobbies.get(id) {
             Some(lobby) => (lobby.name.clone(), lobby.format, QueueMode::Friends, lobby.password.is_some(), if lobby.bots { offered(lobby.format) } else { Vec::new() }),
+            // A bot sits only in a friend lobby that allows one (decided 12
+            // October 2026, with the dashboard): the server's own queues,
+            // Ranked and Casual alike, are between people.
             None => {
                 let (mode, format) = server_queues(options).find(|&(mode, format)| queue_id(mode, format) == id)?;
-                // A bot is never seated in Ranked.
-                let bots = if mode == QueueMode::Casual { offered(format) } else { Vec::new() };
-                (format!("{format:?}"), format, mode, false, bots)
+                (format!("{format:?}"), format, mode, false, Vec::new())
             }
         };
         Some(LobbyInfo {

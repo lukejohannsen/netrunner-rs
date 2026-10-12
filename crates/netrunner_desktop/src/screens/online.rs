@@ -1,21 +1,25 @@
-//! Play Online: host a game, connect to a server by address or ticket, or
-//! watch a game (Phase 7 §7). The terminal's screen of the same name
-//! (`netrunner_cli::tui::online`) drawn as the desktop's forms are, over
-//! the same pieces: `netrunner_client::online` for the decks brought,
-//! `hosting::Invitation` for what a host gives out, `remote` for the
-//! connection, and `MatchHandle::start_remote` for the match — so the
-//! board plays a game online exactly as it plays one at home.
+//! Play Online: the Server Dashboard (Phase 7 §14, 12 October 2026),
+//! over the same pieces the terminal's screen of the same name uses
+//! (`netrunner_cli::tui::online`): `netrunner_client::online` for the
+//! active decks and the queue's words, `hosting::Invitation` for what a
+//! host gives out, `remote` for the connection, and
+//! `MatchHandle::start_remote` for the match — so the board plays a game
+//! online exactly as it plays one at home. The dashboard, its queue form
+//! and its search are `models::online`'s to decide and this file's to
+//! draw: the two active decks with their identities' faces and their
+//! legality, the three doors as tiles, the column of ways elsewhere, and
+//! the two overlays — a form centred on a wash, as a choice is, and the
+//! search with its pulse and the time waited.
 //!
 //! **The connection outlives the game** (Phase 4 §7 stage 4c). Hosting
-//! and connecting both end on the Server page, attached: the lobbies
-//! listed, one joined, a friend queue made or joined by its code,
-//! and in a lobby a game looked for in a chair with that chair's deck or
-//! decks. The [`Connected`] resource holds the connection, and it is not a
-//! part of this screen's tree: it stays while the board plays the game
-//! and is polled again when the board leads back here, where the
-//! `BackInLobby` is waiting and the next game is a chair and a deck away.
-//! It goes when the person disconnects — Escape or the button on the
-//! Server page — or leaves the screen for anywhere but the board.
+//! and connecting both end on the dashboard, attached. The [`Connected`]
+//! resource holds the connection, and it is not a part of this screen's
+//! tree: it stays while the board plays the game and is polled again when
+//! the board leads back here, where the `BackInLobby` is waiting and the
+//! next game is a door away. It goes when the person disconnects — a
+//! row's Disconnect on the servers page — or leaves the screen for
+//! anywhere but the board; the Default is dialled again on the next
+//! visit.
 //!
 //! **Host runs a server inside this process and attaches to it like
 //! anyone else**, over loopback: the host plays through a masked
@@ -55,7 +59,10 @@ use bevy::prelude::*;
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::identity::ProfileHere;
-use netrunner_client::online::{self, opponent_label, preference_label, rung_label};
+use netrunner_client::card_face::Face;
+use netrunner_client::deck_builder::CardBook;
+use netrunner_client::deck_picker;
+use netrunner_client::online::{self, opponent_label, preference_label, rung_label, searching_line, ActiveDeck};
 use netrunner_client::tournament;
 use netrunner_client::servers::{self, ServerBook};
 use netrunner_core::decks::DeckFile;
@@ -66,14 +73,17 @@ use netrunner_client::settings::{format_name, FORMATS};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{Level, LobbyInfo, QueueMode, TournamentState};
+use netrunner_server::protocol::{Level, LobbyInfo, Opponent, QueueMode, TournamentState};
 use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use crate::audio::{ButtonSound, Sfx};
+use crate::card_images::CardImages;
 use crate::core::{ClientCore, TokioRuntime};
-use crate::models::online::{lobby_title, reach_pill, AwardKind, ChairChoice, Field, Intent, OnlineForm, Outcome, Page, RowProfile, ServerState};
+use crate::models::online::{lobby_title, reach_pill, AwardKind, Field, Intent, OnlineForm, Outcome, Page, RowProfile, Searching, ServerState};
 use crate::widgets::badge::{self, BadgeGlyphs};
+use crate::widgets::card_face::{spawn_face, FaceSize};
+use crate::widgets::reader::Readable;
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
@@ -90,7 +100,7 @@ impl Plugin for OnlinePlugin {
             .add_systems(OnEnter(AppScreen::Online), spawn)
             .add_systems(OnExit(AppScreen::Online), leave)
             .add_systems(Update, escape.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::Online)))
-            .add_systems(Update, (dev_page, auto_connect, controls, chooser_wash, fields, net, round_clock_ticks, refresh).chain().run_if(in_state(AppScreen::Online)));
+            .add_systems(Update, (dev_page, opening, controls, chooser_wash, fields, net, round_clock_ticks, search_clock_ticks, refresh, turn_pulse).chain().run_if(in_state(AppScreen::Online)));
     }
 }
 
@@ -102,11 +112,12 @@ const HOST_LINGER: Duration = Duration::from_secs(3);
 /// of the person for their row.
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Set on opening the screen afresh when a server is the Default: it is
-/// connected to on the first frame, as a press of its Connect would
-/// (Phase 7 §14), and never again until the screen is opened afresh.
+/// Set on opening the screen afresh with nothing attached: on the first
+/// frame the Default is connected to, as a press of its Connect would
+/// (Phase 7 §14), or with no Default the servers page is opened and asks
+/// its rows — and never again until the screen is opened afresh.
 #[derive(Resource)]
-struct AutoConnect;
+struct Opening;
 
 /// The server this person is hosting, and what it gives out. Dropping it
 /// stops the server — a match on it ends — releases the router's port and
@@ -228,14 +239,25 @@ pub enum Control {
     Watch(usize),
     /// The `n`th thing the host gives out.
     Copy(usize),
-    /// The Server page's.
-    JoinLobby(usize),
+    /// A friend lobby's code, for the group.
+    CopyCode,
+    /// The dashboard's doors and the queue form over it: a door, its
+    /// format, its Cancel, and Find match.
+    OpenQueue(QueueMode),
+    QueueFormat(NsgFormat),
+    CloseQueue,
+    FindMatch,
+    /// The dashboard's column: a screen elsewhere.
+    Nav(AppScreen),
+    /// The Casual form's: a friend lobby by its code. The lobby's page:
+    /// out of it, and a bot where it lets one in.
     JoinById,
     LeaveLobby,
+    /// The tournaments pages': the list again.
     Refresh,
-    Chair(ChairChoice),
     Prefer(Option<Side>),
     Opponent(Option<Level>),
+    /// A friend lobby's Find a game, and the search's Abort.
     Seek,
     CancelSeek,
     /// The tournaments page's and a tournament's.
@@ -268,7 +290,8 @@ pub enum Control {
 struct ChooserWash;
 
 /// A deck slot's Change… button: opens the deck picker for this purpose
-/// on the lobby's or the tournament's format, the cursor on the deck
+/// — an active deck, on the queue form's format if one is open, or a
+/// tournament's entry on the tournament's — the cursor on the deck
 /// chosen now.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct DeckSlot {
@@ -288,39 +311,82 @@ struct FieldSlot(Field);
 #[derive(Component)]
 struct FormRoot;
 
+/// The panel the pages are drawn in, so the dashboard can take a wider
+/// one than the forms.
+#[derive(Component)]
+struct PanelRoot;
+
+/// The search's pulse, turned a little each frame.
+#[derive(Component)]
+struct Pulse;
+
+/// The dashboard's overlays — the queue form and the search — which a
+/// redraw takes down with the page, or the search would stack on itself
+/// every second.
+#[derive(Component)]
+struct Overlay;
+
+/// The width of the panel a form is drawn in, and the dashboard's, which
+/// has two columns and three tiles to fit.
+const FORM_WIDTH: f32 = 940.0;
+const DASHBOARD_WIDTH: f32 = 1080.0;
+
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>, connected: Option<Res<Connected>>) {
     commands.init_resource::<Dirty>();
     commands.insert_resource(Net::default());
+    // The active decks are read on every visit: the deck builder may have
+    // changed one since.
+    let active = active_decks(&core);
     match model {
-        Some(mut model) => model.0.reopen(connected.is_some()),
+        Some(mut model) => {
+            model.0.reopen(connected.is_some());
+            model.0.apply(Intent::ActiveDecks(Box::new(active)));
+            if connected.is_none() {
+                commands.insert_resource(Opening);
+            }
+        }
         None => {
             let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-            // Join starts from the Default, else the server connected to
-            // last — both from the list both clients keep (Phase 7 §14).
+            // Connect once starts from the Default, else the server
+            // connected to last — both from the list both clients keep
+            // (Phase 7 §14).
             let address = core.server_book().start_address().map_or_else(|| hosting::normalize_address("127.0.0.1"), str::to_string);
-            let preferred = [core.settings.active_deck(Side::Corp).map(str::to_string), core.settings.active_deck(Side::Runner).map(str::to_string)];
-            let mut form = OnlineForm::new(address, format).with_preferred(preferred);
-            let book = core.server_book();
-            if book.default_server().is_some() && connected.is_none() {
-                commands.insert_resource(AutoConnect);
+            let mut form = OnlineForm::new(address, format).with_active(active);
+            if connected.is_none() {
+                commands.insert_resource(Opening);
             }
-            form.apply(Intent::Servers(book));
+            form.apply(Intent::Servers(core.server_book()));
             form.apply(Intent::Local(local_lines(&core)));
             commands.insert_resource(Model(form));
         }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
-    let panel = commands.spawn(widgets::roomy_panel(&theme, px(940))).add_child(form).id();
+    let panel = commands.spawn((PanelRoot, widgets::roomy_panel(&theme, px(FORM_WIDTH)))).add_child(form).id();
     let column = commands
         .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), ..default() })
         .with_children(|parent| {
             parent.spawn(widgets::title(&theme, AppScreen::Online.title()));
-            parent.spawn(widgets::dim(&theme, format!("As {}. Ranked is rated, Casual is not and offers bots, and a friend queue is joined by its code.", core.player_name())));
+            parent.spawn(widgets::dim(&theme, format!("As {}. Ranked is rated, Casual is not, and a friend lobby is joined by its code.", core.player_name())));
         })
         .add_child(panel)
         .id();
     commands.spawn(screen_root(AppScreen::Online, &theme)).add_child(column);
     commands.insert_resource(Dirty(true));
+}
+
+/// The active decks (`Settings::active_deck`, Phase 7 §16) as the
+/// dashboard draws them and a seek brings them: each read off the one
+/// list every picker reads, with its standing in every format. An id
+/// that names no deck is `None`, and the dashboard says so.
+fn active_decks(core: &ClientCore) -> [Option<ActiveDeck>; 2] {
+    let book = CardBook::new(&core.registry, &core.catalog);
+    let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
+    let (rows, _problems) = deck_picker::rows(core.decks_dir.as_deref(), book, format);
+    let find = |side: Side| {
+        let id = core.settings.active_deck_or_default(side);
+        rows.iter().find(|row| row.deck.id == id && row.deck.side == side).map(|row| ActiveDeck::of(row, book))
+    };
+    [find(Side::Corp), find(Side::Runner)]
 }
 
 /// What this machine knows of the person, for the servers page: the key
@@ -337,11 +403,13 @@ fn local_lines(core: &ClientCore) -> Vec<String> {
     lines
 }
 
-/// The Default, connected to on the first frame of a fresh visit.
+/// The first frame of a visit with nothing attached: the Default is
+/// connected to, or without one the servers page is opened and its rows
+/// asked.
 #[allow(clippy::too_many_arguments)]
-fn auto_connect(
+fn opening(
     mut commands: Commands,
-    pending: Option<Res<AutoConnect>>,
+    pending: Option<Res<Opening>>,
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
     mut dirty: ResMut<Dirty>,
@@ -352,8 +420,11 @@ fn auto_connect(
     if pending.is_none() {
         return;
     }
-    commands.remove_resource::<AutoConnect>();
-    let outcome = model.0.apply(Intent::ConnectDefault);
+    commands.remove_resource::<Opening>();
+    let mut outcome = model.0.apply(Intent::ConnectDefault);
+    if outcome == Outcome::Nothing {
+        outcome = model.0.apply(Intent::Open(Page::Servers));
+    }
     dirty.0 = true;
     carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
 }
@@ -362,7 +433,7 @@ fn auto_connect(
 /// plays a game found on it and leads back here.
 fn leave(world: &mut World) {
     world.remove_resource::<Net>();
-    world.remove_resource::<AutoConnect>();
+    world.remove_resource::<Opening>();
     let to_the_board = world.get_resource::<ActiveMatch>().is_some_and(|active| active.online.is_some());
     if !to_the_board {
         world.remove_resource::<Connected>();
@@ -376,9 +447,10 @@ fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckFile> {
     online::deck_choices(&decks_dir, &core.registry, format)
 }
 
-/// Escape steps back a page; from Home the navigation rule takes it off
-/// the screen. After the text field's system, so an Escape that cancels
-/// an edit does nothing more.
+/// Escape closes the queue form, aborts a search, leaves a friend lobby
+/// or steps back a page; where the model says it is the way off the
+/// screen, the navigation rule takes it. After the text field's system,
+/// so an Escape that cancels an edit does nothing more.
 #[allow(clippy::too_many_arguments)]
 fn escape(
     mut commands: Commands,
@@ -392,11 +464,14 @@ fn escape(
     mut navigate: MessageWriter<Navigate>,
 ) {
     let Some(mut model) = model else { return };
-    if captured.0 || !keys.just_pressed(KeyCode::Escape) || model.0.page == Page::Home {
+    if captured.0 || !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    let outcome = model.0.apply(Intent::Back);
+    if outcome == Outcome::Leave {
         return;
     }
     captured.0 = true;
-    let outcome = model.0.apply(Intent::Back);
     if let Some(net) = net.as_mut() {
         carry_out(outcome, &mut model.0, net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
     }
@@ -427,16 +502,14 @@ fn controls(
     mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
-    // A deck chosen in the picker: the side's choice goes to it, on the
-    // page the purpose names. The picker offers every deck of the side,
-    // legal or not; one the lobby's list does not hold is not legal in
-    // its format, and the picker refused it already.
+    // A deck chosen in the picker: an active deck is the settings' now
+    // (the picker wrote them), so the two are read afresh; a tournament's
+    // entry goes to the page's choice.
     for DeckPicked { purpose, id } in picked.read() {
-        let Some(server) = &model.0.server else { continue };
         let intent = match purpose {
-            Purpose::Lobby(Side::Corp) => server.corp_decks().iter().position(|deck| deck.id == *id).map(Intent::SetCorpDeck),
-            Purpose::Lobby(Side::Runner) => server.runner_decks().iter().position(|deck| deck.id == *id).map(Intent::SetRunnerDeck),
+            Purpose::Active(_) => Some(Intent::ActiveDecks(Box::new(active_decks(&core)))),
             Purpose::Tournament(side) => {
+                let Some(server) = &model.0.server else { continue };
                 let position = server.tournament_side_decks(*side).iter().position(|deck| deck.id == *id);
                 position.map(if *side == Side::Corp { Intent::SetCorpDeck } else { Intent::SetRunnerDeck })
             }
@@ -450,7 +523,7 @@ fn controls(
     for Pressed(entity) in pressed.read() {
         if let Ok(slot) = deck_slots.get(*entity) {
             let side = match slot.purpose {
-                Purpose::Lobby(side) | Purpose::Tournament(side) => side,
+                Purpose::Active(side) | Purpose::Tournament(side) => side,
                 Purpose::NewGame(_) => continue,
             };
             open_picker.write(OpenDeckPicker { side, format: slot.format, purpose: slot.purpose, chosen: Some(slot.chosen.clone()) });
@@ -467,11 +540,17 @@ fn controls(
             Control::LobbyBots(bots) => Intent::SetLobbyBots(bots),
             Control::WatchFrom(side) => Intent::SetWatchFrom(side),
             Control::Watch(index) => Intent::Watch(index),
-            Control::JoinLobby(index) => Intent::JoinLobby(index),
+            Control::OpenQueue(mode) => Intent::OpenQueue(mode),
+            Control::QueueFormat(format) => Intent::SetQueueFormat(format),
+            Control::CloseQueue => Intent::CloseQueue,
+            Control::FindMatch => Intent::FindMatch,
+            Control::Nav(screen) => {
+                navigate.write(Navigate(screen));
+                continue;
+            }
             Control::JoinById => Intent::JoinById,
             Control::LeaveLobby => Intent::LeaveLobby,
             Control::Refresh => Intent::Refresh,
-            Control::Chair(chair) => Intent::SetChair(chair),
             Control::Prefer(prefer) => Intent::SetPrefer(prefer),
             Control::Opponent(bot) => Intent::SetOpponent(bot),
             Control::Seek => Intent::Seek,
@@ -509,6 +588,14 @@ fn controls(
             Control::Copy(index) => {
                 if let Some(Way::Give { what, .. }) = net.shown.get(index) {
                     let line = write_clipboard_text(clipboard.as_deref_mut(), what.clone());
+                    model.0.notice = Some(line);
+                    dirty.0 = true;
+                }
+                continue;
+            }
+            Control::CopyCode => {
+                if let Some(code) = model.0.server.as_ref().and_then(ServerState::friend_lobby).map(|lobby| lobby.id.clone()) {
+                    let line = write_clipboard_text(clipboard.as_deref_mut(), code);
                     model.0.notice = Some(line);
                     dirty.0 = true;
                 }
@@ -584,7 +671,6 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
                 net.shown.clear();
                 commands.remove_resource::<Connected>();
             }
-            Outcome::Decks(format) => form.set_decks(deck_choices(core, format)),
             Outcome::TournamentDecks(format) => form.set_tournament_decks(deck_choices(core, format)),
             Outcome::ListLobbies
             | Outcome::JoinLobby { .. }
@@ -789,6 +875,15 @@ fn dev_page(
         }
         return;
     }
+    // The dashboard is the page once the Default has answered: nothing to
+    // open, but the screenshot waits for the lobbies.
+    if page == "dashboard" {
+        if !*done && form.server.as_ref().is_some_and(|server| !server.lobbies.is_empty()) {
+            *done = true;
+            dirty.0 = true;
+        }
+        return;
+    }
     // The profile page needs a server attached, which the Default is on
     // the first frame: wait for it.
     if page.starts_with("profile") {
@@ -805,18 +900,28 @@ fn dev_page(
         }
         return;
     }
-    // So do a Casual queue joined and the friend-queue form.
-    if page == "lobby" || page == "friend-queue" {
-        let Some(server) = form.server.as_ref().filter(|server| !server.lobbies.is_empty()) else { return };
+    // So do the queue form, the search and a friend lobby.
+    if matches!(page.as_str(), "queue" | "queue-ranked" | "searching" | "friend-lobby" | "make-lobby") {
+        if form.server.as_ref().is_none_or(|server| server.lobbies.is_empty()) {
+            return;
+        }
         if !std::mem::replace(&mut *done, true) {
             dirty.0 = true;
-            let casual = server.lobbies.iter().position(|lobby| lobby.mode == QueueMode::Casual).unwrap_or(0);
-            let outcome = if page == "lobby" {
-                form.apply(Intent::SetChair(ChairChoice::Either));
-                form.apply(Intent::SetPrefer(Some(Side::Runner)));
-                form.apply(Intent::JoinLobby(casual))
-            } else {
-                form.apply(Intent::Open(Page::MakeLobby))
+            form.apply(Intent::SetPrefer(Some(Side::Runner)));
+            let outcome = match page.as_str() {
+                "queue" => form.apply(Intent::OpenQueue(QueueMode::Casual)),
+                "queue-ranked" => form.apply(Intent::OpenQueue(QueueMode::Ranked)),
+                "searching" => {
+                    form.apply(Intent::OpenQueue(QueueMode::Casual));
+                    form.apply(Intent::FindMatch)
+                }
+                "make-lobby" => form.apply(Intent::Open(Page::MakeLobby)),
+                _ => {
+                    form.apply(Intent::Open(Page::MakeLobby));
+                    form.apply(Intent::Typed(Field::LobbyName, "Tuesday night".to_string()));
+                    form.apply(Intent::SetLobbyBots(true));
+                    form.apply(Intent::Go)
+                }
             };
             carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
         }
@@ -1155,17 +1260,42 @@ fn round_clock_ticks(time: Res<Time>, mut since: Local<f32>, model: Res<Model>, 
     }
 }
 
+/// The search over the dashboard is redrawn every second, so the time
+/// waited moves while nobody presses anything.
+fn search_clock_ticks(time: Res<Time>, mut since: Local<f32>, model: Res<Model>, mut dirty: ResMut<Dirty>) {
+    let searching = matches!(model.0.page, Page::Dashboard | Page::FriendLobby) && model.0.server.as_ref().is_some_and(ServerState::seeking);
+    if !searching {
+        *since = 0.0;
+        return;
+    }
+    *since += time.delta_secs();
+    if *since >= 1.0 {
+        *since = 0.0;
+        dirty.0 = true;
+    }
+}
+
+/// The pulse turns with the clock, so a redraw does not set it back.
+fn turn_pulse(time: Res<Time>, mut pulses: Query<&mut UiTransform, With<Pulse>>) {
+    let angle = (time.elapsed_secs() * 2.4) % std::f32::consts::TAU;
+    for mut transform in &mut pulses {
+        transform.rotation = Rot2::radians(angle);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
     root: Query<Entity, With<FormRoot>>,
+    mut panel: Query<&mut Node, With<PanelRoot>>,
     screen: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
-    shown: Query<Entity, With<ChooserWash>>,
+    shown: Query<Entity, Or<(With<ChooserWash>, With<Overlay>)>>,
     theme: Res<Theme>,
     model: Res<Model>,
     net: Res<Net>,
     core: Res<ClientCore>,
+    card_images: Res<CardImages>,
     mut glyphs: ResMut<BadgeGlyphs>,
     mut images: Option<ResMut<Assets<Image>>>,
 ) {
@@ -1173,6 +1303,9 @@ fn refresh(
         return;
     }
     let Ok(root) = root.single() else { return };
+    if let Ok(mut node) = panel.single_mut() {
+        node.width = px(if model.0.page == Page::Dashboard { DASHBOARD_WIDTH } else { FORM_WIDTH });
+    }
     // Every badge the page may draw, looked up once a name.
     let basic = core.settings.desktop.basic_graphics;
     let pictures: HashMap<String, Option<Handle<Image>>> = model
@@ -1182,26 +1315,40 @@ fn refresh(
         .and_then(ServerState::known_profile)
         .map(|profile| profile.badges.iter().map(|award| (award.name.clone(), glyphs.of(&award.name, basic, images.as_deref_mut()))).collect())
         .unwrap_or_default();
-    commands.entity(root).despawn_children().with_children(|parent| spawn_page(parent, &theme, &model.0, &net, &pictures));
+    commands.entity(root).despawn_children().with_children(|parent| spawn_page(parent, &theme, &model.0, &net, &pictures, &core, &card_images));
     for entity in &shown {
         commands.entity(entity).despawn();
     }
+    let Some(screen) = screen.iter().next() else { return };
     let choosing = model.0.server.as_ref().filter(|_| model.0.page == Page::Profile).and_then(|server| Some((server.choosing?, server.known_profile()?)));
-    if let (Some((kind, profile)), Some(screen)) = (choosing, screen.iter().next()) {
+    if let Some((kind, profile)) = choosing {
         commands.entity(screen).with_children(|parent| spawn_chooser(parent, &theme, kind, profile, &pictures));
+    }
+    // The dashboard's overlays: the search over everything, else the
+    // queue form.
+    if let Some(server) = model.0.server.as_ref().filter(|_| matches!(model.0.page, Page::Dashboard | Page::FriendLobby)) {
+        if let Some(searching) = &server.searching {
+            let pulse = images.as_deref_mut().map(|images| images.add(widgets::pulse_image()));
+            commands.entity(screen).with_children(|parent| spawn_searching(parent, &theme, &model.0, searching, pulse));
+        } else if let Some(queue) = server.queue.filter(|_| model.0.page == Page::Dashboard) {
+            commands.entity(screen).with_children(|parent| spawn_queue_form(parent, &theme, &model.0, server, queue));
+        }
     }
 }
 
-fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net, pictures: &HashMap<String, Option<Handle<Image>>>) {
+fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net, pictures: &HashMap<String, Option<Handle<Image>>>, core: &ClientCore, images: &CardImages) {
     match form.page {
-        Page::Home => spawn_home(parent, theme),
         Page::Host => spawn_host(parent, theme, form),
         Page::Servers => spawn_servers(parent, theme, form),
         Page::EditServer => spawn_edit_server(parent, theme, form),
         Page::Watch => spawn_watch(parent, theme, form, net.listing.is_some()),
         Page::Waiting => spawn_waiting(parent, theme, form),
-        Page::Server => match &form.server {
-            Some(server) => spawn_server(parent, theme, form, server, net),
+        Page::Dashboard => match &form.server {
+            Some(server) => spawn_dashboard(parent, theme, form, server, net, core, images, pictures),
+            None => spawn_waiting(parent, theme, form),
+        },
+        Page::FriendLobby => match form.server.as_ref().and_then(|server| Some((server, server.friend_lobby()?))) {
+            Some((server, lobby)) => spawn_friend_lobby(parent, theme, form, server, lobby),
             None => spawn_waiting(parent, theme, form),
         },
         Page::MakeLobby => spawn_make_lobby(parent, theme, form),
@@ -1218,28 +1365,341 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
             None => spawn_waiting(parent, theme, form),
         },
     }
-    if let Some(notice) = &form.notice {
+    // A notice goes on the overlay while one is up, where the person is
+    // looking.
+    let overlay = form.page == Page::Dashboard && form.server.as_ref().is_some_and(|server| server.queue.is_some() || server.seeking());
+    if let Some(notice) = form.notice.as_ref().filter(|_| !overlay) {
         parent.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
 }
 
-/// The three ways in, each a pill with what it does beside it — the main
-/// menu's rows.
-fn spawn_home(parent: &mut ChildSpawnerCommands, theme: &Theme) {
-    let ways = [
-        (Page::Host, "Host a game", "Play on this machine and give your opponent an address, or a ticket that works from anywhere"),
-        (Page::Servers, "Join a server", "Your servers, each by name and one the Default this screen connects to; or a host's address or ticket, once"),
-        (Page::Watch, "Watch a game", "List a server's matches and watch one, seeing what both players can see"),
-    ];
-    for (index, (page, label, blurb)) in ways.into_iter().enumerate() {
-        let kind = if index == 0 { ButtonKind::Primary } else { ButtonKind::Secondary };
-        parent.spawn(widgets::row(20.0)).with_children(|row| {
-            row.spawn(widgets::styled_button(theme, kind, label, px(230), Control::Open(page)));
-            row.spawn((widgets::dim(theme, blurb), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+/// The Server Dashboard (Phase 7 §14): the server and the person's tag
+/// across the top; the active decks beside the ways elsewhere; the three
+/// doors; and for a host, what to give out.
+#[allow(clippy::too_many_arguments)]
+fn spawn_dashboard(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net, core: &ClientCore, images: &CardImages, pictures: &HashMap<String, Option<Handle<Image>>>) {
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..default() }).with_children(|row| {
+        let name = if server.hosting { "Hosting on this machine".to_string() } else { shortened(&form.server_name(&server.address)) };
+        row.spawn((widgets::heading(theme, name), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+        row.spawn(widgets::dim(theme, if server.link.is_some() { "Reconnecting" } else { "Connected" }));
+        // The person's tag: their name, the title worn and the badge, a
+        // button to the profile page where the server keeps one.
+        if let Some(profile) = server.known_profile() {
+            let tag = match &profile.title {
+                Some(title) => format!("{} · {title}", profile.name),
+                None => profile.name.clone(),
+            };
+            row.spawn(widgets::row(8.0)).with_children(|tag_row| {
+                if let Some(badge) = &profile.badge {
+                    badge::spawn_glyph(tag_row, theme, badge, pictures.get(badge).cloned().flatten(), 28.0);
+                }
+                tag_row.spawn(widgets::small_button(theme, ButtonKind::Secondary, tag, Control::Open(Page::Profile)));
+            });
+        }
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Servers…", Control::Open(Page::Servers)));
+    });
+    if let Some(line) = &server.link {
+        parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+    if server.hosting {
+        parent.spawn((widgets::dim(theme, "Give your opponent one of these. They connect, press Casual and find a match, as you do below."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        for (index, way) in net.shown.iter().enumerate() {
+            match way {
+                Way::Give { what, who, ticket } => {
+                    parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|give| {
+                        give.spawn(widgets::overline(theme, if *ticket { format!("Ticket · {who}") } else { capitalised(who) }));
+                        give.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn((
+                                Text::new(what.clone()),
+                                theme.font(if *ticket { size::SMALL } else { size::BODY }),
+                                TextColor(theme.text),
+                                // A ticket has no spaces to break at.
+                                TextLayout::new(Justify::Left, LineBreak::AnyCharacter),
+                                Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() },
+                            ));
+                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy", Control::Copy(index)));
+                        });
+                    });
+                }
+                Way::Note(note) => {
+                    parent.spawn((widgets::dim(theme, note.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+            }
+        }
+    }
+    parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(28), align_items: AlignItems::FlexStart, ..default() }).with_children(|columns| {
+        columns.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(10), flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }).with_children(|left| {
+            left.spawn(widgets::overline(theme, "Active decks"));
+            for side in [Side::Corp, Side::Runner] {
+                spawn_active_deck(left, theme, form, side, server, core, images);
+            }
+        });
+        columns.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), width: px(260), flex_shrink: 0.0, ..default() }).with_children(|right| {
+            right.spawn(widgets::overline(theme, "Navigation & profiles"));
+            let mut ways: Vec<(&str, Control)> = vec![("Deck builder", Control::Nav(AppScreen::Decks)), ("Cards", Control::Nav(AppScreen::CardBrowser))];
+            if !server.hosting {
+                ways.push(("Server profile", Control::Open(Page::Profile)));
+            }
+            ways.push(("Watch a game", Control::Open(Page::Watch)));
+            if !server.hosting {
+                ways.push(("Host a game", Control::Open(Page::Host)));
+            }
+            for (label, control) in ways {
+                right.spawn(widgets::styled_button(theme, ButtonKind::Secondary, label, percent(100), control));
+            }
+        });
+    });
+    section(parent, theme, "Play modes", |section| {
+        section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(16), row_gap: px(12), ..default() }).with_children(|row| {
+            let width = px(320);
+            let ranked = server.ranked_shut();
+            row.spawn(widgets::tile_button(theme, ButtonKind::Primary, "Ranked ladder", ranked.unwrap_or("Rated, between players with keys"), width, ranked.is_some(), Control::OpenQueue(QueueMode::Ranked)));
+            let casual = if server.offers(QueueMode::Casual) { "Relaxed matching, never rated; friend lobbies" } else { "This server lists no Casual queue" };
+            row.spawn(widgets::tile_button(theme, if ranked.is_some() { ButtonKind::Primary } else { ButtonKind::Secondary }, "Casual / unranked", casual, width, !server.offers(QueueMode::Casual), Control::OpenQueue(QueueMode::Casual)));
+            row.spawn(widgets::tile_button(theme, ButtonKind::Secondary, "Tournaments & events", "Swiss rounds with locked decks", width, false, Control::Open(Page::Tournaments)));
+        });
+    });
+    // Back leaves the screen, and the connection with it; Disconnect lets
+    // it go and stays, at the servers — a host's way to stop hosting.
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, if server.hosting { "Stop hosting" } else { "Disconnect" }, Val::Auto, Control::Disconnect));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+    });
+}
+
+/// The face an active deck's identity is drawn with on the dashboard.
+const ACTIVE_FACE: u16 = 64;
+
+/// One active deck: its identity's face, the side, the name and the
+/// identity, the formats it is legal in as badges, and Change…, which
+/// opens the picker (`Purpose::Active`). A side with no deck says so.
+fn spawn_active_deck(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, side: Side, server: &ServerState, core: &ClientCore, images: &CardImages) {
+    let format = server.queue.map(|queue| queue.format).or_else(|| server.lobby.as_ref().map(|lobby| lobby.format)).unwrap_or(form.format);
+    let active = form.active(side);
+    let faction = theme.faction(active.and_then(|deck| deck.faction));
+    let node = Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: px(14),
+        padding: UiRect::all(px(10)),
+        border: UiRect { left: px(4), right: px(1), top: px(1), bottom: px(1) },
+        border_radius: BorderRadius::all(px(12)),
+        ..default()
+    };
+    let border = BorderColor { left: faction, right: theme.glass_border, top: theme.glass_border, bottom: theme.glass_border };
+    parent.spawn((node, BackgroundColor(theme.glass_strong), border)).with_children(|tile| {
+        let identity = active.and_then(|deck| core.registry.get(&deck.deck.identity).or_else(|| core.catalog.iter().find(|card| card.id == deck.deck.identity)));
+        match identity {
+            Some(card) => {
+                let drawn = Face::of(card, &core.settings.art);
+                let image = images.of(&drawn, FaceSize::Board(ACTIVE_FACE));
+                spawn_face(tile, theme, &drawn, FaceSize::Board(ACTIVE_FACE), image, Readable(card.id.clone()));
+            }
+            None => {
+                tile.spawn((Node { width: px(ACTIVE_FACE as f32), height: px(ACTIVE_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
+            }
+        }
+        tile.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(3), ..default() }).with_children(|words| {
+            words.spawn(widgets::overline(theme, format!("{side:?}")));
+            match active {
+                Some(deck) => {
+                    words.spawn((Text::new(deck.deck.name.clone()), theme.font(size::BODY), TextColor(theme.text), DeckLine(Purpose::Active(side))));
+                    words.spawn(widgets::dim(theme, deck.identity.clone()));
+                    widgets::format_badges(words, theme, &deck.legal_formats());
+                }
+                None => {
+                    words.spawn((Text::new("No deck chosen"), theme.font(size::BODY), TextColor(theme.caution), DeckLine(Purpose::Active(side))));
+                    words.spawn(widgets::dim(theme, "Choose one, or build one in the deck builder."));
+                }
+            }
+        });
+        let chosen = active.map_or_else(|| core.settings.active_deck_or_default(side), |deck| deck.deck.id.clone());
+        tile.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Change…", DeckSlot { purpose: Purpose::Active(side), chosen, format }));
+    });
+}
+
+/// The queue form over the dashboard (Phase 7 §14): the door's title and
+/// what a game there counts for; the format as pills — greyed with the
+/// reason where an active deck is not legal, and never sent; the role
+/// preference; under Casual the ways to the people you know; Cancel and
+/// Find match. Centred on a wash, as a choice is, and the wash blocks
+/// the press.
+fn spawn_queue_form(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, queue: crate::models::online::QueueForm) {
+    let (title, blurb) = match queue.mode {
+        QueueMode::Ranked => ("Configure queue: Ranked ladder", "Rated between players with keys; your standing moves with every game."),
+        QueueMode::Casual => ("Configure queue: Casual / unranked", "Never rated. Whoever is looking plays whoever else is."),
+        QueueMode::Friends => ("Configure queue", ""),
+    };
+    parent
+        .spawn((
+            Overlay,
+            Button,
+            GlobalZIndex(20),
+            Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            BackgroundColor(theme.wash.with_alpha(0.72)),
+        ))
+        .with_children(|wash| {
+            let mut panel = wash.spawn((Interaction::None, bevy::ui::FocusPolicy::Block, widgets::roomy_panel(theme, px(820))));
+            panel.entry::<Node>().and_modify(|mut node| node.max_height = percent(92));
+            panel.with_children(|panel| {
+                panel.spawn(widgets::heading(theme, title));
+                panel.spawn((widgets::dim(theme, blurb), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                if let Some(lobby) = server.queue(queue.mode, queue.format) {
+                    panel.spawn((widgets::dim(theme, format!("{} · {} looking now", server.rating_line(lobby), lobby.seeking)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+                section(panel, theme, "Format — checked against your active decks", |section| {
+                    let choices = form.queue_choices();
+                    section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
+                        for (format, problem) in &choices {
+                            let label = netrunner_client::settings::format_label(*format);
+                            match problem {
+                                None => {
+                                    let kind = if *format == queue.format { ButtonKind::Primary } else { ButtonKind::Secondary };
+                                    row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::QueueFormat(*format)));
+                                }
+                                Some(_) => {
+                                    row.spawn(widgets::disabled_button(theme, label, Val::Auto, Control::QueueFormat(*format)));
+                                }
+                            }
+                        }
+                    });
+                    for (format, problem) in &choices {
+                        if let Some(problem) = problem {
+                            section.spawn((Text::new(format!("{}: {problem}", netrunner_client::settings::format_label(*format))), theme.font(size::SMALL), TextColor(theme.caution), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        }
+                    }
+                });
+                section(panel, theme, "Role soft filter — you bring both decks", |section| {
+                    section.spawn(widgets::row(10.0)).with_children(|row| {
+                        for prefer in [Some(Side::Corp), None, Some(Side::Runner)] {
+                            let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
+                            let label = if prefer.is_none() { "Any / Balanced (Recommended)".to_string() } else { preference_label(prefer).to_string() };
+                            row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Prefer(prefer)));
+                        }
+                    });
+                    section.spawn(widgets::dim(theme, "The queue meets a preference where it can and never refuses a game over it; two players who meet again swap chairs."));
+                });
+                if queue.mode == QueueMode::Casual {
+                    section(panel, theme, "Play with friends", |section| {
+                        section.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a friend lobby…", Control::Open(Page::MakeLobby)));
+                            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Lobby, &form.lobby, "a lobby's code", false));
+                            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Password, &form.password, "password, if it asks", false));
+                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Join", Control::JoinById));
+                        });
+                    });
+                }
+                if let Some(notice) = &form.notice {
+                    panel.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+                buttons(panel, |row| {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::CloseQueue, ButtonSound(Sfx::Back))));
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Find match", px(220), Control::FindMatch));
+                });
+            });
+        });
+}
+
+/// The search over the dashboard: the pulse, what is being looked for,
+/// how long for, and Abort. Redrawn every second (`search_clock_ticks`).
+fn spawn_searching(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, searching: &Searching, pulse: Option<Handle<Image>>) {
+    let elapsed = searching.since.elapsed().as_secs();
+    let (what, line) = match &searching.lobby {
+        Some(lobby) if lobby.permanent() => (
+            match searching.opponent {
+                Opponent::Person => "Searching for an opponent…".to_string(),
+                Opponent::Bot { level, .. } => format!("Seating the {} bot…", rung_label(level).to_lowercase()),
+            },
+            format!("{} · {}", lobby_title(lobby), searching_line(lobby.format, searching.prefer)),
+        ),
+        Some(lobby) => (
+            match searching.opponent {
+                Opponent::Person => "Waiting for someone in the lobby…".to_string(),
+                Opponent::Bot { level, .. } => format!("Seating the {} bot…", rung_label(level).to_lowercase()),
+            },
+            format!("{} · {}", lobby_title(lobby), searching_line(lobby.format, searching.prefer)),
+        ),
+        None => ("Waiting for your table…".to_string(), "The tournament's format and chairs".to_string()),
+    };
+    parent
+        .spawn((
+            Overlay,
+            Button,
+            GlobalZIndex(20),
+            Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            BackgroundColor(theme.wash.with_alpha(0.72)),
+        ))
+        .with_children(|wash| {
+            let mut panel = wash.spawn((Interaction::None, bevy::ui::FocusPolicy::Block, widgets::roomy_panel(theme, px(640))));
+            panel.entry::<Node>().and_modify(|mut node| node.align_items = AlignItems::Center);
+            panel.with_children(|panel| {
+                panel.spawn(widgets::heading(theme, "Jacking into the mainnet…"));
+                match pulse {
+                    Some(handle) => {
+                        panel.spawn((Pulse, ImageNode::new(handle).with_color(theme.accent), UiTransform::IDENTITY, Node { width: px(widgets::PULSE_SIZE as f32), height: px(widgets::PULSE_SIZE as f32), margin: UiRect::vertical(px(8)), ..default() }));
+                    }
+                    None => {
+                        panel.spawn(widgets::label(theme, "(o)"));
+                    }
+                }
+                panel.spawn(widgets::label(theme, what));
+                panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Center, LineBreak::WordBoundary)));
+                if let Some(position) = searching.position {
+                    panel.spawn(widgets::dim(theme, format!("{position} waiting in this queue")));
+                }
+                panel.spawn(widgets::dim(theme, format!("Elapsed {:02}:{:02}", elapsed / 60, elapsed % 60)));
+                if let Some(notice) = &form.notice {
+                    panel.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Center, LineBreak::WordBoundary)));
+                }
+                panel.spawn(Node { margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Abort", px(200), (Control::CancelSeek, ButtonSound(Sfx::Back))));
+                });
+            });
+        });
+}
+
+/// A friend lobby's page: its name and code, who is there, the role
+/// preference, a bot where the maker let them in, and Find a game among
+/// them. Leave is the way back to the dashboard.
+fn spawn_friend_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, lobby: &LobbyInfo) {
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..default() }).with_children(|row| {
+        row.spawn((widgets::heading(theme, lobby.name.clone()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+        row.spawn(widgets::label(theme, format!("Code {}", lobby.id)));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy code", Control::CopyCode));
+    });
+    let password = if lobby.password { ", with its password" } else { "" };
+    parent.spawn((widgets::dim(theme, format!("{} · {} here, {} looking · {}", netrunner_client::settings::format_label(lobby.format), lobby.players, lobby.seeking, server.rating_line(lobby))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn((widgets::dim(theme, format!("Your group joins by the code{password}, under Casual on their dashboard. Whoever is looking here plays whoever else is.")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    section(parent, theme, "Role soft filter — you bring both decks", |section| {
+        section.spawn(widgets::row(10.0)).with_children(|row| {
+            for prefer in [Some(Side::Corp), None, Some(Side::Runner)] {
+                let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
+                row.spawn(widgets::styled_button(theme, kind, preference_label(prefer), Val::Auto, Control::Prefer(prefer)));
+            }
+        });
+    });
+    // A bot only where the lobby lets one in.
+    if !lobby.bots.is_empty() {
+        section(parent, theme, "Opponent", |section| {
+            section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
+                for bot in std::iter::once(None).chain(lobby.bots.iter().copied().map(Some)) {
+                    let kind = if bot == server.bot { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    let label = bot.map_or_else(|| opponent_label(None), rung_label);
+                    row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Opponent(bot)));
+                }
+            });
+            section.spawn(widgets::dim(theme, "A bot plays instead of waiting for the group, at the rung chosen; never rated."));
         });
     }
+    for side in [Side::Corp, Side::Runner] {
+        if let Some(problem) = form.active(side).map_or(Some("no deck chosen".to_string()), |deck| deck.problem_in(lobby.format).map(str::to_string)) {
+            parent.spawn((Text::new(format!("{side:?} deck: {problem} — change it on the dashboard")), theme.font(size::SMALL), TextColor(theme.caution), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+    }
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Leave lobby", Val::Auto, (Control::LeaveLobby, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Find a game", px(220), Control::Seek));
     });
 }
 
@@ -1314,6 +1774,8 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     }
     parent.spawn(widgets::row(12.0)).with_children(|row| {
         row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Add a server…", Control::EditRow(None)));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Host a game…", Control::Open(Page::Host)));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Watch a game…", Control::Open(Page::Watch)));
     });
     if !form.local.is_empty() {
         section(parent, theme, "On this machine", |section| {
@@ -1570,157 +2032,6 @@ fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     });
 }
 
-/// Attached: what a host gives out, the lobbies, a friend queue's code, and
-/// in a lobby the game to look for.
-fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net) {
-    parent.spawn(widgets::heading(theme, if server.hosting { "Hosting on this machine".to_string() } else { format!("At {}", shortened(&form.server_name(&server.address))) }));
-    if let Some(line) = &server.link {
-        parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    }
-    if server.hosting {
-        parent.spawn(widgets::dim(theme, "Give your opponent one of these. They connect, join your lobby and look for a game, as you do below."));
-        for (index, way) in net.shown.iter().enumerate() {
-            match way {
-                Way::Give { what, who, ticket } => {
-                    parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|give| {
-                        give.spawn(widgets::overline(theme, if *ticket { format!("Ticket · {who}") } else { capitalised(who) }));
-                        give.spawn(widgets::row(12.0)).with_children(|row| {
-                            row.spawn((
-                                Text::new(what.clone()),
-                                theme.font(if *ticket { size::SMALL } else { size::BODY }),
-                                TextColor(theme.text),
-                                // A ticket has no spaces to break at.
-                                TextLayout::new(Justify::Left, LineBreak::AnyCharacter),
-                                Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() },
-                            ));
-                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy", Control::Copy(index)));
-                        });
-                    });
-                }
-                Way::Note(note) => {
-                    parent.spawn((widgets::dim(theme, note.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                }
-            }
-        }
-    }
-    section(parent, theme, "Lobbies", |section| {
-        if server.lobbies.is_empty() {
-            section.spawn(widgets::dim(theme, "This server lists no lobby."));
-        }
-        // A row a format, its queues side by side (Phase 4 §9): two
-        // queues a format, one a row, ran Find a game off the window, and
-        // this page does not scroll.
-        let mut formats: Vec<NsgFormat> = Vec::new();
-        for lobby in &server.lobbies {
-            if !formats.contains(&lobby.format) {
-                formats.push(lobby.format);
-            }
-        }
-        for format in formats {
-            section.spawn(widgets::row(12.0)).with_children(|row| {
-                row.spawn((widgets::label(theme, netrunner_client::settings::format_label(format)), Node { width: px(150), flex_shrink: 0.0, ..default() }));
-                for (index, lobby) in server.lobbies.iter().enumerate().filter(|(_, lobby)| lobby.format == format) {
-                    let here = server.lobby.as_ref().is_some_and(|current| current.id == lobby.id);
-                    let kind = if here { ButtonKind::Primary } else { ButtonKind::Secondary };
-                    row.spawn(widgets::styled_button(theme, kind, queue_pill(lobby), Val::Auto, Control::JoinLobby(index)));
-                }
-            });
-        }
-        section.spawn(widgets::row(12.0)).with_children(|row| {
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a friend queue…", Control::Open(Page::MakeLobby)));
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Tournaments…", Control::Open(Page::Tournaments)));
-            if !server.hosting {
-                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Your profile…", Control::Open(Page::Profile)));
-            }
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Servers…", Control::Open(Page::Servers)));
-        });
-    });
-    section(parent, theme, "A friend queue", |section| {
-        section.spawn(widgets::row(12.0)).with_children(|row| {
-            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Lobby, &form.lobby, "its code", false));
-            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Password, &form.password, "password, if it asks for one", false));
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Join", Control::JoinById));
-        });
-    });
-    if let Some(lobby) = &server.lobby {
-        section(parent, theme, format!("Find a game in {}", lobby_title(lobby)), |section| {
-            section.spawn((widgets::dim(theme, server.rating_line(lobby)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-            section.spawn(widgets::row(10.0)).with_children(|row| {
-                for chair in ChairChoice::ALL {
-                    let kind = if chair == server.chair { ButtonKind::Primary } else { ButtonKind::Secondary };
-                    row.spawn(widgets::styled_button(theme, kind, chair.label(), Val::Auto, Control::Chair(chair)));
-                }
-            });
-            // Either chair brings both decks, and may lean one way: a
-            // preference the queue meets where it can, never a refusal.
-            if server.chair == ChairChoice::Either {
-                section.spawn(widgets::row(10.0)).with_children(|row| {
-                    for prefer in [None, Some(Side::Corp), Some(Side::Runner)] {
-                        let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
-                        row.spawn(widgets::styled_button(theme, kind, preference_label(prefer), Val::Auto, Control::Prefer(prefer)));
-                    }
-                });
-            }
-            // A bot only where the lobby offers one: a casual lobby asks.
-            if !lobby.bots.is_empty() {
-                section.spawn(widgets::row(10.0)).with_children(|row| {
-                    for bot in std::iter::once(None).chain(lobby.bots.iter().copied().map(Some)) {
-                        let kind = if bot == server.bot { ButtonKind::Primary } else { ButtonKind::Secondary };
-                        // The rung's name alone after "A person": six
-                        // "… bot" pills ran off the panel.
-                        let label = bot.map_or_else(|| opponent_label(None), rung_label);
-                        row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Opponent(bot)));
-                    }
-                });
-            }
-            if server.chair != ChairChoice::Runner {
-                deck_dropdown(section, theme, server, Side::Corp, lobby.format);
-            }
-            if server.chair != ChairChoice::Corp {
-                deck_dropdown(section, theme, server, Side::Runner, lobby.format);
-            }
-            match server.seeking {
-                Some(position) => {
-                    section.spawn(widgets::dim(theme, format!("Looking for a game — {position} waiting in this queue…")));
-                    section.spawn(widgets::row(12.0)).with_children(|row| {
-                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop looking", Val::Auto, Control::CancelSeek));
-                    });
-                }
-                None => {
-                    section.spawn(widgets::row(12.0)).with_children(|row| {
-                        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Find a game", px(220), Control::Seek));
-                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Leave lobby", Val::Auto, Control::LeaveLobby));
-                    });
-                }
-            }
-        });
-    }
-    buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Disconnect", Val::Auto, (Control::Disconnect, ButtonSound(Sfx::Back))));
-    });
-}
-
-/// One of the server's queues on its format's row: its mode, how many
-/// are looking there, and whether a bot may be asked for. Ranked is the
-/// rated one, so the word says it.
-fn queue_pill(lobby: &LobbyInfo) -> String {
-    let mut pill = format!("{} · {} looking", lobby.mode.name(), lobby.seeking);
-    if !lobby.bots.is_empty() {
-        pill.push_str(" · bots");
-    }
-    pill
-}
-
-/// The deck brought for `side`, from those legal in the lobby's format.
-fn deck_dropdown(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState, side: Side, format: NsgFormat) {
-    let (decks, chosen) = match side {
-        Side::Corp => (server.corp_decks(), server.corp_deck),
-        Side::Runner => (server.runner_decks(), server.runner_deck),
-    };
-    deck_slot_of(parent, theme, decks, chosen, side, format, Purpose::Lobby(side));
-}
-
 /// The deck this player would lock in for `side` in the open tournament,
 /// from those legal in its format. Its own purpose, so the model can
 /// tell whose choice a pick is.
@@ -1835,7 +2146,7 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
                         section.spawn(widgets::dim(theme, bye));
                     }
                     if server.may_sit() {
-                        section.spawn(widgets::row(12.0)).with_children(|row| match server.seeking {
+                        section.spawn(widgets::row(12.0)).with_children(|row| match server.searching.as_ref().and_then(|searching| searching.position) {
                             Some(_) => {
                                 row.spawn(widgets::dim(theme, "Seated — waiting for your opponent to sit…"));
                                 row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stand up", Val::Auto, Control::CancelSeek));
@@ -1918,8 +2229,8 @@ fn spawn_make_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, form:
 }
 
 fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    parent.spawn(widgets::heading(theme, "Make a friend queue"));
-    parent.spawn((widgets::dim(theme, "Never listed and never rated: your group joins it by the code the server gives it, and plays whoever else is looking there."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn(widgets::heading(theme, "Make a friend lobby"));
+    parent.spawn((widgets::dim(theme, "Never listed and never rated: your group joins it by the code the server gives it, under Casual, and plays whoever else is looking there."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     section(parent, theme, "Name", |section| field_box(section, theme, Field::LobbyName, &form.make.name, "what the others see", false));
     format_section(parent, theme, form.make.format, "The format games in this lobby are played in.");
     section(parent, theme, "Bots", |section| {
@@ -1929,7 +2240,7 @@ fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onl
                 row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::LobbyBots(bots)));
             }
         });
-        section.spawn(widgets::dim(theme, if form.make.bots { "Anyone here may ask for a bot instead of waiting for the group." } else { "Games here are between the people who join." }));
+        section.spawn(widgets::dim(theme, if form.make.bots { "Anyone here may play a bot instead of waiting for the group — the only place a bot sits." } else { "Games here are between the people who join." }));
     });
     section(parent, theme, "Password", |section| field_box(section, theme, Field::LobbyPassword, &form.make.password, "none", false));
     buttons(parent, |row| {

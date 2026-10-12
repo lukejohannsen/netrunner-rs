@@ -86,9 +86,9 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     assert_eq!(ids, ["casual-startup", "casual-standard", "casual-eternal", "casual-snapshot", "casual-unrestricted"], "`serve::DEFAULT_FORMATS`");
     assert!(lobbies.iter().all(|lobby| lobby.permanent() && lobby.mode == QueueMode::Casual && lobby.players == 0));
     assert!(lobbies.iter().all(|lobby| !lobby.rated), "a daemon with no data directory rates nothing, and its lobbies say so");
-    // Every rung is offered where the daemon can deal a bot a deck, and
-    // none in Snapshot, where it can deal none.
-    assert!(lobbies.iter().all(|lobby| lobby.bots == if lobby.format == NsgFormat::Snapshot { Vec::new() } else { Level::ALL.to_vec() }), "{lobbies:?}");
+    // The server's own queues offer no bot: a bot sits only in a friend
+    // lobby that lets one in (12 October 2026).
+    assert!(lobbies.iter().all(|lobby| lobby.bots.is_empty()), "{lobbies:?}");
 
     let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "Casual-Standard", None).await else { panic!() };
     assert_eq!((lobby.format, lobby.players), (NsgFormat::Standard, 1));
@@ -275,20 +275,15 @@ async fn preferences_choose_the_partner_and_the_chairs() {
 /// friend queue seats one only if its maker let bots in; a rung the
 /// server does not offer is refused, and a server offering none says so.
 #[tokio::test]
-async fn a_bot_sits_only_where_a_casual_lobby_asks_for_one() {
+async fn a_bot_sits_only_in_a_friend_lobby_that_allows_one() {
     let url = human_daemon().await;
     let elite = Opponent::Bot { level: Level::Elite, style: None };
-    let (mut player, _) = attach(&url, "player").await;
+    let (mut player, lobbies) = attach(&url, "player").await;
+    assert!(lobbies.iter().all(|lobby| lobby.bots.is_empty()), "the server's own queues offer no bot: {lobbies:?}");
     join(&mut player, "casual-startup", None).await;
     send(&mut player, ClientMessage::Seek { chair: either(Some(Side::Runner)), opponent: elite }).await;
-    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("seated against the bot at once") };
-    assert_eq!(assigned_side, Side::Runner, "in the chair preferred");
-    send(&mut player, ClientMessage::Surrender).await;
-    loop {
-        if let ServerMessage::BackInLobby { .. } = next(&mut player).await {
-            break;
-        }
-    }
+    let ServerMessage::SeekRefused { reason } = next(&mut player).await else { panic!("a bot never sits in the Casual queue") };
+    assert!(reason.contains("friend lobby"), "{reason}");
 
     send(&mut player, ClientMessage::CreateLobby { name: "no bots".into(), format: NsgFormat::Startup, password: None, bots: false }).await;
     assert!(matches!(next(&mut player).await, ServerMessage::LobbyJoined { .. }));
@@ -298,17 +293,37 @@ async fn a_bot_sits_only_where_a_casual_lobby_asks_for_one() {
     send(&mut player, ClientMessage::CreateLobby { name: "bots".into(), format: NsgFormat::Startup, password: None, bots: true }).await;
     let ServerMessage::LobbyJoined { lobby } = next(&mut player).await else { panic!() };
     assert_eq!(lobby.bots, Level::ALL.to_vec());
+    send(&mut player, ClientMessage::Seek { chair: either(Some(Side::Runner)), opponent: elite }).await;
+    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("a friend lobby that lets bots in seats one at once") };
+    assert_eq!(assigned_side, Side::Runner, "in the chair preferred");
+    send(&mut player, ClientMessage::Surrender).await;
+    loop {
+        if let ServerMessage::BackInLobby { .. } = next(&mut player).await {
+            break;
+        }
+    }
     send(&mut player, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Bot { level: Level::Novice, style: None } }).await;
-    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("a friend queue that lets bots in seats one") };
+    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("and again after the game") };
     assert_eq!(assigned_side, Side::Corp);
 
     let server = Server::bind("127.0.0.1:0", ServeOptions { bots: vec![Level::Novice], ..ServeOptions::default() }).await.unwrap();
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
-    let (mut picky, lobbies) = attach(&format!("ws://{addr}"), "picky").await;
-    assert!(lobbies.iter().filter(|lobby| lobby.format != NsgFormat::Snapshot).all(|lobby| lobby.bots == [Level::Novice]));
-    join(&mut picky, "casual-startup", None).await;
+    let (mut picky, _) = attach(&format!("ws://{addr}"), "picky").await;
+    send(&mut picky, ClientMessage::CreateLobby { name: "novices".into(), format: NsgFormat::Startup, password: None, bots: true }).await;
+    let ServerMessage::LobbyJoined { lobby } = next(&mut picky).await else { panic!() };
+    assert_eq!(lobby.bots, [Level::Novice], "a friend lobby offers what the server offers");
     send(&mut picky, ClientMessage::Seek { chair: either(None), opponent: elite }).await;
     let ServerMessage::SeekRefused { reason } = next(&mut picky).await else { panic!() };
     assert!(reason.contains("no elite bot"), "{reason}");
+    let none = Server::bind("127.0.0.1:0", ServeOptions { bots: Vec::new(), ..ServeOptions::default() }).await.unwrap();
+    let addr = none.local_addr().unwrap();
+    tokio::spawn(none.run());
+    let (mut alone, _) = attach(&format!("ws://{addr}"), "alone").await;
+    send(&mut alone, ClientMessage::CreateLobby { name: "nobody".into(), format: NsgFormat::Startup, password: None, bots: true }).await;
+    let ServerMessage::LobbyJoined { lobby } = next(&mut alone).await else { panic!() };
+    assert!(lobby.bots.is_empty());
+    send(&mut alone, ClientMessage::Seek { chair: either(None), opponent: elite }).await;
+    let ServerMessage::SeekRefused { reason } = next(&mut alone).await else { panic!() };
+    assert_eq!(reason, "this server offers no bot");
 }

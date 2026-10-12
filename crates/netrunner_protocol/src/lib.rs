@@ -138,8 +138,9 @@ pub enum ClientMessage {
     /// rated and could be listed until §9, and both went — rated play is
     /// the server's Ranked queue, and a listed lobby of a player's was a
     /// way to be paired with strangers outside it. `bots` lets its members
-    /// ask for a bot (`Opponent::Bot`), the maker's to allow: bots sit only
-    /// where a casual lobby asks for one.
+    /// ask for a bot (`Opponent::Bot`), the maker's to allow: a bot sits
+    /// only in a friend lobby that allows one, never in the server's own
+    /// queues (decided 12 October 2026).
     CreateLobby { name: String, format: NsgFormat, password: Option<String>, bots: bool },
     /// Join a lobby by its id — one of the server's queues, or a friend
     /// queue by the code its maker gave — leaving the one this connection
@@ -374,9 +375,9 @@ pub struct LobbyInfo {
     /// stands to gain.
     pub rated: bool,
     /// The rungs a seek here may ask for (`Opponent::Bot`), weakest first:
-    /// none in Ranked, none in a friend queue its maker kept bots out of,
-    /// none in a format the server can deal a bot no deck in, and none on
-    /// a server that offers no bots.
+    /// none in the server's own queues, Ranked or Casual, none in a friend
+    /// queue its maker kept bots out of, none in a format the server can
+    /// deal a bot no deck in, and none on a server that offers no bots.
     pub bots: Vec<Level>,
     /// Attached connections in the lobby.
     pub players: usize,

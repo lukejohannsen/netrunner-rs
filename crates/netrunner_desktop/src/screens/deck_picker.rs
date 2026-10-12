@@ -55,8 +55,9 @@ use crate::widgets::{self, ButtonKind, Pressed};
 pub enum Purpose {
     /// The new-game form's own or opponent's deck.
     NewGame(Pane),
-    /// A lobby's seek, one side.
-    Lobby(Side),
+    /// The active deck of a side, chosen from the Server Dashboard
+    /// (Phase 7 §14): every seek brings both.
+    Active(Side),
     /// A tournament's entry, one side.
     Tournament(Side),
 }
@@ -288,7 +289,7 @@ fn draw(
                     let (what, side) = match picking.purpose {
                         Purpose::NewGame(Pane::OwnDeck) => ("Your deck", picking.side),
                         Purpose::NewGame(_) => ("The opponent's deck", picking.side),
-                        Purpose::Lobby(side) => ("Your deck for the lobby", side),
+                        Purpose::Active(side) => ("Your active deck", side),
                         Purpose::Tournament(side) => ("Your deck for the tournament", side),
                     };
                     panel.spawn(widgets::heading(&theme, format!("{what} · {side:?} · {}", format_label(picker.format))));
