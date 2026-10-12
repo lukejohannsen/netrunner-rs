@@ -221,6 +221,22 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
             // What the card that asked for accesses outside a breach
             // resolves once they are over (Deep Dive's click for another).
             let after = access.outside_breach.as_mut().and_then(|outside| outside.then.take().map(|then| (then, outside.card.clone(), outside.install)));
+            // An encounter's accesses hand the run back to the encounter
+            // (CR 6.1.4b), and the subroutine that asked for them lets the
+            // ice's later ones fire.
+            if let Some(resume) = access.outside_breach.as_ref().filter(|outside| outside.during_encounter).map(|outside| outside.resume_subroutines) {
+                let run = state.active_run.as_mut().expect("offer_next called mid-access");
+                run.access_state = None;
+                run.phase = RunPhase::EncounterIce;
+                let mut events = Vec::new();
+                if let Some((then, card, install)) = after {
+                    events.extend(resolve_after_accesses(state, registry, *then, card, install)?);
+                }
+                if resume && !state.resolution_halted() {
+                    events.extend(crate::rules::paid_ability::resolve_encounter_ice(state, registry)?);
+                }
+                return Ok(events);
+            }
             // A breach with no run ends as nothing a card hears: there was
             // no run to complete. A run that breached another server is
             // still a run on the one it attacked (CR 7.3.1).
@@ -244,6 +260,13 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
             Ok(Vec::new())
         }
     }
+}
+
+/// Whether `run` is in the accesses an encounter asked for (Otoroshi's):
+/// the encounter waits on them, so nothing may carry the run on past it
+/// until `offer_next` hands the run back.
+pub(crate) fn accessing_during_an_encounter(run: &RunState) -> bool {
+    run.access_state.as_ref().and_then(|access| access.outside_breach.as_ref()).is_some_and(|outside| outside.during_encounter)
 }
 
 /// Whether the card being accessed is in the Corp's discard pile — out of
@@ -270,8 +293,10 @@ pub(crate) fn accessing_in_the_discard_pile(state: &GameState) -> bool {
 /// is not in one); a set-aside card by its name, faceup.
 ///
 /// Inside a run it is the run's breach replaced (`replacing_breach`), and
-/// the run goes on to these accesses and ends when they do; anywhere else
-/// in a run it is refused, as `Breach` is. Outside a run it stands in a
+/// the run goes on to these accesses and ends when they do; during an
+/// encounter it is the encounter's (CR 6.1.4b), and the run goes back to
+/// the encounter when they are over (`OutsideBreach::during_encounter`);
+/// anywhere else in a run it is refused, as `Breach` is. Outside a run it stands in a
 /// `RunState` flagged `breach_only`, on R&D, with nothing declared
 /// successful: the access machinery is the run's (`run::engine::
 /// start_breach`'s reasoning).
@@ -290,7 +315,10 @@ pub(crate) fn access_cards(
     use crate::dsl::CardZoneRef;
     // The cards a selection over `from` would offer: the filter read off
     // each definition and each copy (`InAttackedServer` is the copy's).
-    let admitted = crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, from, filter, None, None);
+    // Read for the card that asked, so "that card" can be its own copy
+    // (`Not(NotSourceCard)`: Otoroshi's chosen card, the acting install
+    // inside the selection's `then`).
+    let admitted = crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, from, filter, install, card.as_ref());
     let candidates: Vec<AccessCandidate> = match from {
         CardZoneRef::OpponentInstalled => admitted
             .into_iter()
@@ -307,7 +335,9 @@ pub(crate) fn access_cards(
         }
         _ => return Err(RulesError::UnresolvedCardTarget),
     };
+    let during_encounter = !replacing_breach && state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce && run.access_state.is_none());
     match state.active_run.as_ref() {
+        Some(_) if during_encounter => {}
         Some(run) if !replacing_breach || run.access_state.is_some() => return Err(RulesError::RunAlreadyInProgress),
         Some(_) => {}
         None => state.active_run = Some(RunState { server: ServerId::RnD, phase: RunPhase::Success, breach_only: true, ..RunState::default() }),
@@ -318,7 +348,7 @@ pub(crate) fn access_cards(
     run.access_state = Some(AccessState {
         server,
         candidates,
-        outside_breach: Some(OutsideBreach { left: count, then, card, install }),
+        outside_breach: Some(OutsideBreach { left: count, then, card, install, during_encounter, resume_subroutines: false }),
         ..AccessState::default()
     });
     offer_next(state, registry, server)

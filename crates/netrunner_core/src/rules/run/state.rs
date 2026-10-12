@@ -459,6 +459,18 @@ pub struct OutsideBreach {
     pub card: Option<CardId>,
     #[serde(default)]
     pub install: Option<InstallId>,
+    /// The accesses were asked for during an encounter (Otoroshi's "the
+    /// Runner accesses that card unless they pay 3[credit]", a
+    /// subroutine): when they are over the run goes back to the encounter
+    /// rather than ending (CR 6.1.4b: an access initiated during the
+    /// encounter belongs to it).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub during_encounter: bool,
+    /// What asked for them was a subroutine, whose ice's later subroutines
+    /// still fire once they are over — the intent every parked state
+    /// carries (`pending_choice::mark_parked_resume_subroutines`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resume_subroutines: bool,
 }
 
 /// Every field at its neutral value, for test fixtures — see

@@ -101,7 +101,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jumon", "Jumon"),
     ("api_s_keeper_isobel", "API-S Keeper Isobel"),
     ("neurostasis", "Neurostasis"),
-    ("otoroshi", "Otoroshi"),
     ("hangeki", "Hangeki"),
     ("daruma", "Daruma"),
     ("acme_consulting_the_truth_you_need", "Acme Consulting: The Truth You Need"),

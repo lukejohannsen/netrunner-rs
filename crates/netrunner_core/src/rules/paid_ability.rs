@@ -457,7 +457,10 @@ pub(crate) fn resolve_encounter_ice(
     // named them, so the side had no legal action at all and the match
     // could never advance. Reachable on ordinary sample decks (seed 2 of
     // `decks::matchups()[0]`), and deterministic, therefore permanent.
-    if !state.resolution_halted() && state.active_run.is_some() {
+    // Nor out from under an access the encounter asked for (Otoroshi): the
+    // run is in `AccessingCard` until it is over, and `access::offer_next`
+    // comes back here when it is.
+    if !state.resolution_halted() && state.active_run.as_ref().is_some_and(|run| !run::accessing_during_an_encounter(run)) {
         events.extend(run::advance_run(state, RunAction::Continue, registry)?);
         events.extend(open_window_if_at_checkpoint(state, registry));
     }
