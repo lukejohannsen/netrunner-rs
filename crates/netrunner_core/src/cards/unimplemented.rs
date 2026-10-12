@@ -84,10 +84,7 @@ pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("divide_and_conquer", "Divide and Conquer"),
     ("patchwork", "Patchwork"),
-    ("district_99", "District 99"),
-    ("thunder_art_gallery", "Thunder Art Gallery"),
     ("minds_eye", "Mind's Eye"),
-    ("mache", "Mâché"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
     ("gatekeeper", "Gatekeeper"),

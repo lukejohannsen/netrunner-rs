@@ -32111,3 +32111,128 @@ mod reign_and_reverie_stage_5 {
     }
 
 }
+
+/// FFG F2 Stage 6: three Runner cards, each one word — a faction read off
+/// the identity, a trash cost read off the access, and a tag avoided.
+mod reign_and_reverie_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn in_rig(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), counters, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, option_index: usize) -> GameState {
+        close_all_windows(apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("choose").0, registry).0
+    }
+
+    /// Passes every window until a decision waits or nothing is open.
+    fn settle(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while state.pending_decision.is_none() && state.pending_paid_choice.is_none() {
+            let Some(side) = state.paid_ability_window.as_ref().map(|window| window.active_priority) else { break };
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    fn counters(state: &GameState, card: &str) -> u32 {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("in the rig").counters
+    }
+
+    #[test]
+    fn mache_banks_the_first_trashed_cards_trash_cost_each_turn_and_draws_for_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("mache", 0)];
+        state.runner.stack = vec![id("sure_gamble")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() },
+        ];
+        let (breaching, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let accessing = match crate::rules::legal_actions_for(&breaching, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. })) {
+            Some(action) => apply_action(&breaching, &registry, action).expect("access").0,
+            None => breaching,
+        };
+        let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash it for 4");
+        let asked = close_all_windows(trashed, &registry).0;
+        let banked = choose(&asked, &registry, 0);
+        assert_eq!(counters(&banked, "mache"), 4, "PAD Campaign's trash cost");
+        assert_eq!(counters(&choose(&asked, &registry, 1), "mache"), 0, "a may");
+
+        let (drew, _) = apply_action(&banked, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("mache"), ability_index: 0 }).expect("3 hosted power counters");
+        assert_eq!((drew.runner.grip.clone(), counters(&drew, "mache")), (vec![id("sure_gamble")], 1));
+    }
+
+    #[test]
+    fn district_99_counts_the_first_program_or_hardware_trashed_and_returns_a_card_of_the_identitys_faction() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("reina_roja_freedom_fighter"));
+        state.runner.rig = vec![in_rig("district_99", 0), in_rig("akamatsu_mem_chip", 0)];
+        state.runner.grip = vec![id("corroder")];
+        let snare = id("snare");
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1), &mut crate::rules::ResolutionContext::for_card(Some(&snare)), &registry).expect("damage");
+        let asked = settle(state, &registry);
+        assert!(asked.pending_decision.is_some(), "the first program trashed this turn, from the grip");
+        let counted = choose(&asked, &registry, 0);
+        assert_eq!(counters(&counted, "district_99"), 1);
+
+        let mut ready = counted;
+        ready.runner.rig[0].counters = 3;
+        ready.runner.heap = vec![id("sure_gamble"), id("corroder"), id("femme_fatale")];
+        let (asked, _) = apply_action(&ready, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("district_99"), ability_index: 0 }).expect("[click], 3 counters");
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "Sure Gamble is neutral");
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 2 }).is_err(), "Femme Fatale is Criminal");
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Corroder is Anarch");
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("to the grip");
+        assert_eq!(done.runner.grip, vec![id("corroder")]);
+    }
+
+    #[test]
+    fn thunder_art_gallery_installs_a_card_a_credit_cheaper_the_first_time_a_tag_is_avoided_or_removed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![in_rig("thunder_art_gallery", 0), in_rig("decoy", 0)];
+        state.runner.grip = vec![id("daily_casts")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("fly_on_the_wall"), card: id("fly_on_the_wall"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 3, ..Default::default() }];
+        let (asking, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("fly_on_the_wall") }).expect("score");
+        let asking = {
+            let mut asking = asking;
+            while asking.pending_prevention.is_none() {
+                let side = asking.paid_ability_window.as_ref().expect("a window").active_priority;
+                asking = apply_action(&asking, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+            }
+            asking
+        };
+        let (avoided, _) = apply_action(&asking, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("decoy"), ability_index: 0 }).expect("Decoy");
+        assert!(avoided.pending_decision.is_some(), "Thunder Art Gallery, inside the window");
+        let credits = avoided.runner.resources.credits.0;
+        let (picked, _) = apply_action(&avoided, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Daily Casts");
+        let (installed, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        let installed = close_all_windows(installed, &registry).0;
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("daily_casts")));
+        assert_eq!(installed.runner.resources.credits, Credits(credits - 2), "3 less 1");
+        assert_eq!(installed.runner.tags, 0, "avoided");
+
+        let mut state = runner_turn();
+        state.runner.tags = 2;
+        state.runner.rig = vec![in_rig("thunder_art_gallery", 0)];
+        state.runner.grip = vec![id("daily_casts")];
+        let (removed, _) = apply_action(&state, &registry, PlayerAction::RemoveTag).expect("remove a tag");
+        let removed = close_all_windows(removed, &registry).0;
+        assert!(removed.pending_decision.is_some(), "the first tag removed this turn");
+        let skipped = apply_action(&removed, &registry, PlayerAction::ConfirmCardSelection).expect("install nothing").0;
+        let (again, _) = apply_action(&close_all_windows(skipped, &registry).0, &registry, PlayerAction::RemoveTag).expect("remove another");
+        assert!(close_all_windows(again, &registry).0.pending_decision.is_none(), "only the first each turn");
+    }
+}

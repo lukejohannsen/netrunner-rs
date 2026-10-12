@@ -432,10 +432,15 @@ pub(crate) fn prevent(state: &mut GameState, registry: &CardRegistry, word: &Pre
     if left == 0 || !matches(word, &pending.what, state, registry) {
         return Err(RulesError::NothingToPrevent);
     }
+    let now = prevents_up_to(word).min(left);
+    let mut events = Vec::new();
     if let Some(pending) = state.pending_prevention.as_mut() {
-        pending.prevented += prevents_up_to(word).min(left);
+        pending.prevented += now;
+        if matches!(pending.what, WouldHappen::Tags { .. }) {
+            crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TagsAvoided { amount: now })?;
+        }
     }
-    Ok(Vec::new())
+    Ok(events)
 }
 
 /// After an interrupt resolved: with all of it prevented, or nobody able

@@ -368,6 +368,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnBasicDrawAction
         | Trigger::OnTagsGiven
         | Trigger::OnTagRemoved
+        | Trigger::OnTagsAvoided
         | Trigger::OnDamageDealt
         | Trigger::OnCardsTrashedFromHq
         | Trigger::OnCardsTrashedFromRnD

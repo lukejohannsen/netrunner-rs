@@ -413,6 +413,15 @@ fn instance_matches_filter(
         // Only a card in Archives lies facedown in a zone a selection reads.
         CardFilter::Facedown => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| archived.facedown),
         CardFilter::Faceup => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| !archived.facedown),
+        CardFilter::MatchesOwnIdentitysFaction => {
+            let identity = match chooser {
+                Side::Corp => state.corp.identity.as_ref(),
+                Side::Runner => state.runner.identity.as_ref(),
+            };
+            let faction = |card: &CardId| registry.get(card).and_then(|def| def.faction);
+            let theirs = identity.and_then(faction);
+            theirs.is_some() && zone_card_ids(state, chooser, zone, source).get(position).and_then(faction) == theirs
+        }
         // The kind is the definition's half; this is the count.
         CardFilter::HostsCounters(_) => {
             let rig_card = (installed_zone && owning_side(chooser, zone) == Side::Runner).then(|| state.runner.rig.get(position)).flatten();

@@ -2078,16 +2078,32 @@ pub fn evaluate_effect(
         }
 
         Effect::PresentChoice { chooser, options, texts } => {
+            // The moment a trigger heard is not on the parked decision, so
+            // what an option reads off it is read now (`Effect::filled`).
+            let options = match ctx.triggering_event {
+                Some(_) => {
+                    let fill = |amount: &Amount| match amount {
+                        Amount::TriggeringCardPrintedCost
+                        | Amount::TriggeringCardTrashCost
+                        | Amount::TimesThisActionThisTurn
+                        | Amount::AboutToResolve => Some(resolve_amount(amount, ctx, state, registry)),
+                        _ => None,
+                    };
+                    options.iter().map(|option| option.clone().filled(&fill)).collect()
+                }
+                None => options.clone(),
+            };
+            let option_count = options.len();
             state.pending_decision = Some(PendingDecision::ChooseEffect {
                 chooser: *chooser,
-                options: options.clone(),
+                options,
                 option_texts: texts.clone(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
-            Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count: options.len() }])
+            Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count }])
         }
 
         Effect::PsiGame { on_match, on_differ } => {
@@ -5261,6 +5277,14 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::PaidCardPrintedCost => ctx.paid_with.first().and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::TriggeringCardPrintedCost => match ctx.triggering_event {
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
+            _ => 0,
+        },
+        Amount::TriggeringCardTrashCost => match ctx.triggering_event {
+            Some(GameEvent::CardTrashedFromAccess { cost_paid, .. }) if *cost_paid > 0 => *cost_paid,
+            Some(GameEvent::CardTrashedFromAccess { card, .. }) => registry.get(card).map_or(0, |def| {
+                let printed = def.trash_cost.unwrap_or(0) as i32;
+                (printed + crate::rules::continuous::trash_cost_delta(state, registry, def, None)).max(0) as u32
+            }),
             _ => 0,
         },
         Amount::Times { amount, times } => resolve_amount(amount, ctx, state, registry).saturating_mul(*times),

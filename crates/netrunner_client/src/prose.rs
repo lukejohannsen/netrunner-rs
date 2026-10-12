@@ -99,6 +99,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
         Amount::PaidCardPrintedCost => "the printed cost of the card trashed to pay".to_string(),
         Amount::TriggeringCardPrintedCost => "the printed cost of the trashed card".to_string(),
+        Amount::TriggeringCardTrashCost => "the trashed card's trash cost".to_string(),
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),

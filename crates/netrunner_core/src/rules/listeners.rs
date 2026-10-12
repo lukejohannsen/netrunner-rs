@@ -420,6 +420,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TagsCleared { side: Side::Runner, by } => {
             vec![moment(Trigger::OnTagRemoved, &About::Nothing, Some(*by))]
         }
+        GameEvent::TagsAvoided { amount: 0 } => Vec::new(),
+        GameEvent::TagsAvoided { .. } => vec![moment(Trigger::OnTagsAvoided, &About::Nothing, Some(Side::Runner))],
         GameEvent::TagsGiven { side: Side::Runner, .. } => vec![moment(Trigger::OnTagsGiven, &About::Nothing, Some(Side::Runner))],
         // Bad publicity is only ever the Corp's (CR 1.14.2e), and taking
         // none is not taking some.

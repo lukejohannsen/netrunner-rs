@@ -654,7 +654,7 @@ pub fn narrate_event(
         } | GameEvent::DiscardPhaseEnded { .. } | GameEvent::CardDiscarded { .. } |
         GameEvent::CardAddedToDeck { revealed: false, .. } | GameEvent::CardHosted { .. } |
         GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
-        } | GameEvent::TagsCleared { .. } | GameEvent::CardRemovedFromGame { .. } |
+        } | GameEvent::TagsCleared { .. } | GameEvent::TagsAvoided { .. } | GameEvent::CardRemovedFromGame { .. } |
         GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityTookCredits { .. } | GameEvent::AbilityActivated { .. } |
         GameEvent::CardTrashedFromAccess { .. } | GameEvent::AccessPassed { .. } |
         GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed { .. } |

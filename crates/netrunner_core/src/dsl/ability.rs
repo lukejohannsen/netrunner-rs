@@ -682,14 +682,15 @@ impl EffectRequirement {
     }
 
     pub fn with_chosen_number(self, number: u32) -> EffectRequirement {
+        self.filled(&|amount| matches!(amount, crate::dsl::Amount::ChosenNumber).then_some(number))
+    }
+
+    /// See `Amount::filled`.
+    pub fn filled(self, fill: &dyn Fn(&crate::dsl::Amount) -> Option<u32>) -> EffectRequirement {
         match self {
-            EffectRequirement::AmountAtLeast(crate::dsl::Amount::ChosenNumber, at_least) => {
-                EffectRequirement::AmountAtLeast(crate::dsl::Amount::Fixed(number), at_least)
-            }
-            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.with_chosen_number(number))),
-            EffectRequirement::And(a, b) => {
-                EffectRequirement::And(Box::new(a.with_chosen_number(number)), Box::new(b.with_chosen_number(number)))
-            }
+            EffectRequirement::AmountAtLeast(amount, at_least) => EffectRequirement::AmountAtLeast(amount.filled(fill), at_least),
+            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.filled(fill))),
+            EffectRequirement::And(a, b) => EffectRequirement::And(Box::new(a.filled(fill)), Box::new(b.filled(fill))),
             other => other,
         }
     }

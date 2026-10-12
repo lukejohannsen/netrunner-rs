@@ -1149,6 +1149,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::CreditsSpent { .. }
         | GameEvent::TagsGiven { .. }
         | GameEvent::TagsCleared { .. }
+        | GameEvent::TagsAvoided { .. }
         | GameEvent::RunEndedByEffect { .. }
         | GameEvent::GameOver { .. }
         | GameEvent::AbilityActivated { .. }
