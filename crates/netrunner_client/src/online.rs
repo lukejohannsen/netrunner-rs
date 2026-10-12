@@ -15,6 +15,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
+use netrunner_protocol::{Level, LobbyInfo, QueueMode};
 
 use crate::deck_store;
 
@@ -36,6 +37,42 @@ pub fn deck_choices(decks_dir: &Path, registry: &CardRegistry, format: NsgFormat
     decks
 }
 
+/// A lobby as a line names it (Phase 4 §9): the server's queues by their
+/// mode and format — "Ranked · Startup", "Casual · Standard" — and a
+/// friend queue by the name its maker gave it and its format.
+pub fn lobby_title(lobby: &LobbyInfo) -> String {
+    let format = crate::settings::format_label(lobby.format);
+    match lobby.mode {
+        QueueMode::Ranked | QueueMode::Casual => format!("{} · {format}", lobby.mode.name()),
+        QueueMode::Friends => format!("{} · {format}", lobby.name),
+    }
+}
+
+/// Whom a seek is against, in a pill's words: a person, or a bot at a
+/// rung of the ladder, named as the new-game form names it.
+pub fn opponent_label(bot: Option<Level>) -> String {
+    match bot {
+        None => "A person".to_string(),
+        Some(level) => format!("{} bot", rung_label(level)),
+    }
+}
+
+/// A rung of the ladder by its name, capitalised: a pill beside "A person"
+/// in a row that says it is choosing an opponent.
+pub fn rung_label(level: Level) -> String {
+    let mut letters = level.name().chars();
+    letters.next().map_or(String::new(), |first| first.to_uppercase().chain(letters).collect())
+}
+
+/// A side preferred by a seek that brought both decks, in a pill's words.
+pub fn preference_label(prefer: Option<Side>) -> &'static str {
+    match prefer {
+        None => "No preference",
+        Some(Side::Corp) => "Prefer Corp",
+        Some(Side::Runner) => "Prefer Runner",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,5 +89,15 @@ mod tests {
         let first_runner = decks.iter().position(|deck| deck.side == Side::Runner).expect("Runner decks too");
         assert!(decks[..first_runner].iter().all(|deck| deck.side == Side::Corp) && decks[first_runner..].iter().all(|deck| deck.side == Side::Runner));
         assert_eq!(label(brick), format!("Corp · {}", brick.name));
+    }
+
+    #[test]
+    fn a_lobby_is_named_by_its_mode_or_its_maker() {
+        let lobby = |id: &str, mode| LobbyInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, mode, password: false, rated: false, bots: Vec::new(), players: 0, seeking: 0 };
+        assert_eq!(lobby_title(&lobby("ranked-startup", QueueMode::Ranked)), "Ranked · Startup");
+        assert_eq!(lobby_title(&lobby("casual-startup", QueueMode::Casual)), "Casual · Startup");
+        assert_eq!(lobby_title(&lobby("K7M2QX", QueueMode::Friends)), "Friday · Startup");
+        assert_eq!(opponent_label(None), "A person");
+        assert_eq!(opponent_label(Some(Level::Veteran)), "Veteran bot");
     }
 }

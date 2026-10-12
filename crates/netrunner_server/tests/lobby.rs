@@ -14,14 +14,14 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
-use netrunner_bots::Style;
+use netrunner_bots::{Level, Style};
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::dsl::CardId;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
-use netrunner_server::protocol::Chair;
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::protocol::{Chair, Opponent};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -34,11 +34,13 @@ async fn start_server(options: ServeOptions) -> String {
 }
 
 async fn human_daemon() -> String {
-    start_server(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ..ServeOptions::default() }).await
+    start_server(ServeOptions { seed: Some(1), ..ServeOptions::default() }).await
 }
 
+/// A daemon offering bots, which it does by default: a seek meets one
+/// only by asking (`seek_bot`).
 fn bot_daemon() -> ServeOptions {
-    ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() }
+    ServeOptions { seed: Some(1), ..ServeOptions::default() }
 }
 
 async fn open(url: &str, hello: ClientMessage) -> Socket {
@@ -102,12 +104,28 @@ async fn seek_in(url: &str, name: &str, lobby: &str, chair: Chair) -> Socket {
     assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
     send(&mut socket, ClientMessage::JoinLobby { lobby: lobby.into(), password: None }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
-    send(&mut socket, ClientMessage::Seek { chair }).await;
+    send(&mut socket, ClientMessage::Seek { chair, opponent: Opponent::Person }).await;
     socket
 }
 
 async fn seek(url: &str, name: &str, chair: Chair) -> Socket {
-    seek_in(url, name, "startup", chair).await
+    seek_in(url, name, "casual-startup", chair).await
+}
+
+/// Attaches as `name`, joins the Casual Startup queue and asks for a game
+/// in `chair` against the elite bot. The next message is `MatchJoined`
+/// or `SeekRefused`.
+async fn seek_bot(url: &str, name: &str, chair: Chair) -> Socket {
+    seek_bot_at(url, name, chair, Level::Elite, None).await
+}
+
+async fn seek_bot_at(url: &str, name: &str, chair: Chair, level: Level, style: Option<Style>) -> Socket {
+    let mut socket = open(url, ClientMessage::Attach { player_name: name.into() }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
+    send(&mut socket, ClientMessage::JoinLobby { lobby: "casual-startup".into(), password: None }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
+    send(&mut socket, ClientMessage::Seek { chair, opponent: Opponent::Bot { level, style } }).await;
+    socket
 }
 
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
@@ -151,7 +169,7 @@ async fn list_matches(url: &str) -> (Vec<MatchSummary>, usize) {
     let reply = next(&mut socket).await;
     let _ = socket.close(None).await;
     match reply {
-        ServerMessage::MatchList { matches, waiting_in_lobby, .. } => (matches, waiting_in_lobby),
+        ServerMessage::MatchList { matches, waiting, .. } => (matches, waiting),
         other => panic!("expected MatchList, got {other:?}"),
     }
 }
@@ -274,13 +292,13 @@ async fn an_illegal_deck_is_refused_before_the_queue() {
 #[tokio::test]
 async fn players_are_paired_only_within_their_format() {
     let url = human_daemon().await;
-    let mut startup = seek_in(&url, "startup", "startup", corp("s")).await;
+    let mut startup = seek_in(&url, "startup", "casual-startup", corp("s")).await;
     queued(next(&mut startup).await);
-    let mut standard = seek_in(&url, "standard", "standard", runner("t")).await;
+    let mut standard = seek_in(&url, "standard", "casual-standard", runner("t")).await;
     let (_, position) = queued(next(&mut standard).await);
-    assert_eq!(position, 2, "queued, not paired across formats");
+    assert_eq!(position, 1, "queued first in its own format's queue, not paired across formats");
 
-    let mut second = seek_in(&url, "second", "startup", runner("r")).await;
+    let mut second = seek_in(&url, "second", "casual-startup", runner("r")).await;
     let (second_match, _, _) = joined(next(&mut second).await);
     let (startup_match, _, _) = joined(next(&mut startup).await);
     assert_eq!(second_match, startup_match);
@@ -293,13 +311,13 @@ async fn players_are_paired_only_within_their_format() {
 /// in one of them, and a daemon with none does not start.
 #[tokio::test]
 async fn a_format_the_daemon_does_not_offer_is_no_lobby() {
-    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, formats: vec![NsgFormat::Standard], ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { formats: vec![NsgFormat::Standard], ..ServeOptions::default() }).await;
     let mut socket = open(&url, ClientMessage::Attach { player_name: "eternal".into() }).await;
     let ServerMessage::Attached { lobbies } = next(&mut socket).await else { panic!() };
-    assert_eq!(lobbies.iter().map(|lobby| lobby.id.as_str()).collect::<Vec<_>>(), ["standard"]);
-    send(&mut socket, ClientMessage::JoinLobby { lobby: "eternal".into(), password: None }).await;
+    assert_eq!(lobbies.iter().map(|lobby| lobby.id.as_str()).collect::<Vec<_>>(), ["casual-standard"]);
+    send(&mut socket, ClientMessage::JoinLobby { lobby: "casual-eternal".into(), password: None }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyRefused { .. }));
-    send(&mut socket, ClientMessage::CreateLobby { name: "old cards".into(), format: NsgFormat::Eternal, closed: false, password: None, casual: false }).await;
+    send(&mut socket, ClientMessage::CreateLobby { name: "old cards".into(), format: NsgFormat::Eternal, password: None, bots: false }).await;
     let ServerMessage::LobbyRefused { reason } = next(&mut socket).await else { panic!() };
     assert!(reason.contains("no Eternal lobby"), "{reason}");
     assert!(Server::bind("127.0.0.1:0", ServeOptions { formats: Vec::new(), ..ServeOptions::default() }).await.is_err(), "a daemon with no lobby does not start");
@@ -334,16 +352,16 @@ async fn the_seed_policy_is_deterministic_and_per_match() {
     let url_a = start_server(bot_daemon()).await;
     let url_b = start_server(bot_daemon()).await;
 
-    let mut a1 = seek(&url_a, "a1", corp("a1")).await;
+    let mut a1 = seek_bot(&url_a, "a1", corp("a1")).await;
     joined(next(&mut a1).await);
     let opening_a1 = state_update(next(&mut a1).await);
 
-    let mut b1 = seek(&url_b, "b1", corp("b1")).await;
+    let mut b1 = seek_bot(&url_b, "b1", corp("b1")).await;
     joined(next(&mut b1).await);
     let opening_b1 = state_update(next(&mut b1).await);
     assert_eq!(opening_a1, opening_b1, "two daemons on the same --seed deal the same first match");
 
-    let mut a2 = seek(&url_a, "a2", corp("a2")).await;
+    let mut a2 = seek_bot(&url_a, "a2", corp("a2")).await;
     joined(next(&mut a2).await);
     let opening_a2 = state_update(next(&mut a2).await);
     assert_ne!(opening_a1.corp.hq_cards, opening_a2.corp.hq_cards, "the second match on a daemon is a different shuffle");
@@ -358,10 +376,10 @@ async fn a_bot_is_dealt_a_published_deck_and_the_pool_rotates() {
     let url = start_server(bot_daemon()).await;
     let published: Vec<Option<CardId>> = decks::matchups().into_iter().map(|(_, runner)| Some(runner.identity)).collect();
 
-    let mut first = seek(&url, "first", corp("first")).await;
+    let mut first = seek_bot(&url, "first", corp("first")).await;
     joined(next(&mut first).await);
     let first_view = state_update(next(&mut first).await);
-    let mut second = seek(&url, "second", corp("second")).await;
+    let mut second = seek_bot(&url, "second", corp("second")).await;
     joined(next(&mut second).await);
     let second_view = state_update(next(&mut second).await);
 
@@ -377,10 +395,10 @@ async fn a_bot_is_dealt_a_published_deck_and_the_pool_rotates() {
 async fn a_pinned_bot_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
     let url = start_server(ServeOptions { corp_deck: Some("brick_stack".into()), ..bot_daemon() }).await;
     let pinned = Some(decks::by_id("brick_stack").unwrap().identity);
-    let mut first = seek(&url, "first", runner("first")).await;
+    let mut first = seek_bot(&url, "first", runner("first")).await;
     let (_, _, _, corp_deck, _) = joined_with_decks(next(&mut first).await);
     let first_view = state_update(next(&mut first).await);
-    let mut second = seek(&url, "second", runner("second")).await;
+    let mut second = seek_bot(&url, "second", runner("second")).await;
     joined(next(&mut second).await);
     let second_view = state_update(next(&mut second).await);
     assert_eq!(corp_deck, "", "the bot's deck is not named either");
@@ -404,7 +422,7 @@ async fn a_pinned_bot_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() 
 #[tokio::test]
 async fn a_bot_daemon_plays_the_deck_the_human_brought() {
     let url = start_server(bot_daemon()).await;
-    let mut socket = seek(&url, "solo", Chair::Corp(brought("glyph_of_warding", "my_corp"))).await;
+    let mut socket = seek_bot(&url, "solo", Chair::Corp(brought("glyph_of_warding", "my_corp"))).await;
     let (_, side, _, corp_deck, _) = joined_with_decks(next(&mut socket).await);
     assert_eq!((side, corp_deck.as_str()), (Side::Corp, "my_corp"));
 }
@@ -413,10 +431,10 @@ async fn a_bot_daemon_plays_the_deck_the_human_brought() {
 #[tokio::test]
 async fn a_seek_is_refused_at_the_match_cap() {
     let url = start_server(ServeOptions { max_matches: Some(1), ..bot_daemon() }).await;
-    let mut first = seek(&url, "first", corp("first")).await;
+    let mut first = seek_bot(&url, "first", corp("first")).await;
     joined(next(&mut first).await);
 
-    let mut second = seek(&url, "second", corp("second")).await;
+    let mut second = seek_bot(&url, "second", corp("second")).await;
     let reason = seek_refused(next(&mut second).await);
     assert!(reason.contains("match limit"), "{reason}");
     send(&mut second, ClientMessage::ListLobbies).await;
@@ -427,7 +445,7 @@ async fn a_seek_is_refused_at_the_match_cap() {
 async fn a_spectator_joins_a_running_match_by_id() {
     let url = start_server(bot_daemon()).await;
 
-    let mut corp_seat = seek(&url, "corp", corp("corp")).await;
+    let mut corp_seat = seek_bot(&url, "corp", corp("corp")).await;
     let (match_id, _, _) = joined(next(&mut corp_seat).await);
     state_update(next(&mut corp_seat).await);
     let (matches, _) = list_matches(&url).await;
@@ -454,7 +472,7 @@ async fn a_spectator_joins_a_running_match_by_id() {
 #[tokio::test]
 async fn a_match_full_of_spectators_refuses_the_next() {
     let url = start_server(ServeOptions { max_spectators: Some(1), ..bot_daemon() }).await;
-    let mut corp_seat = seek(&url, "corp", corp("corp")).await;
+    let mut corp_seat = seek_bot(&url, "corp", corp("corp")).await;
     let (match_id, _, _) = joined(next(&mut corp_seat).await);
     state_update(next(&mut corp_seat).await);
 
@@ -488,15 +506,9 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let dir = std::env::temp_dir().join(format!("netrunner_ratings_bot_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let url = start_server(ServeOptions {
-        bot_level: Some(netrunner_bots::Level::Operator),
-        bot_style: Some(Style::BALANCED),
-        data_dir: Some(dir.clone()),
-        ..bot_daemon()
-    })
-    .await;
+    let url = start_server(ServeOptions { data_dir: Some(dir.clone()), ..bot_daemon() }).await;
 
-    let mut quitter = seek(&url, "quitter", corp("quitter")).await;
+    let mut quitter = seek_bot_at(&url, "quitter", corp("quitter"), Level::Operator, Some(Style::BALANCED)).await;
     joined(next(&mut quitter).await);
     state_update(next(&mut quitter).await);
     assert_eq!(list_matches(&url).await.0[0].runner, "operator bot", "a rung is seated under its own name");
@@ -530,9 +542,9 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     let style = runner_deck.style_label();
     let url = start_server(bot_daemon()).await;
 
-    let mut human = seek(&url, "human", corp("human")).await;
+    let mut human = seek_bot(&url, "human", corp("human")).await;
     joined(next(&mut human).await);
-    assert_eq!(list_matches(&url).await.0[0].runner, format!("planner bot, {style}"));
+    assert_eq!(list_matches(&url).await.0[0].runner, format!("elite bot, {style}"));
 }
 
 
@@ -545,7 +557,7 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
 async fn a_finished_match_is_kept_as_a_record_that_replays() {
     let dir = std::env::temp_dir().join(format!("netrunner_records_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.clone()), ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { seed: Some(1), data_dir: Some(dir.clone()), ..ServeOptions::default() }).await;
     let mut ann = seek(&url, "ann", corp("ann_deck")).await;
     queued(next(&mut ann).await);
     let mut bo = seek(&url, "bo", runner("bo_deck")).await;

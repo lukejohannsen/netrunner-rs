@@ -15,6 +15,7 @@ pub mod fixtures;
 pub mod match_session;
 pub mod net;
 pub mod protocol;
+pub mod queue;
 pub mod serve;
 
 pub use match_session::{Finished, MatchOver, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};

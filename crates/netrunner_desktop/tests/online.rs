@@ -216,12 +216,12 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
 /// directory the first time it connects.
 #[test]
 fn a_tournament_is_held_entered_and_left_from_the_pages() {
-    use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+    use netrunner_server::serve::{ServeOptions, Server};
     let data = std::env::temp_dir().join(format!("netrunner_desktop_tournament_daemon_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&data);
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
     let address = runtime.block_on(async {
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
         let address = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());
@@ -298,12 +298,12 @@ fn a_tournament_is_held_entered_and_left_from_the_pages() {
 fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
     use netrunner_server::protocol::swiss::Outcome;
     use netrunner_server::protocol::TournamentState;
-    use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+    use netrunner_server::serve::{ServeOptions, Server};
     let data = std::env::temp_dir().join(format!("netrunner_desktop_rounds_daemon_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&data);
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
     let address = runtime.block_on(async {
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
         let address = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());
@@ -429,21 +429,22 @@ fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
     assert_eq!(server.lobbies.len(), 1, "the host's server has the one lobby, its format's");
     let format = server.lobbies[0].format;
 
-    // A closed lobby of the guest's own, which the server puts them in.
+    // A friend queue of the guest's own, which the server puts them in.
     tap_control(&mut guest, Control::Open(Page::MakeLobby));
     assert_eq!(page(&guest), Page::MakeLobby);
     guest.world_mut().resource_mut::<Model>().0.make.name = "Friday".to_string();
-    tap_control(&mut guest, Control::Closed(true));
+    tap_control(&mut guest, Control::LobbyBots(true));
     tap_control(&mut guest, Control::Go);
     until(&mut guest, "the made lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.name == "Friday")));
     let made = guest.world().resource::<Model>().0.server.as_ref().unwrap().lobby.clone().unwrap();
-    assert!(made.closed && !made.permanent && made.id.len() == 6 && made.format == format, "{made:?}");
+    assert!(!made.permanent() && made.id.len() == 6 && made.format == format, "{made:?}");
+    assert!(made.bots.is_empty(), "a hosted server offers no bot, whatever its friend queue asks: {made:?}");
     assert_eq!(page(&guest), Page::Server);
     assert!(find::<Control>(&mut guest, |c| matches!(c, Control::Chair(ChairChoice::Runner))).is_some(), "in a lobby, the game to look for");
 
     // Back to the host's lobby by its row.
     tap_control(&mut guest, Control::JoinLobby(0));
-    until(&mut guest, "the host's lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.permanent)));
+    until(&mut guest, "the host's lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.as_ref().is_some_and(|lobby| lobby.permanent())));
     // The host sees the guest arrive on a refresh.
     tap_control(&mut host_app, Control::Refresh);
     until(&mut host_app, "two in the lobby", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobbies.first().is_some_and(|lobby| lobby.players == 2)));
@@ -478,7 +479,7 @@ fn the_default_is_connected_to_on_opening_and_the_profile_page_wears_a_title() {
         store.saw_player(&key, "ann", 1).await.unwrap();
         store.grant(&netrunner_store::Award { key: key.clone(), kind: "title".into(), name: "Gauntlet Runner".into(), earned_at: 2, source: "event:abc".into() }).await.unwrap();
         store.close().await;
-        let options = netrunner_server::serve::ServeOptions { bot_runner: netrunner_server::serve::ServeBotKind::None, seed: Some(1), data_dir: Some(data), ..Default::default() };
+        let options = netrunner_server::serve::ServeOptions { seed: Some(1), data_dir: Some(data), ..Default::default() };
         let server = netrunner_server::serve::Server::bind("127.0.0.1:0", options).await.unwrap();
         let url = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());

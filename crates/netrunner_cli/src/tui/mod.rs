@@ -24,6 +24,7 @@ use netrunner_core::rules::{
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
+use netrunner_server::protocol::{Opponent, QueueMode};
 
 use netrunner_client::board::{offered_label, routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
@@ -93,7 +94,8 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         Some(match_id) => remote::watch(config.server.clone(), match_id),
         None => {
             let deck = brought.expect("a player always brings a deck");
-            let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(config.format.into()));
+            let mode = if config.ranked { QueueMode::Ranked } else { QueueMode::Casual };
+            let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::queue_id(mode, config.format.into()));
             // No data directory plays unrated, and says so; a key file
             // that is there and unreadable stops here rather than play a
             // game that quietly counts for nothing.
@@ -104,7 +106,8 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                     None
                 }
             };
-            let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials);
+            let opponent = config.bot.map_or(Opponent::Person, |level| Opponent::Bot { level, style: None });
+            let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).against(opponent).with_credentials(credentials);
             remote::seek(config.server.clone(), seat)
         }
     };
