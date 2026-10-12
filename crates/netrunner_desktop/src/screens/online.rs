@@ -56,6 +56,7 @@ use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::identity::ProfileHere;
 use netrunner_client::online;
 use netrunner_client::tournament;
+use netrunner_client::servers::{self, ServerBook};
 use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
@@ -266,9 +267,9 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
         Some(mut model) => model.0.reopen(connected.is_some()),
         None => {
             let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-            // Join starts from the last server connected to, which both
-            // clients keep in the settings file (Phase 6 §3).
-            let address = core.settings.server.clone().unwrap_or_else(|| hosting::normalize_address("127.0.0.1"));
+            // Join starts from the Default, else the server connected to
+            // last — both from the list both clients keep (Phase 7 §14).
+            let address = core.server_book().start_address().map_or_else(|| hosting::normalize_address("127.0.0.1"), str::to_string);
             let preferred = [core.settings.active_deck(Side::Corp).map(str::to_string), core.settings.active_deck(Side::Runner).map(str::to_string)];
             commands.insert_resource(Model(OnlineForm::new(address, format).with_preferred(preferred)));
         }
@@ -453,17 +454,22 @@ pub(crate) fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>)
     }
 }
 
-/// A server was connected to: Join starts from it next time, here and in
-/// the terminal client (Phase 6 §3). Written when the connection is
-/// made, never as the address is typed, and a file that cannot be
-/// written costs the connection nothing.
-fn remember_server(core: &mut ClientCore, url: &str) {
-    if core.settings.server.as_deref() == Some(url) {
+/// A server was connected to: a row of the person's servers, made if it
+/// is new, and where Join starts next time when nothing is the Default —
+/// here and in the terminal client (Phase 7 §14). Written when the
+/// connection is made, never as the address is typed, and a file that
+/// cannot be written costs the connection nothing. A host's ticket is one
+/// game's and is not kept.
+fn remember_server(core: &ClientCore, url: &str) {
+    if netrunner_client::peer::Ticket::parse(url).is_some() {
         return;
     }
-    core.settings.server = Some(url.to_string());
-    if let Err(error) = core.save_settings() {
-        warn!("the server address was not kept: {error}");
+    let Some(path) = core.servers_path() else { return };
+    if let Err(error) = ServerBook::update(&path, |book| {
+        book.connected(url, servers::now());
+        Ok(())
+    }) {
+        warn!("the server was not kept: {error}");
     }
 }
 

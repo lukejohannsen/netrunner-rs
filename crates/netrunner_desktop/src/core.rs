@@ -143,6 +143,18 @@ impl ClientCore {
         }
     }
 
+    /// The person's list of servers (`netrunner_client::servers`), beside
+    /// the identity key; read without making one.
+    pub fn servers_path(&self) -> Option<PathBuf> {
+        self.identity_dir.as_deref().map(netrunner_client::servers::path_in)
+    }
+
+    /// The list of servers as it stands; empty where there is no file or
+    /// no data directory.
+    pub fn server_book(&self) -> netrunner_client::servers::ServerBook {
+        self.servers_path().and_then(|path| netrunner_client::servers::ServerBook::load(&path).ok()).unwrap_or_default()
+    }
+
     /// Where the model opponents' keys are kept: beside the identity key,
     /// never in the settings file (`netrunner_client::llm::secrets`).
     pub fn secrets_path(&self) -> Option<PathBuf> {

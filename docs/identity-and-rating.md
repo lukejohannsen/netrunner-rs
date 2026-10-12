@@ -256,7 +256,9 @@ Each its own branch, in this order; each is useful without the next.
    standing at `<server>`" — fetched, and never stored as truth.
    *Built 26 September 2026* (`feat/rated-client-surfaces`): the standing
    is shown at every server in `known_servers.json`, and the client keeps
-   its receipts in `receipts.jsonl`.
+   its receipts in `receipts.jsonl`. Since Phase 7 §14 the servers' keys
+   are a column of the player's list of servers (`servers.json`, the
+   connections manager's), which replaced `known_servers.json`.
 5. **The free take-back online.** *Built 8 October 2026*
    (`feat/take-back-online`): `MatchSession` keeps its channel seats' last
    moves, tells each seat what its take-back would do (`Back`), takes the

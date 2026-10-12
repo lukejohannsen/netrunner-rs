@@ -25,7 +25,12 @@ use crate::config::{Command, Config, DeckAction};
 /// Fills each setting into `config` unless the command line named that
 /// flag. `flagged` answers "was this flag typed?" — `was_flagged` over
 /// the real `ArgMatches`, or a stub in tests.
-pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) -> bool) {
+///
+/// `server` is where `--server` starts when it was not typed: the Default
+/// of the person's servers, else the one connected to last
+/// (`start_server`, Phase 7 §14) — the list, not this file, since the
+/// list is what the connection driver and both clients' managers write.
+pub fn apply(settings: &Settings, server: Option<&str>, config: &mut Config, flagged: impl Fn(&str) -> bool) {
     if let Some(player) = &settings.player
         && !flagged("player")
     {
@@ -36,10 +41,10 @@ pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) ->
     {
         config.format = format.into();
     }
-    if let Some(server) = &settings.server
+    if let Some(server) = server
         && !flagged("server")
     {
-        config.server = server.clone();
+        config.server = server.to_string();
     }
     // The active decks (Phase 7 §16): what a flag-less game and the
     // new-game form start from, as on the desktop.
@@ -53,6 +58,14 @@ pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) ->
     {
         config.runner_deck = deck.clone();
     }
+}
+
+/// Where Join and `--server` start, from the person's list of servers:
+/// the Default, else the one connected to last. `None` with no list.
+pub fn start_server() -> Option<String> {
+    let dir = netrunner_client::identity::resolve_identity_dir().ok()?;
+    let book = netrunner_client::servers::ServerBook::load(&netrunner_client::servers::path_in(&dir)).ok()?;
+    book.start_address().map(str::to_string)
 }
 
 /// The answers a person gave a card's "you may" for good
@@ -124,18 +137,19 @@ mod tests {
 
     #[test]
     fn a_setting_fills_an_unset_flag_and_never_beats_a_typed_one() {
-        let settings = Settings { player: Some("case".to_string()), format: Some(NsgFormat::Eternal), server: Some("ws://play.example.net:8080".to_string()), ..Default::default() };
+        let settings = Settings { player: Some("case".to_string()), format: Some(NsgFormat::Eternal), ..Default::default() };
+        let server = Some("ws://play.example.net:8080");
 
         let args = ["netrunner_cli"];
         let mut config = Config::try_parse_from(args).unwrap();
-        apply(&settings, &mut config, |id| was_flagged(&matches(&args), id));
+        apply(&settings, server, &mut config, |id| was_flagged(&matches(&args), id));
         assert_eq!(config.player.as_deref(), Some("case"));
         assert_eq!(config.format, FormatArg::Eternal);
-        assert_eq!(config.server, "ws://play.example.net:8080", "the last server joined is where Join starts");
+        assert_eq!(config.server, "ws://play.example.net:8080", "the Default, or the last server joined, is where Join starts");
 
         let args = ["netrunner_cli", "--player", "molly", "--format", "standard", "--server", "ws://lan:9000"];
         let mut config = Config::try_parse_from(args).unwrap();
-        apply(&settings, &mut config, |id| was_flagged(&matches(&args), id));
+        apply(&settings, server, &mut config, |id| was_flagged(&matches(&args), id));
         assert_eq!(config.player.as_deref(), Some("molly"));
         assert_eq!(config.format, FormatArg::Standard);
         assert_eq!(config.server, "ws://lan:9000");

@@ -15,15 +15,13 @@
 //! at every server. Rotating a key (the old one signing the new) is
 //! recorded in the design and not built.
 //!
-//! **A server's key is remembered on first contact, known-hosts style**
-//! (`known_servers.json`), when the server says it keeps its key
-//! (`ServerMessage::Challenge::lasting`). A later connection to the same
-//! address that meets another key is refused, naming both, rather than
-//! proving this player's key to whoever answered. The file is not a
-//! secret; it is apart from the settings only because the connection
-//! driver writes it and the settings are the screens'.
+//! **A server's key is remembered on first contact, known-hosts style**,
+//! in the player's list of servers (`servers`, Phase 7 §14), when the
+//! server says it keeps its key (`ServerMessage::Challenge::lasting`). A
+//! later connection to the same address that meets another key is
+//! refused, naming both, rather than proving this player's key to
+//! whoever answered.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use netrunner_core::format::NsgFormat;
@@ -38,7 +36,6 @@ pub use netrunner_identity::{PublicKey, Signed};
 /// developer's own key.
 pub const IDENTITY_DIR_ENV: &str = "NETRUNNER_IDENTITY_DIR";
 pub const IDENTITY_FILE: &str = "identity.key";
-pub const KNOWN_SERVERS_FILE: &str = "known_servers.json";
 /// Every receipt a server has handed this player (Phase 4 §5 stage d),
 /// one signed `netrunner_protocol::statements::Receipt` per line: a
 /// player who keeps their receipts can show their history even if a
@@ -75,8 +72,10 @@ impl Credentials {
         Ok(Credentials { identity, dir: Some(dir.to_path_buf()) })
     }
 
-    pub fn known_servers(&self) -> Option<PathBuf> {
-        self.dir.as_ref().map(|dir| dir.join(KNOWN_SERVERS_FILE))
+    /// The player's list of servers (`servers::ServerBook`), which holds
+    /// the keys they proved.
+    pub fn servers(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|dir| dir.join(crate::servers::SERVERS_FILE))
     }
 
     pub fn receipts(&self) -> Option<PathBuf> {
@@ -336,47 +335,6 @@ pub fn keep_receipt(path: &Path, receipt: &netrunner_identity::Signed) -> Result
         .map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
-/// The servers' keys this player has met, by the address they were
-/// dialled at.
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct KnownServers(BTreeMap<String, PublicKey>);
-
-impl KnownServers {
-    /// A missing file is nobody met yet, not an error.
-    pub fn load(path: &Path) -> Result<Self, String> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let json = std::fs::read_to_string(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        serde_json::from_str(&json).map_err(|e| format!("{} is not a list of servers: {e}", path.display()))
-    }
-
-    /// Every address remembered: the servers that keep their key, which
-    /// are the ones that keep ratings.
-    pub fn addresses(&self) -> impl Iterator<Item = &str> {
-        self.0.keys().map(String::as_str)
-    }
-
-    pub fn get(&self, address: &str) -> Option<PublicKey> {
-        self.0.get(address.trim()).copied()
-    }
-
-    pub fn insert(&mut self, address: &str, key: PublicKey) {
-        self.0.insert(address.trim().to_string(), key);
-    }
-
-    /// Temp file and rename, like the settings.
-    pub fn save(&self, path: &Path) -> Result<(), String> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
-        }
-        let json = serde_json::to_string_pretty(self).expect("a map of strings serializes");
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, json).map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
-        std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {}: {e}", path.display()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,20 +409,5 @@ mod tests {
             vec!["Known there as ann", "Wearing the title Gauntlet Runner", "Titles earned: Gauntlet Runner", "Standard · As Runner: 1580 ± 200 (2–0–1)"]
         );
         assert_eq!(profile_lines(None), vec!["Nothing kept there yet"]);
-    }
-
-    #[test]
-    fn a_server_remembered_is_found_by_its_address() {
-        let dir = scratch("known");
-        let path = dir.join(KNOWN_SERVERS_FILE);
-        assert_eq!(KnownServers::load(&path).unwrap(), KnownServers::default());
-        let key = Identity::from_secret([3; 32]).public_key();
-        let mut known = KnownServers::default();
-        known.insert(" ws://example.org:8080 ", key);
-        known.save(&path).unwrap();
-        let back = KnownServers::load(&path).unwrap();
-        assert_eq!(back.get("ws://example.org:8080"), Some(key));
-        assert_eq!(back.get("ws://example.org:9090"), None);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -63,7 +63,8 @@ use netrunner_core::rules::{Side, Viewer};
 use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo};
 
 use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Who};
-use crate::identity::{Credentials, KnownServers};
+use crate::identity::Credentials;
+use crate::servers::ServerBook;
 use crate::peer::{self, Dialer, Ticket};
 
 /// A place at a match: the perspective it was given, the seat's token
@@ -408,8 +409,8 @@ fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, chair
     let (commands, commands_rx) = mpsc::unbounded_channel();
     let (link_tx, link) = watch::channel(Link::Up);
     let target = Target::of(url);
-    let known = target.known_servers(&goal);
-    let pinned = known.as_ref().and_then(|(path, address)| KnownServers::load(path).ok()?.get(address));
+    let known = target.servers(&goal);
+    let pinned = known.as_ref().and_then(|(path, address)| ServerBook::load(path).ok()?.key_of(address));
     let (receipts, registrations) = match &goal {
         Goal::Attach(who) => {
             let credentials = who.credentials.as_ref();
@@ -456,9 +457,9 @@ impl Target {
     /// only for a server dialled by address, by a player who proves a key.
     /// A ticket names its host's key already, and a hosted game is never
     /// rated, so it remembers nothing.
-    fn known_servers(&self, goal: &Goal) -> Option<(std::path::PathBuf, String)> {
+    fn servers(&self, goal: &Goal) -> Option<(std::path::PathBuf, String)> {
         let Goal::Attach(who) = goal else { return None };
-        let path = who.credentials.as_ref()?.known_servers()?;
+        let path = who.credentials.as_ref()?.servers()?;
         match self {
             Target::Url(url) => Some((path, url.clone())),
             Target::Peer(_) => None,
@@ -571,9 +572,10 @@ async fn drive(
                 // A failed write costs a warning next time, not this game.
                 Event::ServerKey(key) => {
                     if let Some((path, address)) = &kept.known {
-                        let mut servers = KnownServers::load(path).unwrap_or_default();
-                        servers.insert(address, key);
-                        let _ = servers.save(path);
+                        let _ = ServerBook::update(path, |book| {
+                            book.remember_key(address, key);
+                            Ok(())
+                        });
                     }
                     continue;
                 }
@@ -790,7 +792,7 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
 /// because the server's store is the truth (`docs/identity-and-rating.md`
 /// stage 4). `None` from a server that keeps nothing.
 ///
-/// **Held to the remembered key like a game is** (`KnownServers`): a
+/// **Held to the remembered key like a game is** (`servers`): a
 /// server at this address that proves another key is refused before this
 /// player's key is proved to it, and one met for the first time is
 /// remembered.
@@ -806,7 +808,7 @@ async fn profile_over(target: Target, address: &str, credentials: &Credentials, 
     let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
     let send = |message: ClientMessage| WsMessage::Text(serde_json::to_string(&message).expect("a ClientMessage serializes"));
     socket.send(send(ClientMessage::Identify { key: credentials.identity.public_key() })).await.map_err(transport)?;
-    let known_path = credentials.known_servers().filter(|_| matches!(target, Target::Url(_)));
+    let known_path = credentials.servers().filter(|_| matches!(target, Target::Url(_)));
     let reply = loop {
         let message = match socket.next().await {
             Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ServerMessage>(&text) {
@@ -820,13 +822,15 @@ async fn profile_over(target: Target, address: &str, credentials: &Credentials, 
         match message {
             ServerMessage::Challenge { nonce, server_key, lasting } => {
                 if let (true, Some(path)) = (lasting, &known_path) {
-                    let mut known = KnownServers::load(path).unwrap_or_default();
-                    match known.get(address) {
+                    let known = ServerBook::load(path).unwrap_or_default();
+                    match known.key_of(address) {
                         Some(remembered) if remembered != server_key => return Err(ConnectionError::ServerKeyChanged { remembered, found: server_key }),
                         Some(_) => {}
                         None => {
-                            known.insert(address, server_key);
-                            let _ = known.save(path);
+                            let _ = ServerBook::update(path, |book| {
+                                book.remember_key(address, server_key);
+                                Ok(())
+                            });
                         }
                     }
                 }
@@ -1063,13 +1067,13 @@ mod tests {
 
         let mut joined = connect(signed_in(), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
-        let known_path = dir.join("client").join(crate::identity::KNOWN_SERVERS_FILE);
-        assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
+        let known_path = dir.join("client").join(crate::servers::SERVERS_FILE);
+        assert_eq!(ServerBook::load(&known_path).unwrap().key_of(&url), Some(server_key), "remembered on first contact");
         drop(joined);
 
-        let mut known = KnownServers::default();
         let impostor = netrunner_identity::Identity::from_secret([7; 32]).public_key();
-        known.insert(&url, impostor);
+        let mut known = ServerBook::default();
+        known.remember_key(&url, impostor);
         known.save(&known_path).unwrap();
         let refused = connect(signed_in(), |_| {}).await.err().expect("a server with another key is refused");
         assert!(matches!(refused, ConnectionError::ServerKeyChanged { remembered, found } if remembered == impostor && found == server_key), "{refused}");
@@ -1092,11 +1096,11 @@ mod tests {
         // The probe proves the key and asks without attaching, and a
         // server keeps a key from its first attach: nothing yet.
         assert_eq!(profile(&url, &credentials).await.unwrap(), None, "never attached, so nothing kept");
-        let known_path = credentials.known_servers().unwrap();
-        assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
+        let known_path = credentials.servers().unwrap();
+        assert_eq!(ServerBook::load(&known_path).unwrap().key_of(&url), Some(server_key), "remembered on first contact");
 
-        let mut known = KnownServers::default();
-        known.insert(&url, netrunner_identity::Identity::from_secret([7; 32]).public_key());
+        let mut known = ServerBook::default();
+        known.remember_key(&url, netrunner_identity::Identity::from_secret([7; 32]).public_key());
         known.save(&known_path).unwrap();
         assert!(matches!(profile(&url, &credentials).await, Err(ConnectionError::ServerKeyChanged { .. })));
         let _ = std::fs::remove_dir_all(&dir);
