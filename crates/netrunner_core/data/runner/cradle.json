@@ -1,0 +1,42 @@
+{
+  "id": "cradle",
+  "title": "Cradle",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 5,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1,
+          "of": {
+            "CardsInHand": "Runner"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets -1 strength for each card in your grip."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break any number of code gate subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 22006,
+  "is_playable": true
+}

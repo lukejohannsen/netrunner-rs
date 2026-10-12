@@ -1,0 +1,53 @@
+{
+  "id": "office_supplies",
+  "title": "Office Supplies",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "PlayCost": {
+          "per": -1,
+          "of": "Link"
+        }
+      },
+      "applies_to": "This",
+      "text": "Reduce the play cost of Office Supplies by 1 for each [link] you have."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  4
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Runner",
+                  4
+                ]
+              }
+            ],
+            "texts": [
+              "Gain 4[credit]",
+              "draw 4 cards"
+            ]
+          }
+        }
+      ],
+      "text": "Gain 4[credit] or draw 4 cards."
+    }
+  ],
+  "built_from": 22024,
+  "is_playable": true
+}

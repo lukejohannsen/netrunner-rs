@@ -1,0 +1,27 @@
+{
+  "id": "kyuban",
+  "title": "Kyuban",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever you pass host ice, gain 2[credit]."
+    }
+  ],
+  "built_from": 22020,
+  "is_playable": true
+}

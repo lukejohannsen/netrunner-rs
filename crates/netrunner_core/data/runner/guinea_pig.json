@@ -1,0 +1,39 @@
+{
+  "id": "guinea_pig",
+  "title": "Guinea Pig",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "count": {
+              "CardsInHand": "Runner"
+            },
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHeap"
+          }
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            10
+          ]
+        }
+      ],
+      "text": "Trash your grip. Gain 10[credit]."
+    }
+  ],
+  "built_from": 22003,
+  "is_playable": true
+}

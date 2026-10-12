@@ -1,0 +1,42 @@
+{
+  "id": "insight",
+  "title": "Insight",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 4
+            },
+            "min": 0,
+            "max": 4,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnRAndD"
+          }
+        },
+        {
+          "TopOfDeck": {
+            "deck": "Corp",
+            "count": 4,
+            "reveal": true
+          }
+        }
+      ],
+      "text": "The Corp may look at the top 4 cards of R&D and arrange them in any order. Reveal the top 4 cards of R&D."
+    }
+  ],
+  "built_from": 22016,
+  "is_playable": true
+}

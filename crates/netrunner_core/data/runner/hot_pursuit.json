@@ -1,0 +1,43 @@
+{
+  "id": "hot_pursuit",
+  "title": "Hot Pursuit",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Hq"
+            ],
+            "on_success": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Runner",
+                    9
+                  ]
+                },
+                {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Make a run on HQ. If successful, gain 9[credit] and take 1 tag."
+    }
+  ],
+  "built_from": 22009,
+  "is_playable": true
+}
