@@ -1,0 +1,38 @@
+{
+  "id": "game_changer",
+  "title": "Game Changer",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 6,
+  "trash_cost": 2,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "InZone": {
+                "zone": "OpponentScoreArea",
+                "filter": {
+                  "CardType": "Agenda"
+                }
+              }
+            },
+            "effect": {
+              "GainClicks": [
+                "Corp",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Gain [click] for each agenda in the Runner's score area."
+    }
+  ],
+  "built_from": 22032,
+  "is_playable": true
+}
