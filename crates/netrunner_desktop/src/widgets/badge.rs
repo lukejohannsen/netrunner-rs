@@ -7,7 +7,7 @@
 //! `assets/badges/`, then a drawn glyph that always works — a ring in a
 //! colour the badge's name picks, the name's initials inside. A badge is
 //! named by the server that grants it (Phase 4 §11), so the stem is the
-//! name made safe for a file (`stem`), and a badge nobody has drawn is
+//! name made safe for a file (`identity::badge_stem`), and a badge nobody has drawn is
 //! still a distinct mark rather than a blank. Basic graphics draws the
 //! ring alone, as it loads no pictures anywhere.
 //!
@@ -19,6 +19,8 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+
+use netrunner_client::identity::{badge_initials, badge_stem};
 
 use crate::theme::{size, Theme};
 
@@ -35,38 +37,11 @@ impl BadgeGlyphs {
         self.0
             .entry(name.to_string())
             .or_insert_with(|| {
-                let bytes = crate::assets::read(&format!("badges/{}.png", stem(name)))?;
+                let bytes = crate::assets::read(&format!("badges/{}.png", badge_stem(name)))?;
                 crate::card_images::decode(&bytes, "png").map(|image| images.add(image))
             })
             .clone()
     }
-}
-
-/// A badge's name as a file's stem: lower case, every run of anything
-/// but a letter or a digit one hyphen (`first-gauntlet`, from "First
-/// Gauntlet!").
-pub fn stem(name: &str) -> String {
-    let mut stem = String::new();
-    for c in name.chars() {
-        if c.is_alphanumeric() {
-            stem.extend(c.to_lowercase());
-        } else if !stem.ends_with('-') && !stem.is_empty() {
-            stem.push('-');
-        }
-    }
-    stem.trim_end_matches('-').to_string()
-}
-
-/// Up to two letters for the drawn glyph: the first of each of the first
-/// two words, or the first two of a one-word name.
-pub fn initials(name: &str) -> String {
-    let words: Vec<&str> = name.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()).collect();
-    let letters: String = match words.as_slice() {
-        [] => String::new(),
-        [one] => one.chars().take(2).collect(),
-        [first, second, ..] => first.chars().take(1).chain(second.chars().take(1)).collect(),
-    };
-    letters.to_uppercase()
 }
 
 /// The ring's colour, picked by the name so a badge keeps its colour
@@ -93,7 +68,7 @@ pub fn spawn_glyph(parent: &mut ChildSpawnerCommands, theme: &Theme, name: &str,
                     BackgroundColor(colour.with_alpha(0.18)),
                 ))
                 .with_children(|glyph| {
-                    glyph.spawn((Text::new(initials(name)), theme.font((side * 0.36).max(size::SMALL)), TextColor(theme.text)));
+                    glyph.spawn((Text::new(badge_initials(name)), theme.font((side * 0.36).max(size::SMALL)), TextColor(theme.text)));
                 });
         }
     }
@@ -105,11 +80,11 @@ mod tests {
 
     #[test]
     fn a_name_is_a_file_stem_and_two_letters() {
-        assert_eq!(stem("first-gauntlet"), "first-gauntlet");
-        assert_eq!(stem("First Gauntlet!"), "first-gauntlet");
-        assert_eq!(stem("  Ten  wins: Standard "), "ten-wins-standard");
-        assert_eq!(initials("first-gauntlet"), "FG");
-        assert_eq!(initials("Founder"), "FO");
-        assert_eq!(initials("!!"), "");
+        assert_eq!(badge_stem("first-gauntlet"), "first-gauntlet");
+        assert_eq!(badge_stem("First Gauntlet!"), "first-gauntlet");
+        assert_eq!(badge_stem("  Ten  wins: Standard "), "ten-wins-standard");
+        assert_eq!(badge_initials("first-gauntlet"), "FG");
+        assert_eq!(badge_initials("Founder"), "FO");
+        assert_eq!(badge_initials("!!"), "");
     }
 }

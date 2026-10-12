@@ -42,3 +42,5 @@ onnx = ["netrunner_bots/onnx", "netrunner_single_player/onnx", "netrunner_sessio
 # The tournament pages' tests start a daemon with a data directory, which
 # needs the store's SQLite driver; the binary above does not.
 netrunner_server = { path = "../netrunner_server", default-features = false, features = ["sqlite"] }
+# The profile page's test seeds a title earned into a daemon's store.
+netrunner_store = { path = "../netrunner_store", features = ["sqlite"] }

@@ -411,6 +411,9 @@ impl Menu {
                     OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone(), relay)
                         .map(|screen| screen.with_identity_dir(self.identity_dir.clone()))
                         .map(|screen| screen.with_preferred([self.settings.active_deck(Side::Corp).map(str::to_string), self.settings.active_deck(Side::Runner).map(str::to_string)]))
+                        // The Default, if there is one, is connected to as
+                        // the screen opens (Phase 7 §14).
+                        .map(OnlineScreen::connect_default)
                 });
                 match opened {
                     Ok(screen) => self.screen = Screen::Online(Box::new(screen)),
@@ -996,8 +999,9 @@ mod tests {
     async fn the_server_joined_is_where_join_starts_next_time() {
         let (mut menu, dir) = menu("server");
         go_to(&mut menu, Entry::Online);
-        // Join, edit the address, type one nobody answers at, Connect.
-        press(&mut menu, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
+        // Join (the list of servers), Connect once, edit the address, type
+        // one nobody answers at, Connect.
+        press(&mut menu, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter, KeyCode::Enter]);
         press(&mut menu, &vec![KeyCode::Backspace; 40]);
         for c in "127.0.0.1:1".chars() {
             menu.key(KeyCode::Char(c));
