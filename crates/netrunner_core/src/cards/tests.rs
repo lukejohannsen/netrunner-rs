@@ -31599,4 +31599,26 @@ mod reign_and_reverie_stage_3 {
         let (hardware, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("hardware");
         assert!(subroutines(&hardware).is_empty(), "no hardware, no subroutine");
     }
+
+    #[test]
+    fn meridian_ends_the_run_for_four_credits_unless_the_runner_takes_it_as_a_minus_one_agenda() {
+        let registry = registry();
+        let state = facing("meridian");
+        let (asked, _) = fire(&encounter(&state, &registry), &registry);
+        assert!(asked.pending_decision.is_some(), "the Runner is asked");
+
+        let (refused, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("refuse");
+        assert_eq!(refused.corp.resources.credits, Credits(9));
+        assert!(refused.active_run.is_none(), "the run ends");
+
+        let (taken, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take it");
+        assert!(taken.corp.installed.is_empty(), "off the table");
+        assert_eq!(taken.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![id("meridian")]);
+        assert_eq!(taken.runner.resources.agenda_points, crate::rules::AgendaPoints(-1));
+        assert_eq!(taken.corp.resources.credits, Credits(5), "no credits");
+        let run = taken.active_run.as_ref().expect("the run goes on");
+        assert_ne!(run.phase, crate::rules::RunPhase::EncounterIce, "the encounter is over");
+        let (on, _) = crate::rules::test_support::through_movement(&taken, &registry).expect("on to the server");
+        assert!(on.active_run.is_some());
+    }
 }

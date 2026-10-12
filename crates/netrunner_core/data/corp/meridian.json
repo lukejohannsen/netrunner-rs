@@ -1,0 +1,45 @@
+{
+  "id": "meridian",
+  "title": "Meridian",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Gain 4[credit] and end the run unless the Runner adds this ice to their score area as an agenda worth -1 agenda point.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "AddToScoreAreaAsAgenda": {
+                "points": -1
+              }
+            },
+            {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    4
+                  ]
+                },
+                "EndTheRun"
+              ]
+            }
+          ],
+          "texts": [
+            "the Runner adds this ice to their score area as an agenda worth -1 agenda point",
+            "Gain 4[credit] and end the run"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 22028,
+  "is_playable": true
+}
