@@ -418,10 +418,11 @@ fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
     // page, when the host answered within the same frames: a fast runner
     // did, and the test that asserted Waiting alone lost that race.
     assert!(matches!(page(&guest), Page::Waiting | Page::Server), "{:?}", page(&guest));
-    // The server joined is where Join starts next time, in both clients
-    // (Phase 6 §3): kept in the settings file as the connection is made.
-    let kept = netrunner_client::settings::Settings::load(&_dir.join(netrunner_client::settings::SETTINGS_FILE)).expect("the settings file is written");
-    assert_eq!(kept.server.as_deref(), Some(address.as_str()), "the address joined is kept");
+    // The server joined is a row of the person's servers from the moment
+    // the connection is made, and where Join starts next time while none
+    // is the Default, in both clients (Phase 7 §14).
+    let book = netrunner_client::servers::ServerBook::load(&netrunner_client::servers::path_in(&_dir.join("identity"))).expect("the list of servers is written");
+    assert_eq!(book.start_address(), Some(address.as_str()), "the address joined is kept");
     until(&mut guest, "the host's lobbies", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.lobbies.is_empty()));
     let server = guest.world().resource::<Model>().0.server.clone().unwrap();
     assert!(!server.hosting && server.lobby.is_none(), "a guest picks a lobby");

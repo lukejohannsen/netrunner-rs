@@ -68,6 +68,7 @@ pub mod remote;
 pub mod replay;
 pub mod run_pass;
 pub mod selection;
+pub mod servers;
 pub mod settings;
 pub mod skin;
 pub mod standing;

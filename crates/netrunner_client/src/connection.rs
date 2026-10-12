@@ -165,10 +165,10 @@ impl std::fmt::Display for ConnectionError {
             ConnectionError::ServerKeyChanged { remembered, found } => write!(
                 f,
                 "the server at this address has a new key ({}, not the {} remembered), so it may not be the same server. \
-                 If its operator says the key changed, remove the address from {} and connect again",
+                 If its operator says the key changed, remove it from your servers ({}) and connect again",
                 found.fingerprint(),
                 remembered.fingerprint(),
-                crate::identity::KNOWN_SERVERS_FILE
+                crate::servers::SERVERS_FILE
             ),
         }
     }
@@ -1421,7 +1421,7 @@ mod tests {
         let [Event::Link(Link::Down(ConnectionError::ServerKeyChanged { remembered: was, found }))] = &events(&mut conn)[..] else { panic!() };
         assert_eq!((*was, *found), (remembered, server().public_key()));
         let words = ConnectionError::ServerKeyChanged { remembered, found: server().public_key() }.to_string();
-        assert!(words.contains(&remembered.fingerprint()) && words.contains(crate::identity::KNOWN_SERVERS_FILE), "{words}");
+        assert!(words.contains(&remembered.fingerprint()) && words.contains(crate::servers::SERVERS_FILE), "{words}");
     }
 
     #[test]

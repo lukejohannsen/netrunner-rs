@@ -10,7 +10,7 @@
 //! **Who the player is to a server, and where they stand there** (Phase 4
 //! §5 stage d). The key's fingerprint and the two facts about its file
 //! (`identity::key_lines`), then the standing at every server remembered
-//! in `known_servers.json` — the servers that keep their key, which are
+//! in the list of servers (`servers`) — the ones that keep their key, which are
 //! the ones that rate. Each is fetched on entering the screen
 //! (`remote::profile`, on the runtime) and drawn as it arrives, never
 //! stored: the server's book is the truth.
@@ -21,7 +21,8 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use netrunner_client::identity::{self, KnownServers};
+use netrunner_client::identity;
+use netrunner_client::servers::ServerBook;
 use netrunner_client::remote;
 
 use crate::audio::{ButtonSound, Sfx};
@@ -62,8 +63,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
     let credentials = core.credentials();
     let (key, servers) = match &credentials {
         Ok(Some(credentials)) => {
-            let known = credentials.known_servers().and_then(|path| KnownServers::load(&path).ok()).unwrap_or_default();
-            (identity::key_lines(credentials), known.addresses().map(str::to_string).collect::<Vec<_>>())
+            // Every server whose key was proved: the ones that keep one,
+            // which are the ones that keep ratings.
+            let book = credentials.servers().and_then(|path| ServerBook::load(&path).ok()).unwrap_or_default();
+            let kept = book.servers.into_iter().filter(|server| server.key.is_some()).map(|server| (server.name, server.address)).collect::<Vec<_>>();
+            (identity::key_lines(credentials), kept)
         }
         Ok(None) => (vec!["No key: the OS has no data directory, so games online are unrated".to_string()], Vec::new()),
         Err(error) => (vec![format!("Your key: {error}")], Vec::new()),
@@ -75,11 +79,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
     };
     if let (Ok(Some(credentials)), Some(runtime)) = (credentials, runtime) {
         let (tx, rx) = mpsc::channel();
-        for address in servers {
+        for (name, address) in servers {
             let (tx, credentials) = (tx.clone(), credentials.clone());
             runtime.0.spawn(async move {
                 let answer = tokio::time::timeout(STANDING_TIMEOUT, remote::profile(&address, &credentials)).await;
-                let mut lines = vec![format!("At {address}")];
+                let mut lines = vec![if name == address { format!("At {address}") } else { format!("At {name} ({address})") }];
                 match answer {
                     Ok(Ok(profile)) => lines.extend(identity::profile_lines(profile.as_ref())),
                     Ok(Err(error)) => lines.push(error.to_string()),

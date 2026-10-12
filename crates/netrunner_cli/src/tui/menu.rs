@@ -359,6 +359,10 @@ pub struct Menu {
     /// One line under the screen — a game that could not start, a setting
     /// that could not be saved. Cleared by the next key.
     notice: Option<String>,
+    /// Where the key, the list of servers and the receipts are kept
+    /// (`identity::resolve_identity_dir`); a test's scratch directory, so
+    /// no test writes beside the developer's own key.
+    identity_dir: Option<PathBuf>,
 }
 
 impl Menu {
@@ -372,6 +376,7 @@ impl Menu {
             registry: decks::sample_deck_registry(),
             last_game: None,
             notice: None,
+            identity_dir: netrunner_client::identity::resolve_identity_dir().ok(),
         }
     }
 
@@ -404,7 +409,7 @@ impl Menu {
                 let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
                     let relay = netrunner_client::peer::Relay::from_setting(self.settings.relay.as_deref());
                     OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone(), relay)
-                        .map(|screen| screen.with_identity_dir(netrunner_client::identity::resolve_identity_dir().ok()))
+                        .map(|screen| screen.with_identity_dir(self.identity_dir.clone()))
                         .map(|screen| screen.with_preferred([self.settings.active_deck(Side::Corp).map(str::to_string), self.settings.active_deck(Side::Runner).map(str::to_string)]))
                 });
                 match opened {
@@ -427,7 +432,7 @@ impl Menu {
                 let mut lines = record::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]);
                 // Read, never made here: opening a screen writes no key.
                 lines.push(String::new());
-                lines.extend(netrunner_client::identity::key_lines_in(netrunner_client::identity::resolve_identity_dir().ok().as_deref()));
+                lines.extend(netrunner_client::identity::key_lines_in(self.identity_dir.as_deref()));
                 self.screen = Screen::Record { lines, scroll: 0 };
             }
             Entry::Settings => {
@@ -474,20 +479,24 @@ impl Menu {
         self.settings = settings;
     }
 
-    /// A server was connected to: Join starts from it next time, in this
+    /// A server was connected to: a row of the person's servers, made if
+    /// it is new (Phase 7 §14), and Join starts next time — in this
     /// session (`base.server`, which `OnlineScreen::open` reads) and the
-    /// next (the settings file, which `settings::apply` reads into the
-    /// same flag). Nothing is written while the address is only typed.
+    /// next (`settings::start_server`, read into the same flag) — from
+    /// the Default, else from this one. Nothing is written while the
+    /// address is only typed, and a host's ticket, one game's, is not kept.
     fn remember_server(&mut self, address: String) {
-        if self.settings.server.as_deref() == Some(address.as_str()) {
+        use netrunner_client::servers::{self, ServerBook};
+        if netrunner_client::peer::Ticket::parse(&address).is_some() {
             return;
         }
-        self.base.server = address.clone();
-        self.settings.server = Some(address);
-        if let Some(path) = &self.settings_path
-            && let Err(error) = self.settings.save(path)
-        {
-            self.notice = Some(format!("Not saved: {error}"));
+        let Some(dir) = &self.identity_dir else { return };
+        match ServerBook::update(&servers::path_in(dir), |book| {
+            book.connected(&address, servers::now());
+            Ok(book.start_address().map(str::to_string))
+        }) {
+            Ok(start) => self.base.server = start.unwrap_or(address),
+            Err(error) => self.notice = Some(format!("Not saved: {error}")),
         }
     }
 
@@ -821,6 +830,7 @@ mod tests {
     use netrunner_core::format::NsgFormat;
 
     use crate::config::BotKind;
+    use netrunner_client::servers::{self, ServerBook};
 
     /// A menu whose decks, record and settings all live in a fresh temp
     /// directory, so no test reads or writes the player's real files.
@@ -839,7 +849,9 @@ mod tests {
             "tester",
         ])
         .unwrap();
-        (Menu::new(config, Settings::default(), Some(dir.join("settings.toml"))), dir)
+        let mut menu = Menu::new(config, Settings::default(), Some(dir.join("settings.toml")));
+        menu.identity_dir = Some(dir.join("identity"));
+        (menu, dir)
     }
 
     fn press(menu: &mut Menu, keys: &[KeyCode]) -> MenuStep {
@@ -975,8 +987,9 @@ mod tests {
     }
 
     /// The last server connected to is where Join starts next time, in
-    /// both clients (Phase 6 §3): the address is written when the
-    /// connection is made, never as it is typed, and the flag typed at
+    /// both clients (Phase 6 §3), unless a server is the Default (Phase 7
+    /// §14): the address is a row of the person's servers from the moment
+    /// the connection is made, never as it is typed, and the flag typed at
     /// launch still wins over it (`settings::apply`).
     /// A runtime, because Connect spawns the connection's driver on it.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -989,10 +1002,12 @@ mod tests {
         for c in "127.0.0.1:1".chars() {
             menu.key(KeyCode::Char(c));
         }
-        assert!(Settings::load(&dir.join("settings.toml")).map(|s| s.server).unwrap_or_default().is_none(), "typing writes nothing");
+        let book = || ServerBook::load(&servers::path_in(&dir.join("identity"))).unwrap();
+        assert!(book().servers.is_empty(), "typing writes nothing");
         press(&mut menu, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
         assert_eq!(menu.base.server, "ws://127.0.0.1:1", "this session's next form starts there");
-        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().server.as_deref(), Some("ws://127.0.0.1:1"), "and so does the next session's");
+        assert_eq!(book().start_address(), Some("ws://127.0.0.1:1"), "and so does the next session's");
+        assert_eq!(book().servers[0].name, "ws://127.0.0.1:1", "a row, named by its address until named");
         let _ = std::fs::remove_dir_all(dir);
     }
 

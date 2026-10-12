@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // than fatal: it holds defaults, and every flag still works without it.
     if settings::applies_to(&config) {
         match settings::resolve_settings_file().and_then(|path| settings::Settings::load(&path)) {
-            Ok(saved) => settings::apply(&saved, &mut config, |id| settings::was_flagged(&matches, id)),
+            Ok(saved) => settings::apply(&saved, settings::start_server().as_deref(), &mut config, |id| settings::was_flagged(&matches, id)),
             Err(error) => eprintln!("warning: settings ignored: {error}"),
         }
     }
