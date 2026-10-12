@@ -1,0 +1,40 @@
+{
+  "id": "too_big_to_fail",
+  "title": "Too Big to Fail",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "trash_cost": 5,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "Credits": "Corp"
+        },
+        10
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            7
+          ]
+        },
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Gain 7[credit] and take 1 bad publicity."
+    }
+  ],
+  "built_from": 22056,
+  "is_playable": true
+}

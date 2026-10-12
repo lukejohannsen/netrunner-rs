@@ -31681,3 +31681,101 @@ mod reign_and_reverie_stage_3c {
         assert!(at_server.active_run.as_ref().is_some_and(|run| run.server == ServerId::Hq));
     }
 }
+
+mod reign_and_reverie_stage_4 {
+    use super::*;
+    use crate::rules::{ArchivedCard, GameEvent};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).expect("play").0
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn too_big_to_fail_gains_seven_and_a_bad_publicity_only_under_ten_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("too_big_to_fail")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("too_big_to_fail") }).is_err(), "10[credit] is not less than 10");
+        state.corp.resources.credits = Credits(9);
+        let played = play(&state, &registry, "too_big_to_fail");
+        assert_eq!((played.corp.resources.credits, played.corp.bad_publicity), (Credits(16), 1));
+    }
+
+    #[test]
+    fn under_the_bus_trashes_a_connection_after_a_turn_the_runner_accessed_a_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("under_the_bus")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("fransofia_ward"), install_id: InstallId(2001), ..Default::default() }];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("under_the_bus") }).is_err(), "no access last turn");
+        crate::rules::turn_log::record(&mut state, &registry, &GameEvent::CardAccessed { card: id("hedge_fund"), server: ServerId::Hq, install: None });
+        crate::rules::turn_log::rotate(&mut state);
+        let trashed = pick(&play(&state, &registry, "under_the_bus"), &registry, &[0]);
+        assert!(trashed.runner.rig.is_empty());
+        assert_eq!(trashed.runner.heap, vec![id("fransofia_ward")]);
+        assert_eq!(trashed.corp.bad_publicity, 1);
+    }
+
+    #[test]
+    fn game_changer_gains_a_click_per_stolen_agenda_and_leaves_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("game_changer")];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")), crate::rules::ScoredAgenda::plain(id("offworld_office"))];
+        let played = play(&state, &registry, "game_changer");
+        assert_eq!((played.corp.resources.clicks, played.corp.resources.credits), (Clicks(4), Credits(4)), "3 - 1 + 2 clicks, 10 - 6 credits");
+        assert_eq!(played.corp.removed_from_game, vec![id("game_changer")]);
+        assert!(played.corp.archives.is_empty(), "not trashed");
+    }
+
+    #[test]
+    fn building_blocks_installs_and_rezzes_a_barrier_from_hq_for_nothing() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("building_blocks"), id("hedge_fund"), id("blockchain")];
+        let asked = play(&state, &registry, "building_blocks");
+        let barrier = asked.corp.hq.iter().position(|card| *card == id("blockchain")).expect("in HQ");
+        let candidates = crate::rules::legal_actions_for(&asked, &registry, Side::Corp);
+        assert!(!candidates.contains(&PlayerAction::ToggleCardSelection { position: 1 - barrier }), "not an operation: {candidates:?}");
+        let server = pick(&asked, &registry, &[barrier]);
+        let (installed, _) = apply_action(&server, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protecting HQ");
+        let ice = installed.corp.installed.iter().find(|card| card.card == id("blockchain")).expect("installed");
+        assert!(ice.rezzed && ice.server == ServerId::Hq);
+        assert_eq!(installed.corp.resources.credits, Credits(5), "only the operation's 5[credit]");
+    }
+
+    #[test]
+    fn attitude_adjustment_draws_two_and_shuffles_up_to_two_agendas_from_hq_and_archives_into_rnd_for_two_credits_each() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("attitude_adjustment"), id("hostile_takeover")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.archives = vec![ArchivedCard::faceup(id("offworld_office")), ArchivedCard::faceup(id("hedge_fund"))];
+        let drawn = play(&state, &registry, "attitude_adjustment");
+        assert_eq!(drawn.corp.hq.len(), 3, "drew 2");
+        let agenda = drawn.corp.hq.iter().position(|card| *card == id("hostile_takeover")).expect("in HQ");
+        let from_hq = pick(&drawn, &registry, &[agenda]);
+        let in_archives = from_hq.corp.archives.iter().position(|archived| archived.card == id("offworld_office")).expect("in Archives");
+        let done = pick(&from_hq, &registry, &[in_archives]);
+        assert_eq!(done.corp.resources.credits, Credits(12), "10 - 2 + 2 + 2");
+        assert_eq!(done.corp.r_and_d.len(), 3);
+        assert!(done.corp.r_and_d.contains(&id("hostile_takeover")) && done.corp.r_and_d.contains(&id("offworld_office")));
+        assert!(!done.corp.hq.contains(&id("hostile_takeover")));
+
+        let none = pick(&drawn, &registry, &[]);
+        let none = if none.pending_decision.is_some() { pick(&none, &registry, &[]) } else { none };
+        assert_eq!(none.corp.resources.credits, Credits(8), "nothing revealed, nothing gained");
+    }
+}
