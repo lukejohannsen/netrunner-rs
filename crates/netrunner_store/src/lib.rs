@@ -727,12 +727,15 @@ mod tests {
         }
     }
 
-    /// Linux allows every character a Windows path is made of, so a
-    /// directory named with a drive's colon, backslashes and the rest of
-    /// what a URL treats as syntax is the Windows path's test, here.
+    /// What a URL treats as syntax, in a directory's name. Linux allows
+    /// every character a Windows path is made of, so there the name holds
+    /// a drive's colon and backslashes too; on Windows the temp directory
+    /// itself brings them (`C:\\Users\\…`), and the name keeps to what
+    /// Windows allows.
     #[tokio::test]
     async fn a_path_with_what_a_url_treats_as_syntax_opens_where_it_says() {
-        let dir = std::env::temp_dir().join(format!("netrunner_store C:\\Users\\a?b#c%d e_{}", std::process::id()));
+        let name = if cfg!(windows) { "netrunner_store a#b%c d" } else { "netrunner_store C:\\Users\\a?b#c%d e" };
+        let dir = std::env::temp_dir().join(format!("{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(SQLITE_FILE);
