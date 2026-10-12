@@ -5312,6 +5312,7 @@ dependencies = [
  "netrunner_core",
  "netrunner_identity",
  "netrunner_server",
+ "netrunner_store",
  "rfd",
  "tokio",
  "uuid",

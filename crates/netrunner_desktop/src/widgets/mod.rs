@@ -9,6 +9,7 @@
 //! and no button needs a closure.
 
 pub mod art;
+pub mod badge;
 pub mod card_face;
 pub mod dropdown;
 pub mod reader;

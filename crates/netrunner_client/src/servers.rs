@@ -239,6 +239,37 @@ impl ServerBook {
     }
 }
 
+/// A change a manager makes to the list, as a value: the screen decides
+/// it, checks it against its copy and hands it to whatever writes the
+/// file, which applies it to the file as it stands (`ServerBook::update`).
+/// Both clients' managers make the same four.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerEdit {
+    Add { name: String, address: String },
+    /// The row at `address`, renamed and readdressed.
+    Edit { address: String, name: String, new_address: String },
+    Remove(String),
+    /// The Default is the row at this address, or none.
+    Default(Option<String>),
+}
+
+impl ServerEdit {
+    pub fn apply(&self, book: &mut ServerBook) -> Result<(), String> {
+        match self {
+            ServerEdit::Add { name, address } => book.add(name, address).map(|_| ()),
+            ServerEdit::Edit { address, name, new_address } => book.edit(address, name, new_address),
+            ServerEdit::Remove(address) => book.remove(address),
+            ServerEdit::Default(address) => book.set_default(address.as_deref()),
+        }
+    }
+
+    /// What it would do to `book`, or why it cannot: the check a form
+    /// makes before it lets the change go.
+    pub fn check(&self, book: &ServerBook) -> Result<(), String> {
+        self.apply(&mut book.clone())
+    }
+}
+
 /// Now, in Unix seconds, for `ServerBook::connected`.
 pub fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())

@@ -228,7 +228,7 @@ fn a_tournament_is_held_entered_and_left_from_the_pages() {
         address
     });
     let join = |app: &mut App| {
-        tap_control(app, Control::Open(Page::Join));
+        tap_control(app, Control::Open(Page::Servers));
         app.world_mut().resource_mut::<Model>().0.address = address.clone();
         tap_control(app, Control::Go);
         until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
@@ -310,7 +310,7 @@ fn a_round_is_begun_sat_at_played_and_ended_from_the_pages() {
         address
     });
     let join = |app: &mut App| {
-        tap_control(app, Control::Open(Page::Join));
+        tap_control(app, Control::Open(Page::Servers));
         app.world_mut().resource_mut::<Model>().0.address = address.clone();
         tap_control(app, Control::Go);
         until(app, "the server's key answer", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
@@ -411,7 +411,7 @@ fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
     let address = host(&mut host_app);
 
     let (mut guest, _dir) = headless_client("guest");
-    tap_control(&mut guest, Control::Open(Page::Join));
+    tap_control(&mut guest, Control::Open(Page::Servers));
     guest.world_mut().resource_mut::<Model>().0.address = address.clone();
     tap_control(&mut guest, Control::Go);
     // Waiting while the connection is made — or already on the server's
@@ -450,9 +450,78 @@ fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
 
     press(&mut guest, KeyCode::Escape, Key::Escape);
     guest.update();
-    assert_eq!(page(&guest), Page::Join, "Escape from the Server page disconnects");
+    assert_eq!(page(&guest), Page::Servers, "Escape from the Server page disconnects");
     assert!(guest.world().get_resource::<Connected>().is_none());
     press(&mut guest, KeyCode::Escape, Key::Escape);
     guest.update();
     assert_eq!(page(&guest), Page::Home);
+}
+
+/// A Default is connected to on opening the screen (Phase 7 §14), and the
+/// profile page there wears a title the server's store says was earned,
+/// picked from the pop-up of those earned, and reads the ladder (Phase 4
+/// §10).
+#[test]
+fn the_default_is_connected_to_on_opening_and_the_profile_page_wears_a_title() {
+    use netrunner_client::servers::{ServerBook, ServerEdit};
+    let dir = std::env::temp_dir().join(format!("netrunner_desktop_online_profile_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    // This client's key, made first, so the daemon's store can be told
+    // what it has earned before the daemon starts.
+    let credentials = netrunner_client::identity::Credentials::in_dir(&dir.join("identity")).unwrap();
+    let key = credentials.identity.public_key().rating_id();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let url = runtime.block_on(async {
+        let data = dir.join("daemon");
+        std::fs::create_dir_all(&data).unwrap();
+        let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&data.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+        store.saw_player(&key, "ann", 1).await.unwrap();
+        store.grant(&netrunner_store::Award { key: key.clone(), kind: "title".into(), name: "Gauntlet Runner".into(), earned_at: 2, source: "event:abc".into() }).await.unwrap();
+        store.close().await;
+        let options = netrunner_server::serve::ServeOptions { bot_runner: netrunner_server::serve::ServeBotKind::None, seed: Some(1), data_dir: Some(data), ..Default::default() };
+        let server = netrunner_server::serve::Server::bind("127.0.0.1:0", options).await.unwrap();
+        let url = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        url
+    });
+    let path = netrunner_client::servers::path_in(&dir.join("identity"));
+    ServerBook::update(&path, |book| {
+        ServerEdit::Add { name: "Club".into(), address: url.clone() }.apply(book)?;
+        ServerEdit::Default(Some(url.clone())).apply(book)
+    })
+    .unwrap();
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin, InputPlugin));
+    let mut core = ClientCore::in_dir(dir.clone());
+    core.settings.desktop.animation_speed = 0.0;
+    core.settings.player = Some("ann".to_string());
+    app.insert_resource(core);
+    app.add_plugins(NetrunnerDesktopPlugins);
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Online));
+    app.update();
+    app.update();
+    until(&mut app, "the Default, attached", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.known_profile().is_some()));
+    assert_eq!(app.world().resource::<Model>().0.attached_address(), Some(url.as_str()));
+
+    tap_control(&mut app, Control::Open(Page::Profile));
+    assert_eq!(page(&app), Page::Profile);
+    until(&mut app, "the ladder", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.ladder.is_some()));
+    // What was earned is a pop-up of its own, a pick from which is worn.
+    assert!(find::<Control>(&mut app, |c| *c == Control::Pick(Some(0))).is_none(), "nothing listed until Change… is pressed");
+    tap_control(&mut app, Control::Choose(netrunner_desktop::models::online::AwardKind::Title));
+    tap_control(&mut app, Control::Pick(Some(0)));
+    until(&mut app, "the title worn", |app| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.known_profile()).is_some_and(|profile| profile.title.as_deref() == Some("Gauntlet Runner")));
+    assert!(app.world().resource::<Model>().0.notice.is_none(), "{:?}", app.world().resource::<Model>().0.notice);
+
+    // The servers page while attached: the row is the connected one.
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    tap_control(&mut app, Control::Open(Page::Servers));
+    assert!(find::<Control>(&mut app, |c| *c == Control::Disconnect).is_some(), "the connected row's Disconnect");
+    assert!(texts(&mut app).iter().any(|text| text == "CLUB · DEFAULT · CONNECTED"), "an overline is drawn in capitals: {:?}", texts(&mut app));
+    drop(app);
+    runtime.shutdown_background();
+    let _ = std::fs::remove_dir_all(&dir);
 }
