@@ -1,0 +1,26 @@
+{
+  "id": "the_cleaners",
+  "title": "The Cleaners",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "DamageDone": {
+          "kind": "Meat",
+          "by": {
+            "per": 1
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Whenever you would do meat damage, increase that damage by 1."
+    }
+  ],
+  "built_from": 4036,
+  "is_playable": true
+}

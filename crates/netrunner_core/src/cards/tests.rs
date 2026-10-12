@@ -30951,4 +30951,32 @@ mod revised_core {
         assert!(!offered(fired.clone()), "cannot jack out for the remainder of this run");
         assert!(offered(GameState { lingering: Vec::new(), ..fired }), "it would have been offered at the next ice");
     }
+
+    // ---- Stage 6b: damage increased as it is done ----
+
+    #[test]
+    fn the_cleaners_increases_meat_damage_the_corp_would_do_by_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("the_cleaners"))];
+        state.corp.installed = vec![root("dedicated_response_team", 0, true)];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.tags = 1;
+        let (after, _) = close_all_windows(run_to_completion(state.clone(), &registry, ServerId::Archives).0, &registry);
+        assert_eq!(after.runner.grip.len(), 2, "2 meat damage, increased by 1");
+
+        state.corp.installed = vec![ice_at_hq("flare")];
+        state.runner.rig = vec![in_rig("dyson_mem_chip", 0, 0)];
+        let tracing = fire(&encounter(&state, &registry), &registry);
+        let (asked, _) = bids(&tracing, &registry, 0, 0);
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Dyson Mem Chip");
+        let (done, _) = close_all_windows(apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("trash it").0, &registry);
+        assert_eq!(done.runner.grip.len(), 2, "Flare's 2 unpreventable meat damage, increased by 1 (CR 9.9.7e)");
+
+        let mut own = runner_turn();
+        own.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("the_cleaners"))];
+        own.runner.grip = vec![id("pan_weave"), id("sure_gamble"), id("sure_gamble")];
+        let (installed, _) = close_all_windows(apply_action(&own, &registry, PlayerAction::InstallHardware { card_id: id("pan_weave"), host: None }).expect("install").0, &registry);
+        assert_eq!(installed.runner.grip.len(), 1, "the Runner's own meat damage is not the Corp's to increase");
+    }
 }

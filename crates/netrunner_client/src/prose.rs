@@ -913,6 +913,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::HostsMemory(number) => format!("hosts up to {} memory of programs, outside the memory limit", signed(number).trim_start_matches('+')),
         ContinuousKind::AgendaPointsToWin(number) => format!("needs {} agenda points to win", signed(number)),
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
+        ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),

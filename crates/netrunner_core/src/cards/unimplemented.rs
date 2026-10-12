@@ -79,7 +79,6 @@ pub(crate) const CORE_UNIMPLEMENTED: &[(&str, &str)] = &[];
 /// *Revised Core Set* (`revised_core_set`): tranche F1 of the FFG plan.
 pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pheromones", "Pheromones"),
-    ("the_cleaners", "The Cleaners"),
 ];
 
 /// *Reign and Reverie* (`reign_and_reverie`): tranche F2 of the FFG plan.
@@ -1293,7 +1292,6 @@ pub(crate) const ST_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("clone_retirement", "Clone Retirement"),
     ("shipment_from_sansan", "Shipment from SanSan"),
     ("muckraker", "Muckraker"),
-    ("the_cleaners", "The Cleaners"),
     ("off_the_grid", "Off the Grid"),
     ("profiteering", "Profiteering"),
     ("restructure", "Restructure"),

@@ -114,6 +114,19 @@ pub enum ContinuousKind {
     /// something that resolved and is spent on the turn it names; this one
     /// is made by nothing and holds every turn the card is installed.
     AllottedClicks(Number),
+    /// Damage of `kind` its controller would do is increased by `by` — The
+    /// Cleaners' "[interrupt] → Whenever you would do meat damage, increase
+    /// that damage by 1" (`Scope::Controller`). Asked by
+    /// `prevention::would` before anybody is asked to prevent it, which is
+    /// where an interrupt that changes the number would land (CR 9.9.7):
+    /// a prevention of some is the same subtraction either side of it, and
+    /// one of all leaves nothing to increase either way. Unpreventable
+    /// damage is increased too (CR 9.9.7e). "You" is the side of the card
+    /// doing it, so a Runner card's meat damage to the Runner is not the
+    /// Corp's. Composition didn't work: as a trigger it would need the
+    /// side responsible for parked damage, and a moment for unpreventable
+    /// damage, which is never parked, for a number nobody chooses.
+    DamageDone { kind: crate::dsl::DamageType, by: Number },
     /// The Runner's link — The Toolbox's "+2[link]". What an identity prints
     /// is its `CardDefinition::base_link`; this is what an installed card
     /// adds while it is installed. Link was the other standing number still
