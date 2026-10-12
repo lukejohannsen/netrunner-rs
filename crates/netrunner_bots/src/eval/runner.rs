@@ -580,6 +580,22 @@ pub(super) fn rig_redirect_value(state: &GameState, registry: &CardRegistry, w: 
     state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| redirect_value(state, registry, def, w, horizon)).sum()
 }
 
+/// What a rise in the rez cost of ice for the length of the run takes
+/// from the Corp (Phase 5 §73): Tread Lightly's "during that run, the rez
+/// cost of each piece of ice is increased by 3[credit]" on every unrezzed
+/// piece the run has still to approach, at `opponent_credit_weight` — the
+/// Corp pays it to rez the piece or lets the Runner by. The leaf prices an
+/// unrezzed piece as nothing to get past (`remaining_break_cost`'s
+/// optimism, and `unrezzed_threat_weight` is zero), so the run read as a
+/// click run at 1[credit] more and the event was played 3 times in 630
+/// games where random seats played it 60.
+pub(super) fn run_rez_tax(state: &GameState, w: &Weights) -> f64 {
+    let Some(run) = &state.active_run else { return 0.0 };
+    let rise = netrunner_core::rules::lingering::ice_rez_cost(state).max(0);
+    let ahead = run.ice.iter().skip(run.position).filter(|ice| !ice.rezzed).count();
+    f64::from(rise) * ahead as f64 * w.opponent_credit_weight
+}
+
 /// What a card that lowers the strength of ice saves the Runner, a run a
 /// turn over the horizon at `future_credit_weight`, read as income is
 /// (Phase 5 §67): the break credits of the server where it saves the most
@@ -1008,6 +1024,10 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A click ability whose run turns on HQ once it is successful is the
     // break credits it saves (`redirect_value`, Phase 5 §72).
     *score += rig_redirect_value(state, registry, w, horizon);
+    // A run that raises the rez cost of ice (Tread Lightly's "+3[c]")
+    // takes that many Corp credits for every unrezzed piece still ahead of
+    // it (`run_rez_tax`, Phase 5 §73).
+    *score += run_rez_tax(state, w);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     // The Corp's bad publicity is a credit for every run the Runner
     // makes (`bad_publicity_worth`, Phase 5 §69).
@@ -1224,7 +1244,27 @@ mod tests {
         let income = |id: &str| read::declared_income(pool.get(&CardId(id.to_string())).expect("card"));
         assert_eq!(income("pan_weave").run_credits, 1);
         assert_eq!(income("zenit_chip_jz_2mj").run_cards, 1);
-        assert_eq!(income("datasucker").run_credits, 0, "a counter on every central run is not a run a turn's");
+        // A counter on every central run, cashed as a strength point
+        // (§73), is a credit a run.
+        assert_eq!(income("datasucker").run_credits, 1);
+        assert_eq!(income("leech").run_credits, 1);
+        assert_eq!(income("medium").run_credits, 0, "R&D alone is not a run a turn's");
+    }
+
+    /// A run that raises the rez cost of ice takes the rise from the Corp
+    /// for every unrezzed piece ahead of it (Phase 5 §73): Tread Lightly's
+    /// +3[credit] on two unrezzed pieces, one of them passed, is 3 credits.
+    #[test]
+    fn a_rez_cost_rise_for_the_run_is_the_corp_credits_it_takes() {
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::rules::{RunIce, ServerId};
+        let mut state = GameState::new(0);
+        let w = Weights::default();
+        let ice = |rezzed: bool| RunIce { card_id: CardId("ice_wall".to_string()), install_id: Default::default(), ice_type: netrunner_core::dsl::IceType::Barrier, subroutines: Vec::new(), rezzed };
+        state.active_run = Some(RunState { server: ServerId::Hq, ice: vec![ice(false), ice(false), ice(true)], position: 1, ..Default::default() });
+        assert_eq!(run_rez_tax(&state, &w), 0.0, "no rise");
+        state.lingering.push(LingeringEffect { what: Lingering::RezCost(3), on: On::EachIce, until: Until::EndOfRun, source: CardId("tread_lightly".to_string()) });
+        assert!((run_rez_tax(&state, &w) - 3.0 * w.opponent_credit_weight).abs() < 1e-9);
     }
 
     /// A click ability whose run's breach is replaced is worth what the

@@ -1368,6 +1368,17 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
     }
     income.turn_credits += def.recurring_credits.unwrap_or(0);
     for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
+        // "Hosted virus counter: the ice you are encountering gets −1
+        // strength for the remainder of this encounter" (Leech,
+        // Datasucker; Phase 5 §73): a counter is a pump the breaker does
+        // not buy, a credit of strength apiece, so the counters the card's
+        // runs place cash at that rate.
+        if let (Some(Cost::RemoveCounters(1)), Effect::ModifyStrength { delta, .. }) = (ability.cost.as_ref(), &ability.effect)
+            && *delta < 0
+        {
+            income.cashout_per_counter = income.cashout_per_counter.max(delta.unsigned_abs());
+            continue;
+        }
         let (clicks, trashes) = click_cost(ability.cost.as_ref());
         if clicks == 0 && !trashes {
             continue;
@@ -1471,7 +1482,13 @@ fn about_every_run(trigger: &netrunner_core::dsl::TriggeredEffect) -> bool {
     use netrunner_core::rules::ServerId;
     let when = match &trigger.when {
         None => true,
-        Some(EventFilter::Server(servers)) => trigger.first_each_turn && servers.iter().all(|server| matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives)),
+        Some(EventFilter::Server(servers)) => {
+            let central = servers.iter().all(|server| matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives));
+            // Every central (Leech's, Datasucker's "whenever you make a
+            // successful run on a central server") is a run a turn too
+            // (§73): a central is where a run a turn is made.
+            central && (trigger.first_each_turn || servers.len() == 3)
+        }
         Some(_) => false,
     };
     trigger.subject != Some(Subject::This) && when && trigger.requirement.is_none()
@@ -2716,7 +2733,10 @@ mod tests {
         // Read as nothing here until §72, which reads the first time each
         // turn on a central as a run a turn (`about_every_run`).
         assert_eq!(income("gabriel_santiago_consummate_professional").run_credits, 2, "the first on HQ each turn is");
-        assert_eq!(income("leech").run_credits, 0, "counters nothing cashes are not credits");
+        // Its counters were read as cashed by nothing until §73, which reads
+        // a counter spent for −1 strength as a credit of pumping.
+        assert_eq!(income("leech").run_credits, 1, "a counter a central run, a strength point apiece");
+        assert_eq!(income("medium").run_credits, 0, "counters nothing cashes are not credits");
         let dreamnet = income("dreamnet");
         assert_eq!((dreamnet.run_credits, dreamnet.run_cards), (1, 1), "the first successful run each turn is a run a turn: a card and, read for what it can do, a credit");
         assert_eq!(future("dreamnet", None, 4), 8.0);
