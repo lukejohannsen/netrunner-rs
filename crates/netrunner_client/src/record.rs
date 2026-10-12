@@ -450,6 +450,22 @@ impl SeatRecord {
 /// The player's record against every opponent on both chairs and the rung
 /// to try next, as lines — `netrunner_cli record` prints them and both
 /// clients' screens draw them, so the three cannot drift.
+/// The record against the bots in one line, for a page that has room for
+/// no table (the servers page's "On this machine", Phase 7 §14): the
+/// games `player` played and won. A record that cannot be read says so.
+pub fn summary_line(path: &Path, player: &str) -> String {
+    let log = match LocalRecord::load(path) {
+        Ok(log) => log,
+        Err(error) => return format!("Against the bots: {error}"),
+    };
+    let games: Vec<&GameRecord> = log.games.iter().filter(|game| game.player == player).collect();
+    if games.is_empty() {
+        return "Against the bots: no games yet".to_string();
+    }
+    let won = games.iter().filter(|game| game.outcome == outcome_of(game.side)).count();
+    format!("Against the bots: {} game{}, {won} won", games.len(), if games.len() == 1 { "" } else { "s" })
+}
+
 pub fn standing_lines(path: &Path, player: &str) -> Result<Vec<String>, String> {
     let log = LocalRecord::load(path)?;
     let mut lines = vec![format!("{} — {}", player, path.display())];
@@ -489,6 +505,18 @@ mod tests {
             runner_deck: "stolen_goods".to_string(),
             recorded_at: 0,
         }
+    }
+
+    #[test]
+    fn the_summary_counts_the_players_games_and_wins_in_one_line() {
+        let dir = std::env::temp_dir().join(format!("netrunner_record_summary_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("record.json");
+        assert_eq!(summary_line(&path, "ann"), "Against the bots: no games yet");
+        let log = LocalRecord { games: vec![game("ann", Side::Corp, "planner", Outcome::CorpWin), game("ann", Side::Runner, "planner", Outcome::CorpWin), game("bo", Side::Corp, "planner", Outcome::CorpWin)] };
+        log.save(&path).unwrap();
+        assert_eq!(summary_line(&path, "ann"), "Against the bots: 2 games, 1 won");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -48,13 +48,16 @@
 //! it and nobody else, though the server is what refuses anyone else.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
+use std::collections::BTreeMap;
+
 use netrunner_client::identity::{ProfileHere, PublicKey};
+use netrunner_client::servers::{ServerBook, ServerEdit};
 use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
+use netrunner_server::protocol::{Chair, LadderRow, LobbyInfo, Profile, TournamentInfo, TournamentState};
 use netrunner_server::MatchSummary;
 
 /// The page up.
@@ -63,7 +66,12 @@ pub enum Page {
     /// The three ways in.
     Home,
     Host,
-    Join,
+    /// The person's servers (Phase 7 §14): each by name, the Default, a
+    /// Connect or Disconnect, what it holds of the person; and an address
+    /// or a ticket to connect to once.
+    Servers,
+    /// Adding a server, or editing one.
+    EditServer,
     /// A server's matches, to watch one.
     Watch,
     /// Hosting or dialling, until attached (or, watching, until a place
@@ -79,6 +87,10 @@ pub enum Page {
     Tournament,
     /// The form for a tournament of this key's own.
     MakeTournament,
+    /// Attached: what this server keeps of the person — the standing per
+    /// format, the titles and badges earned and the ones worn, chosen
+    /// here — and its ladder (Phase 4 §10).
+    Profile,
 }
 
 /// A line the person types into.
@@ -96,6 +108,9 @@ pub enum Field {
     LobbyPassword,
     /// Hold a tournament's.
     TournamentName,
+    /// Add or edit a server's.
+    ServerName,
+    ServerAddress,
 }
 
 impl Field {
@@ -103,11 +118,12 @@ impl Field {
     /// characters of base32 and is pasted, never typed.
     pub fn max_len(self) -> usize {
         match self {
-            Field::Address => 1024,
+            Field::Address | Field::ServerAddress => 1024,
             Field::Lobby => 16,
             Field::Password | Field::LobbyPassword => 64,
             Field::Port => 5,
             Field::LobbyName | Field::TournamentName => 40,
+            Field::ServerName => netrunner_client::servers::MAX_NAME,
         }
     }
 }
@@ -212,6 +228,53 @@ pub enum Intent {
     /// The attached connection's link: its status line while it is down,
     /// `None` when it is up again.
     Link(Option<String>),
+    /// The person's servers as the file now has them: on opening the
+    /// screen and after every change.
+    Servers(ServerBook),
+    /// What this machine knows of the person: the key, the record.
+    Local(Vec<String>),
+    /// A server's answer about the person, fetched for its row.
+    RowProfile { address: String, answer: Result<Option<Profile>, String> },
+    /// The servers page's: a row connected to, made or unmade the
+    /// Default, opened to edit (or a new one), removed.
+    ConnectRow(usize),
+    ToggleDefault(usize),
+    EditRow(Option<usize>),
+    RemoveRow(usize),
+    SaveServer,
+    /// On opening the screen with a Default and nothing attached.
+    ConnectDefault,
+    /// The profile page's: the pop-up of the titles or the badges earned
+    /// opened, closed, and one picked from it by its place in the
+    /// profile's list (or none) — worn at once; a format's ladder.
+    Choose(AwardKind),
+    CloseChooser,
+    Pick(Option<usize>),
+    ShowLadder(NsgFormat),
+    Ladder { format: NsgFormat, rows: Vec<LadderRow> },
+}
+
+/// Which of a profile's awards the chooser lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AwardKind {
+    Title,
+    Badge,
+}
+
+/// A row's answer about the person, as the servers page draws it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowProfile {
+    Asking,
+    Lines(Vec<String>),
+    Failed(String),
+}
+
+/// The server being added (`original` none) or edited.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EditServer {
+    pub original: Option<String>,
+    pub name: String,
+    pub address: String,
 }
 
 /// What a press asks of the screen.
@@ -256,6 +319,15 @@ pub enum Outcome {
     FinishTournament { tournament: String },
     RecordResult { tournament: String, table: usize, outcome: TableOutcome },
     OfferDraw { tournament: String },
+    /// Change the person's servers; the screen writes the file and hands
+    /// the list back as `Intent::Servers`.
+    EditServers(ServerEdit),
+    /// Ask these servers what they keep of the person, each on its own
+    /// socket, the answers coming back as `Intent::RowProfile`.
+    FetchProfiles(Vec<String>),
+    /// Wear these, of what was earned.
+    SetProfile { title: Option<String>, badge: Option<String> },
+    Ladder(NsgFormat),
 }
 
 /// The connection, as the page draws it.
@@ -295,6 +367,12 @@ pub struct ServerState {
     pub tournament_decks: Vec<DeckFile>,
     pub tournament_corp: usize,
     pub tournament_runner: usize,
+    /// The profile page's pop-up, while it is open: the titles or the
+    /// badges earned, to scroll through and pick one from.
+    pub choosing: Option<AwardKind>,
+    /// The ladder shown, once answered.
+    pub ladder_format: NsgFormat,
+    pub ladder: Option<Vec<LadderRow>>,
 }
 
 impl ServerState {
@@ -318,6 +396,17 @@ impl ServerState {
             tournament_decks: Vec::new(),
             tournament_corp: 0,
             tournament_runner: 0,
+            choosing: None,
+            ladder_format: netrunner_client::settings::DEFAULT_FORMAT,
+            ladder: None,
+        }
+    }
+
+    /// The profile this server answered with, if it keeps one.
+    pub fn known_profile(&self) -> Option<&Profile> {
+        match &self.profile {
+            ProfileHere::Known(profile) => Some(profile),
+            _ => None,
         }
     }
 
@@ -496,6 +585,13 @@ pub struct OnlineForm {
     pub notice: Option<String>,
     /// The connection, once attached — and while attaching, `None`.
     pub server: Option<ServerState>,
+    /// The person's servers, as the file last had them.
+    pub book: ServerBook,
+    /// Each row's answer about the person, by address.
+    pub row_profiles: BTreeMap<String, RowProfile>,
+    /// What this machine knows of the person, for the servers page.
+    pub local: Vec<String>,
+    pub edit: EditServer,
 }
 
 impl OnlineForm {
@@ -521,7 +617,23 @@ impl OnlineForm {
             status: String::new(),
             notice: None,
             server: None,
+            book: ServerBook::default(),
+            row_profiles: BTreeMap::new(),
+            local: Vec::new(),
+            edit: EditServer::default(),
         }
+    }
+
+    /// What the person calls the server at `address`: its name in their
+    /// list, else the address.
+    pub fn server_name(&self, address: &str) -> String {
+        self.book.find(address).map_or_else(|| address.to_string(), |server| server.name.clone())
+    }
+
+    /// The address of the server attached to, when it is one of the
+    /// person's (not their own, hosted).
+    pub fn attached_address(&self) -> Option<&str> {
+        self.server.as_ref().filter(|server| !server.hosting).map(|server| server.address.as_str())
     }
 
     /// Back on the screen after a game or a visit elsewhere: everything
@@ -616,6 +728,30 @@ impl OnlineForm {
                 self.make_tournament.format = server.lobby.as_ref().map_or(self.make_tournament.format, |lobby| lobby.format);
                 Outcome::Redraw
             }
+            // Each row that proved a key is asked what it keeps of the
+            // person, every time the page opens: the server's store is the
+            // truth and nothing here is kept. The server attached to has
+            // answered on its own connection already.
+            Intent::Open(Page::Servers) => {
+                self.notice = None;
+                self.page = Page::Servers;
+                let attached = self.attached_address().map(str::to_string);
+                let asked: Vec<String> = self.book.servers.iter().filter(|server| server.key.is_some() && Some(server.address.as_str()) != attached.as_deref()).map(|server| server.address.clone()).collect();
+                self.row_profiles = asked.iter().map(|address| (address.clone(), RowProfile::Asking)).collect();
+                if asked.is_empty() { Outcome::Redraw } else { Outcome::FetchProfiles(asked) }
+            }
+            // What to wear starts on what is worn, and the ladder on the
+            // lobby's format, since that is the table the person is at.
+            Intent::Open(Page::Profile) => {
+                let format = self.format;
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                self.notice = None;
+                self.page = Page::Profile;
+                server.choosing = None;
+                server.ladder_format = server.lobby.as_ref().map_or(format, |lobby| lobby.format);
+                server.ladder = None;
+                Outcome::Ladder(server.ladder_format)
+            }
             Intent::Open(page) => {
                 self.notice = None;
                 self.page = page;
@@ -623,6 +759,28 @@ impl OnlineForm {
             }
             Intent::Back => match self.page {
                 Page::Home => Outcome::Leave,
+                Page::EditServer => {
+                    self.page = Page::Servers;
+                    self.notice = None;
+                    Outcome::Redraw
+                }
+                // Opened from the Server page while attached, it leads back
+                // there; otherwise Home.
+                Page::Servers => {
+                    self.page = if self.server.is_some() { Page::Server } else { Page::Home };
+                    self.notice = None;
+                    Outcome::Redraw
+                }
+                // The pop-up first, then the page.
+                Page::Profile => {
+                    if let Some(server) = self.server.as_mut().filter(|server| server.choosing.is_some()) {
+                        server.choosing = None;
+                        return Outcome::Redraw;
+                    }
+                    self.page = Page::Server;
+                    self.notice = None;
+                    Outcome::Redraw
+                }
                 Page::Waiting => {
                     self.page = self.came_from;
                     self.notice = None;
@@ -639,7 +797,7 @@ impl OnlineForm {
                     self.notice = None;
                     Outcome::Redraw
                 }
-                Page::Host | Page::Join | Page::Watch => {
+                Page::Host | Page::Watch => {
                     self.page = Page::Home;
                     self.notice = None;
                     Outcome::Redraw
@@ -663,6 +821,8 @@ impl OnlineForm {
                     Field::LobbyName => self.make.name = text,
                     Field::LobbyPassword => self.make.password = text,
                     Field::TournamentName => self.make_tournament.name = text,
+                    Field::ServerName => self.edit.name = text,
+                    Field::ServerAddress => self.edit.address = text,
                 }
                 Outcome::Redraw
             }
@@ -899,7 +1059,7 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Intent::Failed(reason) => {
-                if matches!(self.page, Page::Waiting | Page::Server | Page::MakeLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament) {
+                if matches!(self.page, Page::Waiting | Page::Server | Page::MakeLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Profile) {
                     self.page = self.came_from;
                 }
                 self.server = None;
@@ -1005,6 +1165,145 @@ impl OnlineForm {
                 }
                 Outcome::Redraw
             }
+            Intent::Servers(book) => {
+                self.book = book;
+                Outcome::Redraw
+            }
+            Intent::Local(lines) => {
+                self.local = lines;
+                Outcome::Redraw
+            }
+            Intent::RowProfile { address, answer } => {
+                let row = match answer {
+                    Ok(profile) => RowProfile::Lines(netrunner_client::identity::profile_lines(profile.as_ref())),
+                    Err(reason) => RowProfile::Failed(reason),
+                };
+                self.row_profiles.insert(address, row);
+                Outcome::Redraw
+            }
+            // One connection at a time: connecting to another server lets
+            // the one attached go (the screen's new connection replaces
+            // it), and the attached one's row is its Disconnect instead.
+            Intent::ConnectRow(index) => {
+                let Some(row) = self.book.servers.get(index) else { return Outcome::Nothing };
+                if self.attached_address() == Some(row.address.as_str()) {
+                    return Outcome::Nothing;
+                }
+                self.address = row.address.clone();
+                self.server = None;
+                self.came_from = Page::Servers;
+                self.notice = None;
+                Outcome::Connect { url: row.address.clone() }
+            }
+            Intent::ToggleDefault(index) => {
+                let Some(row) = self.book.servers.get(index) else { return Outcome::Nothing };
+                let is_default = self.book.default.as_deref() == Some(row.address.as_str());
+                self.notice = None;
+                Outcome::EditServers(ServerEdit::Default((!is_default).then(|| row.address.clone())))
+            }
+            Intent::EditRow(index) => {
+                self.edit = match index.and_then(|index| self.book.servers.get(index)) {
+                    Some(row) => EditServer { original: Some(row.address.clone()), name: row.name.clone(), address: row.address.clone() },
+                    None if index.is_some() => return Outcome::Nothing,
+                    None => EditServer::default(),
+                };
+                self.notice = None;
+                self.page = Page::EditServer;
+                Outcome::Redraw
+            }
+            Intent::RemoveRow(index) => {
+                let Some(row) = self.book.servers.get(index) else { return Outcome::Nothing };
+                self.notice = None;
+                Outcome::EditServers(ServerEdit::Remove(row.address.clone()))
+            }
+            // Checked against the list as this page has it, so a name taken
+            // or an address listed twice is said on the form; the file is
+            // checked again when it is written.
+            Intent::SaveServer => {
+                if self.page != Page::EditServer {
+                    return Outcome::Nothing;
+                }
+                let edit = match &self.edit.original {
+                    Some(address) => ServerEdit::Edit { address: address.clone(), name: self.edit.name.clone(), new_address: self.edit.address.clone() },
+                    None => ServerEdit::Add { name: self.edit.name.clone(), address: self.edit.address.clone() },
+                };
+                match edit.check(&self.book) {
+                    Ok(()) => {
+                        self.notice = None;
+                        self.page = Page::Servers;
+                        Outcome::EditServers(edit)
+                    }
+                    Err(reason) => {
+                        self.notice = Some(reason);
+                        Outcome::Redraw
+                    }
+                }
+            }
+            Intent::ConnectDefault => {
+                let Some(default) = self.book.default_server().map(|server| server.address.clone()) else { return Outcome::Nothing };
+                if self.server.is_some() || self.page != Page::Home {
+                    return Outcome::Nothing;
+                }
+                self.address = default.clone();
+                self.came_from = Page::Home;
+                Outcome::Connect { url: default }
+            }
+            // Nothing earned is nothing to choose from.
+            Intent::Choose(kind) => {
+                let Some(server) = self.server.as_mut().filter(|_| self.page == Page::Profile) else { return Outcome::Nothing };
+                let earned = server.known_profile().map_or(0, |profile| match kind {
+                    AwardKind::Title => profile.titles.len(),
+                    AwardKind::Badge => profile.badges.len(),
+                });
+                if earned == 0 {
+                    return Outcome::Nothing;
+                }
+                server.choosing = Some(kind);
+                Outcome::Redraw
+            }
+            Intent::CloseChooser => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                server.choosing = None;
+                Outcome::Redraw
+            }
+            // A pick is worn at once, the other kind left as it is worn:
+            // one press, not a choice and then a Save.
+            Intent::Pick(index) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                let (Some(kind), Some(profile)) = (server.choosing, server.known_profile()) else { return Outcome::Nothing };
+                let earned = match kind {
+                    AwardKind::Title => &profile.titles,
+                    AwardKind::Badge => &profile.badges,
+                };
+                let picked = match index {
+                    Some(index) => match earned.get(index) {
+                        Some(award) => Some(award.name.clone()),
+                        None => return Outcome::Nothing,
+                    },
+                    None => None,
+                };
+                let (title, badge) = match kind {
+                    AwardKind::Title => (picked, profile.badge.clone()),
+                    AwardKind::Badge => (profile.title.clone(), picked),
+                };
+                server.choosing = None;
+                self.notice = None;
+                Outcome::SetProfile { title, badge }
+            }
+            Intent::ShowLadder(format) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                server.ladder_format = format;
+                server.ladder = None;
+                Outcome::Ladder(format)
+            }
+            Intent::Ladder { format, rows } => {
+                if let Some(server) = &mut self.server
+                    && server.ladder_format == format
+                {
+                    server.ladder = Some(rows);
+                }
+                Outcome::Redraw
+            }
             // After making one, its page; after entering or leaving the
             // open one, the page brought level.
             Intent::Tournament(info) => {
@@ -1029,7 +1328,11 @@ impl OnlineForm {
 
     fn disconnect(&mut self) -> Outcome {
         self.server = None;
-        self.page = self.came_from;
+        // From the servers page the person stays on it, the row's
+        // Disconnect a Connect again.
+        if self.page != Page::Servers {
+            self.page = self.came_from;
+        }
         self.notice = None;
         Outcome::Disconnect
     }
@@ -1043,11 +1346,11 @@ impl OnlineForm {
                     Outcome::Redraw
                 }
             },
-            Page::Join if self.address.is_empty() => {
+            Page::Servers if self.address.is_empty() => {
                 self.notice = Some("Type the server's address, or paste a host's ticket".to_string());
                 Outcome::Redraw
             }
-            Page::Join => Outcome::Connect { url: normalize_address(&self.address) },
+            Page::Servers => Outcome::Connect { url: normalize_address(&self.address) },
             Page::MakeLobby => {
                 if self.server.is_none() {
                     return Outcome::Nothing;
@@ -1071,7 +1374,8 @@ impl OnlineForm {
                 self.notice = None;
                 Outcome::CreateTournament { name: self.make_tournament.name.clone(), format: self.make_tournament.format }
             }
-            Page::Home | Page::Watch | Page::Waiting | Page::Server | Page::Tournaments | Page::Tournament => Outcome::Nothing,
+            Page::EditServer => self.apply(Intent::SaveServer),
+            Page::Home | Page::Watch | Page::Waiting | Page::Server | Page::Tournaments | Page::Tournament | Page::Profile => Outcome::Nothing,
         }
     }
 }
@@ -1113,7 +1417,7 @@ mod tests {
     /// Connected to a server with two lobbies, as a joiner.
     fn attached() -> OnlineForm {
         let mut form = form();
-        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Open(Page::Servers));
         assert_eq!(form.apply(Intent::Go), Outcome::Connect { url: "ws://127.0.0.1:8080".to_string() });
         form.apply(Intent::Waiting("Connecting…".to_string()));
         assert_eq!(form.apply(Intent::Attached { lobbies: vec![lobby("startup", NsgFormat::Startup), lobby("standard", NsgFormat::Standard)], hosting: false }), Outcome::Redraw);
@@ -1121,10 +1425,143 @@ mod tests {
         form
     }
 
+    /// Two servers, one met (its key proved) and the Default.
+    fn book() -> ServerBook {
+        let mut book = ServerBook::default();
+        book.add("Club", "club.example.net").unwrap();
+        book.add("Home", "localhost").unwrap();
+        book.remember_key("ws://club.example.net:8080", netrunner_identity_key(1));
+        book.set_default(Some("ws://club.example.net:8080")).unwrap();
+        book
+    }
+
+    fn netrunner_identity_key(seed: u8) -> PublicKey {
+        netrunner_identity::Identity::from_secret([seed; 32]).public_key()
+    }
+
+    /// The servers page asks each met server what it keeps of the person,
+    /// every time it opens, and draws the answers as they come; a server
+    /// never met is not asked.
+    #[test]
+    fn the_servers_page_asks_each_met_server_and_draws_its_answer() {
+        let mut form = form();
+        form.apply(Intent::Servers(book()));
+        assert_eq!(form.apply(Intent::Open(Page::Servers)), Outcome::FetchProfiles(vec!["ws://club.example.net:8080".to_string()]));
+        assert_eq!(form.row_profiles.get("ws://club.example.net:8080"), Some(&RowProfile::Asking));
+        form.apply(Intent::RowProfile { address: "ws://club.example.net:8080".to_string(), answer: Ok(None) });
+        assert_eq!(form.row_profiles.get("ws://club.example.net:8080"), Some(&RowProfile::Lines(vec!["Nothing kept there yet".to_string()])));
+        form.apply(Intent::RowProfile { address: "ws://club.example.net:8080".to_string(), answer: Err("refused".to_string()) });
+        assert_eq!(form.row_profiles.get("ws://club.example.net:8080"), Some(&RowProfile::Failed("refused".to_string())));
+    }
+
+    /// A row's Connect dials it; one attached elsewhere is let go for it,
+    /// and a failure comes back to the servers page with the reason. A
+    /// Disconnect there stays there.
+    #[test]
+    fn a_row_connects_one_at_a_time_and_a_failure_comes_back_to_the_list() {
+        let mut form = attached();
+        form.apply(Intent::Servers(book()));
+        form.apply(Intent::Open(Page::Servers));
+        assert_eq!(form.apply(Intent::ConnectRow(1)), Outcome::Connect { url: "ws://localhost:8080".to_string() });
+        assert!(form.server.is_none(), "the server attached before is let go");
+        form.apply(Intent::Waiting("Connecting…".to_string()));
+        form.apply(Intent::Failed("refused".to_string()));
+        assert_eq!((form.page, form.notice.as_deref()), (Page::Servers, Some("refused")));
+        form.apply(Intent::ConnectRow(0));
+        form.apply(Intent::Waiting("Connecting…".to_string()));
+        form.apply(Intent::Attached { lobbies: vec![lobby("startup", NsgFormat::Startup)], hosting: false });
+        form.apply(Intent::Open(Page::Servers));
+        assert_eq!(form.attached_address(), Some("ws://club.example.net:8080"));
+        assert_eq!(form.apply(Intent::ConnectRow(0)), Outcome::Nothing, "already attached there");
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Server, "opened while attached, it leads back to the server");
+        form.apply(Intent::Open(Page::Servers));
+        assert_eq!(form.apply(Intent::Disconnect), Outcome::Disconnect);
+        assert_eq!((form.page, form.server.is_none()), (Page::Servers, true));
+    }
+
+    #[test]
+    fn the_default_is_toggled_and_connected_to_on_opening_alone() {
+        let mut form = form();
+        assert_eq!(form.apply(Intent::ConnectDefault), Outcome::Nothing, "no default, nothing dialled");
+        form.apply(Intent::Servers(book()));
+        assert_eq!(form.apply(Intent::ToggleDefault(0)), Outcome::EditServers(ServerEdit::Default(None)));
+        assert_eq!(form.apply(Intent::ToggleDefault(1)), Outcome::EditServers(ServerEdit::Default(Some("ws://localhost:8080".to_string()))));
+        form.apply(Intent::Open(Page::Host));
+        assert_eq!(form.apply(Intent::ConnectDefault), Outcome::Nothing, "only from Home");
+        form.apply(Intent::Back);
+        assert_eq!(form.apply(Intent::ConnectDefault), Outcome::Connect { url: "ws://club.example.net:8080".to_string() });
+        form.apply(Intent::Waiting("Connecting…".to_string()));
+        form.apply(Intent::Failed("refused".to_string()));
+        assert_eq!(form.page, Page::Home, "a Default that does not answer leaves the person at Home");
+    }
+
+    /// A server is added or edited on a form checked against the list, so
+    /// a name taken is said there and nothing is written.
+    #[test]
+    fn a_server_is_added_and_edited_on_a_checked_form() {
+        let mut form = form();
+        form.apply(Intent::Servers(book()));
+        form.apply(Intent::Open(Page::Servers));
+        form.apply(Intent::EditRow(None));
+        assert_eq!(form.page, Page::EditServer);
+        form.apply(Intent::Typed(Field::ServerName, "club".to_string()));
+        form.apply(Intent::Typed(Field::ServerAddress, "elsewhere.example.net".to_string()));
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("already called")), "{:?}", form.notice);
+        form.apply(Intent::Typed(Field::ServerName, "Elsewhere".to_string()));
+        assert_eq!(form.apply(Intent::Go), Outcome::EditServers(ServerEdit::Add { name: "Elsewhere".to_string(), address: "elsewhere.example.net".to_string() }));
+        assert_eq!(form.page, Page::Servers);
+        form.apply(Intent::EditRow(Some(1)));
+        assert_eq!((form.edit.name.as_str(), form.edit.address.as_str()), ("Home", "ws://localhost:8080"), "the row's own, to change");
+        form.apply(Intent::Typed(Field::ServerName, "Kitchen".to_string()));
+        assert_eq!(form.apply(Intent::SaveServer), Outcome::EditServers(ServerEdit::Edit { address: "ws://localhost:8080".to_string(), name: "Kitchen".to_string(), new_address: "ws://localhost:8080".to_string() }));
+        form.apply(Intent::EditRow(Some(0)));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Servers, "Cancel");
+        assert_eq!(form.apply(Intent::RemoveRow(0)), Outcome::EditServers(ServerEdit::Remove("ws://club.example.net:8080".to_string())));
+    }
+
+    /// The profile page's pop-up lists what was earned, and a pick is worn
+    /// at once; the ladder of the lobby's format is read first.
+    #[test]
+    fn the_profile_page_wears_a_pick_from_what_was_earned_and_reads_a_ladder() {
+        use netrunner_server::protocol::{Award, Profile};
+        let mut form = attached();
+        let award = |name: &str| Award { name: name.to_string(), earned_at: 1, source: "event:abc".to_string() };
+        let profile = Profile { name: "ann".into(), first_seen: 1, last_seen: 2, standings: Vec::new(), titles: vec![award("Gauntlet Runner"), award("Founder")], badges: vec![award("first-gauntlet")], title: Some("Founder".into()), badge: None };
+        form.apply(Intent::Profile { key: Some(netrunner_identity_key(2)), profile: ProfileHere::Known(profile.clone()) });
+        form.apply(Intent::LobbyJoined(lobby("standard", NsgFormat::Standard)));
+        assert_eq!(form.apply(Intent::Open(Page::Profile)), Outcome::Ladder(NsgFormat::Standard), "the lobby's ladder first");
+        assert_eq!(form.apply(Intent::Pick(Some(0))), Outcome::Nothing, "nothing to pick from until the pop-up is open");
+        form.apply(Intent::Choose(AwardKind::Title));
+        assert_eq!(form.server.as_ref().unwrap().choosing, Some(AwardKind::Title));
+        assert_eq!(form.apply(Intent::Pick(Some(0))), Outcome::SetProfile { title: Some("Gauntlet Runner".into()), badge: None }, "worn at once, the badge as it is worn");
+        assert_eq!(form.server.as_ref().unwrap().choosing, None, "the pop-up closes on a pick");
+        form.apply(Intent::Choose(AwardKind::Badge));
+        assert_eq!(form.apply(Intent::Pick(Some(0))), Outcome::SetProfile { title: Some("Founder".into()), badge: Some("first-gauntlet".into()) });
+        form.apply(Intent::Choose(AwardKind::Title));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!((form.page, form.server.as_ref().unwrap().choosing), (Page::Profile, None), "Escape closes the pop-up before the page");
+        form.apply(Intent::Choose(AwardKind::Title));
+        assert_eq!(form.apply(Intent::Pick(None)), Outcome::SetProfile { title: None, badge: None }, "None takes the title off");
+        let mut bare = attached();
+        bare.apply(Intent::Profile { key: None, profile: ProfileHere::Known(Profile { titles: Vec::new(), ..profile.clone() }) });
+        bare.apply(Intent::Open(Page::Profile));
+        assert_eq!(bare.apply(Intent::Choose(AwardKind::Title)), Outcome::Nothing, "nothing earned, nothing to open");
+        assert_eq!(form.apply(Intent::ShowLadder(NsgFormat::Startup)), Outcome::Ladder(NsgFormat::Startup));
+        form.apply(Intent::Ladder { format: NsgFormat::Standard, rows: Vec::new() });
+        assert_eq!(form.server.as_ref().unwrap().ladder, None, "a late answer about another format is not drawn");
+        form.apply(Intent::Ladder { format: NsgFormat::Startup, rows: Vec::new() });
+        assert_eq!(form.server.as_ref().unwrap().ladder, Some(Vec::new()));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Server);
+    }
+
     #[test]
     fn escape_walks_back_one_page_and_then_off_the_screen() {
         let mut form = form();
-        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Open(Page::Servers));
         assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
         assert_eq!(form.page, Page::Home);
         assert_eq!(form.apply(Intent::Back), Outcome::Leave);
@@ -1155,7 +1592,7 @@ mod tests {
     #[test]
     fn join_dials_the_address_and_nothing_more() {
         let mut form = form();
-        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Open(Page::Servers));
         form.apply(Intent::Typed(Field::Address, " 192.168.1.5 ".to_string()));
         assert_eq!(form.apply(Intent::Go), Outcome::Connect { url: "ws://192.168.1.5:8080".to_string() });
         form.apply(Intent::Typed(Field::Address, String::new()));
@@ -1167,15 +1604,15 @@ mod tests {
     #[test]
     fn waiting_goes_back_to_the_form_it_came_from() {
         let mut form = form();
-        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Open(Page::Servers));
         form.apply(Intent::Waiting("Connecting…".to_string()));
         assert_eq!(form.page, Page::Waiting);
         form.apply(Intent::Status("Reconnecting".to_string()));
         assert_eq!(form.apply(Intent::Back), Outcome::Stop);
-        assert_eq!(form.page, Page::Join);
+        assert_eq!(form.page, Page::Servers);
         form.apply(Intent::Waiting("Connecting…".to_string()));
         form.apply(Intent::Failed("refused".to_string()));
-        assert_eq!((form.page, form.notice.as_deref()), (Page::Join, Some("refused")));
+        assert_eq!((form.page, form.notice.as_deref()), (Page::Servers, Some("refused")));
     }
 
     /// Watching lists the address's matches, says so when there are none,
@@ -1332,7 +1769,7 @@ mod tests {
 
         let mut form = attached();
         form.apply(Intent::Failed("could not reconnect within 60s".to_string()));
-        assert_eq!((form.page, form.server.is_none(), form.notice.is_some()), (Page::Join, true, true));
+        assert_eq!((form.page, form.server.is_none(), form.notice.is_some()), (Page::Servers, true, true));
     }
 
     /// The line over Find a game says what the lobby offers and, once

@@ -164,8 +164,11 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
-//! - `NETRUNNER_ONLINE=host|join|watch|hosting|ticket` — with
-//!   `NETRUNNER_SCREEN=online`, that page is opened once; `hosting` hosts
+//! - `NETRUNNER_ONLINE=host|servers|watch|hosting|ticket|profile` — with
+//!   `NETRUNNER_SCREEN=online`, that page is opened once (`join` is
+//!   `servers`, the page it became); `profile` waits for the Default the
+//!   screen connects to and opens the profile page there, and
+//!   `profile-titles` / `profile-badges` open its pop-up too; `hosting` hosts
 //!   a game for the network on a free port and shows what to give out,
 //!   and `ticket` the same with a ticket naming this machine's own
 //!   addresses — no relay and no router asked. `spectate` hosts a game

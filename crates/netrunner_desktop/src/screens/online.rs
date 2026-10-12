@@ -47,6 +47,7 @@
 //! on a tournament's (`Intent::SetCorpDeck` reads the page).
 
 use std::sync::{mpsc, Mutex};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
@@ -71,7 +72,8 @@ use netrunner_server::MatchSummary;
 
 use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, TokioRuntime};
-use crate::models::online::{lobby_title, reach_pill, ChairChoice, Field, Intent, OnlineForm, Outcome, Page, ServerState};
+use crate::models::online::{lobby_title, reach_pill, AwardKind, ChairChoice, Field, Intent, OnlineForm, Outcome, Page, RowProfile, ServerState};
+use crate::widgets::badge::{self, BadgeGlyphs};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
@@ -84,10 +86,11 @@ pub struct OnlinePlugin;
 
 impl Plugin for OnlinePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppScreen::Online), spawn)
+        app.init_resource::<BadgeGlyphs>()
+            .add_systems(OnEnter(AppScreen::Online), spawn)
             .add_systems(OnExit(AppScreen::Online), leave)
             .add_systems(Update, escape.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::Online)))
-            .add_systems(Update, (dev_page, controls, fields, net, round_clock_ticks, refresh).chain().run_if(in_state(AppScreen::Online)));
+            .add_systems(Update, (dev_page, auto_connect, controls, chooser_wash, fields, net, round_clock_ticks, refresh).chain().run_if(in_state(AppScreen::Online)));
     }
 }
 
@@ -95,8 +98,15 @@ impl Plugin for OnlinePlugin {
 /// long enough for a concession to reach the opponent, over a relay too.
 const HOST_LINGER: Duration = Duration::from_secs(3);
 
-/// How long a server has to list its matches.
+/// How long a server has to list its matches, or to say what it keeps
+/// of the person for their row.
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Set on opening the screen afresh when a server is the Default: it is
+/// connected to on the first frame, as a press of its Connect would
+/// (Phase 7 §14), and never again until the screen is opened afresh.
+#[derive(Resource)]
+struct AutoConnect;
 
 /// The server this person is hosting, and what it gives out. Dropping it
 /// stops the server — a match on it ends — releases the router's port and
@@ -194,6 +204,8 @@ struct Net {
     /// The invitation's lines as last drawn, so the page is redrawn only
     /// when the router or the relay has answered.
     shown: Vec<Way>,
+    /// The servers' answers for their rows, as they come.
+    profiles: Option<Mutex<mpsc::Receiver<(String, Result<Option<netrunner_server::protocol::Profile>, String>)>>>,
 }
 
 #[derive(Resource, Default)]
@@ -237,7 +249,22 @@ pub enum Control {
     RecordResult(usize, TableOutcome),
     OfferDraw,
     Disconnect,
+    /// The servers page's, by row; `EditRow(None)` is Add a server.
+    ConnectRow(usize),
+    DefaultRow(usize),
+    EditRow(Option<usize>),
+    RemoveRow(usize),
+    /// The profile page's: a pop-up of the titles or the badges earned,
+    /// a pick from it, and its Cancel.
+    Choose(AwardKind),
+    Pick(Option<usize>),
+    CloseChooser,
+    Ladder(NsgFormat),
 }
+
+/// The wash the award pop-up sits on; a press on it closes the pop-up.
+#[derive(Component)]
+struct ChooserWash;
 
 /// A deck slot's Change… button: opens the deck picker for this purpose
 /// on the lobby's or the tournament's format, the cursor on the deck
@@ -271,7 +298,14 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
             // last — both from the list both clients keep (Phase 7 §14).
             let address = core.server_book().start_address().map_or_else(|| hosting::normalize_address("127.0.0.1"), str::to_string);
             let preferred = [core.settings.active_deck(Side::Corp).map(str::to_string), core.settings.active_deck(Side::Runner).map(str::to_string)];
-            commands.insert_resource(Model(OnlineForm::new(address, format).with_preferred(preferred)));
+            let mut form = OnlineForm::new(address, format).with_preferred(preferred);
+            let book = core.server_book();
+            if book.default_server().is_some() && connected.is_none() {
+                commands.insert_resource(AutoConnect);
+            }
+            form.apply(Intent::Servers(book));
+            form.apply(Intent::Local(local_lines(&core)));
+            commands.insert_resource(Model(form));
         }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
@@ -288,10 +322,46 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
     commands.insert_resource(Dirty(true));
 }
 
+/// What this machine knows of the person, for the servers page: the key
+/// and its file, and the record against the bots — the local half of
+/// "who I am", beside each server's half.
+fn local_lines(core: &ClientCore) -> Vec<String> {
+    // The fingerprint and the file it is kept in; the paragraph after
+    // them is the Profile screen's.
+    let mut lines: Vec<String> = netrunner_client::identity::key_lines_in(core.identity_dir.as_deref()).into_iter().take(2).collect();
+    lines.push(format!("Card images in {}", core.images.dir().display()));
+    if let Some(path) = &core.record_path {
+        lines.push(netrunner_client::record::summary_line(path, &core.player_name()));
+    }
+    lines
+}
+
+/// The Default, connected to on the first frame of a fresh visit.
+#[allow(clippy::too_many_arguments)]
+fn auto_connect(
+    mut commands: Commands,
+    pending: Option<Res<AutoConnect>>,
+    mut model: ResMut<Model>,
+    mut net: ResMut<Net>,
+    mut dirty: ResMut<Dirty>,
+    mut core: ResMut<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
+    mut navigate: MessageWriter<Navigate>,
+) {
+    if pending.is_none() {
+        return;
+    }
+    commands.remove_resource::<AutoConnect>();
+    let outcome = model.0.apply(Intent::ConnectDefault);
+    dirty.0 = true;
+    carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+}
+
 /// Leaving the screen: the connection stays only for the board, which
 /// plays a game found on it and leads back here.
 fn leave(world: &mut World) {
     world.remove_resource::<Net>();
+    world.remove_resource::<AutoConnect>();
     let to_the_board = world.get_resource::<ActiveMatch>().is_some_and(|active| active.online.is_some());
     if !to_the_board {
         world.remove_resource::<Connected>();
@@ -413,6 +483,14 @@ fn controls(
             Control::RecordResult(table, outcome) => Intent::RecordResult(table, outcome),
             Control::OfferDraw => Intent::OfferDraw,
             Control::Disconnect => Intent::Disconnect,
+            Control::ConnectRow(index) => Intent::ConnectRow(index),
+            Control::DefaultRow(index) => Intent::ToggleDefault(index),
+            Control::EditRow(index) => Intent::EditRow(index),
+            Control::RemoveRow(index) => Intent::RemoveRow(index),
+            Control::Choose(kind) => Intent::Choose(kind),
+            Control::Pick(index) => Intent::Pick(index),
+            Control::CloseChooser => Intent::CloseChooser,
+            Control::Ladder(format) => Intent::ShowLadder(format),
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
                 // redrawn until it is committed or let go.
@@ -489,7 +567,7 @@ fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text
 /// answers come back through `net`.
 #[allow(clippy::too_many_arguments)]
 fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &mut ClientCore, runtime: Option<&TokioRuntime>, navigate: &mut MessageWriter<Navigate>) {
-    let needs_runtime = matches!(outcome, Outcome::Host { .. } | Outcome::Connect { .. } | Outcome::List { .. } | Outcome::Watch { .. });
+    let needs_runtime = matches!(outcome, Outcome::Host { .. } | Outcome::Connect { .. } | Outcome::List { .. } | Outcome::Watch { .. } | Outcome::FetchProfiles(_));
     let Some(runtime) = runtime.filter(|_| needs_runtime) else {
         match outcome {
             Outcome::Leave => {
@@ -520,8 +598,26 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::BeginRound { .. }
             | Outcome::FinishTournament { .. }
             | Outcome::RecordResult { .. }
-            | Outcome::OfferDraw { .. } => {
+            | Outcome::OfferDraw { .. }
+            | Outcome::SetProfile { .. }
+            | Outcome::Ladder(_) => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
+            }
+            Outcome::EditServers(edit) => {
+                let written = match core.servers_path() {
+                    Some(path) => ServerBook::update(&path, |book| edit.apply(book)),
+                    None => Err("No data directory, so the list of servers cannot be kept".to_string()),
+                };
+                if let Err(reason) = written {
+                    form.apply(Intent::Refused(reason));
+                }
+                form.apply(Intent::Servers(core.server_book()));
+            }
+            // No runtime to ask on: each row says so rather than waiting.
+            Outcome::FetchProfiles(addresses) => {
+                for address in addresses {
+                    form.apply(Intent::RowProfile { address, answer: Err("The network runtime did not start".to_string()) });
+                }
             }
             Outcome::Nothing | Outcome::Redraw => {}
             _ => {
@@ -565,6 +661,29 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             net.connecting = Some(remote::watch(url.clone(), match_id));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
+        // A socket each, proving the key and asking, closed after
+        // (`remote::profile`); a key is never made to look, so a person
+        // with none sees none asked.
+        Outcome::FetchProfiles(addresses) => {
+            let credentials = core.identity_dir.as_deref().map(netrunner_client::identity::existing).transpose().ok().flatten().flatten();
+            let (tx, rx) = mpsc::channel();
+            for address in addresses {
+                let Some(credentials) = credentials.clone() else {
+                    form.apply(Intent::RowProfile { address, answer: Err("No key on this machine".to_string()) });
+                    continue;
+                };
+                let tx = tx.clone();
+                runtime.0.spawn(async move {
+                    let answer = match tokio::time::timeout(LIST_TIMEOUT, remote::profile(&address, &credentials)).await {
+                        Ok(Ok(profile)) => Ok(profile),
+                        Ok(Err(error)) => Err(error.to_string()),
+                        Err(_) => Err(format!("No answer within {}s", LIST_TIMEOUT.as_secs())),
+                    };
+                    let _ = tx.send((address, answer));
+                });
+            }
+            net.profiles = Some(Mutex::new(rx));
+        }
         Outcome::List { url } => {
             remember_server(core, &url);
             let (tx, rx) = mpsc::channel();
@@ -604,6 +723,8 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::FinishTournament { tournament } => connected.attached.finish_tournament(tournament),
         Outcome::RecordResult { tournament, table, outcome } => connected.attached.record_result(tournament, table, outcome),
         Outcome::OfferDraw { tournament } => connected.attached.offer_draw(tournament),
+        Outcome::SetProfile { title, badge } => connected.attached.set_profile(title, badge),
+        Outcome::Ladder(format) => connected.attached.ladder(format),
         _ => {}
     }
 }
@@ -666,13 +787,33 @@ fn dev_page(
         }
         return;
     }
+    // The profile page needs a server attached, which the Default is on
+    // the first frame: wait for it.
+    if page.starts_with("profile") {
+        if !*done && form.server.as_ref().is_some_and(|server| server.known_profile().is_some()) {
+            *done = true;
+            dirty.0 = true;
+            let outcome = form.apply(Intent::Open(Page::Profile));
+            carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+            match page.as_str() {
+                "profile-titles" => form.apply(Intent::Choose(AwardKind::Title)),
+                "profile-badges" => form.apply(Intent::Choose(AwardKind::Badge)),
+                _ => Outcome::Nothing,
+            };
+        }
+        return;
+    }
     if std::mem::replace(&mut *done, true) {
         return;
     }
     dirty.0 = true;
     match page.as_str() {
         "host" => form.apply(Intent::Open(Page::Host)),
-        "join" => form.apply(Intent::Open(Page::Join)),
+        "join" | "servers" => {
+            let outcome = form.apply(Intent::Open(Page::Servers));
+            carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+            Outcome::Nothing
+        }
         "watch" => form.apply(Intent::Open(Page::Watch)),
         "hosting" | "ticket" => {
             let Some(runtime) = runtime else { return };
@@ -787,6 +928,15 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay
 
 /// A field's editor committed or let go: the model takes the text, and
 /// the form is redrawn either way, which puts the box back.
+/// A press that misses the award pop-up lands on its wash and closes it,
+/// as a click away closes every reading surface.
+fn chooser_wash(wash: Query<&Interaction, (Changed<Interaction>, With<ChooserWash>)>, mut model: ResMut<Model>, mut dirty: ResMut<Dirty>) {
+    if wash.iter().any(|interaction| *interaction == Interaction::Pressed) {
+        model.0.apply(Intent::CloseChooser);
+        dirty.0 = true;
+    }
+}
+
 fn fields(mut commands: Commands, edited: Query<(Entity, &TextField, &TextFieldEvent, &ChildOf)>, slots: Query<&FieldSlot>, mut model: ResMut<Model>, mut dirty: ResMut<Dirty>) {
     for (entity, _, event, child_of) in &edited {
         if let (TextFieldEvent::Committed(text), Ok(FieldSlot(field))) = (event, slots.get(child_of.parent())) {
@@ -840,6 +990,13 @@ fn net(
         }
     }
 
+    // The rows' answers about the person, as each server gives one.
+    let answers: Vec<_> = net.profiles.as_ref().and_then(|rx| rx.lock().ok().map(|rx| rx.try_iter().collect())).unwrap_or_default();
+    for (address, answer) in answers {
+        model.0.apply(Intent::RowProfile { address, answer });
+        dirty.0 = true;
+    }
+
     // The attached connection: every answer is an intent, and a game is
     // the board.
     if let Some(connected) = connected.as_mut() {
@@ -861,9 +1018,7 @@ fn net(
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) | AttachedEvent::ProfileRefused(reason) => Intent::Refused(reason),
-                // The ladder has no page yet (Phase 7 §14); nothing asks
-                // for it, so nothing is drawn from it.
-                AttachedEvent::Ladder { .. } => continue,
+                AttachedEvent::Ladder { format, rows } => Intent::Ladder { format, rows },
                 AttachedEvent::Queued(position) => Intent::Queued(position),
                 AttachedEvent::SeekCancelled => Intent::SeekCancelled,
                 AttachedEvent::BackInLobby(lobby) => {
@@ -957,6 +1112,8 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::LobbyName => &form.make.name,
         Field::LobbyPassword => &form.make.password,
         Field::TournamentName => &form.make_tournament.name,
+        Field::ServerName => &form.edit.name,
+        Field::ServerAddress => &form.edit.address,
     }
 }
 
@@ -977,19 +1134,49 @@ fn round_clock_ticks(time: Res<Time>, mut since: Local<f32>, model: Res<Model>, 
     }
 }
 
-fn refresh(mut commands: Commands, mut dirty: ResMut<Dirty>, root: Query<Entity, With<FormRoot>>, theme: Res<Theme>, model: Res<Model>, net: Res<Net>) {
+#[allow(clippy::too_many_arguments)]
+fn refresh(
+    mut commands: Commands,
+    mut dirty: ResMut<Dirty>,
+    root: Query<Entity, With<FormRoot>>,
+    screen: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
+    shown: Query<Entity, With<ChooserWash>>,
+    theme: Res<Theme>,
+    model: Res<Model>,
+    net: Res<Net>,
+    core: Res<ClientCore>,
+    mut glyphs: ResMut<BadgeGlyphs>,
+    mut images: Option<ResMut<Assets<Image>>>,
+) {
     if !std::mem::take(&mut dirty.0) {
         return;
     }
     let Ok(root) = root.single() else { return };
-    commands.entity(root).despawn_children().with_children(|parent| spawn_page(parent, &theme, &model.0, &net));
+    // Every badge the page may draw, looked up once a name.
+    let basic = core.settings.desktop.basic_graphics;
+    let pictures: HashMap<String, Option<Handle<Image>>> = model
+        .0
+        .server
+        .as_ref()
+        .and_then(ServerState::known_profile)
+        .map(|profile| profile.badges.iter().map(|award| (award.name.clone(), glyphs.of(&award.name, basic, images.as_deref_mut()))).collect())
+        .unwrap_or_default();
+    commands.entity(root).despawn_children().with_children(|parent| spawn_page(parent, &theme, &model.0, &net, &pictures));
+    for entity in &shown {
+        commands.entity(entity).despawn();
+    }
+    let choosing = model.0.server.as_ref().filter(|_| model.0.page == Page::Profile).and_then(|server| Some((server.choosing?, server.known_profile()?)));
+    if let (Some((kind, profile)), Some(screen)) = (choosing, screen.iter().next()) {
+        commands.entity(screen).with_children(|parent| spawn_chooser(parent, &theme, kind, profile, &pictures));
+    }
 }
 
-fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net) {
+fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net, pictures: &HashMap<String, Option<Handle<Image>>>) {
     match form.page {
         Page::Home => spawn_home(parent, theme),
         Page::Host => spawn_host(parent, theme, form),
-        Page::Join => spawn_join(parent, theme, form),
+        Page::Servers => spawn_servers(parent, theme, form),
+        Page::EditServer => spawn_edit_server(parent, theme, form),
         Page::Watch => spawn_watch(parent, theme, form, net.listing.is_some()),
         Page::Waiting => spawn_waiting(parent, theme, form),
         Page::Server => match &form.server {
@@ -997,6 +1184,10 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
             None => spawn_waiting(parent, theme, form),
         },
         Page::MakeLobby => spawn_make_lobby(parent, theme, form),
+        Page::Profile => match &form.server {
+            Some(server) => spawn_profile(parent, theme, form, server, pictures),
+            None => spawn_waiting(parent, theme, form),
+        },
         Page::Tournaments | Page::Tournament | Page::MakeTournament => match &form.server {
             Some(server) => match form.page {
                 Page::Tournaments => spawn_tournaments(parent, theme, server),
@@ -1016,7 +1207,7 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
 fn spawn_home(parent: &mut ChildSpawnerCommands, theme: &Theme) {
     let ways = [
         (Page::Host, "Host a game", "Play on this machine and give your opponent an address, or a ticket that works from anywhere"),
-        (Page::Join, "Join a server", "Connect to a public server or a host by its address or ticket, browse its lobbies and find a game"),
+        (Page::Servers, "Join a server", "Your servers, each by name and one the Default this screen connects to; or a host's address or ticket, once"),
         (Page::Watch, "Watch a game", "List a server's matches and watch one, seeing what both players can see"),
     ];
     for (index, (page, label, blurb)) in ways.into_iter().enumerate() {
@@ -1050,15 +1241,268 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
     });
 }
 
-fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    parent.spawn(widgets::heading(theme, "Join a server"));
-    section(parent, theme, "Address or ticket", |section| {
+/// The person's servers (Phase 7 §14): a row each — its name, whether it
+/// is the Default, its address, what it keeps of the person — with its
+/// Connect (or, for the one attached, Disconnect), Make default, Edit and
+/// Remove; then what this machine knows, and an address or a ticket to
+/// connect to once, which is how a host's game is joined.
+fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Servers"));
+    let attached = form.attached_address();
+    if form.book.servers.is_empty() {
+        parent.spawn((widgets::dim(theme, "No server yet. Add one by its address, or connect to one below: a server you connect to is listed here, named by its address until you name it."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+    for (index, row) in form.book.servers.iter().enumerate() {
+        let here = attached == Some(row.address.as_str());
+        let is_default = form.book.default.as_deref() == Some(row.address.as_str());
+        parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|card| {
+            let mut tags = Vec::new();
+            if is_default {
+                tags.push("Default");
+            }
+            if here {
+                tags.push("Connected");
+            }
+            let title = if tags.is_empty() { row.name.clone() } else { format!("{} · {}", row.name, tags.join(" · ")) };
+            card.spawn(widgets::overline(theme, title));
+            if row.name != row.address {
+                card.spawn(widgets::dim(theme, shortened(&row.address)));
+            }
+            let lines: Vec<String> = match (here, form.server.as_ref(), form.row_profiles.get(&row.address)) {
+                (true, Some(server), _) => netrunner_client::identity::profile_lines(server.known_profile()),
+                (_, _, Some(RowProfile::Lines(lines))) => lines.clone(),
+                (_, _, Some(RowProfile::Failed(reason))) => vec![reason.clone()],
+                (_, _, Some(RowProfile::Asking)) => vec!["Asking…".to_string()],
+                _ if row.key.is_none() => vec!["Not met yet: what it keeps of you is shown once you have connected".to_string()],
+                _ => Vec::new(),
+            };
+            for line in lines {
+                card.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+            card.spawn(widgets::row(10.0)).with_children(|buttons| {
+                if here {
+                    buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Disconnect", Control::Disconnect));
+                } else {
+                    buttons.spawn(widgets::small_button(theme, ButtonKind::Primary, "Connect", Control::ConnectRow(index)));
+                }
+                buttons.spawn(widgets::small_button(theme, if is_default { ButtonKind::Primary } else { ButtonKind::Secondary }, if is_default { "Default" } else { "Make default" }, Control::DefaultRow(index)));
+                buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Edit…", Control::EditRow(Some(index))));
+                buttons.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Remove", Control::RemoveRow(index)));
+            });
+        });
+    }
+    parent.spawn(widgets::row(12.0)).with_children(|row| {
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Add a server…", Control::EditRow(None)));
+    });
+    if !form.local.is_empty() {
+        section(parent, theme, "On this machine", |section| {
+            for line in &form.local {
+                section.spawn((widgets::dim(theme, line.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+        });
+    }
+    section(parent, theme, "Connect once", |section| {
         field_box(section, theme, Field::Address, &form.address, "a server's address, or paste a host's ticket", true);
-        section.spawn(widgets::dim(theme, "Its lobbies are listed once you are connected; you pick one, and a chair and a deck, there."));
+        section.spawn(widgets::dim(theme, "A server connected to by its address is listed above; a host's ticket is one game's and is not kept."));
     });
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
-        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Connect", px(220), Control::Go));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Connect", px(220), Control::Go));
+    });
+}
+
+/// The pop-up a title or a badge is picked from (Phase 7 §14): over the
+/// screen on a wash a press on which closes it, as Escape does; what was
+/// earned in a list that scrolls — by the wheel and its bar — so a
+/// hundred of them are a pop-up's height, not a page's; None first, the
+/// one worn lit. Titles are rows of words; badges are a grid of their
+/// glyphs, each named under it. A pick is worn at once.
+fn spawn_chooser(parent: &mut ChildSpawnerCommands, theme: &Theme, kind: AwardKind, profile: &netrunner_server::protocol::Profile, pictures: &HashMap<String, Option<Handle<Image>>>) {
+    let (earned, worn, heading) = match kind {
+        AwardKind::Title => (&profile.titles, profile.title.as_deref(), "Wear a title"),
+        AwardKind::Badge => (&profile.badges, profile.badge.as_deref(), "Wear a badge"),
+    };
+    parent
+        .spawn((
+            ChooserWash,
+            Button,
+            GlobalZIndex(25),
+            Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            BackgroundColor(theme.wash.with_alpha(0.72)),
+        ))
+        .with_children(|wash| {
+            let mut panel = wash.spawn((Interaction::None, bevy::ui::FocusPolicy::Block, widgets::roomy_panel(theme, px(720))));
+            panel.entry::<Node>().and_modify(|mut node| node.max_height = percent(80));
+            panel.with_children(|panel| {
+                panel.spawn(widgets::heading(theme, heading));
+                panel.spawn(widgets::dim(theme, format!("{} earned here. The one you wear is shown beside your name on this server.", earned.len())));
+                let grid = kind == AwardKind::Badge;
+                let list = panel
+                    .spawn((
+                        bevy::ui_widgets::ScrollArea,
+                        Node {
+                            width: percent(100),
+                            flex_shrink: 1.0,
+                            min_height: px(0),
+                            flex_direction: if grid { FlexDirection::Row } else { FlexDirection::Column },
+                            flex_wrap: if grid { FlexWrap::Wrap } else { FlexWrap::NoWrap },
+                            row_gap: px(8),
+                            column_gap: px(10),
+                            overflow: Overflow::scroll_y(),
+                            ..default()
+                        },
+                    ))
+                    .with_children(|list| {
+                        let pill = |chosen: bool| if chosen { ButtonKind::Primary } else { ButtonKind::Secondary };
+                        if !grid {
+                            list.spawn(widgets::styled_button(theme, pill(worn.is_none()), "None", percent(100), Control::Pick(None)));
+                            for (index, award) in earned.iter().enumerate() {
+                                list.spawn(widgets::styled_button(theme, pill(worn == Some(award.name.as_str())), award.name.clone(), percent(100), Control::Pick(Some(index))));
+                            }
+                            return;
+                        }
+                        let tile = |chosen: bool, pick: Option<usize>| {
+                            (
+                                Button,
+                                widgets::Themed,
+                                ButtonSound(Sfx::Toggle),
+                                Control::Pick(pick),
+                                Node {
+                                    width: px(120),
+                                    flex_direction: FlexDirection::Column,
+                                    align_items: AlignItems::Center,
+                                    row_gap: px(6),
+                                    padding: UiRect::all(px(10)),
+                                    border: UiRect::all(px(if chosen { 2.0 } else { 1.0 })),
+                                    border_radius: BorderRadius::all(px(12)),
+                                    ..default()
+                                },
+                                BackgroundColor(theme.glass_strong),
+                                BorderColor::all(if chosen { theme.accent } else { theme.glass_border }),
+                            )
+                        };
+                        list.spawn(tile(worn.is_none(), None)).with_children(|tile| {
+                            tile.spawn(Node { width: px(56), height: px(56), ..default() });
+                            tile.spawn(widgets::dim(theme, "None"));
+                        });
+                        for (index, award) in earned.iter().enumerate() {
+                            list.spawn(tile(worn == Some(award.name.as_str()), Some(index))).with_children(|tile| {
+                                badge::spawn_glyph(tile, theme, &award.name, pictures.get(&award.name).cloned().flatten(), 56.0);
+                                tile.spawn((widgets::dim(theme, award.name.clone()), TextLayout::new(Justify::Center, LineBreak::WordBoundary)));
+                            });
+                        }
+                    })
+                    .id();
+                panel.spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() }).add_child(list).with_children(|row| {
+                    row.spawn(widgets::scrollbar(theme, list));
+                });
+                panel.spawn(Node { flex_direction: FlexDirection::Row, justify_content: JustifyContent::FlexEnd, margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::CloseChooser, ButtonSound(Sfx::Back))));
+                });
+            });
+        });
+}
+
+/// Adding a server, or editing one: its name and its address. A new
+/// address is another server, whose key is not the old one's.
+fn spawn_edit_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    let heading = match &form.edit.original {
+        Some(_) => format!("Edit {}", form.edit.name),
+        None => "Add a server".to_string(),
+    };
+    parent.spawn(widgets::heading(theme, heading));
+    section(parent, theme, "Name", |section| field_box(section, theme, Field::ServerName, &form.edit.name, "what you call it", false));
+    section(parent, theme, "Address", |section| {
+        field_box(section, theme, Field::ServerAddress, &form.edit.address, "host or host:port", true);
+        if form.edit.original.is_some() {
+            section.spawn(widgets::dim(theme, "A new address is another server: the key this one proved is forgotten, and the next connection meets the new one's."));
+        }
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Save", px(220), Control::Go));
+    });
+}
+
+/// What the server attached to keeps of the person (Phase 4 §10): the
+/// standing per format, the title and the badge worn with how many were
+/// earned and a Change… each, and the ladder of a format.
+fn spawn_profile(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, pictures: &HashMap<String, Option<Handle<Image>>>) {
+    parent.spawn(widgets::heading(theme, format!("Your profile at {}", shortened(&form.server_name(&server.address)))));
+    let Some(profile) = server.known_profile() else {
+        let why = match server.profile {
+            ProfileHere::NoKey => "You connected without a key, so this server keeps nothing of you.",
+            ProfileHere::Unkept => "This server keeps nothing: it rates no game and grants nothing.",
+            _ => "Asking…",
+        };
+        parent.spawn(widgets::dim(theme, why));
+        buttons(parent, |row| {
+            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        });
+        return;
+    };
+    section(parent, theme, "Standing", |section| {
+        let lines = netrunner_client::identity::standing_lines(&profile.standings);
+        if lines.is_empty() {
+            section.spawn(widgets::dim(theme, "No rated game here yet."));
+        }
+        for line in lines {
+            section.spawn(widgets::dim(theme, line));
+        }
+    });
+    // A line a kind: what is worn, how many were earned, and Change… to
+    // the pop-up that lists them — never a pill each, which a year of
+    // events would make a wall of.
+    section(parent, theme, "Title", |section| {
+        section.spawn(widgets::row(12.0)).with_children(|row| {
+            row.spawn((widgets::label(theme, profile.title.clone().unwrap_or_else(|| "None worn".to_string())), Node { flex_grow: 1.0, min_width: px(0), ..default() }));
+            if profile.titles.is_empty() {
+                row.spawn(widgets::dim(theme, "None earned here yet"));
+            } else {
+                row.spawn(widgets::dim(theme, format!("{} earned", profile.titles.len())));
+                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Change…", Control::Choose(AwardKind::Title)));
+            }
+        });
+    });
+    section(parent, theme, "Badge", |section| {
+        section.spawn(widgets::row(12.0)).with_children(|row| {
+            if let Some(name) = &profile.badge {
+                badge::spawn_glyph(row, theme, name, pictures.get(name).cloned().flatten(), 40.0);
+            }
+            row.spawn((widgets::label(theme, profile.badge.clone().unwrap_or_else(|| "None worn".to_string())), Node { flex_grow: 1.0, min_width: px(0), ..default() }));
+            if profile.badges.is_empty() {
+                row.spawn(widgets::dim(theme, "None earned here yet"));
+            } else {
+                row.spawn(widgets::dim(theme, format!("{} earned", profile.badges.len())));
+                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Change…", Control::Choose(AwardKind::Badge)));
+            }
+        });
+    });
+    section(parent, theme, "Ladder", |section| {
+        section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|pills| {
+            for format in FORMATS {
+                let kind = if format == server.ladder_format { ButtonKind::Primary } else { ButtonKind::Secondary };
+                pills.spawn(widgets::styled_button(theme, kind, capitalised(format_name(format)), Val::Auto, Control::Ladder(format)));
+            }
+        });
+        match &server.ladder {
+            None => {
+                section.spawn(widgets::dim(theme, "Asking…"));
+            }
+            Some(rows) if rows.is_empty() => {
+                section.spawn(widgets::dim(theme, format!("Nobody has {} rated games in {} here yet.", netrunner_server::protocol::LADDER_MIN_GAMES, capitalised(format_name(server.ladder_format)))));
+            }
+            Some(rows) => {
+                for (place, row) in rows.iter().enumerate() {
+                    let mine = server.key.as_ref() == Some(&row.key);
+                    let line = netrunner_client::identity::ladder_line(place + 1, row);
+                    section.spawn(if mine { widgets::label(theme, format!("{line} · you")) } else { widgets::label(theme, line) });
+                }
+            }
+        }
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
     });
 }
 
@@ -1108,7 +1552,7 @@ fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
 /// Attached: what a host gives out, the lobbies, a closed one's code, and
 /// in a lobby the game to look for.
 fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net) {
-    parent.spawn(widgets::heading(theme, if server.hosting { "Hosting on this machine".to_string() } else { format!("At {}", shortened(&server.address)) }));
+    parent.spawn(widgets::heading(theme, if server.hosting { "Hosting on this machine".to_string() } else { format!("At {}", shortened(&form.server_name(&server.address))) }));
     if let Some(line) = &server.link {
         parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
@@ -1154,6 +1598,10 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a lobby…", Control::Open(Page::MakeLobby)));
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Tournaments…", Control::Open(Page::Tournaments)));
+            if !server.hosting {
+                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Your profile…", Control::Open(Page::Profile)));
+            }
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Servers…", Control::Open(Page::Servers)));
         });
     });
     section(parent, theme, "A closed lobby", |section| {
