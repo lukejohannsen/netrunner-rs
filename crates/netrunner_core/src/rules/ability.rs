@@ -955,6 +955,12 @@ pub fn evaluate_effect(
             ctx.unpreventable = was;
             resolved
         }
+        // The card whose text this is: the selection's prompter, which the
+        // `then` it sits in carries beside the card chosen.
+        Effect::AsThisCard(effect) => {
+            let card = ctx.prompting_card.or(acting_card).ok_or(RulesError::MissingActingCardContext)?.clone();
+            evaluate_effect(state, effect, &mut ResolutionContext::for_parked(ctx.prompting_install, Some(&card)), registry)
+        }
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.on_end.push(crate::rules::run::RunEndRider { effect: effect.clone(), card: acting_card.cloned(), install: ctx.acting_install });
@@ -1291,13 +1297,15 @@ pub fn evaluate_effect(
                 }
                 return Ok(vec![add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda)]);
             }
-            let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else {
+            // A Corp operation as it resolves: never trashed, by the rules, it
+            // leaves for the score area as it resolves, so it was never added
+            // to Archives either. The Corp's own (Myōshu), or the Runner's
+            // when the card says so (Hangeki).
+            if !take_resolving_operation(state, registry, &card_id) {
                 return Ok(Vec::new());
-            };
-            // Never trashed, by the rules: it leaves for the score area as
-            // it resolves, so it was never added to Archives either.
-            crate::rules::turn_log::unfile_resolving_operation(state, position);
-            Ok(vec![add_to_score_area_as_agenda(state, Side::Corp, card_id, *as_agenda)])
+            }
+            let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
+            Ok(vec![add_to_score_area_as_agenda(state, to, card_id, *as_agenda)])
         }
 
         // "It" is the encountered ice, as the trigger's subject; a
@@ -2573,7 +2581,8 @@ pub fn evaluate_effect(
             } else {
                 *install
             };
-            match crate::rules::engine::rez_install(state, registry, install, *pay_cost, *discount) {
+            let discount = resolve_amount(discount, ctx, state, registry);
+            match crate::rules::engine::rez_install(state, registry, install, *pay_cost, discount) {
                 Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. }) => {
                     Ok(Vec::new())
                 }
@@ -3752,6 +3761,21 @@ fn forfeit_at(state: &mut GameState, registry: &CardRegistry, side: Side, positi
     vec![GameEvent::AgendaForfeited { side, card: forfeited.card.clone() }, GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card }]
 }
 
+/// Takes a Corp operation that is resolving out of Archives, where
+/// `engine::play_operation_card` filed it faceup before its text resolved
+/// — the newest faceup copy, which is the one being played — and gives the
+/// turn's count of cards added to Archives back (`turn_log::
+/// unfile_resolving_operation`). False for anything else, which is moved
+/// from wherever else it is.
+fn take_resolving_operation(state: &mut GameState, registry: &CardRegistry, card_id: &CardId) -> bool {
+    if !registry.get(card_id).is_some_and(|card| card.side == Side::Corp && card.card_type == crate::dsl::CardType::Operation) {
+        return false;
+    }
+    let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == *card_id && !archived.facedown) else { return false };
+    crate::rules::turn_log::unfile_resolving_operation(state, position);
+    true
+}
+
 /// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
 /// (Spin Doctor, Malandragem) and `Effect::RemoveFromGame(ThisCard)`
 /// (Malandragem's "when it is empty", and Nanuq's from the heap its trash
@@ -3765,6 +3789,12 @@ fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ct
     // Nightmare Archive's "remove this asset from the game".
     if run::is_being_accessed(state, &card_id) {
         return run::move_currently_accessed_card(state, registry, run::AccessedTo::RemovedFromGame);
+    }
+    // An operation as it resolves, from Archives, where playing it filed it
+    // (Hangeki's "remove this operation from the game").
+    if take_resolving_operation(state, registry, &card_id) {
+        state.corp.removed_from_game.push(card_id.clone());
+        return Ok(vec![GameEvent::CardRemovedFromGame { side: Side::Corp, card: card_id }]);
     }
     if let Some(position) = acting_corp_position(state, ctx) {
         let install = state.corp.installed[position].install_id;
@@ -5593,7 +5623,7 @@ mod tests {
     fn a_card_that_cannot_be_forfeited_is_not_counted_toward_a_forfeit() {
         let registry = CardRegistry::default();
         let as_agenda = |points, cannot_forfeit| {
-            Some(crate::dsl::AsAgenda { points, cannot_forfeit, subtype: None })
+            Some(crate::dsl::AsAgenda { points, cannot_forfeit, subtype: None, to_the_runner: false })
         };
         let mut state = game_state();
         state.corp.scored_agendas =

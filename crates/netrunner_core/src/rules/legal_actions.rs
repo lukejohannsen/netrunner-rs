@@ -222,6 +222,11 @@ pub fn current_actor(state: &GameState) -> Option<Side> {
     if let Some(side) = pending_access_trigger_decider(state) {
         return Some(side);
     }
+    // An access a Corp card gave the Runner on the Corp's turn (Hangeki)
+    // is the Runner's to carry out, though the turn is the Corp's.
+    if crate::rules::run::accessing_outside_the_runners_turn(state) {
+        return Some(Side::Runner);
+    }
     match state.phase {
         GamePhase::Mulligan(side) | GamePhase::Discard { side, .. } | GamePhase::Action(side) => Some(side),
         GamePhase::StartOfTurn(_) | GamePhase::GameOver(_) => None,

@@ -726,6 +726,20 @@ fn classify_action(state: &GameState, registry: &CardRegistry, action: &PlayerAc
     }
 }
 
+/// The Runner's access decisions belong to the Runner's turn, with one
+/// exception: an access a Corp card's text gives the Runner on the Corp's
+/// own turn (Hangeki's "the Runner may access that card"), which is always
+/// outside a breach. Gating every access action on `Action(Runner)` would
+/// leave that access with no player able to act; widening the gate to "any
+/// access in progress" is exact, because only an access outside a breach can
+/// be in progress on the Corp's turn — a run cannot be.
+fn require_runner_accessing(state: &GameState) -> Result<(), RulesError> {
+    if run::accessing_outside_the_runners_turn(state) {
+        return Ok(());
+    }
+    require_phase(state, GamePhase::Action(Side::Runner))
+}
+
 fn require_phase(state: &GameState, expected: GamePhase) -> Result<(), RulesError> {
     if state.phase != expected {
         return Err(RulesError::WrongPhase { expected, actual: state.phase });
@@ -3150,7 +3164,7 @@ fn select_card_to_access(
     registry: &CardRegistry,
     candidate: run::AccessCandidate,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     // Never actually open when this is legal in practice — a window only
     // opens at `PendingChoice`/`PendingInteractiveTrigger`, never at
     // `SelectNextCard` (the only phase this action is legal in) — but kept
@@ -3168,7 +3182,7 @@ fn steal_agenda(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     let events = run::resolve_steal(&mut next, &card_id, registry)?;
@@ -3181,7 +3195,7 @@ fn trash_accessed_card(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     let events = run::resolve_trash(&mut next, &card_id, registry)?;
@@ -3194,7 +3208,7 @@ fn pass_accessed_card(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     let events = run::resolve_pass(&mut next, &card_id, registry)?;
@@ -3207,7 +3221,7 @@ fn pay_access_trigger(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     let events = run::resolve_pay_access_trigger(&mut next, &card_id, registry)?;
@@ -3220,7 +3234,7 @@ fn decline_access_trigger(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_phase(state, GamePhase::Action(Side::Runner))?;
+    require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     let events = run::resolve_decline_access_trigger(&mut next, &card_id, registry)?;

@@ -36,7 +36,9 @@
               "RezInstalled": {
                 "install": 0,
                 "pay_cost": true,
-                "discount": 4
+                "discount": {
+                  "Fixed": 4
+                }
               }
             }
           }

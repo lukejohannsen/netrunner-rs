@@ -1,0 +1,115 @@
+{
+  "id": "hangeki",
+  "title": "Hangeki",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "And": [
+      {
+        "Not": {
+          "And": [
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurn": "OnTrashedFromAccess"
+                  },
+                  1
+                ]
+              }
+            },
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurnWhen": {
+                      "trigger": "OnCardTrashed",
+                      "when": {
+                        "OwnedBy": {
+                          "owner": "Corp",
+                          "whose": "Runner"
+                        }
+                      }
+                    }
+                  },
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "AmountAtLeast": [
+          {
+            "InZone": {
+              "zone": "OwnInstalled",
+              "filter": "Any"
+            }
+          },
+          1
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "Access": {
+                          "from": "OpponentInstalled",
+                          "filter": {
+                            "Not": "NotSourceCard"
+                          },
+                          "count": 1
+                        }
+                      },
+                      {
+                        "AsThisCard": {
+                          "RemoveFromGame": "ThisCard"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "AsThisCard": {
+                      "AddToScoreAreaAsAgenda": {
+                        "points": -1,
+                        "to_the_runner": true
+                      }
+                    }
+                  }
+                ],
+                "texts": [
+                  "The Runner may access that card. If they do, remove this operation from the game",
+                  "otherwise, add this operation to the Runner's score area as an agenda worth -1 agenda point"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Choose 1 of your installed cards. The Runner may access that card. If they do, remove this operation from the game; otherwise, add this operation to the Runner's score area as an agenda worth -1 agenda point."
+    }
+  ],
+  "built_from": 22040,
+  "is_playable": true
+}

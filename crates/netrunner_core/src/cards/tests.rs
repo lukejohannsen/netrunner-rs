@@ -15889,7 +15889,7 @@ mod rebellion_without_rehearsal {
         state.runner.rig = vec![rig("jeitinho")];
         state.runner.scored_agendas = vec![
             crate::rules::ScoredAgenda {
-                as_agenda: Some(crate::dsl::AsAgenda { points: 0, cannot_forfeit: false, subtype: Some(crate::dsl::CardSubtype::Assassination) }),
+                as_agenda: Some(crate::dsl::AsAgenda { points: 0, cannot_forfeit: false, subtype: Some(crate::dsl::CardSubtype::Assassination), to_the_runner: false }),
                 ..crate::rules::ScoredAgenda::plain(id("jeitinho"))
             };
             already
@@ -31777,5 +31777,93 @@ mod reign_and_reverie_stage_4 {
         let none = pick(&drawn, &registry, &[]);
         let none = if none.pending_decision.is_some() { pick(&none, &registry, &[]) } else { none };
         assert_eq!(none.corp.resources.credits, Credits(8), "nothing revealed, nothing gained");
+    }
+}
+
+mod reign_and_reverie_stage_4b {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn at(state: &GameState, card: &str) -> usize {
+        state.corp.installed.iter().position(|installed| installed.card == id(card)).expect("installed")
+    }
+
+    /// "Derez any number of cards. You may rez a card, lowering its rez
+    /// cost by 3 for each card that you derezzed this way."
+    #[test]
+    fn divert_power_derezzes_any_number_and_rezzes_a_card_three_credits_cheaper_for_each() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("divert_power")];
+        state.corp.installed = vec![
+            installed("ice_wall", ServerId::Hq, InstallSlot::Ice, true),
+            installed("enigma", ServerId::RnD, InstallSlot::Ice, true),
+            installed("blockchain", ServerId::Archives, InstallSlot::Ice, false),
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("divert_power") }).expect("play");
+        let (first, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("derez 2");
+        let second = pick(&first, &registry, &[at(&first, "ice_wall")]);
+        let to_rez = pick(&second, &registry, &[at(&second, "enigma")]);
+        let rezzed = pick(&to_rez, &registry, &[at(&to_rez, "blockchain")]);
+        let rez = |card: &str| rezzed.corp.installed[at(&rezzed, card)].rezzed;
+        assert_eq!((rez("ice_wall"), rez("enigma"), rez("blockchain")), (false, false, true));
+        assert_eq!(rezzed.corp.resources.credits, Credits(7), "10 - 2 to play - (7 - 6) to rez");
+        assert!(rezzed.pending_decision.is_none());
+
+        let (none, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("derez none");
+        let full = pick(&none, &registry, &[at(&none, "blockchain")]);
+        assert_eq!(full.corp.resources.credits, Credits(1), "nothing derezzed, the full 7[credit]");
+    }
+
+    /// "Choose 1 of your installed cards. The Runner may access that card.
+    /// If they do, remove this operation from the game; otherwise, add this
+    /// operation to the Runner's score area as an agenda worth -1 agenda
+    /// point."
+    #[test]
+    fn hangeki_lets_the_runner_access_a_chosen_card_or_take_it_as_a_minus_one_agenda() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hangeki")];
+        state.corp.installed = vec![installed("pad_campaign", ServerId::Remote(1), InstallSlot::Root, false)];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hangeki") }).is_err(), "the Runner trashed nothing last turn");
+        crate::rules::turn_log::record(&mut state, &registry, &GameEvent::CardTrashedFromAccess { card: id("pad_campaign"), cost_paid: 4, install: None });
+        crate::rules::turn_log::rotate(&mut state);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hangeki") }).expect("play");
+        let offered = pick(&asked, &registry, &[0]);
+        assert!(offered.pending_decision.is_some(), "the Runner's choice");
+
+        let (declined, _) = apply_action(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert_eq!(declined.runner.scored_agendas.len(), 1);
+        assert_eq!(declined.runner.resources.agenda_points, AgendaPoints(-1));
+        assert!(!declined.corp.archives.iter().any(|archived| archived.card == id("hangeki")), "not trashed");
+
+        let (accessing, _) = apply_action(&offered, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("access");
+        let mut accessing = accessing;
+        if let Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) = accessing.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone()) {
+            accessing = apply_action(&accessing, &registry, PlayerAction::SelectCardToAccess { candidate: selectable_cards[0].clone() }).expect("access it").0;
+        }
+        assert!(crate::rules::legal_actions_for(&accessing, &registry, Side::Runner).contains(&PlayerAction::PassAccessedCard { card_id: id("pad_campaign") }), "the access is the Runner's on the Corp's turn");
+        assert_eq!(crate::rules::current_actor(&accessing), Some(Side::Runner));
+        let (done, _) = apply_action(&accessing, &registry, PlayerAction::PassAccessedCard { card_id: id("pad_campaign") }).expect("pass it");
+        assert!(done.active_run.is_none());
+        assert_eq!(done.corp.removed_from_game, vec![id("hangeki")]);
+        assert!(done.runner.scored_agendas.is_empty() && !done.corp.archives.iter().any(|archived| archived.card == id("hangeki")));
+        assert_eq!(done.phase, GamePhase::Action(Side::Corp), "still the Corp's turn");
     }
 }

@@ -169,6 +169,13 @@ pub struct AsAgenda {
     /// converted card has, which `Amount::InScoreAreaWithSubtype` counts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtype: Option<crate::dsl::CardSubtype>,
+    /// "Add this operation to **the Runner's** score area" (Hangeki): a
+    /// Corp operation resolving goes to its controller's score area
+    /// (Myōshu) unless the card names the Runner's. Every other card's
+    /// score area is fixed by where it is — an accessed or installed Corp
+    /// card, a Runner card — so only an operation reads this.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub to_the_runner: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -703,8 +710,13 @@ pub enum Effect {
         pay_cost: bool,
         /// Credits knocked off the rez cost when `pay_cost`. Never a
         /// refund — a discount larger than the cost makes the rez free.
-        #[serde(default, skip_serializing_if = "is_zero_u32")]
-        discount: u32,
+        /// An `Amount`, read as the rez resolves, for Divert Power's
+        /// "lowering its rez cost by 3 for each card that you derezzed this
+        /// way": the derezzes are counted by the `ChooseNumber` whose `then`
+        /// this sits in (`Times { ChosenNumber, 3 }`). Composition didn't
+        /// work: a printed number was the only discount a rez could take.
+        #[serde(default = "Amount::none", skip_serializing_if = "Amount::is_none")]
+        discount: Amount,
     },
     /// Removes *every* counter currently on `acting_card` and grants `side`
     /// that many credits — e.g. Pennyshaver's "place 1 credit on this
@@ -1975,6 +1987,16 @@ pub enum Effect {
     /// two make nothing but the choice, which another of the card's
     /// abilities reads.
     Remember { what: Remembered, until: EffectDuration },
+    /// `effect` resolved as the card whose text this is, inside a
+    /// selection's `then`, where "this card" is the card chosen — Hangeki's
+    /// "Choose 1 of your installed cards. The Runner may access that card.
+    /// If they do, remove **this operation** from the game; otherwise, add
+    /// **this operation** to the Runner's score area": the choice is the
+    /// Runner's, about the card chosen, and its two outcomes are about the
+    /// operation. Composition didn't work: `ThisCard` inside a selection's
+    /// `then` is the card selected (the convention every `then` follows),
+    /// and the operation has no install for a `CardTarget` to name.
+    AsThisCard(Box<Effect>),
 }
 
 /// What `Effect::Remember` keeps. Only what a card in the pool chooses
@@ -1994,6 +2016,18 @@ pub enum Remembered {
 
 fn is_zero_u32(value: &u32) -> bool {
     *value == 0
+}
+
+impl Amount {
+    /// `Fixed(0)`, the default of an amount a card file may leave off.
+    pub fn none() -> Amount {
+        Amount::Fixed(0)
+    }
+
+    /// Whether this is `Fixed(0)` — left off when serialized.
+    pub fn is_none(&self) -> bool {
+        *self == Amount::Fixed(0)
+    }
 }
 
 /// A dynamically-resolved quantity, computed at effect-evaluation time via
@@ -2994,6 +3028,7 @@ impl Effect {
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
+            Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },
             Effect::Mill { deck, amount: a, then } => Effect::Mill { deck, amount: amount(a), then },
             Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
@@ -3034,6 +3069,7 @@ impl Effect {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
+            Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             other => other,
         }
     }
@@ -3149,6 +3185,7 @@ impl Effect {
             }
             Effect::SetRunEndedEffect(effect)
             | Effect::Unpreventable(effect)
+            | Effect::AsThisCard(effect)
             | Effect::LaterThisTurn { effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::ChooseCardName { then: effect, .. }
