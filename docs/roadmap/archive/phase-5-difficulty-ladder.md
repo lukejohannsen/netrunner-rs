@@ -4001,3 +4001,13 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §74's code against this branch on seeds 2 / 3: Backstitching 3 → 8 / 1 → 5, Poison Vial 0 → 0 / 3 → 3; Corp share 0.519 → 0.527, 0.475 → 0.476 (z 1.89, 0.58). Backstitching moved; the vial did not. The finisher route is kept because a vial on the table is now a price the run reads where it read none, but what keeps it in the grip is not traced; it stays on the list.
 
 **Verified.** `an_unconditional_break_is_priced_on_the_ice_its_requirement_reaches` (Mimic against a three-subroutine sentry, 3 credits alone and 1 with a vial counter after it, the counter spent on the first piece) and `a_bypass_is_a_way_past_the_piece` (Backstitching on the mark's ice for the card, and nothing without a mark or off it).
+
+## 76. A trap that works only installed is held in a root: Mr. Hendrik — DONE (`claude/bot-blindness-batch-6`, 12 October 2026)
+
+**The debt.** Mr. Hendrik's "when the Runner accesses this upgrade while it is installed, you may pay 2[credit] to do 1 core damage" (random seats 28, the planner 3 and 2) was read as a hand trap: it punishes access with damage and takes no tokens, so `is_hand_trap` paid `held_trap_weight` for keeping it in HQ — where its trigger, which asks `ThisCardIsInstalled`, does nothing. The Corp held it for good.
+
+**What is read now.** `read::is_root_trap`: a trap whose every access trigger asks `ThisCardIsInstalled`, with no access interaction, is no hand trap; `corp::held_traps` counts it face down and unseen in any root instead, at the same weight, so the install is where the term pays and a seen copy is spent.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §75's code against this branch on seeds 2 / 3: Mr. Hendrik 7 → 30 / 0 → 31; Corp share 0.527 → 0.521, 0.476 → 0.478 (z −0.78, 0.19).
+
+**Verified.** `a_trap_that_works_only_installed_is_held_in_a_root`: Mr. Hendrik is a root trap and Snare! a hand trap; in HQ the Hendrik counts nothing, face down in R&D's root one, seen nothing.

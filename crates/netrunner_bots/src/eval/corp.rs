@@ -582,10 +582,19 @@ pub(super) fn bluffed_root(state: &GameState, registry: &CardRegistry, w: &Weigh
     })
 }
 
-/// Hand traps waiting in HQ, where they do their work. See
-/// `HELD_TRAP_WEIGHT`.
+/// Hand traps waiting in HQ, and traps that work only installed waiting
+/// face down in a root (`is_root_trap`, Phase 5 §76) — each where it does
+/// its work. See `HELD_TRAP_WEIGHT`.
 pub(super) fn held_traps(state: &GameState, registry: &CardRegistry) -> usize {
-    state.corp.hq.iter().filter(|card| registry.get(card).is_some_and(is_hand_trap)).count()
+    use netrunner_core::rules::InstallSlot;
+    let rooted = state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root && !card.seen_by_runner)
+        .filter(|card| registry.get(&card.card).is_some_and(is_root_trap))
+        .count();
+    state.corp.hq.iter().filter(|card| registry.get(card).is_some_and(is_hand_trap)).count() + rooted
 }
 
 pub(super) fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, cap: usize) -> usize {
@@ -1121,6 +1130,28 @@ mod tests {
             value("snare", false, false, &Weights { ambush_weight: 0.0, ..trap }),
             "a hand trap installed is not what `ambush_weight` buys"
         );
+    }
+
+    /// A trap that works only installed is held in a root, not in HQ
+    /// (Phase 5 §76): Mr. Hendrik in HQ is nothing, face down in a root
+    /// it is a held trap, and seen it is spent. Snare! stays a hand trap.
+    #[test]
+    fn a_trap_that_works_only_installed_is_held_in_a_root() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let hendrik = pool.get(&CardId("mr_hendrik".to_string())).expect("mr_hendrik");
+        assert!(is_root_trap(hendrik) && !is_hand_trap(hendrik));
+        let snare = pool.get(&CardId("snare".to_string())).expect("snare");
+        assert!(is_hand_trap(snare) && !is_root_trap(snare));
+        let mut state = GameState::new(0);
+        state.corp.hq = vec![CardId("mr_hendrik".to_string())];
+        assert_eq!(held_traps(&state, &pool), 0, "in HQ it does nothing");
+        state.corp.hq.clear();
+        state.corp.installed = vec![InstalledCard { card: CardId("mr_hendrik".to_string()), install_id: InstallId(1), server: ServerId::RnD, slot: InstallSlot::Root, ..Default::default() }];
+        assert_eq!(held_traps(&state, &pool), 1, "face down in R&D's root");
+        state.corp.installed[0].seen_by_runner = true;
+        assert_eq!(held_traps(&state, &pool), 0, "seen, it is spent");
     }
 
     /// The Corp plays a lure trap like an agenda and keeps a hand trap in

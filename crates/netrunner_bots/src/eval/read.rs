@@ -857,7 +857,22 @@ pub fn is_lure_trap(def: &CardDefinition) -> bool {
 /// a token, so a remote gives it nothing (Snare!, Byte!). See
 /// `HELD_TRAP_WEIGHT`.
 pub fn is_hand_trap(def: &CardDefinition) -> bool {
-    punishes_access_with_damage(def) && !is_lure_trap(def)
+    punishes_access_with_damage(def) && !is_lure_trap(def) && !is_root_trap(def)
+}
+
+/// A trap that works only while it is installed (Mr. Hendrik's "when the
+/// Runner accesses this upgrade while it is installed"; Phase 5 §76):
+/// every access trigger it has asks `ThisCardIsInstalled`. Held in HQ it
+/// does nothing, so it is no hand trap — it was one, and the held-trap
+/// term kept it in HQ for good — and `held_traps` counts it face down in
+/// a root instead, where the Runner meets it.
+pub fn is_root_trap(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::EffectRequirement;
+    let mut on_access = def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnAccessed).peekable();
+    punishes_access_with_damage(def)
+        && def.interactive_on_access.is_none()
+        && on_access.peek().is_some()
+        && on_access.all(|trigger| trigger.requirement == Some(EffectRequirement::ThisCardIsInstalled))
 }
 
 /// How many of the three ICE subtypes the rig can break: a rig card whose
