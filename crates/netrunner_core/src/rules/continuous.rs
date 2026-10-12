@@ -889,7 +889,7 @@ pub fn advancement_requirement(state: &GameState, registry: &CardRegistry, insta
 /// on the run, added by `engine::rez_price` to anything rezzed in the
 /// attacked server — so an asset rezzed in that server's root during a
 /// Tread Lightly run cost 3 more than it prints.
-pub(crate) fn rez_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
+pub fn rez_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
     let Some(target) = Target::corp_install(state, registry, install) else { return 0 };
     let is_ice = matches!(target, Target::Corp { card, .. } if matches!(card.card_type, CardType::Ice(_)));
     let table = sum(state, registry, target, |kind| match kind {

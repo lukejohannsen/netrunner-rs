@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w)).max(0.0))
         .sum()
 }
 
@@ -425,6 +425,46 @@ pub(super) fn rig_host_derez_value(state: &GameState, registry: &CardRegistry, w
             Some((registry.get(&card.card)?, card.counters, registry.get(&host.card)?.cost))
         })
         .map(|(def, counters, cost)| host_derez_value(def, counters, cost, w, horizon))
+        .sum()
+}
+
+/// The credits `def` pays the Runner when the ice it is hosted on is
+/// rezzed — Saci's "whenever host ice is rezzed or derezzed, gain
+/// 3[credit]" — read off its text (`EventFilter::Host` on an `OnRez`).
+fn host_rez_credits(def: &CardDefinition) -> u32 {
+    def.triggers
+        .iter()
+        .filter(|trigger| trigger.trigger == Trigger::OnRez && trigger.when == Some(netrunner_core::dsl::EventFilter::Host))
+        .map(|trigger| trigger.effects.iter().map(|effect| read::effect_credits(effect, Side::Runner).max(0) as u32).sum::<u32>())
+        .sum()
+}
+
+/// What a program paid when its host is rezzed is worth hosted on an
+/// unrezzed piece of ice (Phase 5 §71): the payout once, at the discount
+/// every income still to come takes (`future_credit_weight`) — the Corp
+/// rezzes the piece when a run reaches it, and the Runner chooses the run.
+/// **Why it is read:** the payout is a moment the planner, playing the
+/// Corp frozen, never reached, so Saci read as its price and its memory
+/// and was never installed (random seats 0 → some, the planner 0). For a
+/// held card, on any unrezzed piece on the table; nothing with none.
+pub(super) fn held_host_rez_value(state: &GameState, def: &CardDefinition, w: &Weights) -> f64 {
+    let pays = host_rez_credits(def);
+    if pays == 0 || !state.corp.installed.iter().any(|ice| !ice.rezzed && ice.slot == netrunner_core::rules::InstallSlot::Ice) {
+        return 0.0;
+    }
+    f64::from(pays) * w.future_credit_weight
+}
+
+/// `held_host_rez_value` summed over the rig's programs hosted on
+/// unrezzed ice (Phase 5 §71).
+pub(super) fn rig_host_rez_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| state.corp.installed.iter().any(|ice| Some(ice.install_id) == card.hosted_on_ice && !ice.rezzed))
+        .filter_map(|card| registry.get(&card.card))
+        .map(|def| f64::from(host_rez_credits(def)) * w.future_credit_weight)
         .sum()
 }
 
@@ -560,6 +600,70 @@ pub(super) fn rig_strength_cut_value(state: &GameState, registry: &CardRegistry,
         value += best_break_saving(&before, state, registry, w) * f64::from(horizon) * w.future_credit_weight;
     }
     value
+}
+
+/// What a card that raises the rez cost of ice costs the Corp, at the
+/// rate the Runner reads a Corp credit (`opponent_credit_weight`), over
+/// the horizon (Phase 5 §71): the rise on every unrezzed piece on the
+/// table — the rez still to come — and, for the ice the Corp has yet to
+/// install, one piece every other turn at the rise the table's ice
+/// averages, so Cat's Cradle's "each piece of code gate ice" is read off
+/// the sample's code gates rather than at Xanadu's rate. The rise is the
+/// engine's own question (`continuous::rez_cost_delta`) with the card in
+/// the rig against without it. **Why it is read:** a rez cost is a Corp
+/// credit, and nothing the Runner scores moved when one was raised, so
+/// Xanadu and Fransofia Ward read as their price and nothing else (random
+/// seats played Xanadu in 48 games a seed, the planner never). Read for
+/// the held card and the installed one alike, as `strength_cut_value` is.
+pub(super) fn rez_tax_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 || !raises_ice_rez_cost(def) {
+        return 0.0;
+    }
+    let mut after = state.clone();
+    after.runner.rig.push(netrunner_core::rules::InstalledRunnerCard { card: def.id.clone(), install_id: netrunner_core::rules::InstallId(u32::MAX), ..Default::default() });
+    rez_tax_between(state, &after, registry, w, horizon)
+}
+
+/// `rez_tax_value` for each such card in the rig: the table with it
+/// against the table without it (Phase 5 §71).
+pub(super) fn rig_rez_tax_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let mut value = 0.0;
+    for (index, card) in state.runner.rig.iter().enumerate() {
+        if !registry.get(&card.card).is_some_and(raises_ice_rez_cost) {
+            continue;
+        }
+        let mut before = state.clone();
+        before.runner.rig.remove(index);
+        value += rez_tax_between(&before, state, registry, w, horizon);
+    }
+    value
+}
+
+fn rez_tax_between(before: &GameState, after: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::rules::continuous::rez_cost_delta;
+    let rises: Vec<(bool, f64)> = after
+        .corp
+        .installed
+        .iter()
+        .filter(|ice| ice.slot == netrunner_core::rules::InstallSlot::Ice)
+        .map(|ice| (ice.rezzed, f64::from((rez_cost_delta(after, registry, ice.install_id) - rez_cost_delta(before, registry, ice.install_id)).max(0))))
+        .collect();
+    if rises.is_empty() {
+        return 0.0;
+    }
+    let to_come: f64 = rises.iter().filter(|(rezzed, _)| !rezzed).map(|(_, rise)| rise).sum();
+    let average = rises.iter().map(|(_, rise)| rise).sum::<f64>() / rises.len() as f64;
+    (to_come + average * f64::from(horizon) / 2.0) * w.opponent_credit_weight
+}
+
+/// Whether `def` declares a higher rez cost for ice: a `RezCost` of a
+/// positive number on ice.
+fn raises_ice_rez_cost(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::{ContinuousKind, Scope};
+    def.continuous.iter().any(|effect| matches!(effect.kind, ContinuousKind::RezCost(ref number) if number.per > 0) && matches!(effect.applies_to, Scope::Ice(_)))
 }
 
 /// Whether `def` declares a lower strength for ice: a `Strength` of a
@@ -855,6 +959,12 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A card that lowers the strength of ice is the break credits it
     // saves (`strength_cut_value`, Phase 5 §67).
     *score += rig_strength_cut_value(state, registry, w, horizon);
+    // A card that raises the rez cost of ice is the Corp's credits it
+    // takes (`rez_tax_value`, Phase 5 §71).
+    *score += rig_rez_tax_value(state, registry, w, horizon);
+    // A program paid when its host is rezzed, hosted on unrezzed ice
+    // (`held_host_rez_value`, Phase 5 §71).
+    *score += rig_host_rez_value(state, registry, w);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     // The Corp's bad publicity is a credit for every run the Runner
     // makes (`bad_publicity_worth`, Phase 5 §69).
@@ -988,6 +1098,54 @@ mod tests {
         assert_eq!(strength_cut_value(&state, &pool, card("the_tungsten_tailor"), &Weights::default(), 5), 0.0);
         state.runner.rig.push(rig("monkeywrench", 11, Some(1)));
         assert!((rig_strength_cut_value(&state, &pool, &guide, 5) - 2.0 * per_turn).abs() < 1e-9, "installed, credited the same");
+    }
+
+    /// A card that raises the rez cost of ice is the Corp credits it takes
+    /// (Phase 5 §71): over an unrezzed Enigma and a rezzed Ice Wall, Xanadu
+    /// takes one credit from the rez still to come and one from each
+    /// piece to come, every other turn at the table's average rise; Cat's
+    /// Cradle, which taxes only code gates, half as much from the pieces to
+    /// come — held and installed alike, and nothing with no ice to read.
+    #[test]
+    fn a_rez_tax_is_the_corp_credits_it_takes() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        assert_eq!(rez_tax_value(&state, &pool, card("xanadu"), &guide, 4), 0.0, "no ice, nothing read");
+        let ice = |id: &str, install: u32, rezzed: bool| InstalledCard { card: CardId(id.to_string()), install_id: InstallId(install), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() };
+        state.corp.installed = vec![ice("enigma", 1, false), ice("ice_wall", 2, true)];
+        let ocw = guide.opponent_credit_weight;
+        assert!((rez_tax_value(&state, &pool, card("xanadu"), &guide, 4) - (1.0 + 2.0) * ocw).abs() < 1e-9);
+        assert!((rez_tax_value(&state, &pool, card("cats_cradle"), &guide, 4) - (1.0 + 1.0) * ocw).abs() < 1e-9);
+        assert_eq!(rez_tax_value(&state, &pool, card("xanadu"), &Weights::default(), 4), 0.0);
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("xanadu".to_string()), install_id: InstallId(10), ..Default::default() });
+        assert!((rig_rez_tax_value(&state, &pool, &guide, 4) - 3.0 * ocw).abs() < 1e-9, "installed, credited the same");
+    }
+
+    /// A program paid when its host is rezzed is the payout, once, hosted
+    /// on unrezzed ice (Phase 5 §71): Saci's 3[credit] at the discount an
+    /// income still to come takes, held over an unrezzed Enigma and
+    /// installed on it alike — nothing on a rezzed host or with no
+    /// unrezzed ice, and nothing for a program with no such text.
+    #[test]
+    fn a_payout_on_the_hosts_rez_is_read_on_unrezzed_ice() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let ice = |rezzed: bool| InstalledCard { card: CardId("enigma".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() };
+        state.corp.installed = vec![ice(true)];
+        assert_eq!(held_host_rez_value(&state, card("saci"), &guide), 0.0, "a rezzed host pays nothing until derezzed");
+        state.corp.installed = vec![ice(false)];
+        assert!((held_host_rez_value(&state, card("saci"), &guide) - 3.0 * guide.future_credit_weight).abs() < 1e-9);
+        assert_eq!(held_host_rez_value(&state, card("gordian_blade"), &guide), 0.0);
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("saci".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(1)), ..Default::default() });
+        assert!((rig_host_rez_value(&state, &pool, &guide) - 3.0 * guide.future_credit_weight).abs() < 1e-9, "installed, credited the same");
     }
 
     /// A click ability whose run's breach is replaced is worth what the
