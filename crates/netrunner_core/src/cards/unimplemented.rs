@@ -92,7 +92,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("dj_fenris", "DJ Fenris"),
     ("sportsmetal_go_big_or_go_home", "Sportsmetal: Go Big or Go Home"),
     ("hyperloop_extension", "Hyperloop Extension"),
-    ("meridian", "Meridian"),
     ("gatekeeper", "Gatekeeper"),
     ("divert_power", "Divert Power"),
     ("fast_break", "Fast Break"),
