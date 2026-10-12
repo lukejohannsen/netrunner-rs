@@ -115,7 +115,9 @@ fn host(app: &mut App) -> String {
     assert_eq!(app.world().resource::<Model>().0.port, "0");
     tap_control(app, Control::Reach(Reach::ThisMachine));
     tap_control(app, Control::Go);
-    assert_eq!(page(app), Page::Waiting, "{:?}", app.world().resource::<Model>().0.notice);
+    // Waiting while the host starts — or already on its page, when it
+    // was up within the same frames, a race a fast runner won.
+    assert!(matches!(page(app), Page::Waiting | Page::Server), "{:?} {:?}", page(app), app.world().resource::<Model>().0.notice);
     until(app, "the host's own lobby", |app| page(app) == Page::Server && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.hosting && server.lobby.is_some() && !server.decks.is_empty()));
     assert!(app.world().get_resource::<Connected>().is_some_and(Connected::is_hosting));
     let mut address = None;
@@ -412,7 +414,10 @@ fn a_guest_browses_the_hosts_lobbies_and_makes_one() {
     tap_control(&mut guest, Control::Open(Page::Join));
     guest.world_mut().resource_mut::<Model>().0.address = address.clone();
     tap_control(&mut guest, Control::Go);
-    assert_eq!(page(&guest), Page::Waiting);
+    // Waiting while the connection is made — or already on the server's
+    // page, when the host answered within the same frames: a fast runner
+    // did, and the test that asserted Waiting alone lost that race.
+    assert!(matches!(page(&guest), Page::Waiting | Page::Server), "{:?}", page(&guest));
     // The server joined is where Join starts next time, in both clients
     // (Phase 6 §3): kept in the settings file as the connection is made.
     let kept = netrunner_client::settings::Settings::load(&_dir.join(netrunner_client::settings::SETTINGS_FILE)).expect("the settings file is written");

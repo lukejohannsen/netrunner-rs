@@ -162,8 +162,24 @@ impl fmt::Debug for Store {
 }
 
 /// The URL that opens (and makes) the SQLite file at `path`.
+///
+/// Every byte of the path but an unreserved one is percent-encoded.
+/// `sqlx::Any` parses the URL as a URL before the SQLite driver reads
+/// the file name back out of it and percent-decodes it, so a path
+/// written in raw was mangled wherever it held something a URL treats
+/// as syntax: a Windows path (`C:\Users\…`, the drive's colon and every
+/// backslash) never opened, and a `?` or `#` anywhere cut it short.
 pub fn sqlite_url(path: &std::path::Path) -> String {
-    format!("sqlite://{}?mode=rwc", path.display())
+    let mut url = String::from("sqlite://");
+    for &byte in path.as_os_str().as_encoded_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~') {
+            url.push(char::from(byte));
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    url.push_str("?mode=rwc");
+    url
 }
 
 impl Store {
@@ -709,6 +725,22 @@ mod tests {
             store.close().await;
             place.remove().await;
         }
+    }
+
+    /// Linux allows every character a Windows path is made of, so a
+    /// directory named with a drive's colon, backslashes and the rest of
+    /// what a URL treats as syntax is the Windows path's test, here.
+    #[tokio::test]
+    async fn a_path_with_what_a_url_treats_as_syntax_opens_where_it_says() {
+        let dir = std::env::temp_dir().join(format!("netrunner_store C:\\Users\\a?b#c%d e_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(SQLITE_FILE);
+        let store = Store::open(&sqlite_url(&path)).await.unwrap_or_else(|error| panic!("{}: {error}", sqlite_url(&path)));
+        store.saw_player("key:ann", "ann", 1).await.unwrap();
+        store.close().await;
+        assert!(path.is_file(), "the file is where the path says, not at a prefix of it");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
