@@ -30903,4 +30903,52 @@ mod revised_core {
         let (avoided, _) = bids(&tracing, &registry, 0, 3);
         assert_eq!(avoided.runner.brain_damage, 0, "only a successful trace");
     }
+
+    // ---- Stage 6a: "cannot jack out" and "cannot access more than 1 card" ----
+
+    #[test]
+    fn hudson_1_0_leaves_the_runner_one_card_to_access_for_the_rest_of_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("hudson_1_0")];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.runner.rig = vec![in_rig("hq_interface", 0, 0)];
+        let fired = encounter_ends(&encounter(&state, &registry), &registry);
+        assert!(crate::rules::continuous::cannot(&fired, &registry, crate::dsl::Prohibition::AccessMoreThanOneCard));
+        let accessed = |fired: &GameState| {
+            let (breaching, events) = crate::rules::test_support::through_movement(fired, &registry).expect("on to the server");
+            let (breaching, more) = apply_action(&breaching, &registry, PlayerAction::CompleteRun).expect("complete run");
+            breach(breaching, &registry, events.into_iter().chain(more).collect()).len()
+        };
+        assert_eq!(accessed(&fired), 1, "HQ Interface's second card is not accessed");
+        assert_eq!(accessed(&GameState { lingering: Vec::new(), ..fired }), 2, "it would have been");
+
+        let one = use_ability(&encounter(&state, &registry), &registry, "hudson_1_0", 0).expect("lose [click]: break 1 subroutine");
+        assert_eq!(one.runner.resources.clicks, Clicks(state.runner.resources.clicks.0 - 2), "the run's click and the one lost");
+        assert_eq!(broken(&one), 1);
+    }
+
+    #[test]
+    fn whirlpool_keeps_the_runner_in_the_run_and_trashes_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("whirlpool"), ice_at_hq("ice_wall")];
+        let fired = encounter_ends(&encounter(&state, &registry), &registry);
+        assert!(fired.corp.installed.iter().all(|card| card.card != id("whirlpool")), "trash Whirlpool");
+        assert!(fired.corp.archives.iter().any(|card| card.card == id("whirlpool")));
+        assert!(crate::rules::continuous::cannot(&fired, &registry, crate::dsl::Prohibition::JackOut));
+        let offered = |mut state: GameState| {
+            for _ in 0..12 {
+                if crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&PlayerAction::JackOut) {
+                    return true;
+                }
+                assert!(apply_action(&state, &registry, PlayerAction::JackOut).is_err());
+                let Some(window) = &state.paid_ability_window else { return false };
+                state = apply_action(&state, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0;
+            }
+            false
+        };
+        assert!(!offered(fired.clone()), "cannot jack out for the remainder of this run");
+        assert!(offered(GameState { lingering: Vec::new(), ..fired }), "it would have been offered at the next ice");
+    }
 }

@@ -3885,9 +3885,8 @@ pub(crate) fn cost_is_affordable(
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
         Cost::ClicksAmount(amount) => state.resources(side).clicks.0 >= resolve_amount(amount, ctx, state, registry),
         Cost::LoseAllClicks => state.resources(side).clicks.0 >= 1,
-        // A run the Runner is in, and nothing else: there is no "cannot
-        // jack out" in the pool.
-        Cost::JackOut => side == Side::Runner && state.active_run.is_some(),
+        // A run the Runner is in, and one they may leave (Whirlpool).
+        Cost::JackOut => side == Side::Runner && state.active_run.is_some() && !continuous::cannot(state, registry, crate::dsl::Prohibition::JackOut),
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         Cost::RemoveAdvancementCounters(amount) => acting_corp_install(state, ctx).is_some_and(|installed| installed.advancement_tokens >= *amount),
         // Word on the Street's card is its own price: payable while it is

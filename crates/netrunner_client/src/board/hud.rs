@@ -298,6 +298,8 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::DeclaredSuccessful => "this run cannot be declared successful",
         Prohibition::BreakWithNonIcebreakers => "the Runner cannot use non-icebreaker cards to break subroutines",
         Prohibition::RepeatAnAction => "the Corp's next action must be one not yet taken this turn",
+        Prohibition::JackOut => "the Runner cannot jack out",
+        Prohibition::AccessMoreThanOneCard => "the Runner cannot access more than 1 card",
     }
 }
 
