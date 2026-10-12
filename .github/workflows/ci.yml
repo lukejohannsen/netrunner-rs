@@ -65,6 +65,76 @@ env:
   CARGO_PROFILE_DEV_OPT_LEVEL: 2
 
 jobs:
+  # A push to main whose tree a green PR run already tested gets no second
+  # test run. Several agents merge here in a day, and every merge used to
+  # repeat the PR's 15 minutes on the identical tree; the cheap jobs below
+  # still run, because an advisory published since the PR ran is news.
+  #
+  # The proof, all from the API (no checkout): a commit C — a parent of the
+  # pushed commit (a local `--no-ff` merge) or the head of a PR it came from
+  # (a squash or merge on GitHub) — has the same tree as the pushed commit,
+  # is not behind the previous main, and has a successful run of this
+  # workflow. "Not behind" is what makes C's green run a test of this tree:
+  # a PR run tests the merge of C into the main of its day, which was an
+  # ancestor of the previous main and so of C, and merging an ancestor
+  # changes nothing. A branch merged while behind main has a tree no run
+  # has seen, fails the comparison, and is tested in full — that run is
+  # where two PRs' interaction shows up (AGENTS.md, Git Hygiene).
+  #
+  # A push that changes Cargo.lock is tested anyway, because the test job is
+  # what saves main's dependency cache and every PR restores from it.
+  #
+  # Anything unexpected (an API error, no candidate) answers "not tested",
+  # so the failure mode is the old behaviour, never a skipped test.
+  tested:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -uo pipefail
+          skip=false
+          tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || tree=
+          candidates=$( {
+            gh api "repos/$REPO/commits/$SHA" --jq '.parents[].sha'
+            gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha'
+          } 2>/dev/null | sort -u)
+          # A push that moves the dependency tree still runs: the test job
+          # is what saves main's build cache, and every PR starts from it.
+          changed=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --jq '.files[].filename') || tree=
+          if grep -qxE 'Cargo\.lock|\.github/actions/setup-rust/action\.yml' <<<"$changed"; then
+            echo "The dependency tree or the toolchain setup changed; testing, to refresh the cache."
+            tree=
+          fi
+          for c in $candidates; do
+            [ -n "$tree" ] || break
+            [ "$c" != "$BEFORE" ] || continue
+            ctree=$(gh api "repos/$REPO/commits/$c" --jq .commit.tree.sha) || continue
+            [ "$ctree" = "$tree" ] || continue
+            behind=$(gh api "repos/$REPO/compare/$BEFORE...$c" --jq .behind_by) || continue
+            [ "$behind" = 0 ] || continue
+            runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$c&status=success" --jq .total_count) || continue
+            if [ "${runs:-0}" -gt 0 ]; then
+              echo "Tree $tree passed CI on $c; the test job is skipped."
+              skip=true
+              break
+            fi
+          done
+          [ "$skip" = true ] || echo "No green run has tested tree $tree; testing it."
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   # The load-bearing job, on Linux only. Windows and macOS run the same two
   # commands weekly in platforms.yml. The desktop crate is excluded because
   # Bevy is several hundred crates and minutes of cold compile; the small,
@@ -74,6 +144,10 @@ jobs:
   # Cold-cache duration on ubuntu from the first run: 4m26s, which the
   # timeout is sized against.
   test:
+    needs: tested
+    # `!cancelled()` rather than the default, because `tested` is skipped on
+    # every event but a push and a skipped need would skip this job too.
+    if: ${{ !cancelled() && needs.tested.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -195,17 +269,24 @@ jobs:
   # One stable check name to require in branch protection. The matrix job
   # names above change whenever the matrix does, and `needs` alone would let
   # a skipped or cancelled dependency pass for a success.
+  #
+  # `test` may be skipped only when `tested` said so; `tested` itself is
+  # skipped on every event but a push, and its failure only means the tests
+  # run, so it is not one of the jobs judged here.
   ci:
     if: always()
-    needs: [test, deny, workflows, secrets]
+    needs: [tested, test, deny, workflows, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Fail unless every required job succeeded
         if: >-
-          contains(needs.*.result, 'failure')
-          || contains(needs.*.result, 'cancelled')
-          || contains(needs.*.result, 'skipped')
+          contains(needs.*.result, 'cancelled')
+          || needs.test.result == 'failure'
+          || needs.deny.result != 'success'
+          || needs.workflows.result != 'success'
+          || needs.secrets.result != 'success'
+          || (needs.test.result != 'success' && needs.tested.outputs.skip != 'true')
         # Through the environment rather than inlined into the script: a
         # `${{ }}` expansion inside `run:` is textual substitution, and the
         # habit of letting one become shell source is how injection bugs
