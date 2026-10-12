@@ -554,7 +554,9 @@ pub mod scratch {
                 return None;
             }
         };
-        assert!(cfg!(feature = "postgres"), "{POSTGRES_ENV} is set but this build has no Postgres driver: test with the `postgres` feature");
+        if !cfg!(feature = "postgres") {
+            panic!("{POSTGRES_ENV} is set but this build has no Postgres driver: test with the `postgres` feature");
+        }
         let tidy: String = name.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
         let schema = format!("test_{tidy}_{}", std::process::id());
         run(&base, &[format!("DROP SCHEMA IF EXISTS {schema} CASCADE"), format!("CREATE SCHEMA {schema}")]).await;
