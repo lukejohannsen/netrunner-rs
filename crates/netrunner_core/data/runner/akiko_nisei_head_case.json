@@ -1,0 +1,38 @@
+{
+  "id": "akiko_nisei_head_case",
+  "title": "Akiko Nisei: Head Case",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "AddAdditionalAccess": {
+                "server": "RnD",
+                "count": 1
+              }
+            },
+            "on_differ": {
+              "Sequence": []
+            }
+          }
+        }
+      ],
+      "text": "Whenever you breach R&D, you and the Corp secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Corp spent the same number of credits, access 1 additional card."
+    }
+  ],
+  "built_from": 22015,
+  "is_playable": true
+}

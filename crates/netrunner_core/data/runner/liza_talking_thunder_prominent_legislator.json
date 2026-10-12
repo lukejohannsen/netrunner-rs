@@ -1,0 +1,35 @@
+{
+  "id": "liza_talking_thunder_prominent_legislator",
+  "title": "Liza Talking Thunder: Prominent Legislator",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 50,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "ServerKind": "Central"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "The first time you make a successful run on a central server each turn, draw 2 cards and take 1 tag."
+    }
+  ],
+  "built_from": 22008,
+  "is_playable": true
+}

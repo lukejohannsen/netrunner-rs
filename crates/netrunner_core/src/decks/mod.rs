@@ -573,6 +573,12 @@ mod tests {
             // FFG F1 Stage 3: Stronger Together's deck, on Retirement
             // Package's frame; the Revised Core Set is in neither pool.
             ("stronger_together", &neither),
+            // FFG F2 Stage 2: the three Runner identities' decks, on
+            // Safety Net's, Hit List's and Free Spirit's frames; Reign and
+            // Reverie is in neither pool.
+            ("head_case", &neither),
+            ("legislator", &neither),
+            ("one_of_a_kind", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),
