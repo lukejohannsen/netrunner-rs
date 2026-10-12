@@ -63,6 +63,13 @@ env:
   # guard that matters for click/credit/counter arithmetic — and costs about
   # a minute of extra compile.
   CARGO_PROFILE_DEV_OPT_LEVEL: 2
+  # Line tables, not full debug info: a CI failure needs a backtrace with
+  # file and line, never a debugger's view of locals, and full debug info at
+  # opt-level 2 is a fifth of what compiling the workspace costs. Measured on
+  # 4 cores (the runner's count) rebuilding the workspace crates over cached
+  # dependencies, as every run does: 838s -> 650s; the tests' own runtime is
+  # unchanged (344s -> 353s, noise).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   # A push to main whose tree a green PR run already tested gets no second
