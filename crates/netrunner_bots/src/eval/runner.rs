@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -538,6 +538,46 @@ pub(super) fn run_replacement_value(state: &GameState, registry: &CardRegistry, 
 /// `run_replacement_value` summed over the rig (Phase 5 §66).
 pub(super) fn rig_run_replacement_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| run_replacement_value(state, registry, def, w, horizon)).sum()
+}
+
+/// What a card's click ability that runs one server and turns the run on
+/// another once it is successful saves, a use a turn over the horizon at
+/// `future_credit_weight` (Phase 5 §72): Sneakdoor Beta's "[click]: Run
+/// Archives. If that run would be declared successful, change the
+/// attacked server to HQ" is HQ's breach behind Archives' ice, so it is
+/// worth the break credits HQ's ice costs over Archives' (`server_break_
+/// cost`), and HQ's ice the rig cannot break at the rate
+/// `best_break_saving` reads a server opened. The run itself is the
+/// leaf's to price (a redirected run is the breach of HQ, `breach_server`);
+/// this is why the card is worth installing, where it read as 4[c] and
+/// 2[mu] for a click that runs Archives. Read for the held card and the
+/// installed one alike.
+pub(super) fn redirect_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let mut best = 0.0_f64;
+    for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
+        let (mut from, mut to) = (None, None);
+        ability.effect.for_each_effect(&mut |effect| match effect {
+            Effect::InitiateRun(server) => from = Some(*server),
+            Effect::RedirectRunOnSuccess(server) => to = Some(*server),
+            _ => {}
+        });
+        let (Some(from), Some(to)) = (from, to) else { continue };
+        let saving = match (server_break_cost(state, to, registry), server_break_cost(state, from, registry)) {
+            (Some(behind), Some(run)) => f64::from(behind.saturating_sub(run)),
+            (None, Some(_)) => w.unbreakable_ice_weight / w.own_credit_weight.max(f64::EPSILON),
+            _ => 0.0,
+        };
+        best = best.max(saving);
+    }
+    best * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `redirect_value` summed over the rig (Phase 5 §72).
+pub(super) fn rig_redirect_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| redirect_value(state, registry, def, w, horizon)).sum()
 }
 
 /// What a card that lowers the strength of ice saves the Runner, a run a
@@ -965,6 +1005,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A program paid when its host is rezzed, hosted on unrezzed ice
     // (`held_host_rez_value`, Phase 5 §71).
     *score += rig_host_rez_value(state, registry, w);
+    // A click ability whose run turns on HQ once it is successful is the
+    // break credits it saves (`redirect_value`, Phase 5 §72).
+    *score += rig_redirect_value(state, registry, w, horizon);
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     // The Corp's bad publicity is a credit for every run the Runner
     // makes (`bad_publicity_worth`, Phase 5 §69).
@@ -1146,6 +1189,42 @@ mod tests {
         assert_eq!(held_host_rez_value(&state, card("gordian_blade"), &guide), 0.0);
         state.runner.rig.push(InstalledRunnerCard { card: CardId("saci".to_string()), install_id: InstallId(10), hosted_on_ice: Some(InstallId(1)), ..Default::default() });
         assert!((rig_host_rez_value(&state, &pool, &guide) - 3.0 * guide.future_credit_weight).abs() < 1e-9, "installed, credited the same");
+    }
+
+    /// A run redirected on success is the break credits it saves (Phase 5
+    /// §72): Sneakdoor Beta over a rezzed Tollbooth on HQ (strength 5, a
+    /// 3[credit] subroutine Gordian Blade breaks after three pumps) and
+    /// nothing on Archives is HQ's break a turn — and nothing when HQ is
+    /// open, where a plain run on HQ does as well.
+    #[test]
+    fn a_redirected_run_is_the_break_it_saves() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("gordian_blade".to_string()), install_id: InstallId(10), ..Default::default() }];
+        assert_eq!(redirect_value(&state, &pool, card("sneakdoor_beta"), &guide, 5), 0.0, "an open HQ saves nothing");
+        state.corp.installed = vec![InstalledCard { card: CardId("tollbooth".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let hq = f64::from(server_break_cost(&state, ServerId::Hq, &pool).expect("Gordian Blade breaks Tollbooth"));
+        assert!(hq > 0.0);
+        assert!((redirect_value(&state, &pool, card("sneakdoor_beta"), &guide, 5) - hq * 5.0 * guide.future_credit_weight).abs() < 1e-9);
+        assert_eq!(redirect_value(&state, &pool, card("gordian_blade"), &guide, 5), 0.0);
+    }
+
+    /// PAN-Weave's "the first time each turn you make a successful run on
+    /// HQ, the Corp loses 1[credit]. If they do, gain 1[credit]" is a
+    /// credit a run (Phase 5 §72): a first time each turn on a central
+    /// server is a run a turn, and the gain is what the Corp lost.
+    #[test]
+    fn a_first_central_run_each_turn_is_income() {
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let income = |id: &str| read::declared_income(pool.get(&CardId(id.to_string())).expect("card"));
+        assert_eq!(income("pan_weave").run_credits, 1);
+        assert_eq!(income("zenit_chip_jz_2mj").run_cards, 1);
+        assert_eq!(income("datasucker").run_credits, 0, "a counter on every central run is not a run a turn's");
     }
 
     /// A click ability whose run's breach is replaced is worth what the
