@@ -115,11 +115,16 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
     // Accesses outside a breach name roots in other servers (Pinhole
     // Threading): any root still holds its candidate there.
     let outside_breach = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some());
+    // Mind's Eye's and Divide and Conquer's "you cannot access cards in
+    // the root of HQ or R&D", for a breach of either.
+    let root_closed = !outside_breach
+        && matches!(server, ServerId::Hq | ServerId::RnD)
+        && continuous::cannot(state, registry, Prohibition::AccessRootOfHqOrRnD);
     let still_in_root: Vec<InstallId> = state
         .corp
         .installed
         .iter()
-        .filter(|c| (outside_breach || c.server == server) && c.slot == InstallSlot::Root)
+        .filter(|c| !root_closed && (outside_breach || c.server == server) && c.slot == InstallSlot::Root)
         .map(|c| c.install_id)
         .collect();
     let pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
@@ -235,6 +240,13 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
                 if resume && !state.resolution_halted() {
                     events.extend(crate::rules::paid_ability::resolve_encounter_ice(state, registry)?);
                 }
+                return Ok(events);
+            }
+            // Divide and Conquer's next breach, where this one would have
+            // ended the run.
+            if access.outside_breach.is_none()
+                && let Some(events) = breach_next(state, registry)?
+            {
                 return Ok(events);
             }
             // A breach with no run ends as nothing a card hears: there was
@@ -808,6 +820,10 @@ pub fn access_server(
     let turned_faceup = if server == ServerId::Archives { state.corp.archives.iter().filter(|archived| archived.facedown).count() as u32 } else { 0 };
     let (candidates, from_zone) = begin_breach(state, server);
     if candidates.is_empty() && from_zone.is_empty() {
+        if let Some(next) = breach_next(state, registry)? {
+            events.extend(next);
+            return Ok(events);
+        }
         super::engine::end_run(state);
         return Ok(events);
     }
@@ -840,6 +856,28 @@ pub fn access_server(
         dispatcher::emit(state, registry, &mut events, GameEvent::ArchivesTurnedFaceup { count: turned_faceup })?;
     }
     Ok(events)
+}
+
+/// Begins the next of the run's `breaches_after` (Divide and Conquer's
+/// "after breaching Archives, breach HQ, then breach R&D"), or `None` when
+/// none is owed and the run may end. Each is a breach of its own (CR 7.3):
+/// announced (`BreachBegun`, which a card hears as any breach), waiting on
+/// what that triggered as `access_server` waits, then its accesses. Not
+/// offered to an access replacement: "instead of breaching" is about the
+/// attacked server's breach, which this follows.
+fn breach_next(state: &mut GameState, registry: &CardRegistry) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Some(run) = state.active_run.as_mut().filter(|run| !run.breaches_after.is_empty()) else { return Ok(None) };
+    let next = run.breaches_after.remove(0);
+    run.access_state = None;
+    run.phase = RunPhase::Success;
+    run.breached = Some(next);
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::BreachBegun { server: next })?;
+    if state.resolution_halted() || !state.deferred_triggers.is_empty() || state.active_run.is_none() {
+        return Ok(Some(events));
+    }
+    events.extend(access_server(state, next, registry)?);
+    Ok(Some(events))
 }
 
 /// The `AccessState` fields `resolve_steal`/`resolve_trash`/`resolve_pass`

@@ -300,6 +300,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::RepeatAnAction => "the Corp's next action must be one not yet taken this turn",
         Prohibition::JackOut => "the Runner cannot jack out",
         Prohibition::AccessMoreThanOneCard => "the Runner cannot access more than 1 card",
+        Prohibition::AccessRootOfHqOrRnD => "the Runner cannot access cards in the root of HQ or R&D",
     }
 }
 
@@ -450,6 +451,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let until = match effect.until {
                 Until::EndOfEncounter(_) => ", for this encounter",
                 Until::EndOfRun => ", for the rest of this run",
+                Until::ThroughNextBreach { .. } => ", during this breach",
                 Until::EndOfTurn(turn) if turn <= view.turn => ", for the rest of this turn",
                 // Klevetnik's "until your next turn ends": the turn of the
                 // player whose card it is.

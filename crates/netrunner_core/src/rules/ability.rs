@@ -1886,6 +1886,12 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::AdditionalAccessGranted { server: *server, count: *count }])
         }
 
+        Effect::BreachAfter(servers) => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.breaches_after.extend(servers.iter().copied());
+            Ok(Vec::new())
+        }
+
         Effect::SetAccessReplacement { server, effect, optional } => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             let server = server.unwrap_or(run.server);

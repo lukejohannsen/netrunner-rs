@@ -318,6 +318,14 @@ pub enum Effect {
     /// `additional_rd_access` exist, for the two servers whose access is
     /// naturally capped at one card.
     AddAdditionalAccess { server: ServerId, count: u32 },
+    /// After this run's breach, the Runner breaches each of `servers` in
+    /// turn — Divide and Conquer's "Run Archives. If successful, after
+    /// breaching Archives, breach HQ, then breach R&D" (`RunState::
+    /// breaches_after`). A breach happens only after a successful run, so
+    /// "if successful" needs no word. Requires an active run. Composition
+    /// didn't work: `Breach` begins a breach with no run, and a run's
+    /// breach ending ended the run.
+    BreachAfter(Vec<crate::rules::ServerId>),
     /// Replaces this run's normal access of `server` with `effect` instead
     /// — e.g. Account Siphon's "gain 8 credits instead of accessing HQ".
     /// Consumed (and the run concluded) the moment `run::access_server` is
@@ -2582,6 +2590,15 @@ pub enum EffectDuration {
     /// (`Until::ActionsFinished`, counted off `TurnLog::actions_finished`).
     /// It ends with the turn if no action follows.
     NextAction,
+    /// Through the next breach to begin this turn, made just before it —
+    /// Mind's Eye's "[click], 3 hosted power counters: Breach R&D. You
+    /// cannot access cards in the root of R&D during this breach", whose
+    /// breach is no run, so `Run` cannot be made ahead of it
+    /// (`lingering::until`, `Until::ThroughNextBreach`, counted off the
+    /// turn log's `OnBreach`). It ends as that breach does, or with the
+    /// turn if none begins. Composition didn't work: `Turn` would close the
+    /// root to a second run on R&D the same turn.
+    NextBreach,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -2816,12 +2833,24 @@ pub enum Prohibition {
     /// spares nothing. Its 1 is the only number the pool prints after a
     /// subroutine's "cannot access more than", so it is no payload.
     AccessMoreThanOneCard,
+    /// The Runner cannot access cards in the root of HQ or R&D — Mind's
+    /// Eye's "Breach R&D. You cannot access cards in the root of R&D during
+    /// this breach" and Divide and Conquer's "You cannot access cards in
+    /// the root of HQ or R&D during these breaches". The root's candidates
+    /// of a breach of either drop out where the breach drops what can no
+    /// longer be accessed (CR 7.4.2, `run::access::prune_candidates`), and
+    /// the root of Archives, which Divide and Conquer breaches first, is
+    /// untouched. Composition didn't work: `AccessOthers` and `Access` are
+    /// each about one install, and these are about every card in a root.
+    /// One word for the two centrals, since no pool card names one of
+    /// them alone where the other could be breached.
+    AccessRootOfHqOrRnD,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 19] = [
+    pub const ALL: [Prohibition; 20] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2841,13 +2870,14 @@ impl Prohibition {
         Prohibition::BreakWithNonIcebreakers,
         Prohibition::JackOut,
         Prohibition::AccessMoreThanOneCard,
+        Prohibition::AccessRootOfHqOrRnD,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD => Side::Runner,
         }
     }
 
@@ -2858,7 +2888,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD => None,
         }
     }
 }
@@ -3339,6 +3369,7 @@ impl Effect {
             | Effect::Score
             | Effect::StealAccessedCard
             | Effect::Breach(_)
+            | Effect::BreachAfter(_)
             | Effect::GainCreditsAmount(..) => {}
         }
     }

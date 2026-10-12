@@ -299,6 +299,7 @@ mod tests {
             subroutine_broken: false,
             reached_success_phase: false,
             breached: None,
+            breaches_after: Vec::new(),
             encounters: 0,
             ice_passed: 0,
             run_credits_pay_for: None,

@@ -192,6 +192,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
         subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not
         reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
+        breaches_after: _, // engine's: the breaches Divide and Conquer still owes this run; each is the log's "the Runner breached HQ" as it begins, and every access prompt names its server
         breached: _, // engine's: a breach of another server is the log's "the Runner breached R&D", and every access prompt names the card's server
         encounters: _, // engine's: a count S-Dobrado reads; each encounter is drawn by board::trail as it happens
         ice_passed: _, // engine's: a count Into the Depths reads; each pass is drawn by board::trail as it happens

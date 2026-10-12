@@ -507,6 +507,10 @@ pub struct PublicRunState {
     /// attacked one (Eru Ayase-Pessoa's run on Archives breaches R&D).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breached: Option<ServerId>,
+    /// `RunState::breaches_after`: public, as Divide and Conquer says it.
+    /// Carried so a sample's run goes on to the same breaches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breaches_after: Vec<ServerId>,
     /// `RunState::encounters`: public, as every encounter is. Carried so a
     /// sample asks S-Dobrado's "the second time you encounter a piece of
     /// ice during that run" where the real game does.
@@ -1402,6 +1406,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         subroutine_broken: run.subroutine_broken,
         reached_success_phase: run.reached_success_phase,
         breached: run.breached,
+        breaches_after: run.breaches_after.clone(),
         encounters: run.encounters,
         ice_passed: run.ice_passed,
         this_encounter: run.this_encounter.clone(),

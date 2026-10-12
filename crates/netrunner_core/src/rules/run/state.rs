@@ -764,6 +764,15 @@ pub struct RunState {
     /// players see which server is breached.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breached: Option<ServerId>,
+    /// The servers the Runner breaches, in order, after this run's breach
+    /// ends — Divide and Conquer's "If successful, after breaching
+    /// Archives, breach HQ, then breach R&D" (`Effect::BreachAfter`). Each
+    /// is a breach of its own (CR 7.3: `GameEvent::BreachBegun` of it, its
+    /// own access limit and candidates), begun by `run::access` where the
+    /// last one would have ended the run, and the run ends after the last.
+    /// Public: the card says it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breaches_after: Vec<ServerId>,
     /// How many times the Runner has encountered ice during this run,
     /// counting the encounter under way — S-Dobrado's "the first time"
     /// and "the second time you encounter a piece of ice during that run"
@@ -939,6 +948,7 @@ impl Default for RunState {
             subroutine_broken: false,
             reached_success_phase: false,
             breached: None,
+            breaches_after: Vec::new(),
             encounters: 0,
             ice_passed: 0,
             passed: Vec::new(),

@@ -1,0 +1,33 @@
+{
+  "id": "divide_and_conquer",
+  "title": "Divide and Conquer",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "BreachAfter": [
+            "Hq",
+            "RnD"
+          ]
+        },
+        {
+          "Prohibit": {
+            "what": "AccessRootOfHqOrRnD",
+            "until": "Run"
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, after breaching Archives, breach HQ, then breach R&D. You cannot access cards in the root of HQ or R&D during these breaches."
+    }
+  ],
+  "built_from": 22002,
+  "is_playable": true
+}

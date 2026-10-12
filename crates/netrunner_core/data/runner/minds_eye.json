@@ -1,0 +1,82 @@
+{
+  "id": "minds_eye",
+  "title": "Mind's Eye",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 power counter on this hardware",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, you may place 1 power counter on this hardware."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 3
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Prohibit": {
+              "what": "AccessRootOfHqOrRnD",
+              "until": "NextBreach"
+            }
+          },
+          {
+            "Breach": "RnD"
+          }
+        ]
+      },
+      "text": "[click], 3 hosted power counters: Breach R&D. You cannot access cards in the root of R&D during this breach."
+    }
+  ],
+  "built_from": 22017,
+  "is_playable": true
+}

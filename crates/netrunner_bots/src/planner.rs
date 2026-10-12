@@ -3025,7 +3025,14 @@ mod positions {
         let play = PlayerAction::PlayEvent { card_id: CardId("wildcat_strike".to_string()) };
         assert!(build_client_view(&state, &registry, Side::Runner).legal_actions.contains(&play));
 
-        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        // The Runner knows its own deck, so the stack it may draw is these
+        // Sure Gambles and not a sample of the whole pool, which moved with
+        // every Runner card the pool gained (Mind's Eye turned this line
+        // into two draws and a run).
+        let kate = CardId("kate_mac_mccaffrey_digital_tinker".to_string());
+        state.runner.identity = Some(kate.clone());
+        let deck = netrunner_core::rules::Deck { identity: kate, cards: vec![(CardId("wildcat_strike".to_string()), 1), (CardId("sure_gamble".to_string()), 10)] };
+        let mut agent = PlanningAgent::new(Side::Runner, 3).with_knowledge(crate::Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, Some(deck)));
         let mut actions = Vec::new();
         for _ in 0..20 {
             match current_actor(&state) {
