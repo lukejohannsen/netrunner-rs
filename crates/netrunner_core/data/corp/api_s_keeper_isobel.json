@@ -1,0 +1,70 @@
+{
+  "id": "api_s_keeper_isobel",
+  "title": "API-S Keeper Isobel",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "CorpInstalls": "Advanced"
+                },
+                1
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Advanced",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "Sequence": [
+                          {
+                            "RemoveAdvancementCounters": {
+                              "Fixed": 1
+                            }
+                          },
+                          {
+                            "GainCredits": [
+                              "Corp",
+                              3
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "remove an advancement token from an installed card to gain 3[credit]",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove an advancement token from an installed card to gain 3[credit]."
+    }
+  ],
+  "built_from": 22036,
+  "is_playable": true
+}

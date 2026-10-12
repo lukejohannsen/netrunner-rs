@@ -1,0 +1,56 @@
+{
+  "id": "jumon",
+  "title": "Jumon",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 6,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                {
+                  "Not": "Ice"
+                },
+                {
+                  "Not": {
+                    "InServer": "Hq"
+                  }
+                },
+                {
+                  "Not": {
+                    "InServer": "RnD"
+                  }
+                },
+                {
+                  "Not": {
+                    "InServer": "Archives"
+                  }
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 2
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn ends, place 2 advancement counters on 1 card in the root of a remote server."
+    }
+  ],
+  "built_from": 22035,
+  "is_playable": true
+}

@@ -1,0 +1,72 @@
+{
+  "id": "sportsmetal_go_big_or_go_home",
+  "title": "Sportsmetal: Go Big or Go Home",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              }
+            ],
+            "texts": [
+              "gain 2[credit]",
+              "draw 2 cards"
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, gain 2[credit] or draw 2 cards."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              }
+            ],
+            "texts": [
+              "gain 2[credit]",
+              "draw 2 cards"
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, gain 2[credit] or draw 2 cards."
+    }
+  ],
+  "built_from": 22026,
+  "is_playable": true
+}

@@ -1,0 +1,46 @@
+{
+  "id": "arella_salvatore",
+  "title": "Arella Salvatore",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "Not": {
+                "CardType": "Operation"
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true,
+                "if_installed": {
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored from this server, you may install a card from HQ, ignoring all costs, and place 1 advancement token on it."
+    }
+  ],
+  "built_from": 22049,
+  "is_playable": true
+}

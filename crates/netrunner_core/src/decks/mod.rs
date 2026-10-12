@@ -579,6 +579,10 @@ mod tests {
             ("head_case", &neither),
             ("legislator", &neither),
             ("one_of_a_kind", &neither),
+            // FFG F2 Stage 5: the two Corp identities' decks, on Retirement
+            // Package's and Hostile Bid's frames.
+            ("go_big", &neither),
+            ("family_business", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),
