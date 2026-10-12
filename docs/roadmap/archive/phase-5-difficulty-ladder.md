@@ -3919,3 +3919,25 @@ The planner plays Byte! the way §20 decided a hand trap is played — kept in H
 **Why the sweep did not move.** Ground Control, the one Earth Station deck, is played in 14 games a seed, and is a glacier deck: its remote is iced past what the Runner holds or open to a Runner holding 6[credit] and more, and the flip is worth a click only between the two. The term is right where it applies, which the scripted turn shows; the sweep rarely deals it.
 
 **Verified.** `a_remote_the_runner_cannot_pay_to_run_is_under_the_window` (the window shut at 5[credit] and open at 6 under the flip, open unflipped) and `flips_earth_station_when_the_runner_cannot_pay_to_run_the_remote` (the planner, with a 5-advancement agenda on a naked remote, flips against a Runner on 5[credit] and not on 8). `netrunner_bots`, and one `pub(crate)` made `pub` in `netrunner_core`.
+
+## 71. Three one-card readings, measured as one batch: a payout on install counters, a rez tax and a payout on the host's rez — DONE (`claude/bot-blindness-install-payout`, 12 October 2026)
+
+**The debt.** Four cards on the Sweep-deck blind list each needed a reading of its own, and none was a mechanism another card shares: Environmental Testing (random seats 9, the planner 0), Xanadu (6), Saci (7) and Fransofia Ward, whose rez tax is Xanadu's. Luke chose (12 October 2026) to batch such fixes, three to five a PR, and measure them once.
+
+**What is read now.**
+
+- *A payout on the card's counters* (`Income::install_payout`, `read::declared_income`): Environmental Testing places a power counter whenever a card is installed and, at four, trashes itself for 9[credit]. Read as income once the installs still owed fit in the horizon, at an install a turn, and a share of it before (`future_credits`). Its text was an `OnCardInstalled` trigger the income reading had no arm for, so the card read as its price.
+- *A rez tax* (`runner::rez_tax_value`, `rig_rez_tax_value`): a card that raises the rez cost of ice is the Corp credits it takes, at `opponent_credit_weight` — the rise on each unrezzed piece on the table, and a piece to come every other turn over the horizon at the table's average rise, so Cat's Cradle's code-gate tax is read off the sample's code gates. The rise is the engine's question (`continuous::rez_cost_delta`, made public for it) with the card against without it. Xanadu, Fransofia Ward and Cat's Cradle.
+- *A payout on the host's rez* (`runner::held_host_rez_value`, `rig_host_rez_value`): Saci's "whenever host ice is rezzed or derezzed, gain 3[credit]", read once at `future_credit_weight` while it is hosted (or could be) on unrezzed ice. The planner plays the Corp frozen, so the rez that pays never came inside a line.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, main (3b40642's code; e61f019) against this branch, the same games:
+
+- Seed 2: Environmental Testing 0 → 32, Xanadu 0 → 10, Fransofia Ward 0 → 7, Saci 0 → 13, Cat's Cradle 75 → 27; Corp share 0.495 → 0.495 (+22 / −22).
+- Seed 3: Environmental Testing 0 → 30, Xanadu 0 → 10, Fransofia Ward 0 → 9, Saci 0 → 14, Cat's Cradle 51 → 26; Corp share 0.470 → 0.478 (+21 / −16).
+
+Environmental Testing alone (the payout and nothing else) was 0 → 32 and 0 → 30, with the Corp at 0.495 → 0.498 and 0.470 → 0.475. **Cat's Cradle's fall is Saci's memory:** both are in Cold Reading and Hit List, both cost 1[mu], and the Runner in those two decks won 6 → 8, 7 → 9, 6 → 7 and 10 → 9 of 16–17 games — the trade does not cost it.
+
+**Not taken.** CSR Campaign and Rotary are each in one deck (Ground Control, Borrowed Time) that a seed deals 14–17 times, and their readings already exist (a card a turn; an R&D access behind a tag); a measurement there would say nothing, the §70 lesson. Chrysopoeian Skimming is worth what looking at R&D is worth, which no term reads. Katorga Breakout's heap recursion was tried for this batch and moved nothing (2 → 2, 3 → 4), so it was dropped.
+
+**Verified.** `a_payout_on_install_counters_is_income_within_the_horizon`, `a_rez_tax_is_the_corp_credits_it_takes` and `a_payout_on_the_hosts_rez_is_read_on_unrezzed_ice`.
+

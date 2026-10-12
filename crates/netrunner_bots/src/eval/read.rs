@@ -915,6 +915,13 @@ pub(super) struct Income {
     pub run_cards: u32,
     /// Credits per hosted counter a trash-and-cash ability pays.
     pub cashout_per_counter: u32,
+    /// Credits the card pays once its own installs have placed
+    /// `install_payout_at` counters on it (Phase 5 §71): Environmental
+    /// Testing's "whenever you install a program or piece of hardware,
+    /// place 1 power counter … then if there are 4 or more, trash this
+    /// resource and gain 9[credit]". Taken at an install a turn.
+    pub install_payout: u32,
+    pub install_payout_at: u32,
     /// The credits come off hosted counters, so the counters bound them;
     /// `printed_stock` is what the card places on itself when it arrives.
     pub stocked: bool,
@@ -1279,6 +1286,17 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 }
             }
             Trigger::OnRez | Trigger::OnInstall => income.printed_stock += sum.counters.max(0) as u32,
+            Trigger::OnCardInstalled if sum.counters > 0 => {
+                for effect in &trigger.effects {
+                    if let Effect::EffectIf { condition: netrunner_core::dsl::EffectRequirement::ThisCardCountersAtLeast(at), effect, .. } = effect {
+                        let pays = tally(effect, side).credits;
+                        if pays > 0 {
+                            income.install_payout = pays as u32;
+                            income.install_payout_at = at.div_ceil(sum.counters as u32);
+                        }
+                    }
+                }
+            }
             Trigger::OnSuccessfulRun if about_every_run(trigger) => {
                 income.run_credits += sum.credits.max(0) as u32;
                 income.run_cards += sum.cards.max(0) as u32;
@@ -1486,7 +1504,23 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
         0
     };
     let cashout = income.cashout_per_counter * hosted.unwrap_or(income.printed_stock);
-    f64::from(turn + run + click + cashout + sabotaged(income, hosted, horizon))
+    f64::from(turn + run + click + cashout + sabotaged(income, hosted, horizon)) + install_payout(income, hosted, horizon)
+}
+
+/// The credits `effect` gives `side`, as `tally` reads them.
+pub(super) fn effect_credits(effect: &Effect, side: Side) -> i32 {
+    tally(effect, side).credits
+}
+
+/// The share of a payout on the card's counters (`Income::install_payout`)
+/// the horizon reaches, at an install a turn: the whole of it once the
+/// installs still owed fit in the turns left, a share of it before.
+fn install_payout(income: &Income, hosted: Option<u32>, horizon: u32) -> f64 {
+    if income.install_payout == 0 {
+        return 0.0;
+    }
+    let owed = income.install_payout_at.saturating_sub(hosted.unwrap_or(0)).max(1);
+    f64::from(income.install_payout) * (f64::from(horizon) / f64::from(owed)).min(1.0)
 }
 
 /// The cards the card's sabotage will take from the Corp over `horizon`
@@ -2431,6 +2465,22 @@ mod tests {
         let mayfly = |strength| vec![InstalledRunnerCard { base_strength: strength, ..rig_card("mayfly") }];
         assert_eq!(run_term(mayfly(1), 0, sentry(), 0, &registry), ACTIVE_RUN_WEIGHT, "a free AI break costs nothing");
         assert_eq!(run_term(mayfly(0), 9, sentry(), 0, &registry), 0.0, "one point short and no pump ability");
+    }
+
+    /// A payout on the card's own counters is income once the installs
+    /// that place them fit the horizon (Phase 5 §71): Environmental
+    /// Testing pays 9[credit] at its fourth program or hardware install —
+    /// all of it over four turns or more, a share over fewer, and the rest
+    /// of it sooner for the counters it already holds.
+    #[test]
+    fn a_payout_on_install_counters_is_income_within_the_horizon() {
+        let pool = pool();
+        let income = declared_income(&printed(&pool, "environmental_testing"));
+        assert_eq!((income.install_payout, income.install_payout_at), (9, 4));
+        assert_eq!(future_credits(&income, None, 9), 9.0);
+        assert_eq!(future_credits(&income, None, 2), 4.5);
+        assert_eq!(future_credits(&income, Some(2), 2), 9.0);
+        assert_eq!(declared_income(&printed(&pool, "sure_gamble")).install_payout, 0);
     }
 
     /// The economy is read off the pool's own cards, as printed: what
