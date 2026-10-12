@@ -95,7 +95,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gatekeeper", "Gatekeeper"),
     ("divert_power", "Divert Power"),
     ("fast_break", "Fast Break"),
-    ("game_changer", "Game Changer"),
     ("giordano_memorial_field", "Giordano Memorial Field"),
     ("saraswati_mnemonics_endless_exploration", "Saraswati Mnemonics: Endless Exploration"),
     ("jumon", "Jumon"),
@@ -107,15 +106,11 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("fly_on_the_wall", "Fly on the Wall"),
     ("siu", "SIU"),
     ("eavesdrop", "Eavesdrop"),
-    ("attitude_adjustment", "Attitude Adjustment"),
     ("arella_salvatore", "Arella Salvatore"),
     ("the_outfit_family_owned_and_operated", "The Outfit: Family Owned and Operated"),
     ("broad_daylight", "Broad Daylight"),
     ("drudge_work", "Drudge Work"),
     ("formicary", "Formicary"),
-    ("building_blocks", "Building Blocks"),
-    ("too_big_to_fail", "Too Big to Fail"),
-    ("under_the_bus", "Under the Bus"),
     ("lady_liberty", "Lady Liberty"),
 ];
 

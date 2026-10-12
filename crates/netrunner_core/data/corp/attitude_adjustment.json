@@ -1,0 +1,81 @@
+{
+  "id": "attitude_adjustment",
+  "title": "Attitude Adjustment",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardType": "Agenda"
+            },
+            "min": 0,
+            "max": 2,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnRAndD",
+            "then": {
+              "Sequence": [
+                {
+                  "GainCreditsAmount": [
+                    "Corp",
+                    {
+                      "Times": {
+                        "amount": "CardsSelected",
+                        "times": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnArchives",
+                    "filter": {
+                      "CardType": "Agenda"
+                    },
+                    "min": 0,
+                    "max": 0,
+                    "reveal": true,
+                    "shuffle_after": true,
+                    "destination": "OwnRAndD",
+                    "up_to": {
+                      "RemainingAfterSelection": 2
+                    },
+                    "then": {
+                      "GainCreditsAmount": [
+                        "Corp",
+                        {
+                          "Times": {
+                            "amount": "CardsSelected",
+                            "times": 2
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Draw 2 cards. Reveal up to 2 agendas in HQ and/or Archives. Gain 2[credit] for each agenda revealed, then shuffle those agendas into R&D."
+    }
+  ],
+  "built_from": 22048,
+  "is_playable": true
+}

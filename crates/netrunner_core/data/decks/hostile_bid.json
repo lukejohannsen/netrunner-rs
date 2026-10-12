@@ -42,8 +42,12 @@
       "count": 2
     },
     {
-      "card": "tocsin",
-      "count": 2
+      "card": "building_blocks",
+      "count": 1
+    },
+    {
+      "card": "too_big_to_fail",
+      "count": 1
     },
     {
       "card": "crisium_grid",
@@ -83,7 +87,7 @@
     },
     {
       "card": "colossus",
-      "count": 2
+      "count": 1
     },
     {
       "card": "transport_monopoly",
@@ -111,6 +115,10 @@
     },
     {
       "card": "research_station",
+      "count": 1
+    },
+    {
+      "card": "under_the_bus",
       "count": 1
     }
   ]
