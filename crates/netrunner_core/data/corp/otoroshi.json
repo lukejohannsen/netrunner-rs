@@ -1,0 +1,88 @@
+{
+  "id": "otoroshi",
+  "title": "Otoroshi",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You may place up to 3 advancement counters on 1 card installed in the root of a remote server. If you do, the Runner accesses that card unless they pay 3[credit].",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "Not": "Ice"
+              },
+              {
+                "Not": {
+                  "InServer": "Hq"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "RnD"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "Archives"
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "ChooseNumber": {
+              "chooser": "Corp",
+              "min": 1,
+              "max": {
+                "Fixed": 3
+              },
+              "then": {
+                "Sequence": [
+                  {
+                    "PlaceAdvancementCounters": "ChosenNumber"
+                  },
+                  {
+                    "OfferPaidChoice": {
+                      "side": "Runner",
+                      "cost": {
+                        "Credits": 3
+                      },
+                      "if_paid": {
+                        "Sequence": []
+                      },
+                      "if_declined": {
+                        "Access": {
+                          "from": "OpponentInstalled",
+                          "filter": {
+                            "Not": "NotSourceCard"
+                          },
+                          "count": 1
+                        }
+                      },
+                      "text": "the Runner accesses that card unless they pay 3[credit]"
+                    }
+                  }
+                ]
+              },
+              "text": "You may place up to 3 advancement counters on 1 card installed in the root of a remote server"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 22038,
+  "is_playable": true
+}

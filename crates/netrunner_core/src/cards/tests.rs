@@ -31622,3 +31622,62 @@ mod reign_and_reverie_stage_3 {
         assert!(on.active_run.is_some());
     }
 }
+
+mod reign_and_reverie_stage_3c {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// "You may place up to 3 advancement counters on 1 card installed in
+    /// the root of a remote server. If you do, the Runner accesses that card
+    /// unless they pay 3[credit]": the access is the encounter's, and when it
+    /// is over the run goes back to it and on to HQ (CR 6.5.9a's shape).
+    #[test]
+    fn otoroshi_advances_a_remote_root_card_and_the_runner_accesses_it_mid_encounter_unless_they_pay_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: fixture_install_id("otoroshi"), card: id("otoroshi"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() },
+            crate::rules::InstalledCard { install_id: fixture_install_id("offworld_office"), card: id("offworld_office"), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() },
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        for _ in 0..4 {
+            let Some(window) = &state.paid_ability_window else { break };
+            let side = window.active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        let candidates = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!candidates.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "not a piece of ice: {candidates:?}");
+        let (picked, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the remote's agenda");
+        let (asked, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("chosen");
+        let (offered, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("3 counters");
+        assert_eq!(offered.corp.installed[1].advancement_tokens, 3);
+
+        let (paid, _) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3");
+        assert_eq!(paid.runner.resources.credits, Credits(7));
+        assert!(paid.active_run.as_ref().is_some_and(|run| run.access_state.is_none()), "no access, the run goes on");
+
+        let (accessing, _) = apply_action(&offered, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let mut accessing = accessing;
+        if let Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) = accessing.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone()) {
+            assert_eq!(selectable_cards, vec![crate::rules::AccessCandidate::Root(fixture_install_id("offworld_office"))]);
+            accessing = apply_action(&accessing, &registry, PlayerAction::SelectCardToAccess { candidate: selectable_cards[0].clone() }).expect("access it").0;
+        }
+        let (stolen, events) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("offworld_office") }).expect("steal it");
+        assert_eq!(stolen.runner.scored_agendas.len(), 1, "{events:?}");
+        let run = stolen.active_run.as_ref().expect("the run goes on");
+        assert!(run.access_state.is_none() && run.phase != crate::rules::RunPhase::EncounterIce, "the encounter is over: {:?}", run.phase);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::RunCompleted { .. })), "the run did not end at the access");
+        let (at_server, _) = crate::rules::test_support::through_movement(&stolen, &registry).expect("on to HQ");
+        assert!(at_server.active_run.as_ref().is_some_and(|run| run.server == ServerId::Hq));
+    }
+}

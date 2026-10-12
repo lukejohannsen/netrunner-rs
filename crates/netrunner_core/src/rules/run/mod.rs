@@ -8,7 +8,7 @@ pub use access::{
     resolve_steal, resolve_trash, trash_currently_accessed_card_without_cost,
 };
 pub(crate) use access::steal_accessed_ignoring_costs;
-pub(crate) use access::{access_cards, at_mid_access_window, move_on_if_left, breach, breaching, host_currently_accessed_card, is_being_accessed, move_currently_accessed_card, AccessedTo};
+pub(crate) use access::{access_cards, accessing_during_an_encounter, at_mid_access_window, move_on_if_left, breach, breaching, host_currently_accessed_card, is_being_accessed, move_currently_accessed_card, AccessedTo};
 pub use action::RunAction;
 pub use engine::{advance_run, start_run, start_run_ignoring_costs};
 pub(crate) use engine::{force_encounter, may_pay_run_cost, redirect_to, resolving_subroutines_of, start_breach};
