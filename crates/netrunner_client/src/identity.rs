@@ -112,6 +112,34 @@ pub fn key_lines_in(dir: Option<&Path>) -> Vec<String> {
     }
 }
 
+/// A badge's name as a file's stem: lower case, every run of anything
+/// but a letter or a digit one hyphen (`first-gauntlet`, from "First
+/// Gauntlet!").
+pub fn badge_stem(name: &str) -> String {
+    let mut stem = String::new();
+    for c in name.chars() {
+        if c.is_alphanumeric() {
+            stem.extend(c.to_lowercase());
+        } else if !stem.ends_with('-') && !stem.is_empty() {
+            stem.push('-');
+        }
+    }
+    stem.trim_end_matches('-').to_string()
+}
+
+/// Up to two letters for a badge drawn without a picture — the desktop's
+/// ring, the terminal's brackets: the first of each of the first
+/// two words, or the first two of a one-word name.
+pub fn badge_initials(name: &str) -> String {
+    let words: Vec<&str> = name.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()).collect();
+    let letters: String = match words.as_slice() {
+        [] => String::new(),
+        [one] => one.chars().take(2).collect(),
+        [first, second, ..] => first.chars().take(1).chain(second.chars().take(1)).collect(),
+    };
+    letters.to_uppercase()
+}
+
 /// The key at `path`, or a new one written there. A file that is there
 /// and cannot be read is an error and is left alone: replacing it would
 /// throw away the player's standing at every server without a word.

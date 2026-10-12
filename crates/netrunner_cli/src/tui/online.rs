@@ -44,8 +44,10 @@
 //! Hot-seat play on one screen is deliberately absent: it would show each
 //! player the other's hidden cards.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use ratatui::crossterm::event::KeyCode;
@@ -59,7 +61,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{Chair, LobbyInfo, TournamentInfo, TournamentState};
+use netrunner_server::protocol::{Chair, LadderRow, LobbyInfo, Profile, TournamentInfo, TournamentState};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
@@ -67,6 +69,7 @@ use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
 use netrunner_client::identity::{ProfileHere, PublicKey};
 use netrunner_client::online;
+use netrunner_client::servers::{self as server_list, ServerBook, ServerEdit};
 use netrunner_client::tournament;
 use netrunner_client::remote::{Attached, AttachedEvent};
 use netrunner_client::settings::format_name;
@@ -179,6 +182,9 @@ enum Row {
     JoinByCode,
     /// The server's tournaments, on a page of their own.
     Tournaments,
+    /// What this server keeps of the person, and the person's servers.
+    Profile,
+    Servers,
     Chair,
     CorpDeck,
     RunnerDeck,
@@ -193,6 +199,101 @@ enum Row {
 enum ServerField {
     Code,
     CodePassword,
+}
+
+/// A row of the person's servers (Phase 7 §14): each server, then a
+/// connection to an address or a ticket once, then Add.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServersRow {
+    Server(usize),
+    Once,
+    Add,
+}
+
+/// The person's servers (`netrunner_client::servers`), what each met one
+/// keeps of them, and the Server page it was opened from while attached.
+#[derive(Debug, Clone)]
+struct ServersPage {
+    book: ServerBook,
+    cursor: usize,
+    /// Each met server's answer about the person, by address.
+    profiles: BTreeMap<String, Vec<String>>,
+    page: Option<ServerPage>,
+}
+
+impl ServersPage {
+    fn rows(&self) -> Vec<ServersRow> {
+        (0..self.book.servers.len()).map(ServersRow::Server).chain([ServersRow::Once, ServersRow::Add]).collect()
+    }
+}
+
+/// Adding a server (`original` none), or editing one: Name, Address,
+/// Save.
+#[derive(Debug, Clone)]
+struct EditServerForm {
+    original: Option<String>,
+    name: String,
+    address: String,
+    cursor: usize,
+    editing: bool,
+}
+
+impl EditServerForm {
+    const ROWS: usize = 3;
+}
+
+/// A server's answer about the person, for its row: its address, and
+/// what it keeps of them or why it could not say.
+type ProfileAnswer = (String, Result<Option<Profile>, String>);
+
+/// Which of a profile's awards the chooser lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AwardKind {
+    Title,
+    Badge,
+}
+
+/// The profile page's rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProfileRow {
+    Title,
+    Badge,
+    Ladder,
+    Back,
+}
+
+const PROFILE_ROWS: [ProfileRow; 4] = [ProfileRow::Title, ProfileRow::Badge, ProfileRow::Ladder, ProfileRow::Back];
+
+/// What the server attached to keeps of the person (Phase 4 §10): the
+/// standing, the title and badge worn — each changed from a list of what
+/// was earned that scrolls, a pick worn at once — and a format's ladder.
+#[derive(Debug, Clone)]
+struct ProfilePage {
+    page: ServerPage,
+    cursor: usize,
+    /// The list open, and the row under its cursor (0 is None).
+    choosing: Option<(AwardKind, usize)>,
+    ladder_format: NsgFormat,
+    ladder: Option<Vec<LadderRow>>,
+}
+
+impl ProfilePage {
+    fn profile(&self) -> Option<&Profile> {
+        match &self.page.profile {
+            ProfileHere::Known(profile) => Some(profile),
+            _ => None,
+        }
+    }
+
+    fn earned(&self, kind: AwardKind) -> Vec<String> {
+        self.profile()
+            .map(|profile| match kind {
+                AwardKind::Title => &profile.titles,
+                AwardKind::Badge => &profile.badges,
+            })
+            .map(|earned| earned.iter().map(|award| award.name.clone()).collect())
+            .unwrap_or_default()
+    }
 }
 
 /// Attached: the page the connection is drawn on.
@@ -248,6 +349,11 @@ impl ServerPage {
     fn rows(&self) -> Vec<Row> {
         let mut rows: Vec<Row> = (0..self.lobbies.len()).map(Row::Lobby).collect();
         rows.extend([Row::Refresh, Row::Make, Row::Code, Row::CodePassword, Row::JoinByCode, Row::Tournaments]);
+        // A hosted server keeps nothing of anyone.
+        if !self.hosting {
+            rows.push(Row::Profile);
+        }
+        rows.push(Row::Servers);
         if self.lobby.is_some() {
             rows.push(Row::Chair);
             if self.chair != ChairChoice::Runner {
@@ -530,6 +636,11 @@ enum Mode {
     /// `large_enum_variant` is right that the enum should not.
     Tournament { page: ServerPage, list: TournamentsPage, tournament: Box<TournamentPage> },
     MakeTournament { page: ServerPage, list: TournamentsPage, form: MakeTournamentForm },
+    /// The person's servers, and the form a server is added or edited on.
+    Servers(Box<ServersPage>),
+    EditServer { list: Box<ServersPage>, form: EditServerForm },
+    /// What the server attached to keeps of the person.
+    Profile(Box<ProfilePage>),
     /// A spectator waiting for a place.
     Waiting { connecting: Connecting, status: String, back: Box<Mode> },
     Watch { address: String, editing: bool, matches: Vec<MatchSummary>, cursor: usize },
@@ -537,7 +648,7 @@ enum Mode {
 
 const HOME: [(&str, &str); 3] = [
     ("Host a game", "Run a game on this machine and give your opponent the address or the ticket"),
-    ("Join a server", "Attach to a host or a public server by address or ticket, browse its lobbies and find a game"),
+    ("Join a server", "Your servers by name, one the Default this screen connects to; or a host's address or ticket, once"),
     ("Watch a game", "List a server's matches and spectate one"),
 ];
 
@@ -578,6 +689,11 @@ pub struct OnlineScreen {
     /// The active deck a side, which a lobby's and a tournament's choice
     /// start on (`with_preferred`).
     preferred: [Option<String>; 2],
+    /// The address the connection went to, while attached to a server of
+    /// the person's (not one hosted here).
+    attached_url: Option<String>,
+    /// The servers' answers for their rows, as each comes.
+    profile_answers: Option<mpsc::Receiver<ProfileAnswer>>,
 }
 
 impl OnlineScreen {
@@ -606,7 +722,92 @@ impl OnlineScreen {
             relay,
             identity_dir: None,
             preferred: [None, None],
+            attached_url: None,
+            profile_answers: None,
         })
+    }
+
+    /// The person's list of servers, beside their key; `None` with no
+    /// data directory.
+    fn servers_path(&self) -> Option<PathBuf> {
+        self.identity_dir.as_deref().map(server_list::path_in)
+    }
+
+    fn book(&self) -> ServerBook {
+        self.servers_path().and_then(|path| ServerBook::load(&path).ok()).unwrap_or_default()
+    }
+
+    /// The list of servers, each met one asked what it keeps of the person
+    /// (each on its own socket, no key made to look); the one attached
+    /// answers on its own connection. `page` is the Server page it was
+    /// opened from, which Esc returns to.
+    fn servers_mode(&mut self, page: Option<ServerPage>) -> Mode {
+        let book = self.book();
+        let attached = page.as_ref().filter(|page| !page.hosting).and(self.attached_url.clone());
+        let asked: Vec<String> = book.servers.iter().filter(|server| server.key.is_some() && Some(&server.address) != attached.as_ref()).map(|server| server.address.clone()).collect();
+        let credentials = self.identity_dir.as_deref().and_then(|dir| netrunner_client::identity::existing(dir).ok().flatten());
+        let mut profiles = BTreeMap::new();
+        match (tokio::runtime::Handle::try_current(), credentials) {
+            (Ok(runtime), Some(credentials)) if !asked.is_empty() => {
+                let (tx, rx) = mpsc::channel();
+                for address in asked {
+                    profiles.insert(address.clone(), vec!["Asking…".to_string()]);
+                    let (tx, credentials) = (tx.clone(), credentials.clone());
+                    runtime.spawn(async move {
+                        let answer = match tokio::time::timeout(Duration::from_secs(10), netrunner_client::remote::profile(&address, &credentials)).await {
+                            Ok(Ok(profile)) => Ok(profile),
+                            Ok(Err(error)) => Err(error.to_string()),
+                            Err(_) => Err("No answer within 10s".to_string()),
+                        };
+                        let _ = tx.send((address, answer));
+                    });
+                }
+                self.profile_answers = Some(rx);
+            }
+            _ => {}
+        }
+        Mode::Servers(Box::new(ServersPage { book, cursor: 0, profiles, page }))
+    }
+
+    /// Connects to `url` by the person's key, `back` the page a failure
+    /// reopens. One connection at a time: whatever was attached is let go.
+    fn connect(&mut self, url: String, back: Mode) {
+        // A key file that is there and unreadable is shown, rather than
+        // playing a game that quietly counts for nothing.
+        let credentials = match &self.identity_dir {
+            Some(dir) => match netrunner_client::identity::Credentials::in_dir(dir) {
+                Ok(credentials) => Some(Box::new(credentials)),
+                Err(error) => {
+                    self.notice = Some(format!("Your key: {error}"));
+                    self.mode = back;
+                    return;
+                }
+            },
+            None => None,
+        };
+        self.disconnect();
+        self.used(&url);
+        self.attached_url = Some(url.clone());
+        let who = Who { player_name: self.player.clone(), credentials };
+        self.attached = Some(remote::spawn(url.clone(), Goal::Attach(who)));
+        self.mode = Mode::Connecting { status: format!("Connecting to {url}…"), back: Box::new(back) };
+    }
+
+    /// The Default, connected to as the screen opens (Phase 7 §14), when
+    /// there is one; Home otherwise.
+    pub fn connect_default(mut self) -> Self {
+        if let Some(address) = self.book().default_server().map(|server| server.address.clone()) {
+            self.connect(address, Mode::Home { cursor: 1 });
+        }
+        self
+    }
+
+    /// A change to the person's servers, written, and the list as the file
+    /// now has it.
+    fn edit_servers(&self, edit: &ServerEdit) -> Result<ServerBook, String> {
+        let path = self.servers_path().ok_or("No data directory, so the list of servers cannot be kept")?;
+        ServerBook::update(&path, |book| edit.apply(book))?;
+        ServerBook::load(&path)
     }
 
     pub fn with_identity_dir(mut self, dir: Option<std::path::PathBuf>) -> Self {
@@ -661,6 +862,7 @@ impl OnlineScreen {
     /// Lets the connection go, and the hosted server with it.
     fn disconnect(&mut self) {
         self.attached = None;
+        self.attached_url = None;
         self.hosting = None;
         self.hosting_lines.clear();
     }
@@ -677,6 +879,17 @@ impl OnlineScreen {
         if let Some(hosting) = &mut self.hosting {
             hosting.poll();
             self.hosting_lines = hosting_status(hosting);
+        }
+        // The servers' answers for their rows.
+        let answers: Vec<_> = self.profile_answers.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
+        if let Mode::Servers(list) | Mode::EditServer { list, .. } = &mut self.mode {
+            for (address, answer) in answers {
+                let lines = match answer {
+                    Ok(profile) => netrunner_client::identity::profile_lines(profile.as_ref()),
+                    Err(reason) => vec![reason],
+                };
+                list.profiles.insert(address, lines);
+            }
         }
         if let Some(step) = self.tick_attached() {
             return step;
@@ -721,15 +934,10 @@ impl OnlineScreen {
                     // The standing is asked on attaching and after every
                     // game, so the page shows the number the game moved.
                     self.attached.as_ref()?.profile();
-                    match &mut self.mode {
+                    match self.page_mut() {
                         // A reattach: the list is fresh, the rest stands.
-                        Mode::Server(page)
-                        | Mode::MakeLobby { page, .. }
-                        | Mode::PickDeck { page, .. }
-                        | Mode::Tournaments { page, .. }
-                        | Mode::Tournament { page, .. }
-                        | Mode::MakeTournament { page, .. } => page.lobbies = lobbies,
-                        _ => {
+                        Some(page) => page.lobbies = lobbies,
+                        None => {
                             let page = ServerPage::new(hosting, lobbies);
                             // A hosted server has one lobby, the format the
                             // host chose: the host is put in it, so the
@@ -777,9 +985,13 @@ impl OnlineScreen {
                     }
                 }
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) | AttachedEvent::ProfileRefused(reason) => self.notice = Some(reason),
-                // The ladder has no page yet (Phase 7 §14's terminal
-                // rows); `netrunner_cli ladder` prints one.
-                AttachedEvent::Ladder { .. } => {}
+                AttachedEvent::Ladder { format, rows } => {
+                    if let Mode::Profile(page) = &mut self.mode
+                        && page.ladder_format == format
+                    {
+                        page.ladder = Some(rows);
+                    }
+                }
                 AttachedEvent::Queued(position) => {
                     if let Some(page) = self.page_mut() {
                         page.seeking = Some(position);
@@ -809,7 +1021,8 @@ impl OnlineScreen {
                     self.notice = Some(error.to_string());
                     let back = match std::mem::replace(&mut self.mode, Mode::Home { cursor: 0 }) {
                         Mode::Connecting { back, .. } => *back,
-                        _ => Mode::Form(self.form(if hosting { FormKind::Host } else { FormKind::Join })),
+                        _ if hosting => Mode::Form(self.form(FormKind::Host)),
+                        _ => self.servers_mode(None),
                     };
                     self.disconnect();
                     self.mode = back;
@@ -833,6 +1046,8 @@ impl OnlineScreen {
             | Mode::Tournaments { page, .. }
             | Mode::Tournament { page, .. }
             | Mode::MakeTournament { page, .. } => Some(page),
+            Mode::Profile(profile) => Some(&mut profile.page),
+            Mode::Servers(list) | Mode::EditServer { list, .. } => list.page.as_mut(),
             _ => None,
         }
     }
@@ -896,7 +1111,7 @@ impl OnlineScreen {
                 KeyCode::Enter => {
                     self.mode = match cursor {
                         0 => Mode::Form(self.form(FormKind::Host)),
-                        1 => Mode::Form(self.form(FormKind::Join)),
+                        1 => self.servers_mode(None),
                         _ => Mode::Watch { address: self.default_address.clone(), editing: true, matches: Vec::new(), cursor: 0 },
                     };
                 }
@@ -922,6 +1137,9 @@ impl OnlineScreen {
             Mode::Tournaments { page, list } => self.tournaments_key(page, list, key),
             Mode::Tournament { page, list, tournament } => self.tournament_key(page, list, tournament, key),
             Mode::MakeTournament { page, list, form } => self.make_tournament_key(page, list, form, key),
+            Mode::Servers(list) => self.servers_key(list, key),
+            Mode::EditServer { list, form } => self.edit_server_key(list, form, key),
+            Mode::Profile(page) => self.profile_key(page, key),
             Mode::PickDeck { mut page, side, mut cursor } => {
                 let len = page.side_decks(side).len().max(1);
                 match key {
@@ -1037,19 +1255,9 @@ impl OnlineScreen {
     /// Submits a form: attaches to the address, or starts the server and
     /// attaches to it.
     fn go(&mut self, form: Form) -> OnlineStep {
-        // A key file that is there and unreadable is shown, rather than
-        // playing a game that quietly counts for nothing.
-        let credentials = match (form.kind, &self.identity_dir) {
-            (FormKind::Join, Some(dir)) => match netrunner_client::identity::Credentials::in_dir(dir) {
-                Ok(credentials) => Some(Box::new(credentials)),
-                Err(error) => {
-                    self.notice = Some(format!("Your key: {error}"));
-                    self.mode = Mode::Form(form);
-                    return OnlineStep::Continue;
-                }
-            },
-            _ => None,
-        };
+        // Joining is connecting by the key; hosting proves none, since a
+        // game on this machine is never rated.
+        let credentials = None;
         let (url, status) = match form.kind {
             FormKind::Join => {
                 if form.address.trim().is_empty() {
@@ -1058,8 +1266,8 @@ impl OnlineScreen {
                     return OnlineStep::Continue;
                 }
                 let url = normalize_address(&form.address);
-                self.used(&url);
-                (url.clone(), format!("Connecting to {url}…"))
+                self.connect(url, Mode::Form(form));
+                return OnlineStep::Continue;
             }
             FormKind::Host => {
                 let Ok(port) = form.port.parse::<u16>() else {
@@ -1082,6 +1290,7 @@ impl OnlineScreen {
             }
         };
         let who = Who { player_name: self.player.clone(), credentials };
+        self.attached_url = None;
         self.attached = Some(remote::spawn(url, Goal::Attach(who)));
         self.mode = Mode::Connecting { status, back: Box::new(Mode::Form(form)) };
         OnlineStep::Continue
@@ -1123,7 +1332,7 @@ impl OnlineScreen {
             KeyCode::Esc | KeyCode::Char('q') => {
                 let hosting = page.hosting;
                 self.disconnect();
-                self.mode = Mode::Form(self.form(if hosting { FormKind::Host } else { FormKind::Join }));
+                self.mode = if hosting { Mode::Form(self.form(FormKind::Host)) } else { self.servers_mode(None) };
                 return;
             }
             KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => page.cursor = (page.cursor + len - 1) % len,
@@ -1194,13 +1403,235 @@ impl OnlineScreen {
                 Row::Disconnect => {
                     let hosting = page.hosting;
                     self.disconnect();
-                    self.mode = Mode::Form(self.form(if hosting { FormKind::Host } else { FormKind::Join }));
+                    self.mode = if hosting { Mode::Form(self.form(FormKind::Host)) } else { self.servers_mode(None) };
+                    return;
+                }
+                Row::Profile => {
+                    if let ProfileHere::Known(_) = page.profile {
+                        let ladder_format = page.lobby.as_ref().map_or(self.format, |lobby| lobby.format);
+                        attached.ladder(ladder_format);
+                        self.mode = Mode::Profile(Box::new(ProfilePage { page, cursor: 0, choosing: None, ladder_format, ladder: None }));
+                        return;
+                    }
+                    self.notice = Some(match page.profile {
+                        ProfileHere::NoKey => "You connected without a key, so this server keeps nothing of you".to_string(),
+                        ProfileHere::Unkept => "This server keeps nothing: it rates no game and grants nothing".to_string(),
+                        _ => "Asking the server — try again in a moment".to_string(),
+                    });
+                }
+                Row::Servers => {
+                    self.mode = self.servers_mode(Some(page));
                     return;
                 }
             },
             _ => {}
         }
         self.mode = Mode::Server(page);
+    }
+
+    /// A key on the list of servers: Enter connects a row (one at a
+    /// time; the one attached is its Server page again), opens the
+    /// once-only form, or Add; `d` makes a row the Default or not, `e`
+    /// edits it, `x` or Delete removes it.
+    fn servers_key(&mut self, mut list: Box<ServersPage>, key: KeyCode) {
+        let rows = list.rows();
+        let len = rows.len();
+        list.cursor = list.cursor.min(len - 1);
+        let row = rows[list.cursor];
+        let address = match row {
+            ServersRow::Server(index) => Some(list.book.servers[index].address.clone()),
+            _ => None,
+        };
+        let edit = match (key, &address) {
+            (KeyCode::Char('d'), Some(address)) => {
+                let is_default = list.book.default.as_deref() == Some(address.as_str());
+                Some(ServerEdit::Default((!is_default).then(|| address.clone())))
+            }
+            (KeyCode::Char('x') | KeyCode::Delete, Some(address)) => Some(ServerEdit::Remove(address.clone())),
+            _ => None,
+        };
+        if let Some(edit) = edit {
+            match self.edit_servers(&edit) {
+                Ok(book) => {
+                    list.book = book;
+                    list.cursor = list.cursor.min(list.rows().len() - 1);
+                }
+                Err(reason) => self.notice = Some(reason),
+            }
+            self.mode = Mode::Servers(list);
+            return;
+        }
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = match list.page {
+                    Some(page) => Mode::Server(page),
+                    None => Mode::Home { cursor: 1 },
+                };
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => list.cursor = (list.cursor + len - 1) % len,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => list.cursor = (list.cursor + 1) % len,
+            KeyCode::Char('e') if address.is_some() => {
+                let server = &list.book.servers[list.cursor];
+                let form = EditServerForm { original: Some(server.address.clone()), name: server.name.clone(), address: server.address.clone(), cursor: 0, editing: false };
+                self.mode = Mode::EditServer { list, form };
+                return;
+            }
+            KeyCode::Enter => match row {
+                ServersRow::Server(_) => {
+                    let address = address.expect("a server's row");
+                    if self.attached_url.as_deref() == Some(address.as_str())
+                        && let Some(page) = list.page.take()
+                    {
+                        self.mode = Mode::Server(page);
+                        return;
+                    }
+                    list.page = None;
+                    self.connect(address, Mode::Servers(list));
+                    return;
+                }
+                ServersRow::Once => {
+                    self.mode = Mode::Form(self.form(FormKind::Join));
+                    return;
+                }
+                ServersRow::Add => {
+                    let form = EditServerForm { original: None, name: String::new(), address: String::new(), cursor: 0, editing: true };
+                    self.mode = Mode::EditServer { list, form };
+                    return;
+                }
+            },
+            _ => {}
+        }
+        self.mode = Mode::Servers(list);
+    }
+
+    /// A key on the form a server is added or edited on. Save checks the
+    /// change against the list first, so a name taken is said here.
+    fn edit_server_key(&mut self, mut list: Box<ServersPage>, mut form: EditServerForm, key: KeyCode) {
+        if form.editing {
+            let text = if form.cursor == 0 { &mut form.name } else { &mut form.address };
+            match key {
+                KeyCode::Char(c) if !c.is_control() => text.push(c),
+                KeyCode::Backspace => {
+                    text.pop();
+                }
+                KeyCode::Enter | KeyCode::Esc | KeyCode::Tab | KeyCode::Down => {
+                    form.editing = false;
+                    if matches!(key, KeyCode::Tab | KeyCode::Down) {
+                        form.cursor = (form.cursor + 1) % EditServerForm::ROWS;
+                    }
+                }
+                _ => {}
+            }
+            self.mode = Mode::EditServer { list, form };
+            return;
+        }
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Servers(list);
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => form.cursor = (form.cursor + EditServerForm::ROWS - 1) % EditServerForm::ROWS,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => form.cursor = (form.cursor + 1) % EditServerForm::ROWS,
+            KeyCode::Enter if form.cursor < 2 => form.editing = true,
+            KeyCode::Enter => {
+                let edit = match &form.original {
+                    Some(address) => ServerEdit::Edit { address: address.clone(), name: form.name.clone(), new_address: form.address.clone() },
+                    None => ServerEdit::Add { name: form.name.clone(), address: form.address.clone() },
+                };
+                match edit.check(&list.book).and_then(|()| self.edit_servers(&edit)) {
+                    Ok(book) => {
+                        list.book = book;
+                        self.mode = Mode::Servers(list);
+                        return;
+                    }
+                    Err(reason) => self.notice = Some(reason),
+                }
+            }
+            _ => {}
+        }
+        self.mode = Mode::EditServer { list, form };
+    }
+
+    /// A key on the profile page, or on the list of awards open over it:
+    /// there ↑ ↓, Page Up/Down, Home and End move, Enter wears the row
+    /// at once and Esc closes it.
+    fn profile_key(&mut self, mut page: Box<ProfilePage>, key: KeyCode) {
+        let Some(attached) = &self.attached else {
+            self.disconnect();
+            self.mode = Mode::Home { cursor: 1 };
+            return;
+        };
+        if let Some((kind, mut cursor)) = page.choosing {
+            let earned = page.earned(kind);
+            let last = earned.len();
+            match key {
+                KeyCode::Up | KeyCode::Char('k') => cursor = cursor.saturating_sub(1),
+                KeyCode::Down | KeyCode::Char('j') => cursor = (cursor + 1).min(last),
+                KeyCode::PageUp => cursor = cursor.saturating_sub(10),
+                KeyCode::PageDown => cursor = (cursor + 10).min(last),
+                KeyCode::Home => cursor = 0,
+                KeyCode::End => cursor = last,
+                KeyCode::Enter => {
+                    let picked = cursor.checked_sub(1).map(|index| earned[index].clone());
+                    let profile = page.profile().expect("a list opens on a known profile");
+                    let (title, badge) = match kind {
+                        AwardKind::Title => (picked, profile.badge.clone()),
+                        AwardKind::Badge => (profile.title.clone(), picked),
+                    };
+                    attached.set_profile(title, badge);
+                    page.choosing = None;
+                    self.mode = Mode::Profile(page);
+                    return;
+                }
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    page.choosing = None;
+                    self.mode = Mode::Profile(page);
+                    return;
+                }
+                _ => {}
+            }
+            page.choosing = Some((kind, cursor));
+            self.mode = Mode::Profile(page);
+            return;
+        }
+        let len = PROFILE_ROWS.len();
+        let row = PROFILE_ROWS[page.cursor.min(len - 1)];
+        let step_ladder = |page: &mut ProfilePage, back: bool| {
+            page.ladder_format = step_format(page.ladder_format, back);
+            page.ladder = None;
+            attached.ladder(page.ladder_format);
+        };
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.mode = Mode::Server(page.page);
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => page.cursor = (page.cursor + len - 1) % len,
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => page.cursor = (page.cursor + 1) % len,
+            KeyCode::Left if row == ProfileRow::Ladder => step_ladder(&mut page, true),
+            KeyCode::Right | KeyCode::Char(' ') if row == ProfileRow::Ladder => step_ladder(&mut page, false),
+            KeyCode::Enter => match row {
+                ProfileRow::Title | ProfileRow::Badge => {
+                    let kind = if row == ProfileRow::Title { AwardKind::Title } else { AwardKind::Badge };
+                    let earned = page.earned(kind);
+                    if earned.is_empty() {
+                        self.notice = Some("None earned here yet: events and the server's operator grant them".to_string());
+                    } else {
+                        let worn = page.profile().and_then(|profile| if kind == AwardKind::Title { profile.title.clone() } else { profile.badge.clone() });
+                        let cursor = worn.and_then(|worn| earned.iter().position(|name| *name == worn)).map_or(0, |index| index + 1);
+                        page.choosing = Some((kind, cursor));
+                    }
+                }
+                ProfileRow::Ladder => step_ladder(&mut page, false),
+                ProfileRow::Back => {
+                    self.mode = Mode::Server(page.page);
+                    return;
+                }
+            },
+            _ => {}
+        }
+        self.mode = Mode::Profile(page);
     }
 
     /// A key on the Make a lobby form.
@@ -1515,6 +1946,33 @@ impl OnlineScreen {
                 draw_list(frame, body, "Hold a tournament — run as Null Signal Games run theirs: two decks locked per entrant, Swiss rounds", items, Some(form.cursor));
                 if form.editing { "Type · Enter or Tab finishes" } else { "Up/Down choose · Enter edits, steps or holds · Esc back" }
             }
+            Mode::Servers(list) => {
+                self.draw_servers(frame, body, list);
+                "Up/Down choose · Enter connects or opens · d default · e edit · x remove · Esc back"
+            }
+            Mode::EditServer { form, .. } => {
+                let text = |editing: bool, value: &str| if editing { format!("{value}▏") } else { value.to_string() };
+                let rows = [
+                    format!("Name      {}", text(form.editing && form.cursor == 0, &form.name)),
+                    format!("Address   {}", text(form.editing && form.cursor == 1, &form.address)),
+                    "[ Save ]".to_string(),
+                ];
+                let items = rows.into_iter().map(ListItem::new).collect();
+                let title = match &form.original {
+                    Some(_) => "Edit a server — a new address is another server, and its key is forgotten",
+                    None => "Add a server",
+                };
+                draw_list(frame, body, title, items, Some(form.cursor));
+                if form.editing { "Type · Enter or Tab finishes" } else { "Up/Down choose · Enter edits or saves · Esc back" }
+            }
+            Mode::Profile(page) => {
+                self.draw_profile(frame, body, page);
+                if page.choosing.is_some() {
+                    "Up/Down, Page Up/Down, Home/End move · Enter wears it · Esc closes"
+                } else {
+                    "Up/Down choose · Enter changes · Left/Right steps the ladder's format · Esc back"
+                }
+            }
             Mode::Watch { address, editing, matches, cursor } => {
                 let [top, list] =
                     Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).areas(body);
@@ -1614,6 +2072,8 @@ impl OnlineScreen {
                 Row::CodePassword => format!("Its password            {}", text(ServerField::CodePassword, &page.code_password, "(none)")),
                 Row::JoinByCode => "[ Join by code ]".to_string(),
                 Row::Tournaments => "Tournaments…".to_string(),
+                Row::Profile => "Your profile here…".to_string(),
+                Row::Servers => "Servers…".to_string(),
                 Row::Chair => format!("Chair            ‹ {} ›", page.chair.label()),
                 Row::CorpDeck => format!("Corp deck        {}", page.chosen(Side::Corp).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
                 Row::RunnerDeck => format!("Runner deck      {}", page.chosen(Side::Runner).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
@@ -1631,6 +2091,119 @@ impl OnlineScreen {
             None => "Lobbies — join one to look for a game".to_string(),
         };
         draw_list(frame, list, &title, items, Some(page.cursor.min(page.rows().len() - 1)));
+    }
+}
+
+impl OnlineScreen {
+    /// What the person calls the server at `address`: its name in their
+    /// list, else the address.
+    fn server_name(&self, address: &str) -> String {
+        self.book().find(address).map_or_else(|| address.to_string(), |server| server.name.clone())
+    }
+
+    /// The list of servers: a row each — its name and tags, its address,
+    /// what it keeps of the person — then Connect once and Add; and under
+    /// it what this machine knows.
+    fn draw_servers(&self, frame: &mut Frame, area: Rect, list: &ServersPage) {
+        let local = netrunner_client::identity::key_lines_in(self.identity_dir.as_deref());
+        let local: Vec<Line> = local.into_iter().take(2).map(Line::from).collect();
+        let [top, bottom] = Layout::default().direction(Direction::Vertical).constraints([Constraint::Min(0), Constraint::Length(local.len() as u16 + 2)]).areas(area);
+        let attached = list.page.as_ref().filter(|page| !page.hosting).and(self.attached_url.as_deref());
+        let dim = Style::default().fg(Color::Gray);
+        let items: Vec<ListItem> = list
+            .rows()
+            .into_iter()
+            .map(|row| match row {
+                ServersRow::Server(index) => {
+                    let server = &list.book.servers[index];
+                    let mut tags = Vec::new();
+                    if list.book.default.as_deref() == Some(server.address.as_str()) {
+                        tags.push("Default");
+                    }
+                    if attached == Some(server.address.as_str()) {
+                        tags.push("Connected");
+                    }
+                    let title = if tags.is_empty() { server.name.clone() } else { format!("{} · {}", server.name, tags.join(" · ")) };
+                    let mut lines = vec![Line::from(Span::styled(title, Style::default().add_modifier(Modifier::BOLD)))];
+                    if server.name != server.address {
+                        lines.push(Line::from(Span::styled(format!("  {}", server.address), dim)));
+                    }
+                    let about: Vec<String> = match (attached == Some(server.address.as_str()), list.page.as_ref(), list.profiles.get(&server.address)) {
+                        (true, Some(page), _) => netrunner_client::identity::profile_lines(match &page.profile {
+                            ProfileHere::Known(profile) => Some(profile),
+                            _ => None,
+                        }),
+                        (_, _, Some(lines)) => lines.clone(),
+                        _ if server.key.is_none() => vec!["Not met yet: what it keeps of you is shown once you have connected".to_string()],
+                        _ => Vec::new(),
+                    };
+                    lines.extend(about.into_iter().map(|line| Line::from(Span::styled(format!("  {line}"), dim))));
+                    ListItem::new(lines)
+                }
+                ServersRow::Once => ListItem::new("Connect once to an address or a host's ticket…"),
+                ServersRow::Add => ListItem::new("Add a server…"),
+            })
+            .collect();
+        let title = if list.book.servers.is_empty() { "Servers — none yet; one you connect to is listed here" } else { "Servers" };
+        draw_list(frame, top, title, items, Some(list.cursor.min(list.rows().len() - 1)));
+        frame.render_widget(Paragraph::new(local).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("On this machine")), bottom);
+    }
+
+    /// The profile page: the standing, the title and badge rows and the
+    /// ladder; and over them, while open, the list a title or a badge is
+    /// picked from, which scrolls with its cursor.
+    fn draw_profile(&self, frame: &mut Frame, area: Rect, page: &ProfilePage) {
+        let Some(profile) = page.profile() else { return };
+        let mut head: Vec<Line> = netrunner_client::identity::standing_lines(&profile.standings).into_iter().map(Line::from).collect();
+        if head.is_empty() {
+            head.push(Line::from("No rated game here yet"));
+        }
+        let ladder: Vec<Line> = match &page.ladder {
+            None => vec![Line::from("Asking…")],
+            Some(rows) if rows.is_empty() => vec![Line::from(format!("Nobody has {} rated games here yet", netrunner_server::protocol::LADDER_MIN_GAMES))],
+            Some(rows) => rows
+                .iter()
+                .enumerate()
+                .map(|(place, row)| {
+                    let line = netrunner_client::identity::ladder_line(place + 1, row);
+                    if page.page.key.as_ref() == Some(&row.key) { Line::from(Span::styled(format!("{line} · you"), Style::default().add_modifier(Modifier::BOLD))) } else { Line::from(line) }
+                })
+                .collect(),
+        };
+        let [top, rows_area, bottom] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(head.len() as u16 + 2), Constraint::Length(PROFILE_ROWS.len() as u16 + 2), Constraint::Min(0)])
+            .areas(area);
+        let name = self.attached_url.as_deref().map(|url| self.server_name(url)).unwrap_or_else(|| "this server".to_string());
+        frame.render_widget(Paragraph::new(head).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(format!("Your profile at {name}"))), top);
+        let worn = |worn: &Option<String>, count: usize, glyph: bool| match worn {
+            Some(name) if glyph => format!("[{}] {name}  ({count} earned)", netrunner_client::identity::badge_initials(name)),
+            Some(name) => format!("{name}  ({count} earned)"),
+            None if count == 0 => "None earned here yet".to_string(),
+            None => format!("None worn  ({count} earned)"),
+        };
+        let items: Vec<ListItem> = PROFILE_ROWS
+            .iter()
+            .map(|row| match row {
+                ProfileRow::Title => ListItem::new(format!("Title    {}", worn(&profile.title, profile.titles.len(), false))),
+                ProfileRow::Badge => ListItem::new(format!("Badge    {}", worn(&profile.badge, profile.badges.len(), true))),
+                ProfileRow::Ladder => ListItem::new(format!("Ladder   ‹ {} ›", capitalised(format_name(page.ladder_format)))),
+                ProfileRow::Back => ListItem::new("[ Back ]"),
+            })
+            .collect();
+        draw_list(frame, rows_area, "Enter changes what you wear", items, Some(page.cursor.min(PROFILE_ROWS.len() - 1)));
+        frame.render_widget(Paragraph::new(ladder).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Ladder")), bottom);
+        if let Some((kind, cursor)) = page.choosing {
+            let earned = page.earned(kind);
+            let mut items = vec![ListItem::new("None")];
+            items.extend(earned.iter().map(|name| ListItem::new(if kind == AwardKind::Badge { format!("[{}] {name}", netrunner_client::identity::badge_initials(name)) } else { name.clone() })));
+            let width = area.width.saturating_sub(8).min(60);
+            let height = area.height.saturating_sub(4).min(earned.len() as u16 + 3);
+            let popup = Rect { x: area.x + (area.width - width) / 2, y: area.y + (area.height - height) / 2, width, height };
+            frame.render_widget(ratatui::widgets::Clear, popup);
+            let title = format!("{} — {} earned", if kind == AwardKind::Title { "Wear a title" } else { "Wear a badge" }, earned.len());
+            draw_list(frame, popup, &title, items, Some(cursor));
+        }
     }
 }
 
@@ -1895,7 +2468,9 @@ mod tests {
     /// Join → the address typed → Connect, then the Server page with the
     /// lobbies listed.
     async fn join(screen: &mut OnlineScreen, address: &str) {
-        press(screen, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
+        // Join a server is the list of servers, whose first row with none
+        // listed is Connect once, the address form.
+        press(screen, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter, KeyCode::Enter]);
         press(screen, &vec![KeyCode::Backspace; 40]);
         type_text(screen, address);
         press(screen, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
@@ -1933,11 +2508,128 @@ mod tests {
         assert!(screen.hosting.is_none() && screen.attached.is_none());
     }
 
+    /// The list of servers is edited on its rows (Phase 7 §14): Add on a
+    /// form checked against the list, `d` the Default and back, `e` a
+    /// rename, `x` a removal — each written to the file beside the key.
+    #[test]
+    fn the_servers_are_added_made_default_renamed_and_removed_from_the_list() {
+        let (mut screen, dir) = screen("servers");
+        let book = || ServerBook::load(&server_list::path_in(&dir.join("identity"))).unwrap();
+        press(&mut screen, &[KeyCode::Down, KeyCode::Enter, KeyCode::Down]);
+        assert!(matches!(&screen.mode, Mode::Servers(list) if list.rows() == vec![ServersRow::Once, ServersRow::Add]));
+        press(&mut screen, &[KeyCode::Enter]);
+        type_text(&mut screen, "Club");
+        press(&mut screen, &[KeyCode::Tab, KeyCode::Enter]);
+        type_text(&mut screen, "club.example.net");
+        press(&mut screen, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Servers(_)), "{:?}", screen.notice);
+        assert_eq!(book().servers.iter().map(|server| (server.name.as_str(), server.address.as_str())).collect::<Vec<_>>(), [("Club", "ws://club.example.net:8080")]);
+        // The same name again is refused on the form, and nothing written.
+        let Mode::Servers(list) = &screen.mode else { panic!() };
+        let add = list.rows().iter().position(|row| *row == ServersRow::Add).unwrap();
+        if let Mode::Servers(list) = &mut screen.mode {
+            list.cursor = add;
+        }
+        press(&mut screen, &[KeyCode::Enter]);
+        type_text(&mut screen, "club");
+        press(&mut screen, &[KeyCode::Tab, KeyCode::Enter]);
+        type_text(&mut screen, "elsewhere");
+        press(&mut screen, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::EditServer { .. }) && screen.notice.as_deref().is_some_and(|notice| notice.contains("already called")), "{:?}", screen.notice);
+        press(&mut screen, &[KeyCode::Esc]);
+        if let Mode::Servers(list) = &mut screen.mode {
+            list.cursor = 0;
+        }
+        press(&mut screen, &[KeyCode::Char('d')]);
+        assert_eq!(book().default.as_deref(), Some("ws://club.example.net:8080"));
+        press(&mut screen, &[KeyCode::Char('d')]);
+        assert_eq!(book().default, None, "d again unmakes it");
+        press(&mut screen, &[KeyCode::Char('e'), KeyCode::Enter]);
+        press(&mut screen, &[KeyCode::Backspace; 10]);
+        type_text(&mut screen, "The Club");
+        press(&mut screen, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        assert_eq!(book().servers[0].name, "The Club");
+        press(&mut screen, &[KeyCode::Char('x')]);
+        assert!(book().servers.is_empty());
+        press(&mut screen, &[KeyCode::Esc]);
+        assert!(matches!(screen.mode, Mode::Home { cursor: 1 }));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A Default is connected to as the screen opens, and the profile
+    /// page there wears a title the store says was earned, picked from a
+    /// list that scrolls (Phase 7 §14).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_default_is_connected_to_and_a_title_is_worn_from_the_list() {
+        let dir = std::env::temp_dir().join(format!("netrunner_online_profile_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let credentials = netrunner_client::identity::Credentials::in_dir(&dir.join("identity")).unwrap();
+        let key = credentials.identity.public_key().rating_id();
+        let data = dir.join("daemon");
+        std::fs::create_dir_all(&data).unwrap();
+        let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&data.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+        store.saw_player(&key, "case", 1).await.unwrap();
+        for (index, name) in ["Gauntlet Runner", "Founder", "Glacier Breaker"].into_iter().enumerate() {
+            store.grant(&netrunner_store::Award { key: key.clone(), kind: "title".into(), name: name.into(), earned_at: index as i64, source: "event:abc".into() }).await.unwrap();
+        }
+        store.close().await;
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.unwrap();
+        let url = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        ServerBook::update(&server_list::path_in(&dir.join("identity")), |book| {
+            ServerEdit::Add { name: "Club".into(), address: url.clone() }.apply(book)?;
+            ServerEdit::Default(Some(url.clone())).apply(book)
+        })
+        .unwrap();
+
+        let mut screen = OnlineScreen::open(&dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, "case".to_string(), "ws://127.0.0.1:8080".into(), Ok(Relay::Off))
+            .unwrap()
+            .with_identity_dir(Some(dir.join("identity")))
+            .connect_default();
+        assert!(matches!(screen.mode, Mode::Connecting { .. }), "the Default is dialled as the screen opens");
+        until(&mut screen, "the profile", |screen| server_page(screen).is_some_and(|page| matches!(page.profile, ProfileHere::Known(_)))).await;
+        let Mode::Server(page) = &mut screen.mode else { panic!() };
+        page.cursor = page.rows().iter().position(|row| *row == Row::Profile).unwrap();
+        press(&mut screen, &[KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Profile(_)), "{:?}", screen.notice);
+        until(&mut screen, "the ladder", |screen| matches!(&screen.mode, Mode::Profile(page) if page.ladder.is_some())).await;
+        // Enter on Title opens the list; End is the last earned, worn at once.
+        press(&mut screen, &[KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Profile(page) if page.choosing == Some((AwardKind::Title, 0))));
+        // Drawn, the list over the page, at a small terminal's size and a
+        // large one's: what is on screen is the list's own rows.
+        for (width, height) in [(80, 24), (160, 48)] {
+            let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+            terminal.draw(|frame| screen.draw(frame, frame.area())).unwrap();
+            let shown: String = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect();
+            assert!(shown.contains("Wear a title — 3 earned") && shown.contains("Glacier Breaker"), "{shown}");
+        }
+        press(&mut screen, &[KeyCode::End, KeyCode::Enter]);
+        until(&mut screen, "the title worn", |screen| matches!(&screen.mode, Mode::Profile(page) if page.profile().is_some_and(|profile| profile.title.as_deref() == Some("Glacier Breaker")))).await;
+        // Esc to the Server page, then Servers: the Default is the row
+        // connected to.
+        press(&mut screen, &[KeyCode::Esc]);
+        let Mode::Server(page) = &mut screen.mode else { panic!() };
+        page.cursor = page.rows().iter().position(|row| *row == Row::Servers).unwrap();
+        press(&mut screen, &[KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Servers(list) if list.page.is_some() && list.book.default.as_deref() == Some(url.as_str())));
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
+        terminal.draw(|frame| screen.draw(frame, frame.area())).unwrap();
+        let shown: String = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect();
+        assert!(shown.contains("Club · Default · Connected") && shown.contains("Wearing the title Glacier Breaker"), "{shown}");
+        press(&mut screen, &[KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Server(_)), "Enter on the row connected to is its Server page again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn escape_walks_back_out() {
         let (mut screen, _) = screen("escape");
         press(&mut screen, &[KeyCode::Down, KeyCode::Enter]);
-        assert!(matches!(&screen.mode, Mode::Form(form) if form.kind == FormKind::Join));
+        assert!(matches!(&screen.mode, Mode::Servers(_)), "Join a server is the list of servers");
+        press(&mut screen, &[KeyCode::Enter]);
+        assert!(matches!(&screen.mode, Mode::Form(form) if form.kind == FormKind::Join), "Connect once is the address form");
         press(&mut screen, &[KeyCode::Esc]);
         assert!(matches!(screen.mode, Mode::Home { cursor: 1 }));
         assert!(matches!(screen.key(KeyCode::Esc), OnlineStep::Back));
