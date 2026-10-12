@@ -162,8 +162,24 @@ impl fmt::Debug for Store {
 }
 
 /// The URL that opens (and makes) the SQLite file at `path`.
+///
+/// Every byte of the path but an unreserved one is percent-encoded.
+/// `sqlx::Any` parses the URL as a URL before the SQLite driver reads
+/// the file name back out of it and percent-decodes it, so a path
+/// written in raw was mangled wherever it held something a URL treats
+/// as syntax: a Windows path (`C:\Users\…`, the drive's colon and every
+/// backslash) never opened, and a `?` or `#` anywhere cut it short.
 pub fn sqlite_url(path: &std::path::Path) -> String {
-    format!("sqlite://{}?mode=rwc", path.display())
+    let mut url = String::from("sqlite://");
+    for &byte in path.as_os_str().as_encoded_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~') {
+            url.push(char::from(byte));
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    url.push_str("?mode=rwc");
+    url
 }
 
 impl Store {
@@ -709,6 +725,25 @@ mod tests {
             store.close().await;
             place.remove().await;
         }
+    }
+
+    /// What a URL treats as syntax, in a directory's name. Linux allows
+    /// every character a Windows path is made of, so there the name holds
+    /// a drive's colon and backslashes too; on Windows the temp directory
+    /// itself brings them (`C:\\Users\\…`), and the name keeps to what
+    /// Windows allows.
+    #[tokio::test]
+    async fn a_path_with_what_a_url_treats_as_syntax_opens_where_it_says() {
+        let name = if cfg!(windows) { "netrunner_store a#b%c d" } else { "netrunner_store C:\\Users\\a?b#c%d e" };
+        let dir = std::env::temp_dir().join(format!("{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(SQLITE_FILE);
+        let store = Store::open(&sqlite_url(&path)).await.unwrap_or_else(|error| panic!("{}: {error}", sqlite_url(&path)));
+        store.saw_player("key:ann", "ann", 1).await.unwrap();
+        store.close().await;
+        assert!(path.is_file(), "the file is where the path says, not at a prefix of it");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

@@ -613,10 +613,7 @@ impl CardPicker {
     /// Esc: one level up. `false` when already at the top, which is the
     /// caller's cue to close the inspector.
     pub fn back(&mut self) -> bool {
-        if self.card.take().is_some() {
-            return true;
-        }
-        false
+        self.card.take().is_some()
     }
 
     pub fn zone_labels(&self) -> Vec<String> {

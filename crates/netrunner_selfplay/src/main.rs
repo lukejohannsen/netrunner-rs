@@ -245,11 +245,11 @@ enum SelfPlayError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    #[cfg(not(feature = "onnx"))]
     /// Two decks no published format admits together, which no pair of
     /// shipped decks is (`decks::match_format`).
     #[error("the two decks are legal in no published format together")]
     NoFormat,
+    #[cfg(not(feature = "onnx"))]
     #[error("--model-path was given but this binary was built without the `onnx` feature")]
     OnnxFeatureDisabled,
     #[cfg(feature = "onnx")]
