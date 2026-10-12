@@ -704,7 +704,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
         let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
-        let as_agenda = netrunner_core::dsl::AsAgenda { points: 0, cannot_forfeit: false, subtype: Some(netrunner_core::dsl::CardSubtype::Assassination) };
+        let as_agenda = netrunner_core::dsl::AsAgenda { points: 0, cannot_forfeit: false, subtype: Some(netrunner_core::dsl::CardSubtype::Assassination), to_the_runner: false };
         state.runner.scored_agendas = vec![netrunner_core::rules::ScoredAgenda { as_agenda: Some(as_agenda), ..netrunner_core::rules::ScoredAgenda::plain(CardId("jeitinho".into())) }];
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         let scored = score_area(&view, Side::Runner, &registry);
