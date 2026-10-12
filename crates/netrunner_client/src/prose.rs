@@ -28,7 +28,7 @@
 //! which is still a word rather than a number.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{DeckEnd, Discount, 
+use netrunner_core::dsl::{CountedRecurring, RecurringCredits, DeckEnd, Discount, 
     Amount, EffectDuration, CardDefinition, CardFilter, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount, TrashedFrom,
 };
@@ -792,10 +792,11 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
     // refill was two trigger lines ("On install", "On turn start") that
     // said when it happened and not what the credits were for.
     if let Some(credits) = card.recurring_credits {
-        lines.push(format!(
-            "• [recurring] → when this becomes active, and before your turn begins, refill to {}",
-            plural(credits, "hosted credit", "hosted credits")
-        ));
+        let up_to = match credits {
+            RecurringCredits::Fixed(n) => plural(n, "hosted credit", "hosted credits"),
+            RecurringCredits::Counted(CountedRecurring::HostedCounters) => "a hosted credit for each counter on it".to_string(),
+        };
+        lines.push(format!("• [recurring] → when this becomes active, and before your turn begins, refill to {up_to}"));
     }
     if !card.pays_for.is_empty() {
         let purposes: Vec<String> = card.pays_for.iter().map(describe_pays_for).collect();
@@ -858,6 +859,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::DuringRuns => "during runs".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),
         PaysFor::DuringRunsOnCentralServers => "during runs on central servers".to_string(),
+        PaysFor::DuringRunsOn(server) => format!("during runs on {}", crate::board::action_map::server_name(*server)),
         PaysFor::DuringSuccessfulRuns => "for the remainder of a successful run".to_string(),
         PaysFor::UsingDuringRuns(filter) => format!("to use a card matching {} during runs", humanize(format!("{filter:?}"))),
     }

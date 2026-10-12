@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "crypsis", "darwin", "datasucker", "fermenter", "hantu", "hemorrhage", "imp", "leech", "medium", "parasite", "pelangi", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "crypsis", "darwin", "datasucker", "fermenter", "hantu", "hemorrhage", "imp", "leech", "medium", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -30978,5 +30978,43 @@ mod revised_core {
         own.runner.grip = vec![id("pan_weave"), id("sure_gamble"), id("sure_gamble")];
         let (installed, _) = close_all_windows(apply_action(&own, &registry, PlayerAction::InstallHardware { card_id: id("pan_weave"), host: None }).expect("install").0, &registry);
         assert_eq!(installed.runner.grip.len(), 1, "the Runner's own meat damage is not the Corp's to increase");
+    }
+
+    // ---- Stage 7: credits beside another kind of counter ----
+
+    #[test]
+    fn pheromones_hosts_a_credit_per_virus_counter_for_runs_on_hq_and_grows_on_successful_hq_runs() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("pheromones")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("pheromones"), host: None, trash_first: false }).expect("install");
+        let rig = |state: &GameState| state.runner.rig.iter().find(|card| card.card == id("pheromones")).map(|card| (card.counters, card.credits)).expect("installed");
+        assert_eq!(rig(&installed), (0, 0), "X is 0 as it becomes active");
+
+        let (grown, _) = close_all_windows(run_to_completion(installed, &registry, ServerId::Hq).0, &registry);
+        assert_eq!(rig(&grown), (1, 0), "a virus counter, and no credit until the refill");
+        let mut refilled = grown.clone();
+        crate::rules::payment::refill(&mut refilled, &registry, Side::Runner).expect("refill");
+        assert_eq!(rig(&refilled), (1, 1), "X[recurring-credit]: one per virus counter");
+
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { credits: 2, ..in_rig("pheromones", 0, 3) }];
+        state.runner.grip.clear();
+        let available = |state: &GameState| crate::rules::payment::available(state, &registry, Side::Runner, crate::rules::payment::Purpose::Other);
+        let wallet = state.runner.resources.credits.0;
+        assert_eq!(available(&state), wallet, "outside a run");
+        let (on_hq, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run on HQ");
+        assert_eq!(available(&on_hq), wallet + 2, "during a run on HQ");
+        let (on_rnd, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run on R&D");
+        assert_eq!(available(&on_rnd), wallet, "not on R&D");
+
+        let mut paid = on_hq.clone();
+        paid.runner.resources.credits = Credits(0);
+        crate::rules::payment::pay(&mut paid, &registry, Side::Runner, 2, crate::rules::payment::Purpose::Other).expect("pay 2 from Pheromones");
+        assert_eq!(rig(&paid), (3, 0), "the credits are spent, the virus counters stay");
+
+        let mut purged = state.clone();
+        purged.phase = GamePhase::Action(Side::Corp);
+        let (purged, _) = apply_action(&purged, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        assert_eq!(rig(&purged), (0, 2), "a purge takes the virus counters and leaves the credits");
     }
 }

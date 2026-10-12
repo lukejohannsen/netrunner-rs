@@ -576,8 +576,14 @@ pub struct CardDefinition {
     /// an identity it used to be a second mechanism altogether: a pair of
     /// fields on `CorpState`, spendable only because `pay_cost` checked
     /// whether a trace was active. `None` for the common case.
+    ///
+    /// N is printed (`RecurringCredits::Fixed`) or counted when the credits
+    /// are placed (Pheromones' "X[recurring-credit] … X is the number of
+    /// virus counters on Pheromones"). A card whose counters are another
+    /// kind keeps its credits apart from them, in
+    /// `InstalledRunnerCard::credits` (`hosts_credits_beside_counters`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recurring_credits: Option<u32>,
+    pub recurring_credits: Option<RecurringCredits>,
 
 
     /// Memory units this Program reserves while installed — mirrors
@@ -1020,6 +1026,45 @@ pub enum CounterKind {
     BadPublicity,
 }
 
+/// How many credits "N[recurring-credit]" places — see
+/// `CardDefinition::recurring_credits`. Written as a bare number for the
+/// printed N, so every card that prints one reads as it always did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RecurringCredits {
+    Fixed(u32),
+    Counted(CountedRecurring),
+}
+
+/// What an X[recurring-credit] counts. Only what a card in the pool prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CountedRecurring {
+    /// The counters on the card itself — Pheromones' "X is the number of
+    /// virus counters on Pheromones", counted each time the credits are
+    /// placed or refilled (CR 1.10.5a), so a counter placed mid-turn adds a
+    /// credit at the next turn's refill and not before.
+    HostedCounters,
+}
+
+impl RecurringCredits {
+    /// N, for a card holding `counters` of its own kind.
+    pub fn of(self, counters: u32) -> u32 {
+        match self {
+            RecurringCredits::Fixed(n) => n,
+            RecurringCredits::Counted(CountedRecurring::HostedCounters) => counters,
+        }
+    }
+
+    /// The printed N, where there is one — what a reading of the card
+    /// alone (a bot's income, a client's line) can say.
+    pub fn printed(self) -> Option<u32> {
+        match self {
+            RecurringCredits::Fixed(n) => Some(n),
+            RecurringCredits::Counted(_) => None,
+        }
+    }
+}
+
 /// See `CardDefinition::pays_for` — what a card's hosted credits may be
 /// spent on, as the card prints it. **A word about the payment, never a
 /// site:** `rules::payment::covers` is the one place a word is matched
@@ -1097,6 +1142,11 @@ pub enum PaysFor {
     /// server list on `DuringRuns`, which every card that prints it would
     /// then have to write out.
     DuringRunsOnCentralServers,
+    /// Anything, during a run on one server — Pheromones' "Use these
+    /// credits during runs on HQ". `DuringRunsOnCentralServers` for one
+    /// server, which a card names: composition didn't work, since the
+    /// words are alternatives and a run's server is not a `Purpose`.
+    DuringRunsOn(crate::rules::ServerId),
     /// Anything, for the remainder of a run once it has been declared
     /// successful — Fencer Fueno's "Whenever you make a successful run, you
     /// can spend hosted credits for the remainder of that run" (the trash
@@ -1277,6 +1327,17 @@ impl Default for CardDefinition {
 }
 
 impl CardDefinition {
+    /// Whether this card's hosted credits are kept apart from its counters
+    /// — a card whose counters are another kind and which prints recurring
+    /// credits (Pheromones' virus counters and X[recurring-credit]). Its
+    /// credits are `InstalledRunnerCard::credits`; every other card's are
+    /// its `counters` (`counter_kind: Credit`). Two kinds on one number was
+    /// the alternative, and a purge would have taken the credits with the
+    /// virus counters.
+    pub fn hosts_credits_beside_counters(&self) -> bool {
+        self.recurring_credits.is_some() && self.counter_kind.is_some_and(|kind| kind != CounterKind::Credit)
+    }
+
     /// Which printed ability the paid ability at `index` is, for its use
     /// limit (`OncePerTurnKey::ability`): its own index, or the earlier
     /// entry it is `part_of`.
@@ -1418,11 +1479,15 @@ impl CardDefinition {
         // `rules::payment` reads `pays_for` off active *installed* cards and
         // spends their `counters` as credits: a word on a card that hosts
         // none, or is never installed, is a pool nothing can reach.
-        let hosts_credits = self.counter_kind == Some(CounterKind::Credit) && !matches!(self.card_type, CardType::Event | CardType::Operation);
+        let hosts_credits = (self.counter_kind == Some(CounterKind::Credit) || self.hosts_credits_beside_counters())
+            && !matches!(self.card_type, CardType::Event | CardType::Operation);
         if !self.pays_for.is_empty() && !hosts_credits {
             return Err(CardValidationError::PaysForWithoutHostedCredits(self.id.clone()));
         }
-        if self.recurring_credits.is_some() && (self.counter_kind != Some(CounterKind::Credit) || self.pays_for.is_empty()) {
+        // Credits beside another kind of counter are kept in
+        // `InstalledRunnerCard::credits`, which only the rig has.
+        let beside_on_the_corp = self.hosts_credits_beside_counters() && self.side == Side::Corp;
+        if self.recurring_credits.is_some() && (!hosts_credits || self.pays_for.is_empty() || beside_on_the_corp) {
             return Err(CardValidationError::RecurringCreditsWithNowhereToGo(self.id.clone()));
         }
         // No Runner identity in the pool prints them, and there is nowhere
@@ -2828,7 +2893,7 @@ mod tests {
                 side: Side::Runner,
                 card_type: CardType::Program,
                 counter_kind: Some(CounterKind::Credit),
-                recurring_credits: Some(2),
+                recurring_credits: Some(RecurringCredits::Fixed(2)),
                 pays_for: vec![PaysFor::TrashCosts(crate::dsl::CardFilter::Any)],
                 ..CardDefinition::default()
             };

@@ -5016,7 +5016,7 @@ pub fn check_requirement(
 /// installed/rigged — `None` if it's neither (already trashed, or never
 /// resolvable), mirroring `modify_counters`'s "try Corp installed, then
 /// Runner rig" search order but read-only.
-fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
+pub(crate) fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
     acting_corp_install(state, ctx)
         .map(|c| c.counters)
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))

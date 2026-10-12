@@ -1792,6 +1792,7 @@ fn seed_rig_card(
         base_strength,
         card: card_id,
         counters: 0,
+        credits: 0,
         hosted_on_ice: None,
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),

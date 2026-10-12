@@ -78,7 +78,6 @@ pub(crate) const CORE_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Revised Core Set* (`revised_core_set`): tranche F1 of the FFG plan.
 pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("pheromones", "Pheromones"),
 ];
 
 /// *Reign and Reverie* (`reign_and_reverie`): tranche F2 of the FFG plan.
@@ -1451,7 +1450,6 @@ pub(crate) const ASIS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const HS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surge", "Surge"),
     ("andromeda_dispossessed_ristie", "Andromeda: Dispossessed Ristie"),
-    ("pheromones", "Pheromones"),
     ("quality_time", "Quality Time"),
     ("replicator", "Replicator"),
     ("creeper", "Creeper"),

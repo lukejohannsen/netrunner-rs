@@ -234,6 +234,11 @@ pub struct PublicInstalledRunnerCard {
     /// therefore no visibility rule to express. Virus counters on *Botulus*
     /// or credits on *Pennyshaver* are public the moment they are placed.
     pub counters: u32,
+    /// Credits kept beside counters of another kind — see
+    /// `state::InstalledRunnerCard::credits` (Pheromones). Public, as the
+    /// rig is.
+    #[serde(default)]
+    pub credits: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1526,7 +1531,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
             .cloned()
             .collect(),
         recurring_credits: if identity_recurring.is_some() { corp.identity_counters } else { 0 },
-        recurring_credits_max: identity_recurring.unwrap_or(0),
+        recurring_credits_max: identity_recurring.and_then(crate::dsl::RecurringCredits::printed).unwrap_or(0),
     }
 }
 
@@ -1552,6 +1557,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         turned_facedown: card.turned_facedown,
         hosted_cards_playable: card.hosted_cards_playable,
         counters: card.counters,
+        credits: card.credits,
     }
 }
 
@@ -2159,6 +2165,7 @@ mod tests {
             turned_facedown: 0,
             hosted_cards_playable: false,
             counters: 0,
+            credits: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);
