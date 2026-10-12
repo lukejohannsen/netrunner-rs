@@ -1516,6 +1516,10 @@ pub struct CompletedRun {
     /// `RunState::cards_accessed_count` at conclusion — backs
     /// `Effect::GainCreditsPerCardAccessedThisRun` (Zahya Sadeghi).
     pub cards_accessed: u32,
+    /// `RunState::rnd_cards_accessed_count` at conclusion — Psych Mike's
+    /// accesses "in R&D" (`Amount::RnDCardsAccessedLastRun`).
+    #[serde(default)]
+    pub rnd_cards_accessed: u32,
     /// How many agendas the Runner stole during the run — backs
     /// `EffectRequirement::StoleAgendaDuringLastRun` (AMAZE Amusements).
     pub agendas_stolen: u32,
@@ -1591,6 +1595,7 @@ impl CompletedRun {
         CompletedRun {
             server: run.server,
             cards_accessed: run.cards_accessed_count,
+            rnd_cards_accessed: run.rnd_cards_accessed_count,
             agendas_stolen: run.agendas_stolen_this_run,
             persistent_trashed_upgrades: run.persistent_trashed_upgrades.clone(),
             accessed_cards: run.access_state.as_ref().map(|access| access.resolved_cards.clone()).unwrap_or_default(),

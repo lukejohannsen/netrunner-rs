@@ -1428,6 +1428,8 @@ impl CardDefinition {
             // Only a trash says how the card stood, and only a Corp card
             // is rezzed.
             EventFilter::TrashedRezzed => triggered.trigger == Trigger::OnCardTrashed,
+            // Only a run's end says whether the run was successful.
+            EventFilter::Successful => triggered.trigger == Trigger::OnRunEnded,
             EventFilter::TrashedFromThisServer => {
                 matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
             }

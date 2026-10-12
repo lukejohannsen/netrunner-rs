@@ -905,6 +905,7 @@ fn determinize_run(
         access_replacement_card: None,
         access_replacement_install: None,
         cards_accessed_count: 0,
+        rnd_cards_accessed_count: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
         // above: `ClientView` doesn't carry either, and both only matter at
         // the moment the run ends (`Trigger::OnRunEnded`), which a

@@ -1,0 +1,50 @@
+{
+  "id": "psych_mike",
+  "title": "Psych Mike",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Server": [
+              "RnD"
+            ]
+          },
+          "Successful"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCreditsAmount": [
+                  "Runner",
+                  "RnDCardsAccessedLastRun"
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit] for each time you accessed a card in R&D during that run",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn a successful run on R&D ends, you may gain 1[credit] for each time you accessed a card in R&D during that run."
+    }
+  ],
+  "built_from": 22021,
+  "is_playable": true
+}

@@ -85,6 +85,12 @@ pub enum Class {
     /// strength" count only those. Public, like the rest: both players saw
     /// the position, the breaks and the strength.
     Ice(IceFacts),
+    /// A run's end (`Trigger::OnRunEnded`), counted by its server and
+    /// whether the run was successful — Psych Mike's "the first time each
+    /// turn a **successful** run on R&D ends" counts only those. Public:
+    /// both players saw the run succeed or not. The server alone, for a
+    /// filter that does not ask, is both columns (`Occurrences::meant_by`).
+    RunEnded { server: ServerClass, successful: bool },
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
 }
@@ -242,6 +248,19 @@ pub enum ServerClass {
     Remote,
 }
 
+impl ServerClass {
+    const COUNT: usize = 4;
+
+    fn of(server: ServerId) -> ServerClass {
+        match server {
+            ServerId::Archives => ServerClass::Archives,
+            ServerId::RnD => ServerClass::RnD,
+            ServerId::Hq => ServerClass::Hq,
+            ServerId::Remote(_) => ServerClass::Remote,
+        }
+    }
+}
+
 impl Class {
     fn column(self) -> usize {
         match self {
@@ -249,6 +268,7 @@ impl Class {
             Class::Server(server) => server as usize,
             Class::Damage(kind) => kind as usize,
             Class::Ice(facts) => facts.bits(),
+            Class::RunEnded { server, successful } => server as usize + if successful { ServerClass::COUNT } else { 0 },
             Class::Nothing => 0,
         }
     }
@@ -397,10 +417,13 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Damage(kind) => Class::Damage(*kind),
         // How many is a number, which a fixed table cannot hold.
         About::Cards(_) => Class::Nothing,
-        About::Server(ServerId::Archives) => Class::Server(ServerClass::Archives),
-        About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
-        About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
-        About::Server(ServerId::Remote(_)) => Class::Server(ServerClass::Remote),
+        About::Server(server) => {
+            let server = ServerClass::of(*server);
+            match moment.successful {
+                Some(successful) => Class::RunEnded { server, successful },
+                None => Class::Server(server),
+            }
+        }
         About::Card { card, installed, .. } => {
             let kind = registry.get(card).map_or(Kind::Unseen, Kind::of_card);
             let kind = if concealed(moment.trigger, moment.of) && !seen_anyway(moment.trigger, kind) { Kind::Unseen } else { kind };
@@ -481,30 +504,43 @@ impl Occurrences {
             _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
         };
         let bit = |class: Class| 1u64 << class.column();
+        // A run's end is counted by success as well as by server, so a
+        // server it names is both of its columns.
+        let server_bit = |server: ServerClass| {
+            if trigger == Trigger::OnRunEnded {
+                bit(Class::RunEnded { server, successful: false }) | bit(Class::RunEnded { server, successful: true })
+            } else {
+                bit(Class::Server(server))
+            }
+        };
         let columns = match when {
             None | Some(EventFilter::Whose(_) | EventFilter::Anyone) => None,
             Some(EventFilter::Server(servers)) => Some(
                 servers
                     .iter()
-                    .map(|server| match server {
-                        ServerId::Archives => bit(Class::Server(ServerClass::Archives)),
-                        ServerId::RnD => bit(Class::Server(ServerClass::RnD)),
-                        ServerId::Hq => bit(Class::Server(ServerClass::Hq)),
-                        ServerId::Remote(_) => bit(Class::Server(ServerClass::Remote)),
-                    })
+                    .map(|server| server_bit(ServerClass::of(*server)))
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::ServerKind(kind)) => Some(
                 [(ServerId::Archives, ServerClass::Archives), (ServerId::RnD, ServerClass::RnD), (ServerId::Hq, ServerClass::Hq), (ServerId::Remote(0), ServerClass::Remote)]
                     .into_iter()
                     .filter(|(server, _)| kind.admits(*server))
-                    .map(|(_, class)| bit(Class::Server(class)))
+                    .map(|(_, class)| server_bit(class))
                     .fold(0, |mask, column| mask | column),
             ),
             // Always a central server (CR 10.11.2), and which one is the
             // state's: `first_time_on` writes the turn's mark in before a
             // count is read, so this is only what `validate` checks.
-            Some(EventFilter::Mark) => Some(bit(Class::Server(ServerClass::Hq)) | bit(Class::Server(ServerClass::RnD)) | bit(Class::Server(ServerClass::Archives))),
+            Some(EventFilter::Mark) => Some(server_bit(ServerClass::Hq) | server_bit(ServerClass::RnD) | server_bit(ServerClass::Archives)),
+            Some(EventFilter::Successful) if trigger == Trigger::OnRunEnded => Some(
+                [ServerClass::Archives, ServerClass::RnD, ServerClass::Hq, ServerClass::Remote]
+                    .into_iter()
+                    .map(|server| bit(Class::RunEnded { server, successful: true }))
+                    .fold(0, |mask, column| mask | column),
+            ),
+            Some(EventFilter::Successful) => {
+                return Err(format!("only a run's end says whether the run was successful, not a {trigger:?}"));
+            }
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
             // By owner: a card counted `Unseen` is always a Corp card —
             // installed facedown, advanced, accessed, trashed out of HQ or

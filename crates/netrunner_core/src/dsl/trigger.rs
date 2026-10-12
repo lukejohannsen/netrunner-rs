@@ -874,6 +874,15 @@ pub enum EventFilter {
     /// `OnCardTrashed`. Composition didn't work: a `Card` filter's
     /// `Rezzed` asks the card as it stands now, which is in Archives.
     TrashedRezzed,
+    /// The run that ended was successful (CR 6.9.5a) — Psych Mike's "the
+    /// first time each turn a **successful** run on R&D ends". Read off the
+    /// moment (`listeners::Moment::successful`), and counted apart by the
+    /// turn log, so "the first" is the first successful one: an
+    /// unsuccessful run on R&D earlier in the turn does not spend it. Only
+    /// on `OnRunEnded`. Composition didn't work: `LastRunSuccessful` is an
+    /// intervening if, asked after the first time has been judged, and a
+    /// first time narrowed by it would be spent by a failed run.
+    Successful,
     /// Every one of these — Hostile Architecture's "the Runner trashes any
     /// of **your installed** cards", on a trash by a card's text: the card
     /// is the Corp's and the moment the Runner's (`OwnedBy`), **and** it
