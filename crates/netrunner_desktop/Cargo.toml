@@ -48,6 +48,9 @@ uuid = "1"
 # itself reaches a key only through `netrunner_client::identity`.
 [dev-dependencies]
 netrunner_identity = { path = "../netrunner_identity" }
+# `tests/online.rs` starts a daemon with a data directory, which needs the
+# store's SQLite driver; the client's own build (above) carries none.
+netrunner_server = { path = "../netrunner_server", default-features = false, features = ["sqlite"] }
 
 [features]
 # Enables the policy-network opponent, through the client crate.

@@ -84,7 +84,7 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{format_lobby_id, Chair, ClientMessage, Entrant, FormatStanding, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo, TournamentState};
+use crate::protocol::{format_lobby_id, Award, Chair, ClientMessage, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
@@ -962,21 +962,117 @@ impl Shared {
         Some([(corp_before, corp_after.corp.rating), (runner_before, runner_after.runner.rating)])
     }
 
-    /// `key`'s standing on every ladder it has a rated game on, as
-    /// `Standing` says it: one entry per format, in the formats' order.
-    fn standing_of(&self, key: Option<PublicKey>) -> ServerMessage {
-        let standings = match key.filter(|_| self.options.data_dir.is_some()) {
-            Some(key) => {
-                let id = key.rating_id();
-                let registry = self.lock();
-                NsgFormat::ALL
-                    .into_iter()
-                    .filter_map(|format| registry.ratings.standing(store::ladder(format), &id).map(|standing| FormatStanding { format, standing }))
-                    .collect()
+    /// `key`'s standing on every ladder it has a rated game on: one entry
+    /// per format, in the formats' order, off the book in memory.
+    fn standings_of(&self, id: &str) -> Vec<FormatStanding> {
+        let registry = self.lock();
+        NsgFormat::ALL
+            .into_iter()
+            .filter_map(|format| registry.ratings.standing(store::ladder(format), id).map(|standing| FormatStanding { format, standing }))
+            .collect()
+    }
+
+    /// `key`'s profile, as `Profile` says it: the player row and the
+    /// awards from the store, the standings from the book. `profile:
+    /// None` for a daemon that keeps nothing and for a key the store has
+    /// never seen attach — which a proved key asking has, since
+    /// `saw_player` was queued at its attach: the read waits for the
+    /// queue to settle (`Writer::settled`), because a read goes to the
+    /// store directly and would otherwise race the write.
+    async fn profile_of(&self, key: Option<PublicKey>) -> ServerMessage {
+        let (Some(key), Some(writer)) = (key, &self.store) else { return ServerMessage::Profile { key, profile: None } };
+        let id = key.rating_id();
+        writer.settled().await;
+        let profile = match self.read_profile(writer.store(), &id).await {
+            Ok(profile) => profile,
+            Err(error) => {
+                tracing::warn!(key = %key.fingerprint(), %error, "could not read a profile");
+                None
             }
-            None => Vec::new(),
         };
-        ServerMessage::Standing { key, standings }
+        ServerMessage::Profile { key: Some(key), profile }
+    }
+
+    async fn read_profile(&self, store: &Store, id: &str) -> netrunner_store::Result<Option<Profile>> {
+        let Some(player) = store.player(id).await? else { return Ok(None) };
+        let awards = store.awards_of(id).await?;
+        let award = |row: &netrunner_store::Award| Award { name: row.name.clone(), earned_at: row.earned_at as u64, source: row.source.clone() };
+        Ok(Some(Profile {
+            name: player.name,
+            first_seen: player.first_seen as u64,
+            last_seen: player.last_seen as u64,
+            standings: self.standings_of(id),
+            titles: awards.iter().filter(|row| row.kind == "title").map(award).collect(),
+            badges: awards.iter().filter(|row| row.kind == "badge").map(award).collect(),
+            title: player.title,
+            badge: player.badge,
+        }))
+    }
+
+    /// Sets what `key` wears, each among what it has earned, and answers
+    /// with the profile as it now stands. Written directly rather than
+    /// through the writer, so the answer reads back what was written:
+    /// `saw_player`'s upsert never touches these two columns, so there is
+    /// no order with it to keep.
+    async fn set_worn(&self, key: Option<PublicKey>, title: Option<String>, badge: Option<String>) -> ServerMessage {
+        let refused = |reason: &str| ServerMessage::ProfileRefused { reason: reason.to_string() };
+        let Some(key) = key else { return refused("a profile is a key's: prove one before attaching") };
+        let Some(writer) = &self.store else { return refused("this server keeps no profile") };
+        let id = key.rating_id();
+        writer.settled().await;
+        let store = writer.store();
+        let written: netrunner_store::Result<Result<(), String>> = async {
+            let awards = store.awards_of(&id).await?;
+            let earned = |kind: &str, name: &Option<String>| name.as_ref().is_none_or(|name| awards.iter().any(|row| row.kind == kind && row.name == *name));
+            if !earned("title", &title) {
+                return Ok(Err(format!("no title {:?} has been earned here", title.unwrap_or_default())));
+            }
+            if !earned("badge", &badge) {
+                return Ok(Err(format!("no badge {:?} has been earned here", badge.unwrap_or_default())));
+            }
+            if store.player(&id).await?.is_none() {
+                return Ok(Err("this key has not attached here yet".to_string()));
+            }
+            store.set_worn(&id, title.as_deref(), badge.as_deref()).await?;
+            Ok(Ok(()))
+        }
+        .await;
+        match written {
+            Ok(Ok(())) => self.profile_of(Some(key)).await,
+            Ok(Err(reason)) => refused(&reason),
+            Err(error) => {
+                tracing::warn!(key = %key.fingerprint(), %error, "could not write a profile");
+                refused("the server could not write the profile")
+            }
+        }
+    }
+
+    /// The ladder in `format`: every key with `LADDER_MIN_GAMES` rated
+    /// games there, best overall first (`RatingBook::ladder`'s order), at
+    /// most `LADDER_LIMIT`, each with the name and title the store holds.
+    async fn ladder_of(&self, format: NsgFormat) -> ServerMessage {
+        let Some(writer) = &self.store else { return ServerMessage::Ladder { format, rows: Vec::new() } };
+        let listed: Vec<(String, netrunner_rating::Standing)> = {
+            let registry = self.lock();
+            registry
+                .ratings
+                .ladder(store::ladder(format))
+                .into_iter()
+                .filter(|(_, standing)| standing.corp.games() + standing.runner.games() >= LADDER_MIN_GAMES)
+                .take(LADDER_LIMIT)
+                .map(|(id, standing)| (id.to_string(), standing))
+                .collect()
+        };
+        let mut rows = Vec::with_capacity(listed.len());
+        for (id, standing) in listed {
+            let Ok(key) = id.parse::<PublicKey>() else { continue };
+            let (name, title) = match writer.store().player(&id).await {
+                Ok(Some(player)) => (player.name, player.title),
+                _ => (String::new(), None),
+            };
+            rows.push(LadderRow { key, name, standing, title });
+        }
+        ServerMessage::Ladder { format, rows }
     }
 
     /// Remembers which chairs two keys took against each other, so the
@@ -1458,8 +1554,12 @@ where
                 Ok(ClientMessage::ListMatches) => {
                     ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.match_list())?)).await?;
                 }
-                Ok(ClientMessage::MyStanding) => {
-                    ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.standing_of(identified))?)).await?;
+                Ok(ClientMessage::MyProfile) => {
+                    ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.profile_of(identified).await)?)).await?;
+                }
+                // A ladder is anyone's to read, as the match list is.
+                Ok(ClientMessage::Ladder { format }) => {
+                    ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.ladder_of(format).await)?)).await?;
                 }
                 // A nonce fresh for this connection: a proof is good on
                 // the socket it was made for and no other. A second

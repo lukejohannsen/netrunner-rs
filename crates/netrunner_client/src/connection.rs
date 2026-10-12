@@ -71,6 +71,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use netrunner_core::rules::{Side, Viewer};
+use netrunner_core::format::NsgFormat;
 use netrunner_identity::PublicKey;
 use netrunner_core::decks::DeckFile;
 use netrunner_protocol::statements::{deck_hash, RegistrationStatement, SeatStatement, REGISTRATION_TAG, SEAT_TAG};
@@ -222,10 +223,16 @@ pub enum Event {
     SeekRefused(String),
     /// No longer looking, after `CancelSeek`.
     SeekCancelled,
-    /// The answer to `MyStanding`: whether this connection proved a key,
-    /// and its standing on each of the server's ladders it has a rated
-    /// game on — one per format (Phase 4 §10), empty for none.
-    Standing { key: Option<PublicKey>, standings: Vec<netrunner_protocol::FormatStanding> },
+    /// The answer to `MyProfile` and `SetProfile`: whether this
+    /// connection proved a key, and what the server keeps under it —
+    /// its name, its standing on each ladder it has a rated game on,
+    /// the titles and badges earned and worn (Phase 4 §10); `None` for
+    /// a server that keeps nothing.
+    Profile { key: Option<PublicKey>, profile: Option<netrunner_protocol::Profile> },
+    /// A `SetProfile` the server would not take, and why.
+    ProfileRefused(String),
+    /// The answer to `Ladder`: the server's ladder in a format.
+    Ladder { format: NsgFormat, rows: Vec<netrunner_protocol::LadderRow> },
     /// The answer to `ListTournaments`.
     Tournaments(Vec<TournamentInfo>),
     /// A tournament as it now stands, after making, entering or leaving
@@ -446,8 +453,14 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::TournamentRefused { reason }) => {
                 self.events.push_back(Event::TournamentRefused(reason));
             }
-            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Standing { key, standings }) => {
-                self.events.push_back(Event::Standing { key, standings });
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Profile { key, profile }) => {
+                self.events.push_back(Event::Profile { key, profile });
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::ProfileRefused { reason }) => {
+                self.events.push_back(Event::ProfileRefused(reason));
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Ladder { format, rows }) => {
+                self.events.push_back(Event::Ladder { format, rows });
             }
             (Phase::Attached, ServerMessage::LobbyJoined { lobby }) => {
                 // Asked for by the player, with a password; or put back by
@@ -618,7 +631,9 @@ impl Connection {
             ClientMessage::Sit { .. } => false,
             ClientMessage::ListLobbies
             | ClientMessage::ListMatches
-            | ClientMessage::MyStanding
+            | ClientMessage::MyProfile
+            | ClientMessage::SetProfile { .. }
+            | ClientMessage::Ladder { .. }
             | ClientMessage::CreateTournament { .. }
             | ClientMessage::ListTournaments
             | ClientMessage::Register { .. }
@@ -994,16 +1009,21 @@ mod tests {
         assert_eq!(conn.lobby, None);
         assert!(conn.submit(ClientMessage::JoinLobby { lobby: "nowhere".into(), password: None }));
         conn.on_message(ServerMessage::LobbyRefused { reason: "no lobby NOWHERE".into() }, t0);
-        // The standing is asked from the lobby too, and answered where
-        // the connection stands (Phase 4 §7 stage 5).
-        assert!(conn.submit(ClientMessage::MyStanding));
-        conn.on_message(ServerMessage::Standing { key: None, standings: Vec::new() }, t0);
+        // The profile is asked from the lobby too, and answered where
+        // the connection stands (Phase 4 §7 stage 5, §10); so are what it
+        // wears and the ladder.
+        assert!(conn.submit(ClientMessage::MyProfile));
+        conn.on_message(ServerMessage::Profile { key: None, profile: None }, t0);
+        assert!(conn.submit(ClientMessage::SetProfile { title: Some("Gauntlet Runner".into()), badge: None }));
+        conn.on_message(ServerMessage::ProfileRefused { reason: "no title".into() }, t0);
+        assert!(conn.submit(ClientMessage::Ladder { format: NsgFormat::Standard }));
+        conn.on_message(ServerMessage::Ladder { format: NsgFormat::Standard, rows: Vec::new() }, t0);
         let events = events(&mut conn);
         assert!(
-            matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason), Event::Standing { key: None, standings }] if *info == made && standings.is_empty() && reason == "no lobby NOWHERE"),
+            matches!(&events[..], [Event::Lobbies(_), Event::LobbyJoined(info), Event::LobbyLeft, Event::LobbyRefused(reason), Event::Profile { key: None, profile: None }, Event::ProfileRefused(why), Event::Ladder { format: NsgFormat::Standard, rows }] if *info == made && reason == "no lobby NOWHERE" && why == "no title" && rows.is_empty()),
             "{events:?}"
         );
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::ListLobbies, ClientMessage::CreateLobby { .. }, ClientMessage::LeaveLobby, ClientMessage::JoinLobby { .. }, ClientMessage::MyStanding]));
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::ListLobbies, ClientMessage::CreateLobby { .. }, ClientMessage::LeaveLobby, ClientMessage::JoinLobby { .. }, ClientMessage::MyProfile, ClientMessage::SetProfile { .. }, ClientMessage::Ladder { .. }]));
     }
 
     /// Stopping looking is answered by the server, and until it is the

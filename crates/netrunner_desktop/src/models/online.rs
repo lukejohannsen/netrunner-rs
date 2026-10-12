@@ -48,7 +48,7 @@
 //! it and nobody else, though the server is what refuses anyone else.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
-use netrunner_client::identity::{PublicKey, StandingHere};
+use netrunner_client::identity::{ProfileHere, PublicKey};
 use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
@@ -204,7 +204,7 @@ pub enum Intent {
     BackInLobby(Option<LobbyInfo>),
     /// The server's answer about this connection's standing there, and
     /// the key it proved — whose a tournament entry is.
-    Standing { key: Option<PublicKey>, standing: StandingHere },
+    Profile { key: Option<PublicKey>, profile: ProfileHere },
     /// The server's tournaments, and one as it now stands after making,
     /// entering or leaving it. A refusal is a `Refused`.
     Tournaments(Vec<TournamentInfo>),
@@ -281,7 +281,7 @@ pub struct ServerState {
     pub link: Option<String>,
     /// This person's standing at the server, as it last answered: asked
     /// on attaching and after every game.
-    pub standing: StandingHere,
+    pub profile: ProfileHere,
     /// The key this connection proved, as that answer named it.
     pub key: Option<PublicKey>,
     /// The server's tournaments, as last listed, and whether the list is
@@ -310,7 +310,7 @@ impl ServerState {
             corp_deck: 0,
             runner_deck: 0,
             link: None,
-            standing: StandingHere::Unasked,
+            profile: ProfileHere::Unasked,
             key: None,
             tournaments: Vec::new(),
             tournaments_listed: false,
@@ -418,7 +418,7 @@ impl ServerState {
     /// The line over Find a game: what the lobby offers and what this
     /// person stands to gain there (`identity::lobby_rating_line`).
     pub fn rating_line(&self, lobby: &LobbyInfo) -> String {
-        netrunner_client::identity::lobby_rating_line(lobby.rated, self.hosting, lobby.format, &self.standing)
+        netrunner_client::identity::lobby_rating_line(lobby.rated, self.hosting, lobby.format, &self.profile)
     }
 
     pub fn corp_decks(&self) -> Vec<&DeckFile> {
@@ -991,10 +991,10 @@ impl OnlineForm {
                 }
                 Outcome::Redraw
             }
-            Intent::Standing { key, standing } => {
+            Intent::Profile { key, profile } => {
                 if let Some(server) = &mut self.server {
                     server.key = key;
-                    server.standing = standing;
+                    server.profile = profile;
                 }
                 Outcome::Redraw
             }
@@ -1349,9 +1349,9 @@ mod tests {
             server.rating_line(server.lobby.as_ref().unwrap())
         };
         assert_eq!(line(&guest), "Rated here.", "before the server has answered");
-        guest.apply(Intent::Standing { key: None, standing: StandingHere::Unrated });
+        guest.apply(Intent::Profile { key: None, profile: ProfileHere::Unkept });
         assert_eq!(line(&guest), "Rated here. No rated games here yet.");
-        guest.apply(Intent::Standing { key: None, standing: StandingHere::NoKey });
+        guest.apply(Intent::Profile { key: None, profile: ProfileHere::NoKey });
         assert_eq!(line(&guest), "Unrated for you: this client has no key, so nothing here counts.");
         guest.apply(Intent::LobbyJoined(LobbyInfo { rated: false, permanent: false, name: "Friday".into(), ..lobby("K7M2QX", NsgFormat::Startup) }));
         assert_eq!(line(&guest), "Unrated: nothing in this lobby is rated.");
@@ -1392,7 +1392,7 @@ mod tests {
     #[test]
     fn a_tournament_is_opened_entered_and_left_from_its_page() {
         let mut form = attached();
-        form.apply(Intent::Standing { key: Some(key(2)), standing: StandingHere::Unrated });
+        form.apply(Intent::Profile { key: Some(key(2)), profile: ProfileHere::Unkept });
         assert_eq!(form.apply(Intent::Open(Page::Tournaments)), Outcome::ListTournaments);
         assert_eq!(form.page, Page::Tournaments);
         assert!(!form.server.as_ref().unwrap().tournaments_listed, "not an answer yet");
@@ -1435,7 +1435,7 @@ mod tests {
     #[test]
     fn a_keyless_client_and_a_closed_tournament_offer_no_entry() {
         let mut form = attached();
-        form.apply(Intent::Standing { key: None, standing: StandingHere::NoKey });
+        form.apply(Intent::Profile { key: None, profile: ProfileHere::NoKey });
         form.apply(Intent::Open(Page::Tournaments));
         form.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", key(1), vec![])]));
         assert_eq!(form.apply(Intent::Open(Page::MakeTournament)), Outcome::Redraw);
@@ -1445,7 +1445,7 @@ mod tests {
         assert!(!form.server.as_ref().unwrap().may_register());
         assert_eq!(form.apply(Intent::Register), Outcome::Nothing);
 
-        form.apply(Intent::Standing { key: Some(key(2)), standing: StandingHere::Unrated });
+        form.apply(Intent::Profile { key: Some(key(2)), profile: ProfileHere::Unkept });
         assert!(form.server.as_ref().unwrap().may_register());
         form.set_tournament_decks(vec![deck("brick_stack"), deck("glyph_of_warding"), deck("stolen_goods"), deck("dashing_mad")]);
         form.apply(Intent::SetCorpDeck(1));
@@ -1461,7 +1461,7 @@ mod tests {
     #[test]
     fn a_tournament_is_held_from_its_form_and_its_page_opens() {
         let mut form = attached();
-        form.apply(Intent::Standing { key: Some(key(1)), standing: StandingHere::Unrated });
+        form.apply(Intent::Profile { key: Some(key(1)), profile: ProfileHere::Unkept });
         form.apply(Intent::JoinLobby(1));
         form.apply(Intent::LobbyJoined(lobby("standard", NsgFormat::Standard)));
         form.apply(Intent::Open(Page::Tournaments));
@@ -1500,7 +1500,7 @@ mod tests {
 
         // bo, paired: the seat, and nothing of the organizer's.
         let mut form = attached();
-        form.apply(Intent::Standing { key: Some(bo), standing: StandingHere::Unrated });
+        form.apply(Intent::Profile { key: Some(bo), profile: ProfileHere::Unkept });
         form.apply(Intent::Open(Page::Tournaments));
         form.apply(Intent::Tournaments(vec![playing.clone()]));
         form.apply(Intent::OpenTournament(0));
@@ -1535,7 +1535,7 @@ mod tests {
 
         // cy, the bye: no seat.
         let mut bye = attached();
-        bye.apply(Intent::Standing { key: Some(cy), standing: StandingHere::Unrated });
+        bye.apply(Intent::Profile { key: Some(cy), profile: ProfileHere::Unkept });
         bye.apply(Intent::Open(Page::Tournaments));
         bye.apply(Intent::Tournaments(vec![playing.clone()]));
         bye.apply(Intent::OpenTournament(0));
@@ -1546,7 +1546,7 @@ mod tests {
         // has its result the next round or the end; a result recorded
         // only for a table that has none.
         let mut organizer = attached();
-        organizer.apply(Intent::Standing { key: Some(ann), standing: StandingHere::Unrated });
+        organizer.apply(Intent::Profile { key: Some(ann), profile: ProfileHere::Unkept });
         organizer.apply(Intent::Open(Page::Tournaments));
         organizer.apply(Intent::Tournaments(vec![playing.clone()]));
         organizer.apply(Intent::OpenTournament(0));
@@ -1571,7 +1571,7 @@ mod tests {
 
         // Before any round, two entrants let the organizer begin.
         let mut fresh = attached();
-        fresh.apply(Intent::Standing { key: Some(ann), standing: StandingHere::Unrated });
+        fresh.apply(Intent::Profile { key: Some(ann), profile: ProfileHere::Unkept });
         fresh.apply(Intent::Open(Page::Tournaments));
         fresh.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", ann, vec![entrant(1)])]));
         fresh.apply(Intent::OpenTournament(0));

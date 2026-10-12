@@ -50,6 +50,26 @@ impl Writer {
         Writer { store, tx }
     }
 
+    /// The store itself, for a read. A read that must see a write queued
+    /// before it — a profile asked the moment a key attached, whose
+    /// `saw_player` is still in the queue — awaits `settled` first.
+    pub(crate) fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Resolves once every write queued before the call has landed: a
+    /// no-op job in the queue, answered when the writer reaches it. A
+    /// writer that has gone (the task panicked) resolves at once, so a
+    /// read is never held forever.
+    pub(crate) async fn settled(&self) {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        self.write("a barrier", move |_| async move {
+            let _ = tx.send(());
+            Ok(())
+        });
+        let _ = rx.await;
+    }
+
     /// Queues `job`, which is run with a handle on the store after every
     /// write queued before it.
     pub(crate) fn write<F, Fut>(&self, what: &'static str, job: F)

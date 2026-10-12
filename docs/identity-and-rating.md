@@ -224,7 +224,8 @@ Under the daemon's `--data-dir` (Phase 4 §10, 11 October 2026):
 - **The trust boundary, stated plainly: a rating is a claim by one server's
   operator.** Whoever runs the daemon can see every seed. Keys are free, so a
   new key is provisional — Glicko-2's deviation already says so, and a ladder
-  lists a key only after some number of games. Smurfing and win-trading are an
+  lists a key only after some number of games (`LADDER_MIN_GAMES`, ten,
+  Phase 4 §10 stage 2). Smurfing and win-trading are an
   operator's moderation problem; the rebuildable log is what makes moderation
   possible, and cryptography does not solve either.
 
@@ -266,8 +267,10 @@ Each its own branch, in this order; each is useful without the next.
 6. **The store** (Phase 4 §10). *Stage 1 built 11 October 2026*
    (`feat/store-sqlite`): `netrunner_store` over SQLite, the daemon on it
    for players, ratings, results, pairings and tournaments, a ladder per
-   format, the receipt naming its format, `--rebuild`. Next: the profile
-   messages, then Postgres.
+   format, the receipt naming its format, `--rebuild`. *Stage 2 built the
+   same day* (`feat/profile-messages`): `MyProfile` / `Profile` in place of
+   the standing, `SetProfile` choosing among what was earned, `Ladder` per
+   format for keys with ten rated games. Next: Postgres.
 
 **Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
 `ServerMessage` live in `netrunner_protocol`, which the server re-exports and

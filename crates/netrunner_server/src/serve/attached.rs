@@ -102,7 +102,7 @@ pub(super) async fn run(
         };
         match woke {
             Woke::Client(None) => break,
-            Woke::Client(Some(message)) => conn.on_client(message, &mut playing),
+            Woke::Client(Some(message)) => conn.on_client(message, &mut playing).await,
             Woke::Match(Some(message)) => conn.on_match(message, &mut playing),
             Woke::Match(None) => {
                 if !conn.play_ended(&mut playing) {
@@ -125,7 +125,9 @@ impl Attached {
         let _ = self.tx.send(message);
     }
 
-    fn on_client(&mut self, message: ClientMessage, playing: &mut Option<Playing>) {
+    /// Async for the profile and the ladder, which read the store; the
+    /// registry lock is never held across one of their awaits.
+    async fn on_client(&mut self, message: ClientMessage, playing: &mut Option<Playing>) {
         match message {
             // In a game, the game's messages go to the game and nothing
             // else is answered: the lobby is where the player returns.
@@ -184,10 +186,18 @@ impl Attached {
                 }
             }
             // Asked when the client attaches and after every game, for
-            // the Server page's line (Phase 4 §7 stage 5).
-            ClientMessage::MyStanding => {
-                let standing = self.shared.standing_of(self.key);
-                self.send(standing);
+            // the Server page's line (Phase 4 §7 stage 5, §10).
+            ClientMessage::MyProfile => {
+                let profile = self.shared.profile_of(self.key).await;
+                self.send(profile);
+            }
+            ClientMessage::SetProfile { title, badge } => {
+                let answer = self.shared.set_worn(self.key, title, badge).await;
+                self.send(answer);
+            }
+            ClientMessage::Ladder { format } => {
+                let ladder = self.shared.ladder_of(format).await;
+                self.send(ladder);
             }
             ClientMessage::SeatSigned { signature } => {
                 if let Some(seat) = playing.as_ref().filter(|_| self.in_match) {

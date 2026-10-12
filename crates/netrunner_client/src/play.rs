@@ -1067,7 +1067,7 @@ impl Feed {
             | ServerMessage::SignSeat { .. } => {}
             // The server's word on a rated game, after it ended.
             ServerMessage::Rated { before, after, .. } => out.push(MatchMessage::Rated { before, after }),
-            ServerMessage::Standing { .. } => {}
+            ServerMessage::Profile { .. } | ServerMessage::ProfileRefused { .. } | ServerMessage::Ladder { .. } => {}
             // An attached connection's, which a game's feed never carries:
             // the connection answers them before and after the game.
             ServerMessage::Attached { .. }

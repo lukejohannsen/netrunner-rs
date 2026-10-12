@@ -492,16 +492,18 @@ async fn a_rated_game_ends_in_a_signed_receipt_both_players_get() {
     // Asked afterwards, the server reports the proved key's standing, and
     // nothing for a connection that proved none.
     let (mut socket, _) = identify(&url, &ann).await;
-    send(&mut socket, ClientMessage::MyStanding).await;
-    let ServerMessage::Standing { key, standings } = next(&mut socket).await else { panic!("expected Standing") };
+    send(&mut socket, ClientMessage::MyProfile).await;
+    let ServerMessage::Profile { key, profile } = next(&mut socket).await else { panic!("expected Profile") };
     assert_eq!(key, Some(ann.public_key()));
-    assert_eq!(standings.len(), 1, "one ladder played on: {standings:?}");
-    assert_eq!(standings[0].format, NsgFormat::Startup, "the lobby's format is the ladder");
+    let profile = profile.expect("the key attached, so the store keeps it");
+    assert_eq!(profile.name, "ann");
+    assert_eq!(profile.standings.len(), 1, "one ladder played on: {:?}", profile.standings);
+    assert_eq!(profile.standings[0].format, NsgFormat::Startup, "the lobby's format is the ladder");
     assert_eq!(read.format, NsgFormat::Startup, "and the receipt names it");
-    assert_eq!(standings[0].standing.corp.wins, 1);
+    assert_eq!(profile.standings[0].standing.corp.wins, 1);
     let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    send(&mut socket, ClientMessage::MyStanding).await;
-    assert!(matches!(next(&mut socket).await, ServerMessage::Standing { key: None, standings } if standings.is_empty()));
+    send(&mut socket, ClientMessage::MyProfile).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Profile { key: None, profile: None }));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -517,6 +519,56 @@ async fn a_withheld_seat_signature_is_still_rated_and_the_receipt_says_so() {
     assert!(read.rated);
     assert!(read.corp.commitment.is_some());
     assert!(read.runner.commitment.is_none(), "the Runner never signed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A profile is the key's to read and, in part, to set: a title granted
+/// in the store is worn once chosen, an unearned one is refused, and the
+/// ladder lists a key with ten rated games and not one with nine
+/// (Phase 4 §10 stage 2).
+#[tokio::test]
+async fn a_title_earned_is_worn_an_unearned_one_refused_and_the_ladder_lists_ten_games() {
+    use netrunner_server::protocol::{LadderRow, LADDER_MIN_GAMES};
+    let dir = scratch("profile");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (ann, cy, dee) = (player(1), player(3), player(4));
+    let (ann_id, cy_id, dee_id) = (ann.public_key().rating_id(), cy.public_key().rating_id(), dee.public_key().rating_id());
+    // Seeded before the daemon starts, since the book is loaded from the
+    // store at bind: Cy with ten rated Standard games, Dee with nine.
+    let seed = store_in(&dir).await;
+    seed.saw_player(&ann_id, "ann", 1).await.unwrap();
+    seed.grant(&netrunner_store::Award { key: ann_id.clone(), kind: "title".into(), name: "Gauntlet Runner".into(), earned_at: 2, source: "event:abc".into() }).await.unwrap();
+    for (id, name, corp_games, runner_games) in [(&cy_id, "cy", 6, 4), (&dee_id, "dee", 5, 4)] {
+        seed.saw_player(id, name, 1).await.unwrap();
+        for (role, games) in [("corp", corp_games), ("runner", runner_games)] {
+            let row = RatingRow { key: id.clone(), format: "standard".into(), role: role.into(), rating: 1600.0, deviation: 120.0, volatility: 0.06, wins: games, draws: 0, losses: 0 };
+            seed.put_rating(&row).await.unwrap();
+        }
+    }
+    seed.close().await;
+    let (url, _) = start(Some(dir.clone())).await;
+
+    let mut socket = attach(&url, Some(&ann), "annie").await;
+    send(&mut socket, ClientMessage::SetProfile { title: Some("Gauntlet Runner".into()), badge: None }).await;
+    let ServerMessage::Profile { key, profile } = next(&mut socket).await else { panic!("expected Profile") };
+    let profile = profile.expect("kept");
+    assert_eq!((key, profile.name.as_str(), profile.title.as_deref()), (Some(ann.public_key()), "annie", Some("Gauntlet Runner")), "worn, under the name given last");
+    assert_eq!(profile.titles.len(), 1);
+    send(&mut socket, ClientMessage::SetProfile { title: None, badge: Some("first-gauntlet".into()) }).await;
+    let ServerMessage::ProfileRefused { reason } = next(&mut socket).await else { panic!("expected ProfileRefused") };
+    assert!(reason.contains("first-gauntlet"), "{reason}");
+    send(&mut socket, ClientMessage::SetProfile { title: None, badge: None }).await;
+    let ServerMessage::Profile { profile, .. } = next(&mut socket).await else { panic!("expected Profile") };
+    assert_eq!(profile.unwrap().title, None, "nothing worn again");
+
+    // The ladder, on a bare socket: anyone's to read.
+    let (mut bare, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    send(&mut bare, ClientMessage::Ladder { format: NsgFormat::Standard }).await;
+    let ServerMessage::Ladder { format, rows } = next(&mut bare).await else { panic!("expected Ladder") };
+    assert_eq!(format, NsgFormat::Standard);
+    let listed: Vec<(PublicKey, String)> = rows.iter().map(|LadderRow { key, name, .. }| (*key, name.clone())).collect();
+    assert_eq!(listed, vec![(cy.public_key(), "cy".to_string())], "ten games listed, nine not ({LADDER_MIN_GAMES} needed): {rows:?}");
+    assert_eq!(rows[0].standing.corp.wins, 6);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -54,13 +54,23 @@ pub enum ClientMessage {
     /// `statements::SEAT_TAG`, once the client has checked it names this
     /// seat's key, side, match, server and deck.
     SeatSigned { signature: Signature },
-    /// This connection's standing at the server: answered with
-    /// `Standing`, first thing on a socket (after proving a key) or from
-    /// an attached connection — which asks when it attaches and again
-    /// when a game puts it back in its lobby, so the Server page shows
-    /// the number the game just moved. Never cached by the client as the
-    /// truth — the server's book is.
-    MyStanding,
+    /// This connection's profile at the server (Phase 4 §10): answered
+    /// with `Profile`, first thing on a socket (after proving a key) or
+    /// from an attached connection — which asks when it attaches and
+    /// again when a game puts it back in its lobby, so the Server page
+    /// shows the number the game just moved. Never cached by the client
+    /// as the truth — the server's store is.
+    MyProfile,
+    /// Choose what this key wears, among the titles and badges it has
+    /// earned here (`Profile::titles`, `badges`); `None` wears nothing.
+    /// Answered with the `Profile` as it now stands, or `ProfileRefused`
+    /// for a title or badge not earned, or a connection with no key. A
+    /// title is never granted this way — an event (§11) or an operator
+    /// (§12) grants.
+    SetProfile { title: Option<String>, badge: Option<String> },
+    /// The server's ladder in `format`: answered with `Ladder`, the keys
+    /// with enough rated games there, best first.
+    Ladder { format: NsgFormat },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
     /// credential: a seat is worth exactly what a WebSocket connection was
@@ -232,12 +242,66 @@ pub fn format_lobby_id(format: NsgFormat) -> String {
 }
 
 /// A key's standing in one format at a server: the server's ladders are
-/// one per format, and `Standing` lists the ones the key has played in.
+/// one per format, and a profile lists the ones the key has played in.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FormatStanding {
     pub format: NsgFormat,
     pub standing: Standing,
 }
+
+/// What a server keeps under a key (Phase 4 §10): the name it last
+/// attached with, its standing on every ladder it has a rated game on,
+/// in the formats' order, the titles and badges it has earned and the
+/// ones it wears. The server's word, fetched and never stored by a
+/// client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Profile {
+    pub name: String,
+    pub first_seen: u64,
+    pub last_seen: u64,
+    pub standings: Vec<FormatStanding>,
+    pub titles: Vec<Award>,
+    pub badges: Vec<Award>,
+    /// The title and badge worn, each one of `titles` / `badges` or none.
+    pub title: Option<String>,
+    pub badge: Option<String>,
+}
+
+impl Profile {
+    /// This key's standing in `format` here, if it has one.
+    pub fn in_format(&self, format: NsgFormat) -> Option<&Standing> {
+        self.standings.iter().find(|entry| entry.format == format).map(|entry| &entry.standing)
+    }
+}
+
+/// A title or a badge a key has earned at a server: its name, when, and
+/// what granted it — an event's id (§11) or an operator's key (§12). A
+/// badge's picture is an asset slot named by its name (AGENTS.md §5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Award {
+    pub name: String,
+    pub earned_at: u64,
+    pub source: String,
+}
+
+/// One row of a server's ladder: a key, the name it last gave, its
+/// standing in the ladder's format and what it wears.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LadderRow {
+    pub key: PublicKey,
+    pub name: String,
+    pub standing: Standing,
+    pub title: Option<String>,
+}
+
+/// How many rated games in a format a key needs before the ladder lists
+/// it: keys are free, so a new one is provisional
+/// (`docs/identity-and-rating.md` §5), and a deviation after ten games
+/// has come down from 350 to under 150.
+pub const LADDER_MIN_GAMES: u32 = 10;
+
+/// The most rows a `Ladder` answer carries.
+pub const LADDER_LIMIT: usize = 100;
 
 /// A lobby as `Lobbies` and `LobbyJoined` report it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,13 +376,17 @@ pub enum ServerMessage {
     /// and this seat's rating for the side it played, before and after.
     /// Sent after `GameEnded`, only to proved seats of a rated game.
     Rated { receipt: Box<Signed>, before: Rating, after: Rating },
-    /// The reply to `MyStanding`: the key this connection proved, if it
-    /// did, and its standing in every format it has a rated game in at
-    /// this server — a ladder per format (Phase 4 §10), so a Startup
-    /// standing says nothing about a Standard one. `key: None` for a
-    /// connection that proved no key; an empty list for a server that
-    /// keeps no ladder or a key with no rated game there yet.
-    Standing { key: Option<PublicKey>, standings: Vec<FormatStanding> },
+    /// The reply to `MyProfile` and `SetProfile`: the key this connection
+    /// proved, if it did, and what the server keeps under it. `key: None`
+    /// for a connection that proved no key; `profile: None` for a server
+    /// that keeps nothing, and for a key it has never seen attach.
+    Profile { key: Option<PublicKey>, profile: Option<Profile> },
+    /// A `SetProfile` the server would not take, and why.
+    ProfileRefused { reason: String },
+    /// The reply to `Ladder`: the keys with at least `LADDER_MIN_GAMES`
+    /// rated games in `format`, best overall first, at most
+    /// `LADDER_LIMIT` of them.
+    Ladder { format: NsgFormat, rows: Vec<LadderRow> },
     /// The seat is taken. `session_token` is what `ClientMessage::Resume`
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the

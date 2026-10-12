@@ -12,7 +12,7 @@
 //! (`identity::key_lines`), then the standing at every server remembered
 //! in `known_servers.json` — the servers that keep their key, which are
 //! the ones that rate. Each is fetched on entering the screen
-//! (`remote::standing`, on the runtime) and drawn as it arrives, never
+//! (`remote::profile`, on the runtime) and drawn as it arrives, never
 //! stored: the server's book is the truth.
 
 use std::sync::mpsc;
@@ -78,10 +78,10 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
         for address in servers {
             let (tx, credentials) = (tx.clone(), credentials.clone());
             runtime.0.spawn(async move {
-                let answer = tokio::time::timeout(STANDING_TIMEOUT, remote::standing(&address, &credentials)).await;
+                let answer = tokio::time::timeout(STANDING_TIMEOUT, remote::profile(&address, &credentials)).await;
                 let mut lines = vec![format!("At {address}")];
                 match answer {
-                    Ok(Ok(standings)) => lines.extend(identity::standing_lines(&standings)),
+                    Ok(Ok(profile)) => lines.extend(identity::profile_lines(profile.as_ref())),
                     Ok(Err(error)) => lines.push(error.to_string()),
                     Err(_) => lines.push(format!("No answer within {}s", STANDING_TIMEOUT.as_secs())),
                 }

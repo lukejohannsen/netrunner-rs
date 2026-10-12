@@ -104,7 +104,11 @@ pub enum AttachedEvent {
     SeekCancelled,
     /// The answer to `standing`: whether this connection proved a key,
     /// and its standing on the server's book if it has one there.
-    Standing { key: Option<netrunner_identity::PublicKey>, standings: Vec<netrunner_protocol::FormatStanding> },
+    Profile { key: Option<netrunner_identity::PublicKey>, profile: Option<netrunner_protocol::Profile> },
+    /// A `set_profile` the server would not take, and why.
+    ProfileRefused(String),
+    /// The answer to `ladder`.
+    Ladder { format: NsgFormat, rows: Vec<netrunner_protocol::LadderRow> },
     /// The answer to `list_tournaments`.
     Tournaments(Vec<TournamentInfo>),
     /// A tournament as it now stands, after `create_tournament`,
@@ -170,11 +174,23 @@ impl Attached {
         self.send(ClientMessage::CreateLobby { name, format, closed, password, casual });
     }
 
-    /// Ask this connection's standing at the server, answered with
-    /// `AttachedEvent::Standing`: on attaching and after every game, so
+    /// Ask this connection's profile at the server, answered with
+    /// `AttachedEvent::Profile`: on attaching and after every game, so
     /// the page shows the number the game just moved.
-    pub fn standing(&self) {
-        self.send(ClientMessage::MyStanding);
+    pub fn profile(&self) {
+        self.send(ClientMessage::MyProfile);
+    }
+
+    /// Choose what this key wears among what it has earned here;
+    /// answered with `AttachedEvent::Profile` or `ProfileRefused`.
+    pub fn set_profile(&self, title: Option<String>, badge: Option<String>) {
+        self.send(ClientMessage::SetProfile { title, badge });
+    }
+
+    /// Ask the server's ladder in `format`, answered with
+    /// `AttachedEvent::Ladder`.
+    pub fn ladder(&self, format: NsgFormat) {
+        self.send(ClientMessage::Ladder { format });
     }
 
     pub fn join_lobby(&self, lobby: String, password: Option<String>) {
@@ -355,7 +371,9 @@ impl Connecting {
             | AttachedEvent::LobbyLeft
             | AttachedEvent::SeekCancelled
             | AttachedEvent::BackInLobby(_)
-            | AttachedEvent::Standing { .. }
+            | AttachedEvent::Profile { .. }
+            | AttachedEvent::ProfileRefused(_)
+            | AttachedEvent::Ladder { .. }
             | AttachedEvent::Tournaments(_)
             | AttachedEvent::Tournament(_)
             | AttachedEvent::TournamentRefused(_) => None,
@@ -595,7 +613,9 @@ async fn drive(
                 Event::Queued(position) => AttachedEvent::Queued(position),
                 Event::SeekRefused(reason) => AttachedEvent::SeekRefused(reason),
                 Event::SeekCancelled => AttachedEvent::SeekCancelled,
-                Event::Standing { key, standings } => AttachedEvent::Standing { key, standings },
+                Event::Profile { key, profile } => AttachedEvent::Profile { key, profile },
+                Event::ProfileRefused(reason) => AttachedEvent::ProfileRefused(reason),
+                Event::Ladder { format, rows } => AttachedEvent::Ladder { format, rows },
                 Event::Tournaments(tournaments) => AttachedEvent::Tournaments(tournaments),
                 Event::Tournament(tournament) => AttachedEvent::Tournament(tournament),
                 Event::TournamentRefused(reason) => AttachedEvent::TournamentRefused(reason),
@@ -713,6 +733,36 @@ pub async fn list_matches(url: &str) -> Result<(Vec<MatchSummary>, usize, Option
     reply
 }
 
+/// The ladder at `url` in `format`, on a socket of its own that proves
+/// nothing: a ladder is anyone's to read, as the match list is.
+pub async fn ladder(url: &str, format: NsgFormat) -> Result<Vec<netrunner_protocol::LadderRow>, ConnectionError> {
+    let dialer = Dialer::default();
+    let reply = ladder_over(Target::of(url.to_string()), format, &dialer).await;
+    dialer.close().await;
+    reply
+}
+
+async fn ladder_over(target: Target, format: NsgFormat, dialer: &Dialer) -> Result<Vec<netrunner_protocol::LadderRow>, ConnectionError> {
+    let transport = |error: tokio_tungstenite::tungstenite::Error| ConnectionError::Transport(error.to_string());
+    let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
+    let hello = serde_json::to_string(&ClientMessage::Ladder { format }).expect("a ClientMessage serializes");
+    socket.send(WsMessage::Text(hello)).await.map_err(transport)?;
+    let reply = loop {
+        match socket.next().await {
+            Some(Ok(WsMessage::Text(text))) => {
+                if let Ok(ServerMessage::Ladder { rows, .. }) = serde_json::from_str(&text) {
+                    break rows;
+                }
+            }
+            Some(Ok(_)) => continue,
+            Some(Err(error)) => return Err(transport(error)),
+            None => return Err(ConnectionError::ClosedBeforeSeat),
+        }
+    };
+    let _ = socket.close(None).await;
+    Ok(reply)
+}
+
 async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>, usize, Option<usize>), ConnectionError> {
     let transport = |error: tokio_tungstenite::tungstenite::Error| ConnectionError::Transport(error.to_string());
     let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
@@ -734,24 +784,24 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
     Ok(reply)
 }
 
-/// This player's standing at the server at `address`: a socket of its own
-/// that proves `credentials`' key and asks (`ClientMessage::MyStanding`),
+/// This player's profile at the server at `address`: a socket of its own
+/// that proves `credentials`' key and asks (`ClientMessage::MyProfile`),
 /// closed afterwards. Fetched each time it is shown and never stored,
-/// because the server's book is the truth (`docs/identity-and-rating.md`
-/// stage 4).
+/// because the server's store is the truth (`docs/identity-and-rating.md`
+/// stage 4). `None` from a server that keeps nothing.
 ///
 /// **Held to the remembered key like a game is** (`KnownServers`): a
 /// server at this address that proves another key is refused before this
 /// player's key is proved to it, and one met for the first time is
 /// remembered.
-pub async fn standing(address: &str, credentials: &Credentials) -> Result<Vec<netrunner_protocol::FormatStanding>, ConnectionError> {
+pub async fn profile(address: &str, credentials: &Credentials) -> Result<Option<netrunner_protocol::Profile>, ConnectionError> {
     let dialer = Dialer::default();
-    let reply = standing_over(Target::of(address.to_string()), address, credentials, &dialer).await;
+    let reply = profile_over(Target::of(address.to_string()), address, credentials, &dialer).await;
     dialer.close().await;
     reply
 }
 
-async fn standing_over(target: Target, address: &str, credentials: &Credentials, dialer: &Dialer) -> Result<Vec<netrunner_protocol::FormatStanding>, ConnectionError> {
+async fn profile_over(target: Target, address: &str, credentials: &Credentials, dialer: &Dialer) -> Result<Option<netrunner_protocol::Profile>, ConnectionError> {
     let transport = |error: tokio_tungstenite::tungstenite::Error| ConnectionError::Transport(error.to_string());
     let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
     let send = |message: ClientMessage| WsMessage::Text(serde_json::to_string(&message).expect("a ClientMessage serializes"));
@@ -782,9 +832,9 @@ async fn standing_over(target: Target, address: &str, credentials: &Credentials,
                 }
                 socket.send(send(ClientMessage::Prove { signature: credentials.identity.prove(&server_key, &nonce) })).await.map_err(transport)?;
             }
-            ServerMessage::Identified { .. } => socket.send(send(ClientMessage::MyStanding)).await.map_err(transport)?,
+            ServerMessage::Identified { .. } => socket.send(send(ClientMessage::MyProfile)).await.map_err(transport)?,
             ServerMessage::IdentifyRefused { reason } => return Err(ConnectionError::Rejected(reason)),
-            ServerMessage::Standing { standings, .. } => break standings,
+            ServerMessage::Profile { profile, .. } => break profile,
             _ => {}
         }
     };
@@ -1026,11 +1076,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A standing is asked for with the key proved, and held to the
+    /// A profile is asked for with the key proved, and held to the
     /// server's remembered key like a game is: a new key with no rated game
     /// has none, and a server proving another key is refused.
     #[tokio::test]
-    async fn a_standing_is_fetched_with_the_key_and_held_to_the_remembered_server() {
+    async fn a_profile_is_fetched_with_the_key_and_held_to_the_remembered_server() {
         let dir = std::env::temp_dir().join(format!("netrunner_remote_standing_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
@@ -1039,14 +1089,16 @@ mod tests {
         tokio::spawn(server.run());
         let url = format!("ws://{addr}");
         let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
-        assert_eq!(standing(&url, &credentials).await.unwrap(), Vec::new(), "no rated game yet");
+        // The probe proves the key and asks without attaching, and a
+        // server keeps a key from its first attach: nothing yet.
+        assert_eq!(profile(&url, &credentials).await.unwrap(), None, "never attached, so nothing kept");
         let known_path = credentials.known_servers().unwrap();
         assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
 
         let mut known = KnownServers::default();
         known.insert(&url, netrunner_identity::Identity::from_secret([7; 32]).public_key());
         known.save(&known_path).unwrap();
-        assert!(matches!(standing(&url, &credentials).await, Err(ConnectionError::ServerKeyChanged { .. })));
+        assert!(matches!(profile(&url, &credentials).await, Err(ConnectionError::ServerKeyChanged { .. })));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1151,15 +1203,15 @@ mod tests {
         })
         .await;
         assert_eq!(lobby.id, "startup", "rejoined without being asked");
-        // The standing is asked over the same connection; this one proved
-        // no key, and the daemon keeps no book.
-        attached.standing();
-        let standing = next_where(&mut attached, |event| match event {
-            AttachedEvent::Standing { key, standings } => Some((key, standings)),
+        // The profile is asked over the same connection; this one proved
+        // no key, and the daemon keeps no store.
+        attached.profile();
+        let fetched = next_where(&mut attached, |event| match event {
+            AttachedEvent::Profile { key, profile } => Some((key, profile)),
             _ => None,
         })
         .await;
-        assert_eq!(standing, (None, Vec::new()));
+        assert_eq!(fetched, (None, None));
         attached.seek(Chair::Corp(Box::new(deck("brick_stack"))));
         let mut joined = next_where(&mut attached, |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),

@@ -281,7 +281,9 @@ impl App {
                 | ServerMessage::Identified { .. }
                 | ServerMessage::IdentifyRefused { .. }
                 | ServerMessage::SignSeat { .. }
-                | ServerMessage::Standing { .. } => {}
+                | ServerMessage::Profile { .. }
+                | ServerMessage::ProfileRefused { .. }
+                | ServerMessage::Ladder { .. } => {}
                 ServerMessage::Rated { before, after, .. } => {
                     if let Viewer::Player(side) = self.viewer {
                         self.rated = Some(netrunner_client::identity::rated_line(side, &before, &after));
