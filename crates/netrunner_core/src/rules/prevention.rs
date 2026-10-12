@@ -133,9 +133,16 @@ pub(crate) fn could_prevent(state: &GameState, registry: &CardRegistry, what: &W
 pub(crate) fn would(
     state: &mut GameState,
     registry: &CardRegistry,
-    what: WouldHappen,
+    mut what: WouldHappen,
     ctx: &mut ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // "Whenever you would do meat damage, increase that damage by 1" (The
+    // Cleaners) is applied as the damage becomes imminent, before anybody
+    // is asked and whether or not it can be prevented (CR 9.9.7e).
+    if let (WouldHappen::Damage { kind, amount }, Some(side)) = (&mut what, responsible_for(registry, ctx.acting_card)) {
+        let by = crate::rules::continuous::damage_done(state, registry, side, *kind);
+        *amount = u32::try_from(i64::from(*amount) + i64::from(by)).unwrap_or(0);
+    }
     // None of it is nothing: Urtica Cipher with no counters on it deals 0
     // net damage, and 0 damage is not damage — nothing for Net Shield to be
     // asked about or for the turn to count as its first, and nothing for

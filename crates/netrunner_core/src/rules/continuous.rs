@@ -393,6 +393,29 @@ pub(crate) fn allotted_clicks(state: &GameState, registry: &CardRegistry, side: 
     })
 }
 
+/// What `side`'s active cards add to damage of `kind` that `side` would do
+/// (`ContinuousKind::DamageDone`, The Cleaners), asked once by
+/// `prevention::would` as the damage becomes imminent.
+pub(crate) fn damage_done(state: &GameState, registry: &CardRegistry, side: Side, kind: crate::dsl::DamageType) -> i32 {
+    use crate::dsl::DamageType;
+    // `sum` takes a plain `fn`, so the kind is matched by one per kind.
+    let pick: fn(&ContinuousKind) -> Option<&Number> = match kind {
+        DamageType::Net => |effect| match effect {
+            ContinuousKind::DamageDone { kind: DamageType::Net, by } => Some(by),
+            _ => None,
+        },
+        DamageType::Meat => |effect| match effect {
+            ContinuousKind::DamageDone { kind: DamageType::Meat, by } => Some(by),
+            _ => None,
+        },
+        DamageType::Brain => |effect| match effect {
+            ContinuousKind::DamageDone { kind: DamageType::Brain, by } => Some(by),
+            _ => None,
+        },
+    };
+    sum(state, registry, Target::Player(side), pick)
+}
+
 /// The agenda points `side` needs to win right now (CR 1.7.2a, 10.3.1c):
 /// the match's threshold — 7, or 6 in a starter game — and what `side`'s
 /// active cards change it by (`ContinuousKind::AgendaPointsToWin`, Issuaq

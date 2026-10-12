@@ -1880,6 +1880,8 @@ impl CardDefinition {
                 }
                 (ContinuousKind::AllottedClicks(_), Scope::Controller) => {}
                 (ContinuousKind::AllottedClicks(_), _) => return misfit("AllottedClicks", "a player's allotted clicks are theirs, so they apply to the card's `Controller`"),
+                (ContinuousKind::DamageDone { .. }, Scope::Controller) => {}
+                (ContinuousKind::DamageDone { .. }, _) => return misfit("DamageDone", "the damage a player would do is theirs, so it applies to the card's `Controller`"),
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
                     return misfit("InstallingOntoThis", "only a Runner's installed card has cards installed onto it");
                 }
