@@ -193,13 +193,29 @@ pub struct Config {
     #[arg(long, value_enum)]
     pub side: Option<SideArg>,
 
-    /// (remote mode) The lobby to look for a game in, by its id: a
-    /// player's lobby, given by whoever made it. Omitted: the server's own
-    /// lobby for `--format`.
+    /// (remote mode) The lobby to look for a game in, by its id: a friend
+    /// queue's code, given by whoever made it, or one of the server's own
+    /// queues (`casual-startup`, `ranked-standard`). Omitted: the server's
+    /// Casual queue for `--format`, or its Ranked one with `--ranked`.
     #[arg(long)]
     pub lobby: Option<String>,
 
-    /// (remote mode) The password of a closed lobby that has one.
+    /// (remote mode) Look for a game in the server's Ranked queue for
+    /// `--format` rather than its Casual one: rated, between two players
+    /// with keys, on a server that keeps a book (Phase 4 §9). Ignored with
+    /// `--lobby`.
+    #[arg(long)]
+    pub ranked: bool,
+
+    /// (remote mode) Play a bot at this rung — `novice`, `apprentice`,
+    /// `operator`, `veteran`, `elite`, or `1`-`5` — instead of waiting for
+    /// a person, where the lobby offers one: a server's Casual queue, or a
+    /// friend queue its maker let bots into. The bot plays the style of
+    /// the deck the server deals it. Omitted: a person.
+    #[arg(long)]
+    pub bot: Option<netrunner_bots::Level>,
+
+    /// (remote mode) The password of a friend queue that has one.
     #[arg(long)]
     pub password: Option<String>,
 

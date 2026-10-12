@@ -1687,16 +1687,17 @@ mod lesson_tests {
     /// and the host lets the match go.
     #[test]
     fn a_seat_at_a_host_plays_through_the_same_messages() {
-        use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+        use netrunner_server::serve::{ServeOptions, Server};
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
         let url = runtime.block_on(async {
-            let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() };
+            let options = ServeOptions { seed: Some(1), ..ServeOptions::default() };
             let server = Server::bind("127.0.0.1:0", options).await.unwrap();
             let url = format!("ws://{}", server.local_addr().unwrap());
             tokio::spawn(server.run());
             url
         });
-        let hello = crate::remote::seat_in_format("tester", netrunner_core::format::NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
+        let hello = crate::remote::seat_in_format("tester", netrunner_core::format::NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"))
+            .against(netrunner_protocol::Opponent::Bot { level: netrunner_bots::Level::Elite, style: None });
         let joined = runtime.block_on(async { crate::remote::connect(crate::remote::seek(url.clone(), hello), |_| {}).await }).unwrap();
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let mut handle = MatchHandle::start_remote(registry, joined, Side::Runner).unwrap();

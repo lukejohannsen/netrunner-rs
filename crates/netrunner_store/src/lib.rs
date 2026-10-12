@@ -404,6 +404,21 @@ impl Store {
         Ok(())
     }
 
+    /// What every pair of keys last did against each other: what a daemon
+    /// reads at bind, since a pairing is made under a lock no query can
+    /// wait inside.
+    pub async fn pairings(&self) -> Result<Vec<Pairing>> {
+        let rows = sqlx::query("SELECT one, other, corp, played_at FROM last_pairing ORDER BY one, other").fetch_all(&self.pool).await?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let (one, other, corp): (String, String, String) = (row.get(0), row.get(1), row.get(2));
+                let runner = if corp == one { other } else { one };
+                Pairing { corp, runner, played_at: row.get(3) }
+            })
+            .collect())
+    }
+
     /// What two keys last did against each other, whichever order they
     /// are named in.
     pub async fn last_pairing(&self, a: &str, b: &str) -> Result<Option<Pairing>> {
@@ -714,8 +729,14 @@ mod tests {
             store.put_pairing("key:bo", "key:ann", 200).await.unwrap();
             let last = store.last_pairing("key:ann", "key:bo").await.unwrap().unwrap();
             assert_eq!(last, Pairing { corp: "key:bo".into(), runner: "key:ann".into(), played_at: 200 }, "one row for the pair, the later game's chairs");
-            assert_eq!(store.last_pairing("key:bo", "key:ann").await.unwrap(), Some(last));
+            assert_eq!(store.last_pairing("key:bo", "key:ann").await.unwrap(), Some(last.clone()));
             assert_eq!(store.last_pairing("key:ann", "key:cy").await.unwrap(), None);
+            store.put_pairing("key:cy", "key:ann", 300).await.unwrap();
+            assert_eq!(
+                store.pairings().await.unwrap(),
+                vec![last.clone(), Pairing { corp: "key:cy".into(), runner: "key:ann".into(), played_at: 300 }],
+                "every pair, read whole at bind"
+            );
 
             store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":1}".into(), updated_at: 1 }).await.unwrap();
             store.put_tournament(&TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }).await.unwrap();

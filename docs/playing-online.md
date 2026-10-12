@@ -19,11 +19,21 @@ same page: they join your lobby, pick their chair and deck, and the game
 starts when you are both looking. When it ends you are both back on that
 page, still connected, and the next game is a chair and a deck away.
 
-A game hosted this way is never rated, and the page says so. On a public
-server that keeps ratings, each lobby says whether its games count: the
-server's own do, and the line over **Find a game** shows your standing there
-once you have played. Make a lobby of your own and mark it **Unrated** for a
-game nobody wants on their record.
+A game hosted this way is never rated, and the page says so. A public
+server has two queues for each format it plays. **Ranked** is rated — only
+on a server that keeps ratings, and only between two players with keys —
+and the line over **Find a game** shows your standing there once you have
+played. **Casual** never is, and there you may ask for a bot at any rung of
+the ladder instead of waiting for a person; a bot never sits in Ranked.
+To play the people you know, make a **friend queue**: it is never listed and
+never rated, your group joins it by the code the server gives it, and
+whoever is looking there plays whoever else is. Whether its members may ask
+for a bot is yours to say when you make it.
+
+Bring a deck for each side and choose **Either** to let the queue seat you,
+with a preference for one side if you have one: the queue meets it where it
+can and never refuses a game over it. Two players who meet again swap the
+chairs they last took.
 
 A move can be taken back online as it can at home — **Take it back** on the
 desktop, `u` in the terminal — whenever the host offers it. A move still on
@@ -93,7 +103,9 @@ by default.
 
 ## Running a server that is always on
 
-`netrunner_server --serve --host :: --port 8080 --bot-runner none` pairs
-whoever connects. `::` listens on every IPv6 address, and on IPv4 too on
+`netrunner_server --serve --host :: --port 8080 --data-dir <dir>` pairs
+whoever connects, and with a data directory keeps ratings in a Ranked queue
+per format. `--bots none` offers no bot even to a Casual seek that asks; by
+default every rung of the ladder is offered there. `::` listens on every IPv6 address, and on IPv4 too on
 Linux and macOS. On Windows, use `0.0.0.0` for IPv4. The server doesn't
 ask the router for anything: forward the port yourself.

@@ -20,7 +20,7 @@ use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::{Outcome, Role};
 use netrunner_server::protocol::{DrawOffer, TournamentInfo, TournamentState};
 use std::time::Duration as RoundLength;
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -43,7 +43,7 @@ async fn stored(dir: &Path, id: &str, needle: &str) {
 }
 
 async fn start(data_dir: Option<PathBuf>) -> (String, PublicKey) {
-    start_with(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, ..ServeOptions::default() }).await
+    start_with(ServeOptions { seed: Some(1), data_dir, ..ServeOptions::default() }).await
 }
 
 async fn start_with(options: ServeOptions) -> (String, PublicKey) {
@@ -672,7 +672,7 @@ async fn an_intentional_draw_is_offered_by_both_players() {
 #[tokio::test]
 async fn time_is_called_on_a_round() {
     let dir = scratch("clock");
-    let (url, server_key) = start_with(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.clone()), round_length: RoundLength::from_secs(2), ..ServeOptions::default() }).await;
+    let (url, server_key) = start_with(ServeOptions { seed: Some(1), data_dir: Some(dir.clone()), round_length: RoundLength::from_secs(2), ..ServeOptions::default() }).await;
     let people = [player(1), player(2)];
     let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
     let mut sockets = Vec::new();

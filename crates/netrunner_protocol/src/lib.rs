@@ -13,6 +13,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use netrunner_bots::{Level, Style};
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
@@ -117,38 +118,46 @@ pub enum ClientMessage {
     /// anything was released.
     ///
     /// **There is no picking an opponent** (decided 26 September 2026): a
-    /// lobby pairs whoever is waiting in it, and a closed lobby is how two
+    /// lobby pairs whoever is waiting in it, and a friend queue is how two
     /// people who already know each other meet. Listing the waiters and
     /// challenging one was proposed and declined.
     Attach { player_name: String },
-    /// The open lobbies, answered with `Lobbies`. A closed lobby is never
-    /// listed; it is joined by its id.
+    /// The server's own queues, answered with `Lobbies`. A friend queue is
+    /// never listed; it is joined by its code.
     ListLobbies,
-    /// Make a lobby and join it: open (listed) or closed (joined by its
-    /// id, and by `password` when one is set). Answered with
-    /// `LobbyJoined`, whose id is the one to share, or `LobbyRefused`.
+    /// Make a friend queue and join it (Phase 4 §9): a lobby of a
+    /// player's own, joined by the code `LobbyJoined` names and by
+    /// `password` when one is set, where the group shows up over time —
+    /// it lives while anyone is in it, pairs only among its members, two
+    /// members simply play each other, and a member comes back to it after
+    /// each game. Answered with `LobbyJoined` or `LobbyRefused`.
     ///
-    /// `casual` makes a lobby whose games count for nothing, on a server
-    /// that would otherwise rate them (Phase 4 §7 stage 5): two friends
-    /// trying a deck, or a game nobody wants on their record. It is the
-    /// lobby's property, not a seat's, so both players know before they
-    /// look. A rated lobby is what a server's own lobbies are when it
-    /// keeps a book, and `casual: false` on a server that keeps none is
-    /// still unrated — `LobbyInfo::rated` says what the server will do.
-    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool },
-    /// Join a lobby by its id — a listed one, or a closed one given by its
-    /// maker — leaving the one this connection was in. A password is
+    /// **Casual by definition, and never listed.** A friend queue is how
+    /// people who know each other meet, so it counts for nothing and a
+    /// stranger never finds it in a list: it was a lobby that could be
+    /// rated and could be listed until §9, and both went — rated play is
+    /// the server's Ranked queue, and a listed lobby of a player's was a
+    /// way to be paired with strangers outside it. `bots` lets its members
+    /// ask for a bot (`Opponent::Bot`), the maker's to allow: bots sit only
+    /// where a casual lobby asks for one.
+    CreateLobby { name: String, format: NsgFormat, password: Option<String>, bots: bool },
+    /// Join a lobby by its id — one of the server's queues, or a friend
+    /// queue by the code its maker gave — leaving the one this connection
+    /// was in. A password is
     /// asked of a lobby made with one. Answered with `LobbyJoined` or
     /// `LobbyRefused`.
     JoinLobby { lobby: String, password: Option<String> },
     LeaveLobby,
     /// Look for a game in the lobby joined, with the deck or decks the
-    /// chair needs. Answered with `Queued`, then `MatchJoined` when the
-    /// lobby pairs this player; or `SeekRefused`. A second seek while one
-    /// is open is refused: `CancelSeek` first, and the new one is a new
-    /// place in the queue. The decks go no further than the server, which
-    /// deals from them and tells nobody else what they are.
-    Seek { chair: Chair },
+    /// chair needs, against `opponent`. Answered with `Queued`, then
+    /// `MatchJoined` when the queue pairs this player (`netrunner_server::
+    /// queue`: the chair's hard side, then the preferences, then the swap
+    /// of the chairs two keys last took); or `MatchJoined` at once for a
+    /// bot; or `SeekRefused`. A second seek while one is open is refused:
+    /// `CancelSeek` first, and the new one is a new place in the queue. The
+    /// decks go no further than the server, which deals from them and
+    /// tells nobody else what they are.
+    Seek { chair: Chair, opponent: Opponent },
     /// Stop looking. Answered with `SeekCancelled`.
     CancelSeek,
     /// Hold a tournament on this server (Phase 4 §7 stage 6a), named and
@@ -225,20 +234,61 @@ pub enum ClientMessage {
 }
 
 /// Which chair a player looks for a game in, and the deck it needs: one
-/// deck for a chair chosen, one for each side for a random one, whose
-/// side the server picks at pairing.
+/// deck for a chair chosen, which is the hard constraint a queue honours
+/// first, or one for each side, whose side the queue picks at pairing —
+/// toward `prefer` where it can (Phase 4 §9). A preference is never a
+/// refusal: a queue whose preferences could refuse a pairing can
+/// deadlock, so the deck for the other side is always brought.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Chair {
     Corp(Box<DeckFile>),
     Runner(Box<DeckFile>),
-    Random { corp: Box<DeckFile>, runner: Box<DeckFile> },
+    Either { corp: Box<DeckFile>, runner: Box<DeckFile>, prefer: Option<Side> },
 }
 
-/// The id of a server's own lobby for `format`: its name in lower case
-/// (`startup`, `standard`, …). A client joins the lobby for the format it
-/// plays by this id, and a player's lobby never has one of these ids.
-pub fn format_lobby_id(format: NsgFormat) -> String {
-    format!("{format:?}").to_lowercase()
+/// Who a seek is to play (Phase 4 §9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Opponent {
+    /// Whoever the queue pairs: the only opponent Ranked has.
+    Person,
+    /// A bot at this rung of the difficulty ladder, in `style` — `None`
+    /// for the style of the deck it is dealt. Asked only where the lobby
+    /// offers that rung (`LobbyInfo::bots`), and seated at once: **a bot
+    /// sits only in Casual, and only when a lobby asks for one** (decided
+    /// 11 October 2026).
+    Bot { level: Level, style: Option<Style> },
+}
+
+/// The three kinds of lobby a server has (Phase 4 §9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum QueueMode {
+    /// The server's rated queue for a format: only on a server that keeps
+    /// a book, and never a bot.
+    Ranked,
+    /// The server's unrated queue for a format, where a player may ask for
+    /// a bot.
+    Casual,
+    /// A player's own lobby (`ClientMessage::CreateLobby`): casual, never
+    /// listed, joined by its code.
+    Friends,
+}
+
+impl QueueMode {
+    /// What a player calls it.
+    pub fn name(self) -> &'static str {
+        match self {
+            QueueMode::Ranked => "Ranked",
+            QueueMode::Casual => "Casual",
+            QueueMode::Friends => "Friends",
+        }
+    }
+}
+
+/// The id of a server's own queue in `mode` for `format`: the two names
+/// in lower case (`ranked-standard`, `casual-startup`, …). A client joins
+/// the queue it plays by this id, and a friend queue's code is never one.
+pub fn queue_id(mode: QueueMode, format: NsgFormat) -> String {
+    format!("{}-{format:?}", mode.name()).to_lowercase()
 }
 
 /// A key's standing in one format at a server: the server's ladders are
@@ -303,30 +353,42 @@ pub const LADDER_MIN_GAMES: u32 = 10;
 /// The most rows a `Ladder` answer carries.
 pub const LADDER_LIMIT: usize = 100;
 
-/// A lobby as `Lobbies` and `LobbyJoined` report it.
+/// A lobby as `Lobbies` and `LobbyJoined` report it: one of the server's
+/// two queues for a format, or a friend queue.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LobbyInfo {
-    /// What `JoinLobby` names it by: a format's name for the server's own
-    /// lobby, a short code for a player's.
+    /// What `JoinLobby` names it by: `queue_id` for the server's own, a
+    /// short code for a friend queue.
     pub id: String,
+    /// The format's name for the server's own, the maker's for a friend
+    /// queue.
     pub name: String,
     pub format: NsgFormat,
-    /// The server's own lobby for its format, which never goes away.
-    pub permanent: bool,
-    /// Not listed; joined by its id.
-    pub closed: bool,
+    pub mode: QueueMode,
     /// Joining asks for a password.
     pub password: bool,
-    /// Whether a game paired here counts: the server keeps a book and
-    /// the lobby was not made casual. A seat still plays unrated in a
-    /// rated lobby when it proved no key, or when both chairs are one
-    /// key; `rated` is what the lobby offers, and `Standing` is what
-    /// this connection stands to gain.
+    /// Whether a game paired here counts: the Ranked queue, which a server
+    /// offers only when it keeps a book. A seat still plays unrated there
+    /// when it proved no key, or when both chairs are one key; `rated` is
+    /// what the lobby offers, and `Standing` is what this connection
+    /// stands to gain.
     pub rated: bool,
+    /// The rungs a seek here may ask for (`Opponent::Bot`), weakest first:
+    /// none in Ranked, none in a friend queue its maker kept bots out of,
+    /// none in a format the server can deal a bot no deck in, and none on
+    /// a server that offers no bots.
+    pub bots: Vec<Level>,
     /// Attached connections in the lobby.
     pub players: usize,
-    /// Of them, how many are looking for a game.
+    /// Of them, how many are looking for a game: the queue's count.
     pub seeking: usize,
+}
+
+impl LobbyInfo {
+    /// The server's own queue, which never goes away.
+    pub fn permanent(&self) -> bool {
+        self.mode != QueueMode::Friends
+    }
 }
 
 /// One running match as `ListMatches` reports it: the players' names and
@@ -413,19 +475,21 @@ pub enum ServerMessage {
     /// `Spectate` again is the whole of reconnecting.
     Spectating { match_id: Uuid },
     /// Looking for a game in a lobby, until another player is paired
-    /// with this one: `position` is how many are waiting on the server,
-    /// this player included. The token is the one `MatchJoined` will
-    /// carry.
+    /// with this one: `position` is how many are waiting in this lobby's
+    /// queue, this player included. The token is the one `MatchJoined`
+    /// will carry.
     Queued { session_token: Uuid, position: usize },
     /// A match that cannot be watched — no such match, or it ended — after
     /// which the host closes the socket. Its own variant for the reason
     /// `ResumeRejected` is: the client is waiting to be seated and has no
     /// action to have rejected.
     ConnectRejected { reason: String },
-    /// The reply to `ListMatches`. `waiting_in_lobby` counts only waiters
-    /// whose socket is still open, so a client (or a test) can poll it to
-    /// see a dropped waiter go.
-    MatchList { matches: Vec<MatchSummary>, waiting_in_lobby: usize, max_matches: Option<usize> },
+    /// The reply to `ListMatches`. `waiting` is how many are looking for
+    /// a game on the whole server, in every queue — a queue's own count is
+    /// its `LobbyInfo::seeking` — and counts only waiters whose socket is
+    /// still open, so a client (or a test) can poll it to see a dropped
+    /// waiter go.
+    MatchList { matches: Vec<MatchSummary>, waiting: usize, max_matches: Option<usize> },
     /// `ClientMessage::Resume` named a token the host does not hold: never
     /// issued, or its match already over — including a match that ended
     /// *because* this seat's grace period ran out. A client that missed

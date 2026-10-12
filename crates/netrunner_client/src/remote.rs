@@ -60,7 +60,7 @@ use uuid::Uuid;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage, TournamentInfo};
+use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, Opponent, QueueMode, ServerMessage, TournamentInfo};
 
 use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Who};
 use crate::identity::Credentials;
@@ -169,10 +169,10 @@ impl Attached {
         self.send(ClientMessage::ListLobbies);
     }
 
-    /// Make a lobby and join it; `casual` for one whose games count for
-    /// nothing on a server that would otherwise rate them.
-    pub fn create_lobby(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool) {
-        self.send(ClientMessage::CreateLobby { name, format, closed, password, casual });
+    /// Make a friend queue and join it: casual, joined by its code, and
+    /// with `bots` its members may ask for a bot.
+    pub fn create_lobby(&self, name: String, format: NsgFormat, password: Option<String>, bots: bool) {
+        self.send(ClientMessage::CreateLobby { name, format, password, bots });
     }
 
     /// Ask this connection's profile at the server, answered with
@@ -203,9 +203,9 @@ impl Attached {
     }
 
     /// Look for a game in the lobby joined, in `chair` with its deck or
-    /// decks.
-    pub fn seek(&self, chair: Chair) {
-        self.send(ClientMessage::Seek { chair });
+    /// decks, against `opponent`.
+    pub fn seek(&self, chair: Chair, opponent: Opponent) {
+        self.send(ClientMessage::Seek { chair, opponent });
     }
 
     pub fn cancel_seek(&self) {
@@ -298,6 +298,7 @@ pub struct Seat {
     pub lobby: String,
     pub password: Option<String>,
     pub chair: Chair,
+    pub opponent: Opponent,
     pub credentials: Option<Box<Credentials>>,
 }
 
@@ -307,10 +308,17 @@ pub fn seat(player_name: &str, lobby: String, password: Option<String>, deck: De
         Side::Corp => Chair::Corp(Box::new(deck)),
         Side::Runner => Chair::Runner(Box::new(deck)),
     };
-    Seat { player_name: player_name.to_string(), lobby, password, chair, credentials: None }
+    Seat { player_name: player_name.to_string(), lobby, password, chair, opponent: Opponent::Person, credentials: None }
 }
 
 impl Seat {
+    /// The seat against `opponent` — a bot, where the lobby offers one —
+    /// rather than whoever the queue pairs.
+    pub fn against(mut self, opponent: Opponent) -> Seat {
+        self.opponent = opponent;
+        self
+    }
+
     /// The seat proving `credentials`' key, or none: `None` plays unrated.
     pub fn with_credentials(mut self, credentials: Option<Credentials>) -> Seat {
         self.credentials = credentials.map(Box::new);
@@ -322,9 +330,10 @@ impl Seat {
     }
 }
 
-/// A game looked for in the server's own lobby for `format`, with one deck.
+/// A game looked for in the server's Casual queue for `format`, with one
+/// deck: the queue every server has, rated or not.
 pub fn seat_in_format(player_name: &str, format: NsgFormat, deck: DeckFile) -> Seat {
-    seat(player_name, netrunner_protocol::format_lobby_id(format), None, deck)
+    seat(player_name, netrunner_protocol::queue_id(QueueMode::Casual, format), None, deck)
 }
 
 /// A connection running in the background until it has one place: a seat
@@ -387,7 +396,7 @@ impl Connecting {
 /// runtime; the caller polls the result between frames.
 pub fn seek(url: String, seat: Seat) -> Connecting {
     let lobby = Some((seat.lobby.clone(), seat.password.clone()));
-    Connecting { attached: start(url, Goal::Attach(seat.who()), lobby, Some(seat.chair)) }
+    Connecting { attached: start(url, Goal::Attach(seat.who()), lobby, Some((seat.chair, seat.opponent))) }
 }
 
 /// A running match at `url` to watch.
@@ -402,9 +411,9 @@ pub fn spawn(url: String, goal: Goal) -> Attached {
     start(url, goal, None, None)
 }
 
-/// `spawn`, with a lobby and a chair the first attach asks for
+/// `spawn`, with a lobby and a seek the first attach asks for
 /// (`connection::Connection::with_lobby_and_seek`).
-fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, chair: Option<Chair>) -> Attached {
+fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, seek: Option<(Chair, Opponent)>) -> Attached {
     let (events_tx, events) = mpsc::unbounded_channel();
     let (commands, commands_rx) = mpsc::unbounded_channel();
     let (link_tx, link) = watch::channel(Link::Up);
@@ -418,7 +427,7 @@ fn start(url: String, goal: Goal, lobby: Option<(String, Option<String>)>, chair
         }
         Goal::Watch { .. } => (None, None),
     };
-    let connection = Connection::new(goal, Instant::now()).with_pinned(pinned).with_lobby_and_seek(lobby, chair);
+    let connection = Connection::new(goal, Instant::now()).with_pinned(pinned).with_lobby_and_seek(lobby, seek);
     tokio::spawn(drive(target, connection, Kept { known, receipts, registrations }, commands_rx, events_tx, link_tx));
     Attached { commands, events, link }
 }
@@ -773,8 +782,8 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
     let reply = loop {
         match socket.next().await {
             Some(Ok(WsMessage::Text(text))) => {
-                if let Ok(ServerMessage::MatchList { matches, waiting_in_lobby, max_matches, .. }) = serde_json::from_str(&text) {
-                    break (matches, waiting_in_lobby, max_matches);
+                if let Ok(ServerMessage::MatchList { matches, waiting, max_matches, .. }) = serde_json::from_str(&text) {
+                    break (matches, waiting, max_matches);
                 }
             }
             Some(Ok(_)) => continue,
@@ -858,14 +867,12 @@ mod tests {
     use super::*;
     use netrunner_core::rules::PlayerAction;
     use netrunner_protocol::GameEndReason;
-    use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+    use netrunner_server::serve::{ServeOptions, Server};
 
+    /// A daemon pairing people, which offers bots to a seek that asks
+    /// (`elite`).
     async fn start_server() -> std::net::SocketAddr {
-        start_server_with(ServeBotKind::Planner).await
-    }
-
-    async fn start_server_with(bot_runner: ServeBotKind) -> std::net::SocketAddr {
-        let options = ServeOptions { bot_runner, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -946,8 +953,13 @@ mod tests {
         netrunner_core::decks::by_id(id).expect("a built-in deck")
     }
 
+    /// The bot a one-seat test plays: a person needs a second seat.
+    fn elite() -> Opponent {
+        Opponent::Bot { level: netrunner_bots::Level::Elite, style: None }
+    }
+
     fn corp(url: &str) -> Connecting {
-        seek(url.to_string(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")))
+        seek(url.to_string(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).against(elite()))
     }
 
     #[tokio::test]
@@ -969,7 +981,7 @@ mod tests {
     /// closes with its game and carries nothing of the next.
     #[tokio::test]
     async fn the_next_game_is_found_on_the_same_connection() {
-        let url = format!("ws://{}", start_server_with(ServeBotKind::None).await);
+        let url = format!("ws://{}", start_server().await);
         let who = |name: &str| Goal::Attach(Who { player_name: name.into(), credentials: None });
         let mut one = spawn(url.clone(), who("one"));
         let mut two = spawn(url.clone(), who("two"));
@@ -979,8 +991,8 @@ mod tests {
                 _ => None,
             })
             .await;
-            assert!(lobbies.iter().any(|lobby| lobby.id == "startup"), "{lobbies:?}");
-            attached.join_lobby("startup".into(), None);
+            assert!(lobbies.iter().any(|lobby| lobby.id == "casual-startup"), "{lobbies:?}");
+            attached.join_lobby("casual-startup".into(), None);
             let lobby = next_where(attached, |event| match event {
                 AttachedEvent::LobbyJoined(lobby) => Some(lobby),
                 _ => None,
@@ -988,9 +1000,9 @@ mod tests {
             .await;
             assert_eq!(lobby.format, NsgFormat::Startup);
         }
-        one.seek(Chair::Corp(Box::new(deck("brick_stack"))));
+        one.seek(Chair::Corp(Box::new(deck("brick_stack"))), Opponent::Person);
         assert!(matches!(next_where(&mut one, Some).await, AttachedEvent::Queued(1)));
-        two.seek(Chair::Runner(Box::new(deck("stolen_goods"))));
+        two.seek(Chair::Runner(Box::new(deck("stolen_goods"))), Opponent::Person);
         let joined = |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),
             _ => None,
@@ -1008,12 +1020,12 @@ mod tests {
             AttachedEvent::BackInLobby(lobby) => Some(lobby),
             _ => None,
         };
-        assert_eq!(next_where(&mut one, back).await.map(|lobby| lobby.id).as_deref(), Some("startup"));
-        assert_eq!(next_where(&mut two, back).await.map(|lobby| lobby.id).as_deref(), Some("startup"));
+        assert_eq!(next_where(&mut one, back).await.map(|lobby| lobby.id).as_deref(), Some("casual-startup"));
+        assert_eq!(next_where(&mut two, back).await.map(|lobby| lobby.id).as_deref(), Some("casual-startup"));
         assert!(tokio::time::timeout(Duration::from_secs(5), async { while first.rx.recv().await.is_some() {} }).await.is_ok(), "a game's channel closes with its game");
 
-        one.seek(Chair::Runner(Box::new(deck("dashing_mad"))));
-        two.seek(Chair::Corp(Box::new(deck("glyph_of_warding"))));
+        one.seek(Chair::Runner(Box::new(deck("dashing_mad"))), Opponent::Person);
+        two.seek(Chair::Corp(Box::new(deck("glyph_of_warding"))), Opponent::Person);
         let mut third = next_where(&mut one, joined).await;
         let fourth = next_where(&mut two, joined).await;
         assert_eq!((third.viewer, fourth.viewer), (Viewer::Player(Side::Runner), Viewer::Player(Side::Corp)));
@@ -1026,15 +1038,15 @@ mod tests {
     /// connection still held — concedes it: the opponent is told at once.
     #[tokio::test]
     async fn dropping_a_games_channel_while_attached_concedes_it() {
-        let url = format!("ws://{}", start_server_with(ServeBotKind::None).await);
+        let url = format!("ws://{}", start_server().await);
         let who = |name: &str| Goal::Attach(Who { player_name: name.into(), credentials: None });
         let mut one = spawn(url.clone(), who("one"));
         let mut two = spawn(url.clone(), who("two"));
         for (attached, chair) in [(&mut one, Chair::Corp(Box::new(deck("brick_stack")))), (&mut two, Chair::Runner(Box::new(deck("stolen_goods"))))] {
             next_where(attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
-            attached.join_lobby("startup".into(), None);
+            attached.join_lobby("casual-startup".into(), None);
             next_where(attached, |event| matches!(event, AttachedEvent::LobbyJoined(_)).then_some(())).await;
-            attached.seek(chair);
+            attached.seek(chair, Opponent::Person);
         }
         let joined = |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),
@@ -1057,13 +1069,13 @@ mod tests {
     async fn a_server_key_is_remembered_by_address_and_a_new_one_refused() {
         let dir = std::env::temp_dir().join(format!("netrunner_remote_pin_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let (addr, server_key) = (server.local_addr().unwrap(), server.public_key());
         tokio::spawn(server.run());
         let url = format!("ws://{addr}");
         let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
-        let signed_in = || seek(url.clone(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).with_credentials(Some(credentials.clone())));
+        let signed_in = || seek(url.clone(), seat_in_format("tester", NsgFormat::Startup, deck("brick_stack")).against(elite()).with_credentials(Some(credentials.clone())));
 
         let mut joined = connect(signed_in(), |_| {}).await.unwrap();
         next_view(&mut joined.rx).await;
@@ -1087,7 +1099,7 @@ mod tests {
     async fn a_profile_is_fetched_with_the_key_and_held_to_the_remembered_server() {
         let dir = std::env::temp_dir().join(format!("netrunner_remote_standing_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let (addr, server_key) = (server.local_addr().unwrap(), server.public_key());
         tokio::spawn(server.run());
@@ -1116,7 +1128,7 @@ mod tests {
         use netrunner_protocol::statements::REGISTRATION_TAG;
         let dir = std::env::temp_dir().join(format!("netrunner_remote_tournament_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -1194,7 +1206,7 @@ mod tests {
         let (proxy, url) = Proxy::start(start_server().await).await;
         let mut attached = spawn(url, Goal::Attach(Who { player_name: "tester".into(), credentials: None }));
         next_where(&mut attached, |event| matches!(event, AttachedEvent::Attached(_)).then_some(())).await;
-        attached.join_lobby("startup".into(), None);
+        attached.join_lobby("casual-startup".into(), None);
         next_where(&mut attached, |event| matches!(event, AttachedEvent::LobbyJoined(_)).then_some(())).await;
 
         proxy.cut();
@@ -1206,7 +1218,7 @@ mod tests {
             _ => None,
         })
         .await;
-        assert_eq!(lobby.id, "startup", "rejoined without being asked");
+        assert_eq!(lobby.id, "casual-startup", "rejoined without being asked");
         // The profile is asked over the same connection; this one proved
         // no key, and the daemon keeps no store.
         attached.profile();
@@ -1216,7 +1228,7 @@ mod tests {
         })
         .await;
         assert_eq!(fetched, (None, None));
-        attached.seek(Chair::Corp(Box::new(deck("brick_stack"))));
+        attached.seek(Chair::Corp(Box::new(deck("brick_stack"))), elite());
         let mut joined = next_where(&mut attached, |event| match event {
             AttachedEvent::Joined(joined) => Some(joined),
             _ => None,
@@ -1235,7 +1247,7 @@ mod tests {
     }
 
     async fn start_peer_host_with(relay: crate::peer::Relay) -> (crate::peer::PeerHost, String, bool) {
-        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), ..ServeOptions::default() };
         let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
         let mut host = crate::peer::PeerHost::start(relay, move |stream, who| {
             let acceptor = acceptor.clone();
@@ -1309,7 +1321,7 @@ mod tests {
     #[tokio::test]
     async fn a_refused_seek_fails_the_one_shot_connection() {
         let url = format!("ws://{}", start_server().await);
-        let wrong = seat("tester", "startup".into(), None, deck("stolen_goods"));
+        let wrong = seat("tester", "casual-startup".into(), None, deck("stolen_goods"));
         let wrong = Seat { chair: Chair::Corp(Box::new(deck("stolen_goods"))), ..wrong };
         let result = connect(seek(url, wrong), |_| {}).await;
         assert!(matches!(&result, Err(ConnectionError::Rejected(reason)) if reason.contains("Runner deck")), "{:?}", result.err());

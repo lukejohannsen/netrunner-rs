@@ -5346,6 +5346,7 @@ dependencies = [
 name = "netrunner_protocol"
 version = "0.1.0"
 dependencies = [
+ "netrunner_bots",
  "netrunner_core",
  "netrunner_identity",
  "netrunner_rating",

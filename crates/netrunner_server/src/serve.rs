@@ -32,14 +32,18 @@
 //! a game. The one-shot `Connect` that carried a deck and closed with the
 //! game was removed before anything was released (26 September 2026).
 //!
-//! **A lobby per format, and the players' own.** A daemon offers one or
-//! more formats (`ServeOptions::formats`), each a permanent lobby, and
-//! any player may make a lobby, open or closed. A player is paired only
-//! within their lobby, their deck checked against its format — so one
-//! public server holds a Startup queue and a Standard queue side by side.
-//! Pairing within a lobby is whoever is waiting: there is no list of
-//! waiters to pick an opponent from (declined, 26 September 2026), and a
-//! closed lobby is how two people who know each other meet.
+//! **Two queues per format, and the players' own** (Phase 4 §9). A daemon
+//! offers one or more formats (`ServeOptions::formats`), and for each a
+//! Ranked queue — rated, so only on a daemon that keeps a book — and a
+//! Casual one, which never is; any player may make a friend queue, joined
+//! by its code and never listed. A player is paired only within their
+//! lobby, their deck checked against its format — so one public server
+//! holds a Startup queue and a Standard queue side by side. There is no
+//! list of waiters to pick an opponent from (declined, 26 September
+//! 2026): a friend queue is how two people who know each other meet.
+//! **A bot sits only in Casual, and only when a seek asks for one**
+//! (`Opponent::Bot`, decided 11 October 2026); until §9 the daemon seated
+//! one against every seek in every lobby.
 //!
 //! **A key is who a player is** (Phase 4 §5). Before attaching, a
 //! connection may prove a key: `Identify`, a `Challenge` naming a nonce
@@ -50,9 +54,11 @@
 //! lives in its data directory (`ServeOptions::data_dir`), or is made
 //! fresh at bind when it has none.
 //!
-//! **The lobby is a queue, not a slot.** A `Seek` either pairs with the
-//! first compatible waiter in the same lobby or joins the queue and is
-//! told so (`ServerMessage::Queued`). The token issued there is the one
+//! **The lobby is a queue, not a slot.** A `Seek` either pairs with a
+//! waiter in the same lobby — whom, and in which chairs, is the pure
+//! `crate::queue`'s to say: the hard side, the preferences, then the swap
+//! of the chairs two keys last took — or joins the queue and is told so
+//! (`ServerMessage::Queued`). The token issued there is the one
 //! `MatchJoined` carries, and a seek is withdrawn with its socket: a
 //! queue place is not a seat with a game in it, so it gets no grace.
 
@@ -62,14 +68,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use clap::ValueEnum;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, Knowledge, Level, MctsAgent, PlanningAgent, Style};
+use netrunner_bots::{Knowledge, Level, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -84,45 +89,22 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{format_lobby_id, Award, Chair, ClientMessage, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{queue_id, Award, Chair, ClientMessage, Opponent, QueueMode, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
+use crate::queue::{self, Wants};
 use crate::{fixtures, net};
-
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ServeBotKind {
-    Planner,
-    Mcts,
-    /// Queue players looking for a game and pair them into
-    /// human-vs-human matches, first come first served within a lobby.
-    None,
-}
-
-impl ServeBotKind {
-    /// What `MatchList` calls a bot seat.
-    fn seat_name(self) -> &'static str {
-        match self {
-            ServeBotKind::Planner => "planner bot",
-            ServeBotKind::Mcts => "mcts bot",
-            ServeBotKind::None => unreachable!("a human-vs-human daemon seats no bot"),
-        }
-    }
-
-}
 
 #[derive(Debug, Clone)]
 pub struct ServeOptions {
-    /// Bot opponent seated against every connecting client; `None` pairs
-    /// humans instead.
-    pub bot_runner: ServeBotKind,
-    /// Seat a rung of the difficulty ladder instead of `bot_runner`'s
-    /// kind — the same override `netrunner_cli --corp-level` makes, so a
-    /// daemon's `veteran` and a local `veteran` are the same bot. The
-    /// style still crosses it. Meaningless with `ServeBotKind::None`,
-    /// which `bind` refuses.
-    pub bot_level: Option<Level>,
-    /// The bot's `Style`, or `None` for the style its dealt deck names
-    /// (`DeckFile::style`, balanced when the deck names none).
-    pub bot_style: Option<Style>,
+    /// The rungs of the difficulty ladder this daemon offers (Phase 4
+    /// §9): what a seek in a casual lobby may ask to play
+    /// (`Opponent::Bot`), weakest first, each the same bot as a local game's
+    /// rung of that name. **Never where a bot sits**: a bot sits only in
+    /// Casual and only when a seek asks for one (decided 11 October 2026)
+    /// — until §9, `--bot-runner` seated one against every seek in every
+    /// lobby, so a person on a default daemon never met another. Empty
+    /// offers none. Every rung by default.
+    pub bots: Vec<Level>,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
     pub seed: Option<u64>,
@@ -195,9 +177,7 @@ pub struct ServeOptions {
 impl Default for ServeOptions {
     fn default() -> Self {
         ServeOptions {
-            bot_runner: ServeBotKind::Planner,
-            bot_level: None,
-            bot_style: None,
+            bots: Level::ALL.to_vec(),
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
@@ -220,7 +200,7 @@ pub const DEFAULT_ROUND_LENGTH: Duration = Duration::from_secs(40 * 60);
 /// (Phase 4 §8, 11 October 2026). Snapshot is a Fantasy Flight Games pool
 /// no shipped deck is legal in (Phase 1 §9 Stage 0b), so a daemon can deal
 /// a bot nothing there and serves it for people alone, who bring their own
-/// decks (`deals_by_format`, `Shared::seats_a_bot_in`). Until today
+/// decks (`deals_by_format`, `Registry::bots_by_format`). Until today
 /// Snapshot was left out for that reason, and the fourth was Unrestricted
 /// under its old name, Casual.
 pub const DEFAULT_FORMATS: [NsgFormat; 5] = NsgFormat::ALL;
@@ -304,27 +284,19 @@ fn legal_matchups(registry: &CardRegistry, format: NsgFormat) -> Vec<usize> {
 
 /// `legal_matchups` for every format the daemon serves. A format that
 /// allows no matchup is served all the same — for people, who bring their
-/// own decks — and a seek there waits for a person (`seats_a_bot_in`);
-/// the daemon refuses to start only when *no* served format can deal a
-/// bot and one would be seated, because then every seek on it would wait
-/// for a second person the operator did not ask for.
+/// own decks — and its lobbies offer no bot (`Registry::bots_by_format`);
+/// the daemon refuses to start only when it offers bots and *no* served
+/// format can deal one, because then the bots it offers are offered
+/// nowhere, which is not what the operator asked for.
 fn deals_by_format(registry: &CardRegistry, options: &ServeOptions) -> std::io::Result<HashMap<NsgFormat, Vec<usize>>> {
     let deals: HashMap<NsgFormat, Vec<usize>> = options.formats.iter().map(|&format| (format, legal_matchups(registry, format))).collect();
-    if options.bot_runner != ServeBotKind::None && deals.values().all(Vec::is_empty) {
+    if !options.bots.is_empty() && deals.values().all(Vec::is_empty) {
         return Err(std::io::Error::other(format!(
-            "no sample matchup is legal in any of {:?}, and a bot would be dealt one; pin a legal matchup or serve another format",
+            "no sample matchup is legal in any of {:?}, and the daemon offers bots, which would be dealt one; pin a legal matchup, serve another format or offer no bots",
             options.formats
         )));
     }
     Ok(deals)
-}
-
-fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, style: Style, knowledge: Knowledge) -> Box<dyn BotAgent> {
-    match kind {
-        ServeBotKind::Planner => Box::new(PlanningAgent::with_style(side, seed, style).with_knowledge(knowledge)),
-        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_style(style).with_knowledge(knowledge)),
-        ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
-    }
 }
 
 /// One seat's reattach credentials, held for as long as its match runs.
@@ -400,8 +372,8 @@ fn seat_index(side: Side) -> usize {
     }
 }
 
-/// An attached connection looking for a game (`Seek`), waiting for
-/// another in the same lobby (`ServeBotKind::None` only).
+/// An attached connection looking for a game against a person (`Seek`),
+/// waiting for another in the same lobby.
 struct PendingHuman {
     token: Uuid,
     player_name: String,
@@ -415,9 +387,14 @@ struct PendingHuman {
     format: NsgFormat,
     /// A chosen chair's deck, already checked; its side is the seat.
     deck: Option<Box<DeckFile>>,
-    /// A random chair's two decks, Corp then Runner: the side is picked at
-    /// pairing (`assign_sides`) and the deck for it is played.
+    /// Either chair's two decks, Corp then Runner: the side is picked at
+    /// pairing (`queue::seat`) and the deck for it is played.
     random: Option<(Box<DeckFile>, Box<DeckFile>)>,
+    /// Either chair's preferred side, if it named one.
+    prefer: Option<Side>,
+    /// When it joined the queue, in seconds since the Unix epoch: how
+    /// long its preference still counts (`queue::PATIENCE`).
+    since: u64,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 }
@@ -436,31 +413,38 @@ impl PendingHuman {
         SeatedPlayer { key: self.key, name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby), bot: None }
     }
 
-    /// The side this player must play, if their deck fixes one.
-    fn deck_side(&self) -> Option<Side> {
-        self.deck.as_ref().map(|deck| deck.side)
+    /// The seek as the queue weighs it.
+    fn seek(&self) -> queue::Seek {
+        let wants = match &self.deck {
+            Some(deck) if deck.side == Side::Corp => Wants::Corp,
+            Some(_) => Wants::Runner,
+            None => Wants::Either { prefer: self.prefer },
+        };
+        queue::Seek { wants, key: self.key.map(|key| key.rating_id()), since: self.since }
     }
 }
 
-/// Whether two waiters can be one match: not if both chose the same
-/// chair. A random chair sits anywhere.
-fn compatible(a: &PendingHuman, b: &PendingHuman) -> bool {
-    !matches!((a.deck_side(), b.deck_side()), (Some(x), Some(y)) if x == y)
-}
 
-
-/// A lobby a player made (`ClientMessage::CreateLobby`). The server's own
-/// lobbies, one per format, are not stored: they are `options.formats`.
+/// A friend queue a player made (`ClientMessage::CreateLobby`): casual,
+/// and joined by its code. The server's own queues are not stored: they
+/// are `server_queues`.
 struct PlayerLobby {
     name: String,
     format: NsgFormat,
-    closed: bool,
     /// Held in memory only and never sent: a lobby's password is a
     /// door for a few friends, not an account's.
     password: Option<String>,
-    /// Made for games that count for nothing, on a server that would
-    /// otherwise rate them (`CreateLobby::casual`).
-    casual: bool,
+    /// Its members may ask for a bot (`CreateLobby::bots`).
+    bots: bool,
+}
+
+/// The server's own queues, in the order they are listed: every format's
+/// Ranked queue — only on a daemon that keeps a book, since nothing else
+/// could rate it — then every format's Casual one.
+fn server_queues(options: &ServeOptions) -> impl Iterator<Item = (QueueMode, NsgFormat)> + '_ {
+    let ranked = options.data_dir.is_some();
+    let modes = [QueueMode::Ranked, QueueMode::Casual].into_iter().filter(move |&mode| ranked || mode != QueueMode::Ranked);
+    modes.flat_map(|mode| options.formats.iter().map(move |&format| (mode, format)))
 }
 
 /// A tournament the daemon holds (Phase 4 §7 stage 6a): what
@@ -713,8 +697,19 @@ struct Registry {
     /// written back to it row by row (`store`); see
     /// `ServeOptions::data_dir`.
     ratings: RatingBook,
-    /// Arrival order; pairing takes the first waiter in the newcomer's lobby.
-    lobby: Vec<PendingHuman>,
+    /// Everyone looking for a person to play, in every lobby, in arrival
+    /// order: a lobby's queue is its waiters in this order
+    /// (`enqueue_or_pair`).
+    waiting: Vec<PendingHuman>,
+    /// Which key was the Corp the last time two keys met, by the pair in
+    /// sorted order (`ordered_pair`): what `queue::seat` swaps. Read from
+    /// the store at bind and kept on every game between two keys, rated
+    /// or not, so a daemon that keeps nothing still balances a rematch for
+    /// as long as it runs.
+    last_corp: HashMap<(String, String), String>,
+    /// The rungs a casual lobby in each format offers: the daemon's
+    /// `bots`, or none in a format it can deal a bot no deck in.
+    bots_by_format: HashMap<NsgFormat, Vec<Level>>,
     /// The lobbies players made, by id.
     player_lobbies: HashMap<String, PlayerLobby>,
     /// How many attached connections are in each lobby, by id.
@@ -737,7 +732,7 @@ impl Registry {
     /// both its halves down together, so a closed socket shows up here as
     /// a closed `tx` without any watcher task.
     fn sweep_lobby(&mut self) {
-        self.lobby.retain(|waiter| !waiter.tx.is_closed());
+        self.waiting.retain(|waiter| !waiter.tx.is_closed());
     }
 
     fn at_cap(&self, options: &ServeOptions) -> bool {
@@ -767,52 +762,45 @@ impl Registry {
                     format: entry.format,
                 })
                 .collect(),
-            waiting_in_lobby: self.lobby.len(),
+            waiting: self.waiting.len(),
             max_matches: options.max_matches,
         }
     }
 
     /// Waiters looking for a game in lobby `id`.
     fn seeking(&self, id: &str) -> usize {
-        self.lobby.iter().filter(|waiter| waiter.lobby == id).count()
+        self.waiting.iter().filter(|waiter| waiter.lobby == id).count()
     }
 
     /// Lobby `id` as a player sees it, or `None` if there is no such lobby.
     fn lobby_info(&self, id: &str, options: &ServeOptions) -> Option<LobbyInfo> {
-        let (name, format, permanent, closed, password, casual) = match self.player_lobbies.get(id) {
-            Some(lobby) => (lobby.name.clone(), lobby.format, false, lobby.closed, lobby.password.is_some(), lobby.casual),
+        let offered = |format: NsgFormat| self.bots_by_format.get(&format).cloned().unwrap_or_default();
+        let (name, format, mode, password, bots) = match self.player_lobbies.get(id) {
+            Some(lobby) => (lobby.name.clone(), lobby.format, QueueMode::Friends, lobby.password.is_some(), if lobby.bots { offered(lobby.format) } else { Vec::new() }),
             None => {
-                let format = *options.formats.iter().find(|&&format| format_lobby_id(format) == id)?;
-                (format!("{format:?}"), format, true, false, false, false)
+                let (mode, format) = server_queues(options).find(|&(mode, format)| queue_id(mode, format) == id)?;
+                // A bot is never seated in Ranked.
+                let bots = if mode == QueueMode::Casual { offered(format) } else { Vec::new() };
+                (format!("{format:?}"), format, mode, false, bots)
             }
         };
         Some(LobbyInfo {
             id: id.to_string(),
             name,
             format,
-            permanent,
-            closed,
+            mode,
             password,
-            // What the server will do with a game paired here: a daemon
-            // with no book rates nothing, whatever a lobby asks.
-            rated: options.data_dir.is_some() && !casual,
+            rated: mode == QueueMode::Ranked,
+            bots,
             players: self.members.get(id).copied().unwrap_or(0),
             seeking: self.seeking(id),
         })
     }
 
-    /// The open lobbies: the server's own, one per format in the order it
-    /// offers them, then the players' by name.
+    /// The lobbies listed: the server's own queues. A friend queue is
+    /// never listed; it is joined by its code.
     fn open_lobbies(&self, options: &ServeOptions) -> Vec<LobbyInfo> {
-        let mut theirs: Vec<&String> = self.player_lobbies.iter().filter(|(_, lobby)| !lobby.closed).map(|(id, _)| id).collect();
-        theirs.sort_by_key(|id| (self.player_lobbies[*id].name.to_lowercase(), (*id).clone()));
-        options
-            .formats
-            .iter()
-            .map(|&format| format_lobby_id(format))
-            .chain(theirs.into_iter().cloned())
-            .filter_map(|id| self.lobby_info(&id, options))
-            .collect()
+        server_queues(options).filter_map(|(mode, format)| self.lobby_info(&queue_id(mode, format), options)).collect()
     }
 
     /// A player's lobby goes when nobody is in it and nobody waits in it.
@@ -858,14 +846,6 @@ impl Shared {
         self.registry.lock().expect("daemon registry poisoned")
     }
 
-    /// Whether a seek in `format` is seated against a bot: the daemon
-    /// runs one, and the format has a matchup to deal it. A format with
-    /// none (Snapshot, with the shipped pool) queues the seek for a
-    /// person instead, whatever `--bot-runner` says.
-    fn seats_a_bot_in(&self, format: NsgFormat) -> bool {
-        self.options.bot_runner != ServeBotKind::None && self.deals.get(&format).is_some_and(|legal| !legal.is_empty())
-    }
-
     /// The decklists match `seed` is played with: whatever was pinned,
     /// and `fixtures::sample_decks_for_seed` for each side that was not.
     ///
@@ -878,8 +858,7 @@ impl Shared {
     /// The rotation runs over the matchups legal in the match's format
     /// (`Shared::deals`); a format with none deals from the whole pool,
     /// which only a match whose seats all brought decks reaches, because
-    /// a seek in such a format is never seated against a bot
-    /// (`seats_a_bot_in`).
+    /// a lobby in such a format offers no bot (`Registry::bots_by_format`).
     fn decks_for(&self, seed: u64, format: NsgFormat) -> DealtMatchup {
         let mut dealt = match self.deals.get(&format).filter(|legal| !legal.is_empty()) {
             Some(legal) => fixtures::sample_decks_at(legal[(seed % legal.len() as u64) as usize]),
@@ -946,7 +925,7 @@ impl Shared {
             let result = ResultRow {
                 match_id: receipt_match_id(receipt),
                 ended_at: ended_at as i64,
-                format: format_lobby_id(format),
+                format: format_key(format),
                 corp: corp.to_string(),
                 runner: runner.to_string(),
                 winner: Some(match outcome {
@@ -1077,8 +1056,10 @@ impl Shared {
 
     /// Remembers which chairs two keys took against each other, so the
     /// next pairing of the two can swap them (Phase 4 §9); every game
-    /// between two keys, rated or not.
-    fn remember_pairing(&self, corp: &str, runner: &str, played_at: u64) {
+    /// between two keys, rated or not, as it starts. Under the caller's
+    /// registry lock, the one the pairing was made under.
+    fn remember_pairing(&self, registry: &mut Registry, corp: &str, runner: &str, played_at: u64) {
+        registry.last_corp.insert(ordered_pair(corp, runner), corp.to_string());
         let Some(writer) = &self.store else { return };
         let (corp, runner) = (corp.to_string(), runner.to_string());
         writer.write("a pairing", move |store| async move { store.put_pairing(&corp, &runner, played_at as i64).await });
@@ -1256,7 +1237,7 @@ pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result
         rows.push(ResultRow {
             match_id: receipt.match_id.to_string(),
             ended_at: receipt.ended_at as i64,
-            format: format_lobby_id(receipt.format),
+            format: format_key(receipt.format),
             corp: corp.rating_id(),
             runner: runner.rating_id(),
             winner: Some(match winner {
@@ -1319,13 +1300,14 @@ struct Kept {
     lasting: bool,
     ratings: RatingBook,
     tournaments: Tournaments,
+    last_corp: HashMap<(String, String), String>,
     store: Option<Store>,
 }
 
 impl Kept {
     /// A daemon that keeps nothing: a key made at bind, no book, no store.
     fn nothing() -> Kept {
-        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), store: None }
+        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), last_corp: HashMap::new(), store: None }
     }
 }
 
@@ -1341,7 +1323,14 @@ async fn load_kept(data_dir: Option<&Path>, database: Option<&str>) -> std::io::
         let tournament: Tournament = serde_json::from_str(&row.document).map_err(|error| invalid("tournaments", format!("{}: {error}", row.id)))?;
         tournaments.0.insert(row.id, tournament);
     }
-    Ok(Kept { identity, lasting: true, ratings, tournaments, store: Some(store) })
+    let last_corp = store
+        .pairings()
+        .await
+        .map_err(|error| invalid("pairings", error.to_string()))?
+        .into_iter()
+        .map(|pairing| (ordered_pair(&pairing.corp, &pairing.runner), pairing.corp))
+        .collect();
+    Ok(Kept { identity, lasting: true, ratings, tournaments, last_corp, store: Some(store) })
 }
 
 /// The daemon's key: read, or made and written with only its owner able
@@ -1413,9 +1402,6 @@ impl Server {
     }
 
     fn check_options(options: &ServeOptions) -> std::io::Result<()> {
-        if options.bot_level.is_some() && options.bot_runner == ServeBotKind::None {
-            return Err(std::io::Error::other("--bot-level seats a bot, but --bot-runner none pairs humans; drop one of them"));
-        }
         if options.formats.is_empty() {
             return Err(std::io::Error::other("a daemon needs at least one format to pair players in"));
         }
@@ -1424,7 +1410,7 @@ impl Server {
 
     fn with_listener(listener: TcpListener, options: ServeOptions, kept: Kept) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let Kept { identity, lasting, ratings, tournaments, store } = kept;
+        let Kept { identity, lasting, ratings, tournaments, last_corp, store } = kept;
         let cards = fixtures::sample_registry();
         // The rotating pool is gated per format, and for a better reason
         // than a pinned deck: an operator who pins a deck names it and
@@ -1434,7 +1420,7 @@ impl Server {
         // change while the process runs.
         let deals = deals_by_format(&cards, &options)?;
         // A pinned deck is dealt only where a bot is seated, which is only
-        // a format the rotating pool can deal in (`seats_a_bot_in`), so it
+        // a format the rotating pool can deal in (`bots_by_format`), so it
         // is held to those formats and not to one served for people alone
         // — Snapshot, which no shipped deck is legal in, would otherwise
         // refuse every pin on the default daemon.
@@ -1448,10 +1434,11 @@ impl Server {
                 runner: pin_deck(options.runner_deck.as_deref(), Side::Runner, &cards, format)?,
             };
         }
+        let bots_by_format = deals.iter().map(|(&format, legal)| (format, if legal.is_empty() { Vec::new() } else { options.bots.clone() })).collect();
         let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
-            registry: Arc::new(StdMutex::new(Registry { ratings, tournaments, ..Registry::default() })),
+            registry: Arc::new(StdMutex::new(Registry { ratings, tournaments, last_corp, bots_by_format, ..Registry::default() })),
             options,
             base_seed,
             pinned,
@@ -1482,7 +1469,7 @@ impl Server {
 
     /// The accept loop. Returns only if `accept` itself fails.
     pub async fn run(self) -> std::io::Result<()> {
-        tracing::info!(addr = %self.local_addr()?, bot_runner = ?self.shared.options.bot_runner, "netrunner_server listening");
+        tracing::info!(addr = %self.local_addr()?, bots = ?self.shared.options.bots, "netrunner_server listening");
         loop {
             let (stream, peer_addr) = self.listener.accept().await?;
             let shared = self.shared.clone();
@@ -1693,10 +1680,15 @@ fn refuse(tx: &mpsc::UnboundedSender<ServerMessage>, reason: &str) {
     let _ = tx.send(ServerMessage::ConnectRejected { reason: reason.to_string() });
 }
 
+/// A seek against a bot (`Opponent::Bot`), already checked against what
+/// its lobby offers: seated at once, in the chair its deck is for,
+/// against `level` in `style` — or the style of the deck the bot is
+/// dealt. Never rated.
 #[allow(clippy::too_many_arguments)]
 fn seat_vs_bot(
     shared: &Shared,
-    kind: ServeBotKind,
+    level: Level,
+    style: Option<Style>,
     player_name: String,
     format: NsgFormat,
     deck: Box<DeckFile>,
@@ -1724,34 +1716,19 @@ fn seat_vs_bot(
         Side::Corp => (&dealt.runner_id, &dealt.runner),
         Side::Runner => (&dealt.corp_id, &dealt.corp),
     };
-    let style = shared
-        .options
-        .bot_style
-        .unwrap_or_else(|| decks::by_id(bot_deck_id).and_then(|deck| Style::for_deck(&deck).ok()).unwrap_or_default());
+    let style = style.unwrap_or_else(|| decks::by_id(bot_deck_id).and_then(|deck| Style::for_deck(&deck).ok()).unwrap_or_default());
     // The bot knows the lobby's format and the deck it is dealt; the
     // person's deck it knows by its identity alone, like any opponent.
     let knowledge = Knowledge::new(format, Some(bot_deck.clone()));
     let bot_side = human_side.other();
-    let bot_seed = seed.wrapping_add(1);
-    let bot = match shared.options.bot_level {
-        Some(level) => SeatedPlayer {
-            name: styled(format!("{} bot", level.name()), style),
-            key: None,
-            token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(level.spec(bot_side).with_style(style).agent(bot_seed, knowledge)),
-            deck: None,
-            lobby: None,
-            bot: Some(RecordedBot::rung(bot_side, level, style)),
-        },
-        None => SeatedPlayer {
-            name: styled(kind.seat_name().to_string(), style),
-            key: None,
-            token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, style, knowledge)),
-            deck: None,
-            lobby: None,
-            bot: None,
-        },
+    let bot = SeatedPlayer {
+        name: styled(format!("{} bot", level.name()), style),
+        key: None,
+        token: Uuid::new_v4(),
+        slot: PlayerSlot::Bot(level.spec(bot_side).with_style(style).agent(seed.wrapping_add(1), knowledge)),
+        deck: None,
+        lobby: None,
+        bot: Some(RecordedBot::rung(bot_side, level, style)),
     };
     let (corp, runner) = match human_side {
         Side::Corp => (human, bot),
@@ -1760,8 +1737,8 @@ fn seat_vs_bot(
     start_match(shared, &mut registry, match_id, seed, format, corp, runner, false, None);
 }
 
-/// `ServeBotKind::None`: pair with the first compatible waiter in the same
-/// lobby, or join its queue.
+/// Pair `newcomer` with a waiter in its lobby, or put it in the lobby's
+/// queue: whom, and who takes which chair, is `queue`'s to say.
 fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let mut registry = shared.lock();
     registry.sweep_lobby();
@@ -1770,23 +1747,39 @@ fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
         return;
     }
 
-    // The first waiter in the lobby who can sit opposite: two Corp decks
-    // skip each other and both wait for a Runner.
-    let Some(index) = registry.lobby.iter().position(|waiter| waiter.lobby == newcomer.lobby && compatible(waiter, &newcomer)) else {
+    let queue: Vec<usize> = registry.waiting.iter().enumerate().filter(|(_, waiter)| waiter.lobby == newcomer.lobby).map(|(index, _)| index).collect();
+    let seeks: Vec<queue::Seek> = queue.iter().map(|&index| registry.waiting[index].seek()).collect();
+    let Some(found) = queue::partner(&seeks, &newcomer.seek(), unix_now()) else {
         let (token, tx) = (newcomer.token, newcomer.tx.clone());
-        registry.lobby.push(newcomer);
-        let position = registry.lobby.len();
-        let _ = tx.send(ServerMessage::Queued { session_token: token, position });
+        registry.waiting.push(newcomer);
+        let _ = tx.send(ServerMessage::Queued { session_token: token, position: queue.len() + 1 });
         return;
     };
-    let waiter = registry.lobby.remove(index);
+    let waiter = registry.waiting.remove(queue[found]);
     let format = waiter.format;
-    // Read at pairing, off the lobby both are in: a lobby made casual
-    // stays casual for every game found in it.
+    // Read at pairing, off the lobby both are in.
     let rated_lobby = registry.lobby_info(&waiter.lobby, &shared.options).is_some_and(|lobby| lobby.rated);
     let (match_id, seed) = registry.allocate(shared.base_seed);
-    let (corp, runner) = assign_sides(waiter, newcomer, seed);
+    let (first, second) = (waiter.seek(), newcomer.seek());
+    let last = queue::last_corp(&first, &second, |a, b| registry.last_corp.get(&ordered_pair(a, b)).cloned());
+    // The coin, when nothing else decides, is tossed off the match's seed
+    // so a `--seed` run seats the same way every time.
+    let (corp, runner) = match queue::seat(&first, &second, last, seed & 1 == 0) {
+        queue::Corp::First => (waiter, newcomer),
+        queue::Corp::Second => (newcomer, waiter),
+    };
     start_match(shared, &mut registry, match_id, seed, format, corp.seated(Side::Corp), runner.seated(Side::Runner), rated_lobby, None);
+}
+
+/// A format as the results index names it: its name in lower case.
+fn format_key(format: NsgFormat) -> String {
+    format!("{format:?}").to_lowercase()
+}
+
+/// Two keys in the order the pairing memory files them under, whichever
+/// order they are named in.
+fn ordered_pair(a: &str, b: &str) -> (String, String) {
+    if a <= b { (a.to_string(), b.to_string()) } else { (b.to_string(), a.to_string()) }
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -1845,6 +1838,16 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     let (corp_name, runner_name) = (corp.name, runner.name);
     let keys = [corp.key, runner.key];
     let started_at = unix_now();
+    // Which chairs the two keys took, remembered as the game starts rather
+    // than as it ends: the seats are back in their lobby the moment the
+    // session lets go of them, before anything after the game runs, so a
+    // rematch looked for at once would otherwise be seated off the game
+    // before last.
+    if let [Some(corp_key), Some(runner_key)] = keys
+        && corp_key != runner_key
+    {
+        shared.remember_pairing(registry, &corp_key.rating_id(), &runner_key.rating_id(), started_at);
+    }
     // What each proved seat is asked to sign, with a salt for its deck's
     // hash that only it is told (`statements::deck_hash`).
     let decks = [&dealt.corp, &dealt.runner];
@@ -1986,9 +1989,6 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             shared.table_ended(table, result);
         }
         let [Some(corp), Some(runner)] = keys else { return };
-        if corp != runner {
-            shared.remember_pairing(&corp.rating_id(), &runner.rating_id(), ended_at);
-        }
         let Some((Some(winner), _)) = outcome else { return };
         if !rated {
             return;
@@ -2016,19 +2016,6 @@ fn styled(name: String, style: Style) -> String {
         name
     } else {
         format!("{name}, {style}")
-    }
-}
-
-/// A chosen chair first — `compatible` has already ruled out two of the
-/// same, and a random chair sits opposite it — and for two random chairs
-/// a coin, tossed off the match's seed so a `--seed` run seats the same
-/// way every time. Corp first.
-fn assign_sides(a: PendingHuman, b: PendingHuman, seed: u64) -> (PendingHuman, PendingHuman) {
-    match (a.deck_side(), b.deck_side()) {
-        (Some(Side::Corp), _) | (_, Some(Side::Runner)) => (a, b),
-        (Some(Side::Runner), _) | (_, Some(Side::Corp)) => (b, a),
-        (None, None) if seed & 1 == 0 => (a, b),
-        (None, None) => (b, a),
     }
 }
 
@@ -2069,7 +2056,7 @@ mod tests {
     fn a_bot_daemon_with_no_legal_matchup_anywhere_is_refused_at_bind() {
         let empty = CardRegistry::new();
         let options = ServeOptions { formats: vec![NsgFormat::Startup], ..ServeOptions::default() };
-        assert_ne!(options.bot_runner, ServeBotKind::None, "the default daemon seats a bot");
+        assert!(!options.bots.is_empty(), "the default daemon offers bots");
         let error = deals_by_format(&empty, &options).expect_err("no deck is legal without cards").to_string();
         assert!(error.contains("no sample matchup"), "{error}");
         assert!(error.contains("Startup"), "{error}");
@@ -2091,9 +2078,9 @@ mod tests {
     /// each deals from part of the pool; Eternal and Unrestricted deal all of it; Snapshot
     /// — a Fantasy Flight Games pool — allows none, so a daemon seats no
     /// bot there and serves it for people: a daemon serving Snapshot alone
-    /// with a bot has nowhere to seat one and does not start, while the
-    /// default daemon, all four formats, starts and seats its bot in the
-    /// three that can deal it.
+    /// and offering bots has nowhere to seat one and does not start, while
+    /// the default daemon, all five formats, starts and offers its bots in
+    /// the four that can deal them.
     #[test]
     fn each_format_deals_from_the_part_of_the_pool_it_allows() {
         let registry = fixtures::sample_registry();
@@ -2105,9 +2092,9 @@ mod tests {
         assert_eq!(legal_matchups(&registry, NsgFormat::Eternal).len(), all);
         assert_eq!(legal_matchups(&registry, NsgFormat::Unrestricted).len(), all);
         assert!(legal_matchups(&registry, NsgFormat::Snapshot).is_empty());
-        let snapshot = |bot| ServeOptions { formats: vec![NsgFormat::Snapshot], bot_runner: bot, ..ServeOptions::default() };
-        assert!(deals_by_format(&registry, &snapshot(ServeBotKind::Planner)).is_err());
-        assert!(deals_by_format(&registry, &snapshot(ServeBotKind::None)).is_ok());
+        let snapshot = |bots: &[Level]| ServeOptions { formats: vec![NsgFormat::Snapshot], bots: bots.to_vec(), ..ServeOptions::default() };
+        assert!(deals_by_format(&registry, &snapshot(&Level::ALL)).is_err());
+        assert!(deals_by_format(&registry, &snapshot(&[])).is_ok());
         let deals = deals_by_format(&registry, &ServeOptions::default()).expect("the default daemon starts");
         assert_eq!(deals.len(), 5, "all five formats are served");
         assert!(deals[&NsgFormat::Snapshot].is_empty() && !deals[&NsgFormat::Eternal].is_empty());

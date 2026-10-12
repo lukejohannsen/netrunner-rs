@@ -13,7 +13,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
 use netrunner_core::rules::{PlayerAction, Side};
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{ClientMessage, GameEndReason, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -23,7 +23,7 @@ async fn start_server(grace: Duration) -> String {
 }
 
 async fn start_server_with(options: ServeOptions) -> String {
-    let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..options };
+    let options = ServeOptions { seed: Some(1), ..options };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
@@ -52,15 +52,15 @@ async fn next(socket: &mut Socket) -> ServerMessage {
     }
 }
 
-/// Attaches as `name`, joins the Startup lobby and looks for a game as
-/// the Corp; on this bot daemon the next message is `MatchJoined`.
+/// Attaches as `name`, joins the Casual Startup queue and asks for a game
+/// as the Corp against a bot; the next message is `MatchJoined`.
 async fn play_corp(url: &str, name: &str) -> Socket {
     let mut socket = open(url, ClientMessage::Attach { player_name: name.into() }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
-    send(&mut socket, ClientMessage::JoinLobby { lobby: "startup".into(), password: None }).await;
+    send(&mut socket, ClientMessage::JoinLobby { lobby: "casual-startup".into(), password: None }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
     let deck = Box::new(netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
-    send(&mut socket, ClientMessage::Seek { chair: netrunner_server::protocol::Chair::Corp(deck) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: netrunner_server::protocol::Chair::Corp(deck), opponent: netrunner_server::protocol::Opponent::Bot { level: netrunner_bots::Level::Elite, style: None } }).await;
     socket
 }
 

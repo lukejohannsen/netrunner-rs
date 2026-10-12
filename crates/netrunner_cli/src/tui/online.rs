@@ -11,9 +11,10 @@
 //!
 //! **Attached, the screen is the Server page** (Phase 4 §7 stage 4d, the
 //! desktop's Server page as a list of rows): the lobbies, each a row to
-//! join; the list again; a lobby of the person's own, made on a form of
-//! its own; a closed lobby's code and password; and in a lobby the game to
-//! look for — the chair, a deck per side the chair brings, Find a game and
+//! join; the list again; a friend queue of the person's own, made on a
+//! form of its own; a friend queue's code and password; and in a lobby the
+//! game to look for — the chair, the preference when either, a bot where
+//! the lobby offers one, a deck per side the chair brings, Find a game and
 //! Stop looking. The connection outlives the game: the board leads back
 //! here, still attached and back in the lobby, and the next game is a
 //! chair and a deck away. **A player brings their own deck** on the seek
@@ -61,8 +62,8 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{Chair, LadderRow, LobbyInfo, Profile, TournamentInfo, TournamentState};
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::protocol::{Chair, LadderRow, Level, LobbyInfo, Opponent, Profile, TournamentInfo, TournamentState};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use netrunner_client::connection::{Goal, Link, Who};
@@ -186,6 +187,10 @@ enum Row {
     Profile,
     Servers,
     Chair,
+    /// Either chair's preferred side.
+    Prefer,
+    /// A person, or a bot at a rung the lobby offers.
+    Opponent,
     CorpDeck,
     RunnerDeck,
     /// Find a game, or stop looking.
@@ -308,6 +313,11 @@ struct ServerPage {
     /// The decks legal in the lobby's format, both sides.
     decks: Vec<DeckFile>,
     chair: ChairChoice,
+    /// Either chair's preferred side, if any (Phase 4 §9).
+    prefer: Option<Side>,
+    /// A bot to play instead of whoever the queue pairs, at a rung the
+    /// lobby offers; `None` is a person.
+    bot: Option<Level>,
     /// Which of each side's decks.
     corp_deck: usize,
     runner_deck: usize,
@@ -334,6 +344,8 @@ impl ServerPage {
             seeking: None,
             decks: Vec::new(),
             chair: ChairChoice::Corp,
+            prefer: None,
+            bot: None,
             corp_deck: 0,
             runner_deck: 0,
             cursor: 0,
@@ -356,6 +368,12 @@ impl ServerPage {
         rows.push(Row::Servers);
         if self.lobby.is_some() {
             rows.push(Row::Chair);
+            if self.chair == ChairChoice::Either {
+                rows.push(Row::Prefer);
+            }
+            if self.lobby.as_ref().is_some_and(|lobby| !lobby.bots.is_empty()) {
+                rows.push(Row::Opponent);
+            }
             if self.chair != ChairChoice::Runner {
                 rows.push(Row::CorpDeck);
             }
@@ -387,8 +405,33 @@ impl ServerPage {
         Ok(match self.chair {
             ChairChoice::Corp => Chair::Corp(deck(Side::Corp)?),
             ChairChoice::Runner => Chair::Runner(deck(Side::Runner)?),
-            ChairChoice::Either => Chair::Random { corp: deck(Side::Corp)?, runner: deck(Side::Runner)? },
+            ChairChoice::Either => Chair::Either { corp: deck(Side::Corp)?, runner: deck(Side::Runner)?, prefer: self.prefer },
         })
+    }
+
+    /// Whom the seek is against: the bot chosen if the lobby offers its
+    /// rung, else a person.
+    fn opponent(&self) -> Opponent {
+        match (self.bot, &self.lobby) {
+            (Some(level), Some(lobby)) if lobby.bots.contains(&level) => Opponent::Bot { level, style: None },
+            _ => Opponent::Person,
+        }
+    }
+
+    /// The next preference along, or the one before.
+    fn step_prefer(&mut self, back: bool) {
+        let all = [None, Some(Side::Corp), Some(Side::Runner)];
+        let at = all.iter().position(|prefer| *prefer == self.prefer).unwrap_or(0);
+        self.prefer = all[if back { (at + 2) % 3 } else { (at + 1) % 3 }];
+    }
+
+    /// The next opponent along — a person, then each rung the lobby
+    /// offers — or the one before.
+    fn step_opponent(&mut self, back: bool) {
+        let all: Vec<Option<Level>> = std::iter::once(None).chain(self.lobby.iter().flat_map(|lobby| lobby.bots.iter().copied().map(Some))).collect();
+        let at = all.iter().position(|bot| *bot == self.bot).unwrap_or(0);
+        let len = all.len();
+        self.bot = all[if back { (at + len - 1) % len } else { (at + 1) % len }];
     }
 
     /// The decks legal in the lobby's format, read afresh: each side's
@@ -413,24 +456,23 @@ impl ServerPage {
     }
 }
 
-/// The form for a lobby of the person's own.
+/// The form for a friend queue of the person's own: casual, and joined
+/// by its code.
 #[derive(Debug, Clone)]
 struct MakeForm {
     name: String,
     format: NsgFormat,
-    closed: bool,
-    /// Games here count for nothing, on a server that would rate them.
-    casual: bool,
+    /// Its members may ask for a bot.
+    bots: bool,
     password: String,
     cursor: usize,
     editing: Option<usize>,
 }
 
 impl MakeForm {
-    /// Name, format, who can find it, whether its games count, password,
-    /// Make.
-    const ROWS: usize = 6;
-    const PASSWORD: usize = 4;
+    /// Name, format, bots, password, Make.
+    const ROWS: usize = 5;
+    const PASSWORD: usize = 3;
 }
 
 /// The server's tournaments, listed (Phase 4 §7 stage 6b).
@@ -971,6 +1013,11 @@ impl OnlineScreen {
                         if let Some(row) = page.lobbies.iter_mut().find(|row| row.id == lobby.id) {
                             *row = lobby.clone();
                         }
+                        // A bot chosen in a lobby that offered one is not
+                        // carried into one that does not.
+                        if page.bot.is_some_and(|level| !lobby.bots.contains(&level)) {
+                            page.bot = None;
+                        }
                         page.lobby = Some(lobby);
                         page.set_decks(decks, &preferred);
                         page.rest_on(Row::Seek);
@@ -1338,6 +1385,8 @@ impl OnlineScreen {
             KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => page.cursor = (page.cursor + len - 1) % len,
             KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => page.cursor = (page.cursor + 1) % len,
             KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if row == Row::Chair && page.seeking.is_none() => page.chair = page.chair.step(key == KeyCode::Left),
+            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if row == Row::Prefer && page.seeking.is_none() => page.step_prefer(key == KeyCode::Left),
+            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if row == Row::Opponent && page.seeking.is_none() => page.step_opponent(key == KeyCode::Left),
             KeyCode::Char('r') => attached.list_lobbies(),
             KeyCode::Enter => match row {
                 Row::Lobby(index) => {
@@ -1350,7 +1399,7 @@ impl OnlineScreen {
                 Row::Refresh => attached.list_lobbies(),
                 Row::Make => {
                     let format = page.lobby.as_ref().or(page.lobbies.first()).map_or(self.format, |lobby| lobby.format);
-                    let form = MakeForm { name: String::new(), format, closed: false, casual: false, password: String::new(), cursor: 0, editing: None };
+                    let form = MakeForm { name: String::new(), format, bots: false, password: String::new(), cursor: 0, editing: None };
                     self.mode = Mode::MakeLobby { page, form };
                     return;
                 }
@@ -1373,6 +1422,16 @@ impl OnlineScreen {
                         page.chair = page.chair.step(false);
                     }
                 }
+                Row::Prefer => {
+                    if page.seeking.is_none() {
+                        page.step_prefer(false);
+                    }
+                }
+                Row::Opponent => {
+                    if page.seeking.is_none() {
+                        page.step_opponent(false);
+                    }
+                }
                 Row::CorpDeck | Row::RunnerDeck => {
                     if page.seeking.is_none() {
                         let side = if row == Row::CorpDeck { Side::Corp } else { Side::Runner };
@@ -1390,7 +1449,7 @@ impl OnlineScreen {
                         attached.cancel_seek();
                     } else {
                         match page.chair() {
-                            Ok(chair) => attached.seek(chair),
+                            Ok(chair) => attached.seek(chair, page.opponent()),
                             Err(side) => self.notice = Some(format!("No {side:?} deck is legal in this lobby's format: build one under Decks")),
                         }
                     }
@@ -1663,20 +1722,18 @@ impl OnlineScreen {
             KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => form.cursor = (form.cursor + 1) % MakeForm::ROWS,
             KeyCode::Left if form.cursor == 1 => form.format = step_format(form.format, true),
             KeyCode::Right | KeyCode::Char(' ') if form.cursor == 1 => form.format = step_format(form.format, false),
-            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.cursor == 2 => form.closed = !form.closed,
-            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.cursor == 3 => form.casual = !form.casual,
+            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.cursor == 2 => form.bots = !form.bots,
             KeyCode::Enter => match form.cursor {
                 0 => form.editing = Some(0),
                 1 => form.format = step_format(form.format, false),
-                2 => form.closed = !form.closed,
-                3 => form.casual = !form.casual,
+                2 => form.bots = !form.bots,
                 MakeForm::PASSWORD => form.editing = Some(MakeForm::PASSWORD),
                 _ => {
                     if form.name.trim().is_empty() {
-                        self.notice = Some("Give the lobby a name".to_string());
+                        self.notice = Some("Give the friend queue a name".to_string());
                     } else if let Some(attached) = &self.attached {
                         let password = Some(form.password.trim().to_string()).filter(|password| !password.is_empty());
-                        attached.create_lobby(form.name.trim().to_string(), form.format, form.closed, password, form.casual);
+                        attached.create_lobby(form.name.trim().to_string(), form.format, password, form.bots);
                     }
                 }
             },
@@ -1892,13 +1949,12 @@ impl OnlineScreen {
                 let rows = [
                     format!("Name             {}", text(form.editing == Some(0), &form.name)),
                     format!("Format           ‹ {} ›", capitalised(format_name(form.format))),
-                    format!("Who can find it  ‹ {} ›", if form.closed { "closed — joined by the code the server gives it" } else { "listed — anyone on the server" }),
-                    format!("Do games count   ‹ {} ›", if form.casual { "unrated — nothing here is rated" } else { "rated — as the server's own lobbies are" }),
+                    format!("Bots             ‹ {} ›", if form.bots { "on request — anyone here may ask for one" } else { "people only" }),
                     format!("Password         {}", if form.password.is_empty() && form.editing != Some(MakeForm::PASSWORD) { "(none)".to_string() } else { text(form.editing == Some(MakeForm::PASSWORD), &form.password) }),
                     "[ Make ]".to_string(),
                 ];
                 let items = rows.into_iter().map(ListItem::new).collect();
-                draw_list(frame, body, "Make a lobby", items, Some(form.cursor));
+                draw_list(frame, body, "Make a friend queue — never listed, never rated, joined by its code", items, Some(form.cursor));
                 if form.editing.is_some() { "Type · Enter or Tab finishes" } else { "Up/Down choose · Enter edits, steps or makes · Esc back" }
             }
             Mode::PickDeck { page, side, cursor } => {
@@ -2064,21 +2120,26 @@ impl OnlineScreen {
                         line.push_str(" · password");
                     }
                     line.push_str(if lobby.rated { " · rated" } else { " · unrated" });
+                    if !lobby.bots.is_empty() {
+                        line.push_str(" · bots on request");
+                    }
                     line
                 }
                 Row::Refresh => "List the lobbies again".to_string(),
-                Row::Make => "Make a lobby…".to_string(),
-                Row::Code => format!("A closed lobby's code   {}", text(ServerField::Code, &page.code, "(type it)")),
+                Row::Make => "Make a friend queue…".to_string(),
+                Row::Code => format!("A friend queue's code   {}", text(ServerField::Code, &page.code, "(type it)")),
                 Row::CodePassword => format!("Its password            {}", text(ServerField::CodePassword, &page.code_password, "(none)")),
                 Row::JoinByCode => "[ Join by code ]".to_string(),
                 Row::Tournaments => "Tournaments…".to_string(),
                 Row::Profile => "Your profile here…".to_string(),
                 Row::Servers => "Servers…".to_string(),
                 Row::Chair => format!("Chair            ‹ {} ›", page.chair.label()),
+                Row::Prefer => format!("Preference       ‹ {} ›", online::preference_label(page.prefer)),
+                Row::Opponent => format!("Against          ‹ {} ›", online::opponent_label(page.bot)),
                 Row::CorpDeck => format!("Corp deck        {}", page.chosen(Side::Corp).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
                 Row::RunnerDeck => format!("Runner deck      {}", page.chosen(Side::Runner).map(online::label).unwrap_or_else(|| "none legal in this lobby's format".to_string())),
                 Row::Seek => match page.seeking {
-                    Some(position) => format!("Looking for a game — {position} waiting in this lobby… (Enter stops)"),
+                    Some(position) => format!("Looking for a game — {position} waiting in this queue… (Enter stops)"),
                     None => "[ Find a game ]".to_string(),
                 },
                 Row::Leave => "[ Leave lobby ]".to_string(),
@@ -2301,11 +2362,9 @@ fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
-/// A lobby as a line names it: a player's lobby by its name and format,
-/// the server's own by the format alone, since that is its name.
+/// A lobby as a line names it (`netrunner_client::online::lobby_title`).
 fn lobby_title(lobby: &LobbyInfo) -> String {
-    let format = capitalised(format_name(lobby.format));
-    if lobby.permanent { format } else { format!("{} · {format}", lobby.name) }
+    online::lobby_title(lobby)
 }
 
 fn step_format(format: NsgFormat, back: bool) -> NsgFormat {
@@ -2370,7 +2429,7 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Rela
         Reach::Internet => Some(relay.clone().map_err(|error| format!("the relay setting: {error}"))?),
         _ => None,
     };
-    let options = ServeOptions { bot_runner: ServeBotKind::None, formats: vec![format], ..ServeOptions::default() };
+    let options = ServeOptions { bots: Vec::new(), formats: vec![format], ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
@@ -2573,7 +2632,7 @@ mod tests {
             store.grant(&netrunner_store::Award { key: key.clone(), kind: "title".into(), name: name.into(), earned_at: index as i64, source: "event:abc".into() }).await.unwrap();
         }
         store.close().await;
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let url = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());
@@ -2652,7 +2711,7 @@ mod tests {
         let (mut joiner, _) = screen("joiner");
         join(&mut joiner, address.trim_start_matches("ws://")).await;
         let page = server_page(&joiner).unwrap();
-        assert!(page.lobby.is_none() && page.lobbies.len() == 1 && page.lobbies[0].permanent, "a joiner picks: {:?}", page.lobbies);
+        assert!(page.lobby.is_none() && page.lobbies.len() == 1 && page.lobbies[0].permanent(), "a joiner picks: {:?}", page.lobbies);
         joiner.key(KeyCode::Enter);
         until_in_lobby(&mut joiner).await;
         seek_as(&mut joiner, ChairChoice::Corp, "brick_stack");
@@ -2687,30 +2746,31 @@ mod tests {
         assert!(matches!(&host.mode, Mode::Form(form) if form.kind == FormKind::Host));
     }
 
-    /// A lobby of the joiner's own, made on the form and joined as the
-    /// server answers; then the host joins it by its code and password.
+    /// A friend queue of the joiner's own, made on the form and joined as
+    /// the server answers; then the host joins it by its code and password.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn a_lobby_is_made_and_a_closed_one_joined_by_its_code() {
+    async fn a_friend_queue_is_made_and_joined_by_its_code() {
         let (mut host, _) = screen("maker_host");
         let address = host_up(&mut host).await;
         let (mut joiner, _) = screen("maker");
         join(&mut joiner, &address).await;
-        // Make a lobby…: name, closed, unrated, password, Make.
+        // Make a friend queue…: name, format, bots, password, Make.
         let Mode::Server(page) = &mut joiner.mode else { panic!() };
         page.rest_on(Row::Make);
         joiner.key(KeyCode::Enter);
         assert!(matches!(joiner.mode, Mode::MakeLobby { .. }));
         joiner.key(KeyCode::Enter);
         type_text(&mut joiner, "Friday");
-        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Enter]);
-        assert!(matches!(&joiner.mode, Mode::MakeLobby { form, .. } if form.closed && form.casual && form.editing == Some(MakeForm::PASSWORD)), "{:?}", joiner.notice);
+        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(&joiner.mode, Mode::MakeLobby { form, .. } if form.bots && form.editing == Some(MakeForm::PASSWORD)), "{:?}", joiner.notice);
         type_text(&mut joiner, "swordfish");
         press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
         until_in_lobby(&mut joiner).await;
         let made = server_page(&joiner).unwrap().lobby.clone().unwrap();
-        assert!(made.closed && made.password && !made.rated && made.name == "Friday" && made.id.len() == 6, "{made:?}");
+        assert!(made.mode == netrunner_server::protocol::QueueMode::Friends && made.password && !made.rated && made.name == "Friday" && made.id.len() == 6, "{made:?}");
+        assert!(made.bots.is_empty(), "a hosted server offers no bot, whatever its friend queue asks");
 
-        // The host joins the closed lobby by its code and password, typed
+        // The host joins the friend queue by its code and password, typed
         // in lower case.
         let Mode::Server(page) = &mut host.mode else { panic!() };
         page.rest_on(Row::Code);
@@ -2719,7 +2779,7 @@ mod tests {
         press(&mut host, &[KeyCode::Down, KeyCode::Enter]);
         type_text(&mut host, "swordfish");
         press(&mut host, &[KeyCode::Down, KeyCode::Enter]);
-        until(&mut host, "closed lobby", |host| server_page(host).is_some_and(|page| page.lobby.as_ref().is_some_and(|lobby| lobby.id == made.id))).await;
+        until(&mut host, "friend queue", |host| server_page(host).is_some_and(|page| page.lobby.as_ref().is_some_and(|lobby| lobby.id == made.id))).await;
     }
 
     /// Hosting for the internet gives out a ticket, and a joiner who
@@ -2823,14 +2883,14 @@ mod tests {
         for wanted in [
             &address[..],
             "Give your opponent an address",
-            "Here  Startup — 1 here, 0 looking · unrated",
+            "Here  Casual · Startup — 1 here, 0 looking · unrated",
             "Unrated: a game hosted from this machine is never rated.",
             "Chair            ‹ Corp ›",
             "Corp deck        Corp ·",
             "[ Find a game ]",
             "[ Leave lobby ]",
             "[ Disconnect ]",
-            "Make a lobby…",
+            "Make a friend queue…",
             "[ Join by code ]",
         ] {
             assert!(text.contains(wanted), "{wanted:?} is not drawn:\n{text}");
@@ -2838,7 +2898,9 @@ mod tests {
         seek_as(&mut host, ChairChoice::Either, "brick_stack");
         until(&mut host, "queue", |host| server_page(host).is_some_and(|page| page.seeking == Some(1))).await;
         let text = drawn(&host);
-        assert!(text.contains("Looking for a game — 1 waiting in this lobby… (Enter stops)"), "{text}");
+        assert!(text.contains("Looking for a game — 1 waiting in this queue… (Enter stops)"), "{text}");
+        assert!(text.contains("Preference       ‹ No preference ›"), "either chair draws its preference:\n{text}");
+        assert!(!text.contains("Against"), "a hosted server offers no bot, so there is no opponent to choose:\n{text}");
         assert!(text.contains("Runner deck      Runner ·") && text.contains("Corp deck        Corp ·"), "either chair draws both decks:\n{text}");
     }
 
@@ -2853,7 +2915,7 @@ mod tests {
         use ratatui::backend::TestBackend;
         let data = std::env::temp_dir().join(format!("netrunner_online_tournament_daemon_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&data);
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
         let address = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());
@@ -2969,7 +3031,7 @@ mod tests {
         use ratatui::backend::TestBackend;
         let data = std::env::temp_dir().join(format!("netrunner_online_rounds_daemon_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&data);
-        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data.clone()), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
         let address = format!("ws://{}", server.local_addr().unwrap());
         tokio::spawn(server.run());

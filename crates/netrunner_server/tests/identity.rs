@@ -18,8 +18,8 @@ use netrunner_identity::{Identity, PublicKey, Signed};
 use netrunner_store::scratch::PostgresSchema;
 use netrunner_store::{RatingRow, Store};
 use netrunner_server::protocol::statements::{Receipt, SeatStatement, SEAT_TAG};
-use netrunner_server::protocol::Chair;
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::protocol::{Chair, Opponent, QueueMode};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -31,7 +31,7 @@ async fn start(data_dir: Option<PathBuf>) -> (String, PublicKey) {
 
 /// A daemon pairing people over `--database` when it is given one.
 async fn start_keeping(data_dir: Option<PathBuf>, database: Option<String>) -> (String, PublicKey) {
-    let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir, database, ..ServeOptions::default() };
+    let options = ServeOptions { seed: Some(1), data_dir, database, ..ServeOptions::default() };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let (addr, key) = (server.local_addr().unwrap(), server.public_key());
     tokio::spawn(server.run());
@@ -89,17 +89,17 @@ async fn identify(url: &str, identity: &Identity) -> (Socket, ServerMessage) {
 }
 
 /// Attached as `name` (identified first when `identity` is given), in the
-/// Startup lobby, and looking for a game in `chair`.
+/// Ranked Startup queue, and looking for a game in `chair`.
 async fn seek(url: &str, identity: Option<&Identity>, name: &str, chair: Chair) -> Socket {
-    seek_in(url, identity, name, "startup", chair).await
+    seek_in(url, identity, name, "ranked-startup", chair).await
 }
 
-/// `seek`, in lobby `lobby` — the server's Startup lobby or a code.
+/// `seek`, in lobby `lobby` — one of the server's queues or a code.
 async fn seek_in(url: &str, identity: Option<&Identity>, name: &str, lobby: &str, chair: Chair) -> Socket {
     let mut socket = attach(url, identity, name).await;
     send(&mut socket, ClientMessage::JoinLobby { lobby: lobby.into(), password: None }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
-    send(&mut socket, ClientMessage::Seek { chair }).await;
+    send(&mut socket, ClientMessage::Seek { chair, opponent: Opponent::Person }).await;
     socket
 }
 
@@ -367,25 +367,26 @@ async fn a_game_with_an_unidentified_seat_is_rated_by_nobody() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A lobby says whether its games count, and a lobby made casual on a
-/// daemon that keeps a book rates nobody, two proved keys or not — while
-/// the daemon's own lobby beside it still does (Phase 4 §7 stage 5).
+/// A lobby says whether its games count, and a friend queue on a daemon
+/// that keeps a book rates nobody, two proved keys or not — while the
+/// daemon's Ranked queues beside it still do (Phase 4 §7 stage 5, §9).
 #[tokio::test]
-async fn a_casual_lobby_between_two_keys_is_rated_by_nobody() {
+async fn a_friend_queue_between_two_keys_is_rated_by_nobody() {
     let dir = scratch("casual");
     let (url, _) = start(Some(dir.clone())).await;
     let (ann, bo) = (player(1), player(2));
     let mut maker = attach(&url, Some(&ann), "ann").await;
     send(&mut maker, ClientMessage::ListLobbies).await;
     let ServerMessage::Lobbies { lobbies } = next(&mut maker).await else { panic!() };
-    assert!(lobbies.iter().all(|lobby| lobby.rated), "a daemon with a book rates its own lobbies: {lobbies:?}");
-    send(&mut maker, ClientMessage::CreateLobby { name: "just trying".into(), format: NsgFormat::Startup, closed: true, password: None, casual: true }).await;
+    assert!(lobbies.iter().any(|lobby| lobby.mode == QueueMode::Ranked), "a daemon with a book has Ranked queues: {lobbies:?}");
+    assert!(lobbies.iter().all(|lobby| lobby.rated == (lobby.mode == QueueMode::Ranked) && (lobby.mode != QueueMode::Ranked || lobby.bots.is_empty())), "only Ranked rates, and it offers no bot: {lobbies:?}");
+    send(&mut maker, ClientMessage::CreateLobby { name: "just trying".into(), format: NsgFormat::Startup, password: None, bots: false }).await;
     let ServerMessage::LobbyJoined { lobby } = next(&mut maker).await else { panic!() };
     assert!(!lobby.rated, "{lobby:?}");
     // The maker is in the lobby already (and leaving would empty it, which
-    // is the end of a player's lobby): seek from that socket.
+    // is the end of a friend queue): seek from that socket.
     let mut corp_socket = maker;
-    send(&mut corp_socket, ClientMessage::Seek { chair: corp() }).await;
+    send(&mut corp_socket, ClientMessage::Seek { chair: corp(), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut corp_socket).await, ServerMessage::Queued { .. }));
     let mut runner_socket = seek_in(&url, Some(&bo), "bo", &lobby.id, runner()).await;
     assert!(matches!(next(&mut runner_socket).await, ServerMessage::MatchJoined { .. }));
@@ -443,6 +444,75 @@ async fn a_casual_lobby_between_two_keys_is_rated_by_nobody() {
     let next_message = next(&mut corp_socket).await;
     assert!(matches!(next_message, ServerMessage::BackInLobby { .. }), "a casual game ends in no receipt for the players: {next_message:?}");
     assert_nothing_rated(&url, &dir).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn either() -> Chair {
+    Chair::Either { corp: Box::new(decks::by_id("brick_stack").unwrap()), runner: Box::new(decks::by_id("dashing_mad").unwrap()), prefer: None }
+}
+
+/// Both sockets, already in one lobby, look for a game in either chair —
+/// `first` before `second` — and the Runner concedes it. Returns the side
+/// `first` played, once both are back in the lobby.
+async fn play_either(first: &mut Socket, second: &mut Socket) -> Side {
+    send(first, ClientMessage::Seek { chair: either(), opponent: Opponent::Person }).await;
+    assert!(matches!(next(first).await, ServerMessage::Queued { position: 1, .. }));
+    send(second, ClientMessage::Seek { chair: either(), opponent: Opponent::Person }).await;
+    let ServerMessage::MatchJoined { assigned_side: second_side, .. } = next(second).await else { panic!("expected MatchJoined") };
+    let ServerMessage::MatchJoined { assigned_side: first_side, .. } = next(first).await else { panic!("expected MatchJoined") };
+    assert_ne!(first_side, second_side);
+    let runner = if first_side == Side::Runner { &mut *first } else { &mut *second };
+    send(runner, ClientMessage::Surrender).await;
+    for socket in [first, second] {
+        next_where(socket, |message| matches!(message, ServerMessage::BackInLobby { .. }).then_some(())).await;
+    }
+    first_side
+}
+
+/// A friend queue `ann` makes on `url`, which `bo` joins.
+async fn friend_queue(url: &str, ann: &Identity, bo: &Identity) -> (Socket, Socket) {
+    let mut ann_socket = attach(url, Some(ann), "ann").await;
+    send(&mut ann_socket, ClientMessage::CreateLobby { name: "rematch".into(), format: NsgFormat::Startup, password: None, bots: false }).await;
+    let ServerMessage::LobbyJoined { lobby } = next(&mut ann_socket).await else { panic!() };
+    let mut bo_socket = attach(url, Some(bo), "bo").await;
+    send(&mut bo_socket, ClientMessage::JoinLobby { lobby: lobby.id, password: None }).await;
+    assert!(matches!(next(&mut bo_socket).await, ServerMessage::LobbyJoined { .. }));
+    (ann_socket, bo_socket)
+}
+
+/// The person's balance rule (Phase 4 §9): two keys who meet again, both
+/// happy with either chair, swap the chairs they last took — game after
+/// game in a friend queue of two, whichever of them looks first, and
+/// across a restart, since the store keeps the last pairing.
+#[tokio::test]
+async fn two_keys_who_meet_again_swap_chairs() {
+    let dir = scratch("swap");
+    let (url, _) = start(Some(dir.clone())).await;
+    let (ann, bo) = (player(1), player(2));
+    let (mut ann_socket, mut bo_socket) = friend_queue(&url, &ann, &bo).await;
+    let mut ann_sides = Vec::new();
+    for game in 0..4 {
+        let side = if game % 2 == 0 { play_either(&mut ann_socket, &mut bo_socket).await } else { play_either(&mut bo_socket, &mut ann_socket).await.other() };
+        ann_sides.push(side);
+    }
+    assert!(ann_sides.windows(2).all(|pair| pair[0] != pair[1]), "Ann's chairs: {ann_sides:?}");
+
+    // The store has the last game's chairs, and a daemon started on the
+    // same directory reads them.
+    let store = store_in(&dir).await;
+    let (ann_id, bo_id) = (ann.public_key().rating_id(), bo.public_key().rating_id());
+    let last_corp = if ann_sides[3] == Side::Corp { &ann_id } else { &bo_id };
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while store.last_pairing(&ann_id, &bo_id).await.unwrap().is_none_or(|pairing| &pairing.corp != last_corp) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the pairing is stored");
+    store.close().await;
+    let (url, _) = start(Some(dir.clone())).await;
+    let (mut ann_socket, mut bo_socket) = friend_queue(&url, &ann, &bo).await;
+    assert_eq!(play_either(&mut ann_socket, &mut bo_socket).await, ann_sides[3].other(), "the swap outlives the daemon");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

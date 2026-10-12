@@ -87,7 +87,7 @@ struct TableTerms {
     nonce: String,
     registration: Option<RegistrationStatement>,
 }
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, ServerMessage, TournamentInfo};
+use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, Opponent, ServerMessage, TournamentInfo};
 use uuid::Uuid;
 
 /// What the connection is for.
@@ -300,9 +300,10 @@ pub struct Connection {
     /// A lobby asked for and not yet answered, with the password given:
     /// `LobbyJoined` names the lobby, and this is where its password is.
     asked: Option<Option<String>>,
-    /// The chair a game is being looked for in, until it is found,
-    /// refused or cancelled — what a reattach seeks again with.
-    seeking: Option<Chair>,
+    /// The chair a game is being looked for in, and against whom, until
+    /// it is found, refused or cancelled — what a reattach seeks again
+    /// with.
+    seeking: Option<(Chair, Opponent)>,
     /// The chair the current game was found in: the deck the seat
     /// statement must name.
     chair: Option<Chair>,
@@ -361,9 +362,9 @@ impl Connection {
     /// connection of its own (`remote::seek`) is the machine's ordinary
     /// behaviour and not a script a screen has to keep polling. A refusal
     /// of either comes back as the event it is.
-    pub fn with_lobby_and_seek(mut self, lobby: Option<(String, Option<String>)>, chair: Option<Chair>) -> Self {
+    pub fn with_lobby_and_seek(mut self, lobby: Option<(String, Option<String>)>, seek: Option<(Chair, Opponent)>) -> Self {
         self.lobby = lobby;
-        self.seeking = chair;
+        self.seeking = seek;
         self
     }
 
@@ -471,8 +472,8 @@ impl Connection {
                 };
                 self.lobby = Some((lobby.id.clone(), password));
                 self.events.push_back(Event::LobbyJoined(lobby));
-                if let Some(chair) = self.seeking.clone() {
-                    self.outbox.push_back(ClientMessage::Seek { chair });
+                if let Some((chair, opponent)) = self.seeking.clone() {
+                    self.outbox.push_back(ClientMessage::Seek { chair, opponent });
                 }
             }
             (Phase::Attached, ServerMessage::LobbyRefused { reason }) => {
@@ -509,7 +510,7 @@ impl Connection {
                 let ServerMessage::MatchJoined { match_id, assigned_side, session_token, ref corp_deck, ref runner_deck } = message else { unreachable!("matched above") };
                 self.token = Some(session_token);
                 self.seated_at = Some((match_id, assigned_side));
-                if let Some(chair) = self.seeking.take() {
+                if let Some((chair, _)) = self.seeking.take() {
                     self.chair = Some(chair);
                 }
                 let decks = (corp_deck.clone(), runner_deck.clone());
@@ -649,7 +650,7 @@ impl Connection {
         }
         match &message {
             ClientMessage::JoinLobby { password, .. } | ClientMessage::CreateLobby { password, .. } => self.asked = Some(password.clone()),
-            ClientMessage::Seek { chair } => self.seeking = Some(chair.clone()),
+            ClientMessage::Seek { chair, opponent } => self.seeking = Some((chair.clone(), *opponent)),
             // A `Sit` is not put back after a drop: the table is the
             // server's, and `Queued` for it is answered afresh by sitting
             // again — a player back from a drop reads the page first.
@@ -731,8 +732,8 @@ impl Connection {
             (None, None) => {
                 let deck = match (self.chair.as_ref()?, side) {
                     (Chair::Corp(deck), Side::Corp) | (Chair::Runner(deck), Side::Runner) => deck,
-                    (Chair::Random { corp, .. }, Side::Corp) => corp,
-                    (Chair::Random { runner, .. }, Side::Runner) => runner,
+                    (Chair::Either { corp, .. }, Side::Corp) => corp,
+                    (Chair::Either { runner, .. }, Side::Runner) => runner,
                     _ => return None,
                 };
                 said.deck_hash == deck_hash(salt, &deck.to_deck())
@@ -870,7 +871,7 @@ mod tests {
     }
 
     fn lobby() -> LobbyInfo {
-        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, permanent: true, closed: false, password: false, rated: false, players: 1, seeking: 0 }
+        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, mode: netrunner_protocol::QueueMode::Casual, password: false, rated: false, bots: Vec::new(), players: 1, seeking: 0 }
     }
 
     fn joined(token: Uuid) -> ServerMessage {
@@ -908,8 +909,8 @@ mod tests {
         conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
         assert!(matches!(events(conn)[..], [Event::LobbyJoined(_)]));
         assert!(sent(conn).is_empty(), "joining a lobby seeks nothing by itself");
-        assert!(conn.submit(ClientMessage::Seek { chair: corp_chair() }));
-        assert!(matches!(sent(conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_) }]));
+        assert!(conn.submit(ClientMessage::Seek { chair: corp_chair(), opponent: Opponent::Person }));
+        assert!(matches!(sent(conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_), opponent: Opponent::Person }]));
     }
 
     /// Seated from a fresh connection: the returned connection is at a
@@ -958,8 +959,8 @@ mod tests {
         assert!(!conn.poll_dial(), "no new connection");
         assert!(!conn.submit(ClientMessage::Surrender), "the seat is gone");
         let runner = Chair::Runner(Box::new(netrunner_core::decks::by_id("stolen_goods").unwrap()));
-        assert!(conn.submit(ClientMessage::Seek { chair: runner }));
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Runner(_) }]));
+        assert!(conn.submit(ClientMessage::Seek { chair: runner, opponent: Opponent::Person }));
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Runner(_), opponent: Opponent::Person }]));
         let again = Uuid::new_v4();
         conn.on_message(ServerMessage::MatchJoined { match_id: Uuid::nil(), assigned_side: Side::Runner, session_token: again, corp_deck: String::new(), runner_deck: "stolen_goods".into() }, t0);
         assert!(matches!(&events(&mut conn)[..], [Event::Joined { viewer: Viewer::Player(Side::Runner), session_token: Some(token), .. }] if *token == again), "a second game is a second Joined");
@@ -971,16 +972,16 @@ mod tests {
     #[test]
     fn a_lobby_and_a_chair_given_up_front_are_asked_for_as_the_answers_come() {
         let t0 = Instant::now();
-        let mut conn = Connection::new(Goal::Attach(who()), t0).with_lobby_and_seek(Some(("startup".into(), None)), Some(corp_chair()));
+        let mut conn = Connection::new(Goal::Attach(who()), t0).with_lobby_and_seek(Some(("startup".into(), None)), Some((corp_chair(), Opponent::Person)));
         conn.poll_dial();
         attach(&mut conn, t0);
         assert!(matches!(&sent(&mut conn)[..], [ClientMessage::JoinLobby { lobby, password: None }] if lobby == "startup"));
         conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_) }]));
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_), opponent: Opponent::Person }]));
         conn.on_message(ServerMessage::SeekRefused { reason: "not legal".into() }, t0);
         assert!(matches!(events(&mut conn)[..], [Event::Attached(_), Event::LobbyJoined(_), Event::SeekRefused(_)]));
 
-        let mut conn = Connection::new(Goal::Attach(who()), t0).with_lobby_and_seek(Some(("nowhere".into(), None)), Some(corp_chair()));
+        let mut conn = Connection::new(Goal::Attach(who()), t0).with_lobby_and_seek(Some(("nowhere".into(), None)), Some((corp_chair(), Opponent::Person)));
         conn.poll_dial();
         attach(&mut conn, t0);
         sent(&mut conn);
@@ -1000,8 +1001,8 @@ mod tests {
         events(&mut conn);
         assert!(conn.submit(ClientMessage::ListLobbies));
         conn.on_message(ServerMessage::Lobbies { lobbies: vec![lobby()] }, t0);
-        assert!(conn.submit(ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()), casual: false }));
-        let made = LobbyInfo { id: "K7M2QX".into(), name: "Friday".into(), permanent: false, closed: true, password: true, ..lobby() };
+        assert!(conn.submit(ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, password: Some("swordfish".into()), bots: false }));
+        let made = LobbyInfo { id: "K7M2QX".into(), name: "Friday".into(), mode: netrunner_protocol::QueueMode::Friends, password: true, ..lobby() };
         conn.on_message(ServerMessage::LobbyJoined { lobby: made.clone() }, t0);
         assert_eq!(conn.lobby, Some(("K7M2QX".to_string(), Some("swordfish".to_string()))), "the lobby and the password it was made with");
         assert!(conn.submit(ClientMessage::LeaveLobby));
@@ -1038,11 +1039,11 @@ mod tests {
         assert!(!conn.submit(ClientMessage::CancelSeek), "nothing queued yet");
         conn.on_message(ServerMessage::Queued { session_token: Uuid::new_v4(), position: 1 }, t0);
         assert!(conn.submit(ClientMessage::CancelSeek));
-        assert!(!conn.submit(ClientMessage::Seek { chair: corp_chair() }), "one seek at a time, until the cancel is answered");
+        assert!(!conn.submit(ClientMessage::Seek { chair: corp_chair(), opponent: Opponent::Person }), "one seek at a time, until the cancel is answered");
         conn.on_message(ServerMessage::SeekCancelled, t0);
         assert!(matches!(events(&mut conn).last(), Some(Event::SeekCancelled)));
         assert!(conn.seeking.is_none() && conn.phase == Phase::Attached);
-        assert!(conn.submit(ClientMessage::Seek { chair: corp_chair() }));
+        assert!(conn.submit(ClientMessage::Seek { chair: corp_chair(), opponent: Opponent::Person }));
         conn.on_message(ServerMessage::SeekRefused { reason: "not legal".into() }, t0);
         assert!(matches!(events(&mut conn).last(), Some(Event::SeekRefused(reason)) if reason == "not legal"));
         assert!(conn.submit(ClientMessage::JoinLobby { lobby: "standard".into(), password: None }), "a refused seek leaves the player free");
@@ -1164,7 +1165,7 @@ mod tests {
         attach(&mut conn, t0);
         assert!(matches!(&sent(&mut conn)[..], [ClientMessage::JoinLobby { lobby, .. }] if lobby == "startup"));
         conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_) }]), "the same chair, looked for again");
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_), opponent: Opponent::Person }]), "the same chair, looked for again");
         let fresh = Uuid::new_v4();
         conn.on_message(ServerMessage::Queued { session_token: fresh, position: 1 }, t0);
         conn.on_message(joined(fresh), t0);
@@ -1446,7 +1447,7 @@ mod tests {
         conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
         conn.submit(ClientMessage::JoinLobby { lobby: "startup".into(), password: None });
         conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
-        conn.submit(ClientMessage::Seek { chair: corp_chair() });
+        conn.submit(ClientMessage::Seek { chair: corp_chair(), opponent: Opponent::Person });
         conn.on_message(joined(Uuid::new_v4()), t0);
         sent(&mut conn);
         events(&mut conn);

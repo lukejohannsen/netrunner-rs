@@ -13,14 +13,15 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
-use netrunner_server::protocol::{Chair, LobbyInfo};
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_bots::Level;
+use netrunner_server::protocol::{Chair, LobbyInfo, Opponent, QueueMode};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn human_daemon() -> String {
-    let server = Server::bind("127.0.0.1:0", ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ..ServeOptions::default() }).await.unwrap();
+    let server = Server::bind("127.0.0.1:0", ServeOptions { seed: Some(1), ..ServeOptions::default() }).await.unwrap();
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
     format!("ws://{addr}")
@@ -74,35 +75,40 @@ fn joined(message: ServerMessage) -> (Side, String, String, uuid::Uuid) {
     }
 }
 
-/// No deck to attach, the server's own lobbies listed one per format, and
-/// a lobby joined with no deck either.
+/// No deck to attach, the server's own queues listed — a Casual one per
+/// format, and no Ranked one on a daemon that keeps no book — and a lobby
+/// joined with no deck either.
 #[tokio::test]
 async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let url = human_daemon().await;
     let (mut socket, lobbies) = attach(&url, "browser").await;
     let ids: Vec<&str> = lobbies.iter().map(|lobby| lobby.id.as_str()).collect();
-    assert_eq!(ids, ["startup", "standard", "eternal", "snapshot", "unrestricted"], "`serve::DEFAULT_FORMATS`");
-    assert!(lobbies.iter().all(|lobby| lobby.permanent && !lobby.closed && lobby.players == 0));
+    assert_eq!(ids, ["casual-startup", "casual-standard", "casual-eternal", "casual-snapshot", "casual-unrestricted"], "`serve::DEFAULT_FORMATS`");
+    assert!(lobbies.iter().all(|lobby| lobby.permanent() && lobby.mode == QueueMode::Casual && lobby.players == 0));
     assert!(lobbies.iter().all(|lobby| !lobby.rated), "a daemon with no data directory rates nothing, and its lobbies say so");
+    // Every rung is offered where the daemon can deal a bot a deck, and
+    // none in Snapshot, where it can deal none.
+    assert!(lobbies.iter().all(|lobby| lobby.bots == if lobby.format == NsgFormat::Snapshot { Vec::new() } else { Level::ALL.to_vec() }), "{lobbies:?}");
 
-    let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "standard", None).await else { panic!() };
+    let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "Casual-Standard", None).await else { panic!() };
     assert_eq!((lobby.format, lobby.players), (NsgFormat::Standard, 1));
     let ServerMessage::LobbyRefused { reason } = join(&mut socket, "nowhere", None).await else { panic!() };
     assert!(reason.contains("no lobby NOWHERE"), "a code is read in upper case: {reason}");
 }
 
-/// A closed lobby is not listed, is joined by its id, and asks for its
-/// password; it goes when its last player leaves. The server's own stay.
+/// A friend queue is never listed, is joined by its code, and asks for
+/// its password; it goes when its last player leaves. The server's own
+/// stay.
 #[tokio::test]
-async fn a_closed_lobby_is_joined_by_its_id_and_password() {
+async fn a_friend_queue_is_joined_by_its_code_and_password() {
     let url = human_daemon().await;
     let (mut host, _) = attach(&url, "host").await;
-    send(&mut host, ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, closed: true, password: Some("swordfish".into()), casual: false }).await;
+    send(&mut host, ClientMessage::CreateLobby { name: "Friday".into(), format: NsgFormat::Startup, password: Some("swordfish".into()), bots: false }).await;
     let ServerMessage::LobbyJoined { lobby } = next(&mut host).await else { panic!() };
-    assert!(lobby.closed && lobby.password && !lobby.permanent && lobby.id.len() == 6, "{lobby:?}");
+    assert!(lobby.mode == QueueMode::Friends && lobby.password && !lobby.permanent() && !lobby.rated && lobby.bots.is_empty() && lobby.id.len() == 6, "{lobby:?}");
 
     let (mut friend, listed) = attach(&url, "friend").await;
-    assert!(listed.iter().all(|listed| listed.id != lobby.id), "a closed lobby is not listed");
+    assert!(listed.iter().all(|listed| listed.id != lobby.id), "a friend queue is not listed");
     let ServerMessage::LobbyRefused { reason } = join(&mut friend, &lobby.id, None).await else { panic!() };
     assert!(reason.contains("password"), "{reason}");
     let ServerMessage::LobbyRefused { .. } = join(&mut friend, &lobby.id, Some("wrong")).await else { panic!() };
@@ -128,12 +134,12 @@ async fn a_game_is_looked_for_with_decks_and_the_next_one_needs_no_reconnect() {
     let (mut corp, _) = attach(&url, "corp").await;
     let (mut random, _) = attach(&url, "random").await;
     for socket in [&mut corp, &mut random] {
-        let ServerMessage::LobbyJoined { .. } = join(socket, "startup", None).await else { panic!() };
+        let ServerMessage::LobbyJoined { .. } = join(socket, "casual-startup", None).await else { panic!() };
     }
 
-    send(&mut corp, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
+    send(&mut corp, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut corp).await, ServerMessage::Queued { .. }));
-    send(&mut random, ClientMessage::Seek { chair: Chair::Random { corp: deck("glyph_of_warding"), runner: deck("stolen_goods") } }).await;
+    send(&mut random, ClientMessage::Seek { chair: Chair::Either { corp: deck("glyph_of_warding"), runner: deck("stolen_goods"), prefer: None }, opponent: Opponent::Person }).await;
     let (side, corp_deck, runner_deck, _) = joined(next(&mut random).await);
     assert_eq!((side, corp_deck.as_str(), runner_deck.as_str()), (Side::Runner, "", "stolen_goods"), "the random chair sits opposite, with its Runner deck");
     let (side, corp_deck, _, _) = joined(next_where(&mut corp, |message| matches!(message, ServerMessage::MatchJoined { .. }).then_some(message)).await);
@@ -147,13 +153,13 @@ async fn a_game_is_looked_for_with_decks_and_the_next_one_needs_no_reconnect() {
             _ => None,
         })
         .await;
-        assert_eq!(lobby.map(|lobby| lobby.id).as_deref(), Some("startup"), "back in the lobby the game was found in");
+        assert_eq!(lobby.map(|lobby| lobby.id).as_deref(), Some("casual-startup"), "back in the lobby the game was found in");
     }
 
     // The next game, other chairs, other decks, the same sockets.
-    send(&mut corp, ClientMessage::Seek { chair: Chair::Runner(deck("dashing_mad")) }).await;
+    send(&mut corp, ClientMessage::Seek { chair: Chair::Runner(deck("dashing_mad")), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut corp).await, ServerMessage::Queued { .. }));
-    send(&mut random, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")) }).await;
+    send(&mut random, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")), opponent: Opponent::Person }).await;
     let (side, corp_deck, _, _) = joined(next(&mut random).await);
     assert_eq!((side, corp_deck.as_str()), (Side::Corp, "glyph_of_warding"));
 }
@@ -165,18 +171,18 @@ async fn a_game_is_looked_for_with_decks_and_the_next_one_needs_no_reconnect() {
 async fn a_seek_is_checked_cancelled_and_withdrawn_with_its_socket() {
     let url = human_daemon().await;
     let (mut socket, _) = attach(&url, "seeker").await;
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Person }).await;
     let ServerMessage::SeekRefused { reason } = next(&mut socket).await else { panic!() };
     assert!(reason.contains("join a lobby"), "{reason}");
 
-    join(&mut socket, "startup", None).await;
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("stolen_goods")) }).await;
+    join(&mut socket, "casual-startup", None).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("stolen_goods")), opponent: Opponent::Person }).await;
     let ServerMessage::SeekRefused { reason } = next(&mut socket).await else { panic!() };
     assert!(reason.contains("Runner deck"), "{reason}");
 
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Queued { .. }));
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::SeekRefused { .. }), "one seek at a time");
     send(&mut socket, ClientMessage::ListLobbies).await;
     let ServerMessage::Lobbies { lobbies } = next(&mut socket).await else { panic!() };
@@ -184,12 +190,12 @@ async fn a_seek_is_checked_cancelled_and_withdrawn_with_its_socket() {
     send(&mut socket, ClientMessage::CancelSeek).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::SeekCancelled));
 
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Person }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Queued { .. }));
     drop(socket);
     // The next Runner finds nobody: the seek went with its socket.
     let (mut runner, _) = attach(&url, "runner").await;
-    join(&mut runner, "startup", None).await;
+    join(&mut runner, "casual-startup", None).await;
     let seeking = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             send(&mut runner, ClientMessage::ListLobbies).await;
@@ -211,11 +217,11 @@ async fn a_resumed_seat_goes_back_to_its_lobby() {
     let (mut corp, _) = attach(&url, "corp").await;
     let (mut runner, _) = attach(&url, "runner").await;
     for socket in [&mut corp, &mut runner] {
-        join(socket, "startup", None).await;
+        join(socket, "casual-startup", None).await;
     }
-    send(&mut corp, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
+    send(&mut corp, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Person }).await;
     next(&mut corp).await;
-    send(&mut runner, ClientMessage::Seek { chair: Chair::Runner(deck("stolen_goods")) }).await;
+    send(&mut runner, ClientMessage::Seek { chair: Chair::Runner(deck("stolen_goods")), opponent: Opponent::Person }).await;
     let (_, _, _, token) = joined(next(&mut runner).await);
     drop(runner);
 
@@ -229,5 +235,80 @@ async fn a_resumed_seat_goes_back_to_its_lobby() {
         _ => None,
     })
     .await;
-    assert_eq!(lobby.map(|lobby| lobby.id).as_deref(), Some("startup"));
+    assert_eq!(lobby.map(|lobby| lobby.id).as_deref(), Some("casual-startup"));
+}
+
+fn either(prefer: Option<Side>) -> Chair {
+    Chair::Either { corp: deck("glyph_of_warding"), runner: deck("stolen_goods"), prefer }
+}
+
+/// A preference seats the pair (Phase 4 §9): a waiter who prefers the
+/// Runner's chair and a newcomer who prefers the Corp's sit as they asked,
+/// and a newcomer who prefers the Corp's is paired with the waiter who
+/// wants the Runner's rather than the first in line, who wants the Corp's
+/// too.
+#[tokio::test]
+async fn preferences_choose_the_partner_and_the_chairs() {
+    let url = human_daemon().await;
+    let mut sockets = Vec::new();
+    for name in ["early", "late", "newcomer"] {
+        let (mut socket, _) = attach(&url, name).await;
+        join(&mut socket, "casual-startup", None).await;
+        sockets.push(socket);
+    }
+    let [early, late, newcomer] = &mut sockets[..] else { unreachable!() };
+    send(early, ClientMessage::Seek { chair: either(Some(Side::Corp)), opponent: Opponent::Person }).await;
+    assert!(matches!(next(early).await, ServerMessage::Queued { position: 1, .. }));
+    send(late, ClientMessage::Seek { chair: either(Some(Side::Runner)), opponent: Opponent::Person }).await;
+    // Two seeks for either chair are compatible, so the second pairs at
+    // once — and the preferences decide who is the Corp.
+    let ServerMessage::MatchJoined { assigned_side: late_side, .. } = next(late).await else { panic!() };
+    let ServerMessage::MatchJoined { assigned_side: early_side, .. } = next(early).await else { panic!() };
+    assert_eq!((early_side, late_side), (Side::Corp, Side::Runner));
+
+    send(newcomer, ClientMessage::Seek { chair: either(Some(Side::Corp)), opponent: Opponent::Person }).await;
+    assert!(matches!(next(newcomer).await, ServerMessage::Queued { position: 1, .. }));
+}
+
+/// A bot sits only where a casual lobby asks for one (Phase 4 §9): asked
+/// in the Casual queue it is seated at once, in the chair preferred; a
+/// friend queue seats one only if its maker let bots in; a rung the
+/// server does not offer is refused, and a server offering none says so.
+#[tokio::test]
+async fn a_bot_sits_only_where_a_casual_lobby_asks_for_one() {
+    let url = human_daemon().await;
+    let elite = Opponent::Bot { level: Level::Elite, style: None };
+    let (mut player, _) = attach(&url, "player").await;
+    join(&mut player, "casual-startup", None).await;
+    send(&mut player, ClientMessage::Seek { chair: either(Some(Side::Runner)), opponent: elite }).await;
+    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("seated against the bot at once") };
+    assert_eq!(assigned_side, Side::Runner, "in the chair preferred");
+    send(&mut player, ClientMessage::Surrender).await;
+    loop {
+        if let ServerMessage::BackInLobby { .. } = next(&mut player).await {
+            break;
+        }
+    }
+
+    send(&mut player, ClientMessage::CreateLobby { name: "no bots".into(), format: NsgFormat::Startup, password: None, bots: false }).await;
+    assert!(matches!(next(&mut player).await, ServerMessage::LobbyJoined { .. }));
+    send(&mut player, ClientMessage::Seek { chair: either(None), opponent: elite }).await;
+    let ServerMessage::SeekRefused { reason } = next(&mut player).await else { panic!() };
+    assert!(reason.contains("kept bots out"), "{reason}");
+    send(&mut player, ClientMessage::CreateLobby { name: "bots".into(), format: NsgFormat::Startup, password: None, bots: true }).await;
+    let ServerMessage::LobbyJoined { lobby } = next(&mut player).await else { panic!() };
+    assert_eq!(lobby.bots, Level::ALL.to_vec());
+    send(&mut player, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")), opponent: Opponent::Bot { level: Level::Novice, style: None } }).await;
+    let ServerMessage::MatchJoined { assigned_side, .. } = next(&mut player).await else { panic!("a friend queue that lets bots in seats one") };
+    assert_eq!(assigned_side, Side::Corp);
+
+    let server = Server::bind("127.0.0.1:0", ServeOptions { bots: vec![Level::Novice], ..ServeOptions::default() }).await.unwrap();
+    let addr = server.local_addr().unwrap();
+    tokio::spawn(server.run());
+    let (mut picky, lobbies) = attach(&format!("ws://{addr}"), "picky").await;
+    assert!(lobbies.iter().filter(|lobby| lobby.format != NsgFormat::Snapshot).all(|lobby| lobby.bots == [Level::Novice]));
+    join(&mut picky, "casual-startup", None).await;
+    send(&mut picky, ClientMessage::Seek { chair: either(None), opponent: elite }).await;
+    let ServerMessage::SeekRefused { reason } = next(&mut picky).await else { panic!() };
+    assert!(reason.contains("no elite bot"), "{reason}");
 }

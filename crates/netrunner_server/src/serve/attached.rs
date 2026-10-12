@@ -144,11 +144,11 @@ impl Attached {
                 let list = self.shared.match_list();
                 self.send(list);
             }
-            ClientMessage::CreateLobby { name, format, closed, password, casual } => {
+            ClientMessage::CreateLobby { name, format, password, bots } => {
                 if playing.is_some() {
                     return self.send(ServerMessage::LobbyRefused { reason: BUSY.into() });
                 }
-                match self.create(name, format, closed, password, casual) {
+                match self.create(name, format, password, bots) {
                     Ok(id) => self.move_to(id),
                     Err(reason) => self.send(ServerMessage::LobbyRefused { reason }),
                 }
@@ -170,11 +170,11 @@ impl Attached {
                 self.leave_lobby();
                 self.send(ServerMessage::LobbyLeft);
             }
-            ClientMessage::Seek { chair } => {
+            ClientMessage::Seek { chair, opponent } => {
                 if playing.is_some() {
                     return self.send(ServerMessage::SeekRefused { reason: "already looking for a game, or playing one: cancel first".into() });
                 }
-                match self.seek(chair) {
+                match self.seek(chair, opponent) {
                     Ok(seek) => *playing = Some(seek),
                     Err(reason) => self.send(ServerMessage::SeekRefused { reason }),
                 }
@@ -293,59 +293,68 @@ impl Attached {
         true
     }
 
-    /// Checks `chair`'s decks against the lobby's format and puts this
-    /// player in its queue — or, on a bot daemon, straight into a game.
-    fn seek(&mut self, chair: Chair) -> Result<Playing, String> {
+    /// Checks `chair`'s decks against the lobby's format and `opponent`
+    /// against what the lobby offers, and puts this player in its queue —
+    /// or, for a bot, straight into a game.
+    fn seek(&mut self, chair: Chair, opponent: Opponent) -> Result<Playing, String> {
         let Some(lobby) = self.lobby.clone() else { return Err("join a lobby first".into()) };
-        let format = self.shared.lock().lobby_info(&lobby, &self.shared.options).ok_or("that lobby has gone")?.format;
+        let info = self.shared.lock().lobby_info(&lobby, &self.shared.options).ok_or("that lobby has gone")?;
+        let format = info.format;
         let check = |deck: &DeckFile, side: Side| -> Result<(), String> {
             if deck.side != side {
                 return Err(format!("{:?} is a {:?} deck, not a {side:?} one", deck.name, deck.side));
             }
             deck.validate(&self.shared.cards, format).map(drop).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))
         };
-        let (deck, random) = match chair {
+        let (deck, random, prefer) = match chair {
             Chair::Corp(deck) => {
                 check(&deck, Side::Corp)?;
-                (Some(deck), None)
+                (Some(deck), None, None)
             }
             Chair::Runner(deck) => {
                 check(&deck, Side::Runner)?;
-                (Some(deck), None)
+                (Some(deck), None, None)
             }
-            Chair::Random { corp, runner } => {
+            Chair::Either { corp, runner, prefer } => {
                 check(&corp, Side::Corp)?;
                 check(&runner, Side::Runner)?;
-                (None, Some((corp, runner)))
+                (None, Some((corp, runner)), prefer)
             }
         };
+        if let Opponent::Bot { level, .. } = opponent
+            && !info.bots.contains(&level)
+        {
+            return Err(match info.mode {
+                QueueMode::Ranked => "a bot never sits in Ranked: look for a bot in the Casual queue".to_string(),
+                QueueMode::Friends if info.bots.is_empty() => "this lobby's maker kept bots out of it".to_string(),
+                QueueMode::Casual | QueueMode::Friends if info.bots.is_empty() => format!("this server offers no bot in {format:?}"),
+                QueueMode::Casual | QueueMode::Friends => format!("this server offers no {level} bot"),
+            });
+        }
         let (out_tx, out) = mpsc::unbounded_channel::<ServerMessage>();
         let (into, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
         let slot = PlayerSlot::Channel { tx: out_tx.clone(), rx: into_rx };
         let token = Uuid::new_v4();
-        // A format the daemon can deal no bot a deck in (Snapshot, with
-        // the shipped pool) queues the seek for a person, whatever the
-        // bot runner is.
-        match self.shared.options.bot_runner {
-            kind if kind == ServeBotKind::None || !self.shared.seats_a_bot_in(format) => {
-                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, tx: out_tx, slot };
+        match opponent {
+            Opponent::Person => {
+                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, prefer, since: unix_now(), tx: out_tx, slot };
                 enqueue_or_pair(&self.shared, newcomer);
             }
-            // A bot sits opposite whatever chair was chosen; a random one
-            // is a coin here, since there is no second player to pair.
-            kind => {
+            // A bot sits opposite whatever chair was chosen: for either,
+            // the one preferred, or a coin, since there is no second
+            // player to balance against.
+            Opponent::Bot { level, style } => {
                 let deck = match (deck, random) {
                     (Some(deck), _) => deck,
-                    (None, Some((corp, runner))) => {
-                        if rand::random::<bool>() {
-                            corp
-                        } else {
-                            runner
-                        }
-                    }
+                    (None, Some((corp, runner))) => match prefer {
+                        Some(Side::Corp) => corp,
+                        Some(Side::Runner) => runner,
+                        None if rand::random::<bool>() => corp,
+                        None => runner,
+                    },
                     (None, None) => unreachable!("every chair brings a deck"),
                 };
-                seat_vs_bot(&self.shared, kind, self.player_name.clone(), format, deck, lobby.clone(), out_tx, slot);
+                seat_vs_bot(&self.shared, level, style, self.player_name.clone(), format, deck, lobby.clone(), out_tx, slot);
             }
         }
         Ok(Playing { token, out, into, lobby })
@@ -355,7 +364,7 @@ impl Attached {
     /// off the tournament table it was waiting at.
     fn withdraw(&self, token: Uuid) {
         let mut registry = self.shared.lock();
-        registry.lobby.retain(|waiter| waiter.token != token);
+        registry.waiting.retain(|waiter| waiter.token != token);
         registry.tables.retain(|_, state| !matches!(state, TableState::Waiting(seated) if seated.token == token));
         if let Some(id) = &self.lobby {
             registry.forget_if_empty(id);
@@ -379,8 +388,8 @@ impl Attached {
         }
     }
 
-    /// Makes a player's lobby, returning its id.
-    fn create(&self, name: String, format: NsgFormat, closed: bool, password: Option<String>, casual: bool) -> Result<String, String> {
+    /// Makes a friend queue, returning its code.
+    fn create(&self, name: String, format: NsgFormat, password: Option<String>, bots: bool) -> Result<String, String> {
         let name: String = name.trim().chars().take(MAX_LOBBY_NAME).collect();
         if name.is_empty() {
             return Err("a lobby needs a name".into());
@@ -396,7 +405,7 @@ impl Attached {
                 break id;
             }
         };
-        registry.player_lobbies.insert(id.clone(), PlayerLobby { name, format, closed, password, casual });
+        registry.player_lobbies.insert(id.clone(), PlayerLobby { name, format, password, bots });
         Ok(id)
     }
 
@@ -431,9 +440,9 @@ const BUSY: &str = "cancel the game you are looking for, or finish the one you a
 /// The longest name a player's lobby may have.
 const MAX_LOBBY_NAME: usize = 40;
 
-/// A lobby id as a person typed it: a format's lobby in any case
-/// (`Startup`, `startup`), a player's code in any case (`k7m2qx`), with
-/// the spaces around it gone.
+/// A lobby id as a person typed it: a server's queue in any case
+/// (`Casual-Startup`, `casual-startup`), a friend queue's code in any case
+/// (`k7m2qx`), with the spaces around it gone.
 impl Attached {
     /// A tournament of this key's, on a daemon that keeps things.
     fn create_tournament(&self, name: String, format: NsgFormat) -> Result<TournamentInfo, String> {
@@ -857,12 +866,13 @@ impl Attached {
 fn lobby_id_as_typed(typed: &str) -> String {
     let typed = typed.trim();
     let lower = typed.to_lowercase();
-    if NsgFormat::ALL.iter().any(|&format| format_lobby_id(format) == lower) { lower } else { typed.to_uppercase() }
+    let queues = NsgFormat::ALL.iter().flat_map(|&format| [QueueMode::Ranked, QueueMode::Casual].map(|mode| queue_id(mode, format)));
+    if queues.into_iter().any(|id| id == lower) { lower } else { typed.to_uppercase() }
 }
 
-/// A player lobby's id — and a tournament's: six characters from an
+/// A friend queue's code — and a tournament's: six characters from an
 /// alphabet with no look-alikes (no 0/O, 1/I/L), short enough to read out
-/// and never a format's name.
+/// and never a server queue's id.
 fn lobby_code() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     (0..6).map(|_| ALPHABET[rand::random_range(0..ALPHABET.len())] as char).collect()

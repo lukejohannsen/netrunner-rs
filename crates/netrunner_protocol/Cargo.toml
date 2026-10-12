@@ -16,6 +16,8 @@ netrunner_core = { path = "../netrunner_core" }
 # `GameEndReason` and the masked history entries live beside the driver
 # that produces them.
 netrunner_session = { path = "../netrunner_session" }
+# A seek asks for a bot by its rung and style (Phase 4 §9).
+netrunner_bots = { path = "../netrunner_bots" }
 # A connection proves its key with a signed challenge (Phase 4 §5).
 netrunner_identity = { path = "../netrunner_identity" }
 # `Rated` carries a rating before and after.

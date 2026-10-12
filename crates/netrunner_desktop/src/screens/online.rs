@@ -8,7 +8,7 @@
 //!
 //! **The connection outlives the game** (Phase 4 §7 stage 4c). Hosting
 //! and connecting both end on the Server page, attached: the lobbies
-//! listed, one joined, a lobby made or a closed one joined by its code,
+//! listed, one joined, a friend queue made or joined by its code,
 //! and in a lobby a game looked for in a chair with that chair's deck or
 //! decks. The [`Connected`] resource holds the connection, and it is not a
 //! part of this screen's tree: it stays while the board plays the game
@@ -55,7 +55,7 @@ use bevy::prelude::*;
 use netrunner_client::connection::{Goal, Link, Who};
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
 use netrunner_client::identity::ProfileHere;
-use netrunner_client::online;
+use netrunner_client::online::{self, opponent_label, preference_label, rung_label};
 use netrunner_client::tournament;
 use netrunner_client::servers::{self, ServerBook};
 use netrunner_core::decks::DeckFile;
@@ -66,8 +66,8 @@ use netrunner_client::settings::{format_name, FORMATS};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{LobbyInfo, TournamentState};
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::protocol::{Level, LobbyInfo, QueueMode, TournamentState};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use crate::audio::{ButtonSound, Sfx};
@@ -222,9 +222,8 @@ pub enum Control {
     Reach(Reach),
     Format(NsgFormat),
     /// Make a lobby's: listed, or joined by its code.
-    Closed(bool),
-    /// Make a lobby's: whether its games count.
-    Casual(bool),
+    /// Make a friend queue's: whether its members may ask for a bot.
+    LobbyBots(bool),
     WatchFrom(Side),
     Watch(usize),
     /// The `n`th thing the host gives out.
@@ -235,6 +234,8 @@ pub enum Control {
     LeaveLobby,
     Refresh,
     Chair(ChairChoice),
+    Prefer(Option<Side>),
+    Opponent(Option<Level>),
     Seek,
     CancelSeek,
     /// The tournaments page's and a tournament's.
@@ -314,7 +315,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
         .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), ..default() })
         .with_children(|parent| {
             parent.spawn(widgets::title(&theme, AppScreen::Online.title()));
-            parent.spawn(widgets::dim(&theme, format!("Against a person, as {}. A lobby says whether its games are rated; a move cannot be taken back.", core.player_name())));
+            parent.spawn(widgets::dim(&theme, format!("As {}. Ranked is rated, Casual is not and offers bots, and a friend queue is joined by its code.", core.player_name())));
         })
         .add_child(panel)
         .id();
@@ -463,8 +464,7 @@ fn controls(
             Control::List => Intent::List,
             Control::Reach(reach) => Intent::SetReach(reach),
             Control::Format(format) => Intent::SetFormat(format),
-            Control::Closed(closed) => Intent::SetClosed(closed),
-            Control::Casual(casual) => Intent::SetCasual(casual),
+            Control::LobbyBots(bots) => Intent::SetLobbyBots(bots),
             Control::WatchFrom(side) => Intent::SetWatchFrom(side),
             Control::Watch(index) => Intent::Watch(index),
             Control::JoinLobby(index) => Intent::JoinLobby(index),
@@ -472,6 +472,8 @@ fn controls(
             Control::LeaveLobby => Intent::LeaveLobby,
             Control::Refresh => Intent::Refresh,
             Control::Chair(chair) => Intent::SetChair(chair),
+            Control::Prefer(prefer) => Intent::SetPrefer(prefer),
+            Control::Opponent(bot) => Intent::SetOpponent(bot),
             Control::Seek => Intent::Seek,
             Control::CancelSeek => Intent::CancelSeek,
             Control::OpenTournament(index) => Intent::OpenTournament(index),
@@ -588,7 +590,7 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::JoinLobby { .. }
             | Outcome::LeaveLobby
             | Outcome::CreateLobby { .. }
-            | Outcome::Seek(_)
+            | Outcome::Seek(..)
             | Outcome::CancelSeek
             | Outcome::ListTournaments
             | Outcome::CreateTournament { .. }
@@ -711,8 +713,8 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::ListLobbies => connected.attached.list_lobbies(),
         Outcome::JoinLobby { id, password } => connected.attached.join_lobby(id, password),
         Outcome::LeaveLobby => connected.attached.leave_lobby(),
-        Outcome::CreateLobby { name, format, closed, password, casual } => connected.attached.create_lobby(name, format, closed, password, casual),
-        Outcome::Seek(chair) => connected.attached.seek(chair),
+        Outcome::CreateLobby { name, format, password, bots } => connected.attached.create_lobby(name, format, password, bots),
+        Outcome::Seek(chair, opponent) => connected.attached.seek(chair, opponent),
         Outcome::CancelSeek => connected.attached.cancel_seek(),
         Outcome::ListTournaments => connected.attached.list_tournaments(),
         Outcome::CreateTournament { name, format } => connected.attached.create_tournament(name, format),
@@ -800,6 +802,23 @@ fn dev_page(
                 "profile-badges" => form.apply(Intent::Choose(AwardKind::Badge)),
                 _ => Outcome::Nothing,
             };
+        }
+        return;
+    }
+    // So do a Casual queue joined and the friend-queue form.
+    if page == "lobby" || page == "friend-queue" {
+        let Some(server) = form.server.as_ref().filter(|server| !server.lobbies.is_empty()) else { return };
+        if !std::mem::replace(&mut *done, true) {
+            dirty.0 = true;
+            let casual = server.lobbies.iter().position(|lobby| lobby.mode == QueueMode::Casual).unwrap_or(0);
+            let outcome = if page == "lobby" {
+                form.apply(Intent::SetChair(ChairChoice::Either));
+                form.apply(Intent::SetPrefer(Some(Side::Runner)));
+                form.apply(Intent::JoinLobby(casual))
+            } else {
+                form.apply(Intent::Open(Page::MakeLobby))
+            };
+            carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
         }
         return;
     }
@@ -908,12 +927,14 @@ fn shortened(address: &str) -> String {
     if address.chars().count() > 48 { format!("{}… (a ticket)", address.chars().take(24).collect::<String>()) } else { address.to_string() }
 }
 
-/// Binds a human-vs-human server on `port` and starts it, returning it
+/// Binds a human-vs-human server on `port` and starts it — offering no
+/// bot, since a game hosted from this machine is for the person invited,
+/// and a guest's bot would play on the host's machine — returning it
 /// and the loopback address the host attaches by — the terminal's
 /// `start_hosting`, whose server is named here because `netrunner_client`
 /// may not name it. Port 0 takes any free port.
 fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>, runtime: tokio::runtime::Handle) -> Result<(HostedServer, String), String> {
-    let options = ServeOptions { bot_runner: ServeBotKind::None, formats: vec![format], ..ServeOptions::default() };
+    let options = ServeOptions { bots: Vec::new(), formats: vec![format], ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
@@ -1549,7 +1570,7 @@ fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     });
 }
 
-/// Attached: what a host gives out, the lobbies, a closed one's code, and
+/// Attached: what a host gives out, the lobbies, a friend queue's code, and
 /// in a lobby the game to look for.
 fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net) {
     parent.spawn(widgets::heading(theme, if server.hosting { "Hosting on this machine".to_string() } else { format!("At {}", shortened(&form.server_name(&server.address))) }));
@@ -1586,17 +1607,28 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
         if server.lobbies.is_empty() {
             section.spawn(widgets::dim(theme, "This server lists no lobby."));
         }
-        for (index, lobby) in server.lobbies.iter().enumerate() {
-            let here = server.lobby.as_ref().is_some_and(|current| current.id == lobby.id);
+        // A row a format, its queues side by side (Phase 4 §9): two
+        // queues a format, one a row, ran Find a game off the window, and
+        // this page does not scroll.
+        let mut formats: Vec<NsgFormat> = Vec::new();
+        for lobby in &server.lobbies {
+            if !formats.contains(&lobby.format) {
+                formats.push(lobby.format);
+            }
+        }
+        for format in formats {
             section.spawn(widgets::row(12.0)).with_children(|row| {
-                let (kind, label) = if here { (ButtonKind::Primary, "Here") } else { (ButtonKind::Secondary, "Join") };
-                row.spawn(widgets::styled_button(theme, kind, label, px(110), Control::JoinLobby(index)));
-                row.spawn((widgets::label(theme, lobby_line(lobby)), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+                row.spawn((widgets::label(theme, netrunner_client::settings::format_label(format)), Node { width: px(150), flex_shrink: 0.0, ..default() }));
+                for (index, lobby) in server.lobbies.iter().enumerate().filter(|(_, lobby)| lobby.format == format) {
+                    let here = server.lobby.as_ref().is_some_and(|current| current.id == lobby.id);
+                    let kind = if here { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    row.spawn(widgets::styled_button(theme, kind, queue_pill(lobby), Val::Auto, Control::JoinLobby(index)));
+                }
             });
         }
         section.spawn(widgets::row(12.0)).with_children(|row| {
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Refresh", Control::Refresh));
-            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a lobby…", Control::Open(Page::MakeLobby)));
+            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Make a friend queue…", Control::Open(Page::MakeLobby)));
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Tournaments…", Control::Open(Page::Tournaments)));
             if !server.hosting {
                 row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Your profile…", Control::Open(Page::Profile)));
@@ -1604,7 +1636,7 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
             row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Servers…", Control::Open(Page::Servers)));
         });
     });
-    section(parent, theme, "A closed lobby", |section| {
+    section(parent, theme, "A friend queue", |section| {
         section.spawn(widgets::row(12.0)).with_children(|row| {
             row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Lobby, &form.lobby, "its code", false));
             row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Password, &form.password, "password, if it asks for one", false));
@@ -1620,6 +1652,28 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
                     row.spawn(widgets::styled_button(theme, kind, chair.label(), Val::Auto, Control::Chair(chair)));
                 }
             });
+            // Either chair brings both decks, and may lean one way: a
+            // preference the queue meets where it can, never a refusal.
+            if server.chair == ChairChoice::Either {
+                section.spawn(widgets::row(10.0)).with_children(|row| {
+                    for prefer in [None, Some(Side::Corp), Some(Side::Runner)] {
+                        let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
+                        row.spawn(widgets::styled_button(theme, kind, preference_label(prefer), Val::Auto, Control::Prefer(prefer)));
+                    }
+                });
+            }
+            // A bot only where the lobby offers one: a casual lobby asks.
+            if !lobby.bots.is_empty() {
+                section.spawn(widgets::row(10.0)).with_children(|row| {
+                    for bot in std::iter::once(None).chain(lobby.bots.iter().copied().map(Some)) {
+                        let kind = if bot == server.bot { ButtonKind::Primary } else { ButtonKind::Secondary };
+                        // The rung's name alone after "A person": six
+                        // "… bot" pills ran off the panel.
+                        let label = bot.map_or_else(|| opponent_label(None), rung_label);
+                        row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Opponent(bot)));
+                    }
+                });
+            }
             if server.chair != ChairChoice::Runner {
                 deck_dropdown(section, theme, server, Side::Corp, lobby.format);
             }
@@ -1628,7 +1682,7 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
             }
             match server.seeking {
                 Some(position) => {
-                    section.spawn(widgets::dim(theme, format!("Looking for a game — {position} waiting in this lobby…")));
+                    section.spawn(widgets::dim(theme, format!("Looking for a game — {position} waiting in this queue…")));
                     section.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop looking", Val::Auto, Control::CancelSeek));
                     });
@@ -1647,15 +1701,15 @@ fn spawn_server(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineF
     });
 }
 
-/// One lobby's line: its name, its format, who is in it and how many of
-/// them are looking, and whether a game there counts.
-fn lobby_line(lobby: &LobbyInfo) -> String {
-    let mut line = format!("{} · {} here, {} looking", lobby_title(lobby), lobby.players, lobby.seeking);
-    if lobby.password {
-        line.push_str(" · password");
+/// One of the server's queues on its format's row: its mode, how many
+/// are looking there, and whether a bot may be asked for. Ranked is the
+/// rated one, so the word says it.
+fn queue_pill(lobby: &LobbyInfo) -> String {
+    let mut pill = format!("{} · {} looking", lobby.mode.name(), lobby.seeking);
+    if !lobby.bots.is_empty() {
+        pill.push_str(" · bots");
     }
-    line.push_str(if lobby.rated { " · rated" } else { " · unrated" });
-    line
+    pill
 }
 
 /// The deck brought for `side`, from those legal in the lobby's format.
@@ -1864,26 +1918,18 @@ fn spawn_make_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, form:
 }
 
 fn spawn_make_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    parent.spawn(widgets::heading(theme, "Make a lobby"));
+    parent.spawn(widgets::heading(theme, "Make a friend queue"));
+    parent.spawn((widgets::dim(theme, "Never listed and never rated: your group joins it by the code the server gives it, and plays whoever else is looking there."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     section(parent, theme, "Name", |section| field_box(section, theme, Field::LobbyName, &form.make.name, "what the others see", false));
     format_section(parent, theme, form.make.format, "The format games in this lobby are played in.");
-    section(parent, theme, "Who can find it", |section| {
+    section(parent, theme, "Bots", |section| {
         section.spawn(widgets::row(10.0)).with_children(|row| {
-            for (closed, label) in [(false, "Listed"), (true, "Closed")] {
-                let kind = if closed == form.make.closed { ButtonKind::Primary } else { ButtonKind::Secondary };
-                row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Closed(closed)));
+            for (bots, label) in [(false, "People only"), (true, "Bots on request")] {
+                let kind = if bots == form.make.bots { ButtonKind::Primary } else { ButtonKind::Secondary };
+                row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::LobbyBots(bots)));
             }
         });
-        section.spawn(widgets::dim(theme, if form.make.closed { "Not listed: joined by the code the server gives it, which you pass on." } else { "Listed for anyone on the server to join." }));
-    });
-    section(parent, theme, "Do its games count", |section| {
-        section.spawn(widgets::row(10.0)).with_children(|row| {
-            for (casual, label) in [(false, "Rated"), (true, "Unrated")] {
-                let kind = if casual == form.make.casual { ButtonKind::Primary } else { ButtonKind::Secondary };
-                row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Casual(casual)));
-            }
-        });
-        section.spawn(widgets::dim(theme, if form.make.casual { "Nothing played here is rated: for trying a deck, or a game nobody wants on their record." } else { "Rated as the server's own lobbies are — between two players with keys, on a server that keeps ratings." }));
+        section.spawn(widgets::dim(theme, if form.make.bots { "Anyone here may ask for a bot instead of waiting for the group." } else { "Games here are between the people who join." }));
     });
     section(parent, theme, "Password", |section| field_box(section, theme, Field::LobbyPassword, &form.make.password, "none", false));
     buttons(parent, |row| {

@@ -4,7 +4,7 @@ use clap::{Parser, ValueEnum};
 
 use netrunner_bots::{BotAgent, Knowledge, MctsAgent, PlanningAgent, RandomAgent};
 use netrunner_core::rules::{GamePhase, GameState, Side};
-use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::serve::{ServeOptions, Server};
 use netrunner_server::{fixtures, MatchSession, PlayerSlot, DEFAULT_RECONNECT_GRACE};
 
 #[derive(Parser, Debug)]
@@ -47,30 +47,15 @@ struct Config {
     #[arg(long, default_value_t = 8080)]
     port: u16,
 
-    /// (serve mode) Bot opponent seated against every connecting client
-    /// (on whichever side the client did not ask for). `none` instead
-    /// queues connecting clients and pairs each with the first waiter in
-    /// its room as a human-vs-human match.
-    #[arg(long, value_enum, default_value_t = ServeBotKind::Planner)]
-    bot_runner: ServeBotKind,
-
-    /// (serve mode) Seat a rung of the difficulty ladder — `novice`,
-    /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
-    /// of `--bot-runner`'s kind. The same bot, and the same rating id
-    /// (`bot:veteran`), as `netrunner_cli --corp-level`; the style still
-    /// applies.
-    #[arg(long)]
-    bot_level: Option<netrunner_bots::Level>,
-
-    /// (serve mode) The bot's style: `balanced`, or the plans it stacks
-    /// joined with `+` — `glacier`, `fast-advance`, `kill`, `traps` for a
-    /// Corp bot and `dismantle`, `pressure`, `rig` for a Runner bot. See
-    /// `netrunner_cli --corp-style`.
-    ///
-    /// Unset means the bot plays the style its dealt deck names
-    /// (`DeckFile::style`); `balanced` switches that off.
-    #[arg(long)]
-    bot_style: Option<netrunner_bots::Style>,
+    /// (serve mode) The bots this daemon offers: the rungs of the
+    /// difficulty ladder — `novice`, `apprentice`, `operator`, `veteran`,
+    /// `elite`, or `1`-`5` — comma-separated, or `none`. Every rung if
+    /// omitted. **Never where a bot sits** (Phase 4 §9): a bot sits only in
+    /// a casual lobby, and only when a player looking for a game asks for
+    /// one at a rung offered here, in a style of their choosing or the
+    /// style of the deck it is dealt; the Ranked queues never seat one.
+    #[arg(long, value_parser = parse_bots, default_value = "novice,apprentice,operator,veteran,elite")]
+    bots: Bots,
 
     /// (serve mode) How many matches may run at once. A client connecting
     /// at the limit is refused rather than queued. Unlimited if omitted.
@@ -137,10 +122,11 @@ struct Config {
     /// `netrunner_cli replay` opens).
     /// With it the daemon's key is the same every run, which clients
     /// remember, and every finished match between two identified people
-    /// (`--bot-runner none`) is rated — surrenders, disconnects and
+    /// in a Ranked queue is rated — surrenders, disconnects and
     /// timeouts count as losses; stalls are unrated. Without it the key is
-    /// new each run and nothing is rated. A game against a seated bot, or
-    /// with a player who proved no key, is never rated.
+    /// new each run, nothing is rated and there are no Ranked queues. A
+    /// game against a bot, or with a player who proved no key, is never
+    /// rated.
     #[arg(long)]
     data_dir: Option<std::path::PathBuf>,
 
@@ -259,9 +245,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(folded, "the store's ratings and results were rebuilt from the results log");
     }
     let options = ServeOptions {
-        bot_runner: config.bot_runner,
-        bot_level: config.bot_level,
-        bot_style: config.bot_style,
+        bots: config.bots.0.clone(),
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,
@@ -306,4 +290,18 @@ mod tests {
         assert_eq!(bind_address("127.0.0.1", 8080), "127.0.0.1:8080");
         assert_eq!(bind_address("localhost", 8080), "localhost:8080");
     }
+}
+
+/// `--bots`: the rungs a daemon offers.
+#[derive(Debug, Clone)]
+struct Bots(Vec<netrunner_bots::Level>);
+
+fn parse_bots(text: &str) -> Result<Bots, String> {
+    if text.trim().eq_ignore_ascii_case("none") {
+        return Ok(Bots(Vec::new()));
+    }
+    let mut rungs = text.split(',').map(|rung| rung.trim().parse::<netrunner_bots::Level>().map_err(|error| error.to_string())).collect::<Result<Vec<_>, _>>()?;
+    rungs.sort();
+    rungs.dedup();
+    Ok(Bots(rungs))
 }
