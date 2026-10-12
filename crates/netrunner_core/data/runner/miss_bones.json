@@ -1,0 +1,27 @@
+{
+  "id": "miss_bones",
+  "title": "Miss Bones",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "TrashCostsOfInstalledCards"
+  ],
+  "trash_when_empty": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 12
+        }
+      ],
+      "text": "Place 12[credit] from the bank on Miss Bones when she is installed. When there are no credits left on Miss Bones, trash her."
+    }
+  ],
+  "built_from": 22014,
+  "is_playable": true
+}

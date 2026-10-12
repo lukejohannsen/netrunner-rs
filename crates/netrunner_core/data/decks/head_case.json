@@ -1,0 +1,109 @@
+{
+  "id": "head_case",
+  "name": "Head Case",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Akiko Nisei: Head Case, Reign and Reverie's Shaper identity, who plays a Psi Game on every breach of R&D for one more card. Safety Net's frame of net damage shields, Sacrificial Construct and Self-Modifying Code, with two Insight for its two Khusyuk to reveal the cards Akiko will see; 9 of its 12 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2.",
+  "style": [
+    "rig"
+  ],
+  "identity": "akiko_nisei_head_case",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "the_artist",
+      "count": 2
+    },
+    {
+      "card": "joy_ride",
+      "count": 2
+    },
+    {
+      "card": "insight",
+      "count": 2
+    },
+    {
+      "card": "world_tree",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "environmental_testing",
+      "count": 2
+    },
+    {
+      "card": "test_run",
+      "count": 2
+    },
+    {
+      "card": "self_modifying_code",
+      "count": 2
+    },
+    {
+      "card": "chameleon",
+      "count": 2
+    },
+    {
+      "card": "mantle",
+      "count": 2
+    },
+    {
+      "card": "harmony_ar_therapy",
+      "count": 1
+    },
+    {
+      "card": "akamatsu_mem_chip",
+      "count": 1
+    },
+    {
+      "card": "magnum_opus",
+      "count": 2
+    },
+    {
+      "card": "pipeline",
+      "count": 2
+    },
+    {
+      "card": "modded",
+      "count": 2
+    },
+    {
+      "card": "rabbit_hole",
+      "count": 2
+    },
+    {
+      "card": "crypsis",
+      "count": 2
+    }
+  ]
+}

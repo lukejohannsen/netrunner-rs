@@ -1,0 +1,35 @@
+{
+  "id": "nathaniel_gnat_hall_one_of_a_kind",
+  "title": "Nathaniel \"Gnat\" Hall: One-of-a-Kind",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "CardsInHand": "Runner"
+            },
+            3
+          ]
+        }
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] if you have 2 or fewer cards in your grip."
+    }
+  ],
+  "built_from": 22001,
+  "is_playable": true
+}
