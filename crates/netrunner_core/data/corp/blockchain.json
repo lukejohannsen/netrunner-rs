@@ -1,0 +1,92 @@
+{
+  "id": "blockchain",
+  "title": "Blockchain",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 7,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "Gain 1[credit] and the Runner loses 1[credit].",
+            "effect": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "LoseCredits": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          },
+          "count": {
+            "per": 1,
+            "of": {
+              "Every": {
+                "amount": {
+                  "InZone": {
+                    "zone": "OwnArchives",
+                    "filter": {
+                      "All": [
+                        "Faceup",
+                        {
+                          "CardType": "Operation"
+                        },
+                        {
+                          "HasSubtype": "Transaction"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "every": 2
+              }
+            }
+          },
+          "before": true
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] Gain 1[credit] and the Runner loses 1[credit].\" before its other subroutines for every 2 faceup transaction operations in Archives."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit] and the Runner loses 1[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "LoseCredits": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 22053,
+  "is_playable": true,
+  "triggers": []
+}

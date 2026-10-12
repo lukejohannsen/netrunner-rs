@@ -1,0 +1,77 @@
+{
+  "id": "thimblerig",
+  "title": "Thimblerig",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "NotSourceCard"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "SwapInstalledIce": [
+                0,
+                0
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins and whenever the Runner passes this ice, you may swap this ice with another installed piece of ice."
+    },
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "NotSourceCard"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "SwapInstalledIce": [
+                0,
+                0
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins and whenever the Runner passes this ice, you may swap this ice with another installed piece of ice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 22039,
+  "is_playable": true
+}
