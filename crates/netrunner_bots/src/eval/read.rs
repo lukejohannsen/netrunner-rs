@@ -74,6 +74,22 @@ fn bypasses_waiting(state: &GameState) -> usize {
         .count()
 }
 
+/// The first encounter of the run the card that began it bypasses
+/// (Phase 5 §72): S-Dobrado's "the first time you encounter a piece of
+/// ice during that run, bypass it" is a trigger on the event, asked
+/// against the run's encounters (`EncountersThisRun` under 2), not a
+/// delayed ability as Inside Job's is (`bypasses_waiting`), so the run it
+/// began was priced at every piece. One while the run has met nothing.
+fn starter_bypasses(registry: &CardRegistry, run: &RunState) -> usize {
+    use netrunner_core::dsl::EffectRequirement;
+    if run.encounters > 0 {
+        return 0;
+    }
+    let first = Some(EffectRequirement::Not(Box::new(EffectRequirement::AmountAtLeast(Amount::EncountersThisRun, 2))));
+    let Some(def) = run.initiated_by.as_ref().and_then(|card| registry.get(card)) else { return 0 };
+    usize::from(def.triggers.iter().any(|trigger| trigger.trigger == Trigger::OnEncounter && trigger.requirement == first && trigger.effects == [Effect::BypassEncounteredIce]))
+}
+
 /// The credits still to be spent breaking this run's rezzed ICE, or
 /// `None` when one of them no rig card can break. Split out of
 /// `run_is_breakable` so the same number both gates the run and pays for
@@ -100,7 +116,7 @@ pub(super) fn remaining_break_cost(state: &GameState, run: &RunState, registry: 
     let mut total = 0;
     let mut stock = fresh_stock(state);
     let mut prevention = run_ending_prevented(state, run);
-    let mut bypassed = bypasses_waiting(state);
+    let mut bypassed = bypasses_waiting(state) + starter_bypasses(registry, run);
     for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
         if bypassed > 0 {
             bypassed -= 1;
@@ -922,6 +938,11 @@ pub(super) struct Income {
     /// resource and gain 9[credit]". Taken at an install a turn.
     pub install_payout: u32,
     pub install_payout_at: u32,
+    /// What the card pays, once, when the Corp scores and it trashes
+    /// itself (Phase 5 §72): Word on the Street's "when the Corp scores an
+    /// agenda they did not install this turn, trash this resource, gain
+    /// 4[credit], and draw 1 card" — credits and cards alike.
+    pub score_payout: u32,
     /// The credits come off hosted counters, so the counters bound them;
     /// `printed_stock` is what the card places on itself when it arrives.
     pub stocked: bool,
@@ -990,6 +1011,20 @@ impl Tally {
     }
 }
 
+/// A list of effects read as one sentence, as a `Sequence` or a
+/// trigger's `effects` resolves: the sum, with "the Corp loses 1[credit].
+/// If they do, gain 1[credit]" (PAN-Weave; Phase 5 §72) read as the gain
+/// of what the sentence before it took.
+fn tally_list(effects: &[Effect], side: Side) -> Tally {
+    let lost: i32 = effects.iter().map(|effect| if let Effect::LoseCredits(s, n) = effect && *s != side { *n as i32 } else { 0 }).sum();
+    effects.iter().fold(Tally::default(), |sum, effect| {
+        sum.add(match effect {
+            Effect::GainCreditsAmount(s, Amount::CreditsLostThisResolution) if *s == side => Tally { credits: lost, ..Default::default() },
+            effect => tally(effect, side),
+        })
+    })
+}
+
 fn tally(effect: &Effect, side: Side) -> Tally {
     let own = |s: &Side| *s == side;
     match effect {
@@ -1009,7 +1044,7 @@ fn tally(effect: &Effect, side: Side) -> Tally {
             Tally { cashout_per_counter: *credits_per_counter, ..Default::default() }
         }
         Effect::TakeAllCountersAsCredits(s) if own(s) => Tally { cashout_per_counter: 1, ..Default::default() },
-        Effect::Sequence(effects) => effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side))),
+        Effect::Sequence(effects) => tally_list(effects, side),
         Effect::EffectIf { effect, .. } => tally(effect, side),
         // "When that run ends" said inside a success rider — Dirty
         // Laundry's "if successful, gain 5[credit]" registers the gain
@@ -1276,7 +1311,7 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
     // text cashes them.
     let mut run_counters = 0;
     for trigger in &def.triggers {
-        let sum = trigger.effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side)));
+        let sum = tally_list(&trigger.effects, side);
         match trigger.trigger {
             Trigger::OnTurnStart => {
                 income.turn_credits += sum.credits.max(0) as u32;
@@ -1296,6 +1331,13 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                         }
                     }
                 }
+            }
+            // "The first time each turn you take the basic action to draw 1
+            // card, instead draw 2 cards" (Verbal Plasticity; Phase 5 §72):
+            // a card a turn, at the rate a turn's draw is read.
+            Trigger::OnBasicDrawAction if trigger.first_each_turn => income.turn_cards += sum.cards.max(0) as u32,
+            Trigger::OnAgendaScored if side == Side::Runner && trigger.effects.iter().any(|effect| matches!(effect, Effect::TrashCard(netrunner_core::dsl::CardTarget::ThisCard))) => {
+                income.score_payout += (sum.credits.max(0) + sum.cards.max(0)) as u32;
             }
             Trigger::OnSuccessfulRun if about_every_run(trigger) => {
                 income.run_credits += sum.credits.max(0) as u32;
@@ -1416,9 +1458,23 @@ fn sabotage_use(effect: &Effect) -> Option<(u32, u32)> {
 /// such trigger is read at — so DreamNet's draw is read, where it was
 /// counted as nothing and the planner never installed the card (Phase 5
 /// §57: 0 → 19 uses on a pass of the pool, random seats 8).
+///
+/// **The first time each turn on a central server is one too** (Phase 5
+/// §72): PAN-Weave's "the first time each turn you make a successful run
+/// on HQ" and Zenit Chip's "on a central server" are a run a turn as long
+/// as the Runner runs that server once a turn, which a central is run for
+/// its own sake (`Hq`, `RnD`, `Archives` — never a remote, which may not
+/// be there). Without the "first time" a filter on the server stays out:
+/// Datasucker's counter on every central run is not a run a turn's.
 fn about_every_run(trigger: &netrunner_core::dsl::TriggeredEffect) -> bool {
-    use netrunner_core::dsl::Subject;
-    trigger.subject != Some(Subject::This) && trigger.when.is_none() && trigger.requirement.is_none()
+    use netrunner_core::dsl::{EventFilter, Subject};
+    use netrunner_core::rules::ServerId;
+    let when = match &trigger.when {
+        None => true,
+        Some(EventFilter::Server(servers)) => trigger.first_each_turn && servers.iter().all(|server| matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives)),
+        Some(_) => false,
+    };
+    trigger.subject != Some(Subject::This) && when && trigger.requirement.is_none()
 }
 
 /// The rider a click ability's run pays on success, if the ability begins
@@ -1504,7 +1560,7 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
         0
     };
     let cashout = income.cashout_per_counter * hosted.unwrap_or(income.printed_stock);
-    f64::from(turn + run + click + cashout + sabotaged(income, hosted, horizon)) + install_payout(income, hosted, horizon)
+    f64::from(turn + run + click + cashout + sabotaged(income, hosted, horizon) + income.score_payout) + install_payout(income, hosted, horizon)
 }
 
 /// The credits `effect` gives `side`, as `tally` reads them.
@@ -2251,6 +2307,24 @@ mod tests {
         assert_eq!(price(&state, 1), None, "no counter left");
     }
 
+    /// The card that began a run bypasses its first encounter (Phase 5
+    /// §72): S-Dobrado's run on HQ past an Enigma the rig cannot break is
+    /// a run the rig gets through, until it has met a piece.
+    #[test]
+    fn the_card_that_began_the_run_bypasses_its_first_encounter() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![InstalledCard { card: CardId("enigma".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let ice = as_first_met(&state.corp.installed[0], pool.get(&CardId("enigma".to_string())).expect("ice")).expect("ice");
+        let run = |by: Option<&str>, encounters: u32| RunState { server: ServerId::Hq, ice: vec![ice.clone()], initiated_by: by.map(|id| CardId(id.to_string())), encounters, ..Default::default() };
+        assert_eq!(remaining_break_cost(&state, &run(None, 0), &pool), None, "an empty rig");
+        assert_eq!(remaining_break_cost(&state, &run(Some("s_dobrado"), 0), &pool), Some(0));
+        assert_eq!(remaining_break_cost(&state, &run(Some("s_dobrado"), 1), &pool), None, "its first encounter is spent");
+        assert_eq!(remaining_break_cost(&state, &run(Some("sure_gamble"), 0), &pool), None);
+    }
+
     /// A replaced breach is read as what replaces it (Phase 5 §66):
     /// Stargate's run looks at the top 3 cards of R&D, Khusyuk's at as
     /// many as the rig has cards of one install cost (two Corroders and a
@@ -2467,6 +2541,25 @@ mod tests {
         assert_eq!(run_term(mayfly(0), 9, sentry(), 0, &registry), 0.0, "one point short and no pump ability");
     }
 
+    /// The first basic draw each turn drawing one more is a card a turn
+    /// (Phase 5 §72): Verbal Plasticity.
+    #[test]
+    fn a_draw_on_the_first_basic_draw_each_turn_is_a_card_a_turn() {
+        let pool = pool();
+        assert_eq!(declared_income(&printed(&pool, "verbal_plasticity")).turn_cards, 1);
+        assert_eq!(future_credits(&declared_income(&printed(&pool, "verbal_plasticity")), None, 5), 5.0);
+    }
+
+    /// A payout when the Corp scores, on a card that trashes itself, is
+    /// income once (Phase 5 §72): Word on the Street's 4[credit] and card.
+    #[test]
+    fn a_payout_on_the_corps_score_is_income_once() {
+        let pool = pool();
+        assert_eq!(declared_income(&printed(&pool, "word_on_the_street")).score_payout, 5);
+        assert_eq!(future_credits(&declared_income(&printed(&pool, "word_on_the_street")), None, 2), 5.0);
+        assert_eq!(declared_income(&printed(&pool, "pantograph")).score_payout, 0, "one that stays pays each score, not read here");
+    }
+
     /// A payout on the card's own counters is income once the installs
     /// that place them fit the horizon (Phase 5 §71): Environmental
     /// Testing pays 9[credit] at its fourth program or hardware install —
@@ -2603,8 +2696,8 @@ mod tests {
     /// are the click's, the click is not charged because it buys the run,
     /// and the counters bound it to four uses. Pennyshaver's successful
     /// runs place a credit each, cashed by its click: a credit a turn,
-    /// unbounded. A trigger narrowed to a server or to this card's server
-    /// is not a run a turn, and a run ability with no rider pays nothing.
+    /// unbounded. A trigger narrowed to this card's server is not a run a
+    /// turn, nor one narrowed to a server without "the first time each turn", and a run ability with no rider pays nothing.
     #[test]
     fn a_card_that_pays_on_a_run_is_read_at_a_run_a_turn() {
         let pool = pool();
@@ -2620,7 +2713,9 @@ mod tests {
         assert_eq!(future("pennyshaver", None, 9), 9.0, "a credit a successful run, a run a turn");
         assert_eq!(future("pennyshaver", Some(3), 5), 8.0, "and what it holds, cashed");
         assert_eq!(income("stowaway").run_credits, 0, "a run on its own server is not a run a turn");
-        assert_eq!(income("gabriel_santiago_consummate_professional").run_credits, 0, "nor is the first on HQ");
+        // Read as nothing here until §72, which reads the first time each
+        // turn on a central as a run a turn (`about_every_run`).
+        assert_eq!(income("gabriel_santiago_consummate_professional").run_credits, 2, "the first on HQ each turn is");
         assert_eq!(income("leech").run_credits, 0, "counters nothing cashes are not credits");
         let dreamnet = income("dreamnet");
         assert_eq!((dreamnet.run_credits, dreamnet.run_cards), (1, 1), "the first successful run each turn is a run a turn: a card and, read for what it can do, a credit");

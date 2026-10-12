@@ -3941,3 +3941,25 @@ Environmental Testing alone (the payout and nothing else) was 0 → 32 and 0 →
 
 **Verified.** `a_payout_on_install_counters_is_income_within_the_horizon`, `a_rez_tax_is_the_corp_credits_it_takes` and `a_payout_on_the_hosts_rez_is_read_on_unrezzed_ice`.
 
+## 72. Six one-card readings, measured as one batch: a first central run each turn, a redirected run, the bypass the card that began a run makes, a payout on the Corp's score and the first basic draw — DONE (`claude/bot-blindness-batch-2`, 12 October 2026)
+
+**The debt.** Six Runner cards each needed a reading the evaluator did not have: PAN-Weave and Zenit Chip JZ-2MJ, Sneakdoor Beta, S-Dobrado, Word on the Street and Verbal Plasticity. The second batch of Luke's choice of 12 October 2026, measured once.
+
+**What is read now.**
+
+- *The first time each turn on a central server is a run a turn* (`read::about_every_run`): PAN-Weave's "the first time each turn you make a successful run on HQ, the Corp loses 1[credit]. If they do, gain 1[credit]" and Zenit Chip's draw on a central. A central is run for its own sake, so the first run on it each turn is the run a turn every such trigger is read at; a remote, which may not be there, stays out, and so does a filter without the "first time". The gain of what the sentence before it took (`Amount::CreditsLostThisResolution`) is read as that loss (`read::tally_list`, which a trigger's effects now go through as one sentence, as they resolve). **This corrects §32**, which read Gabriel Santiago's first HQ run each turn as nothing; an identity's income is read nowhere, so nothing moves for him.
+- *A run turned on another server once it is successful* (`runner::redirect_value`): Sneakdoor Beta's "[click]: Run Archives. If that run would be declared successful, change the attacked server to HQ" is worth the break credits HQ's ice costs over Archives', a use a turn; the run itself the leaf already priced as HQ's breach.
+- *The bypass the card that began a run makes* (`read::starter_bypasses`): S-Dobrado's "the first time you encounter a piece of ice during that run, bypass it" is a trigger on the event, asked of `RunState::initiated_by` and the run's encounters, not a delayed ability as Inside Job's is (§65), so the leaf priced its run at every piece. It takes the first rezzed piece off the break while the run has met nothing.
+- *A payout when the Corp scores, on a card that trashes itself* (`Income::score_payout`): Word on the Street's 4[credit] and card, once.
+- *The first basic draw each turn drawing one more* (`Trigger::OnBasicDrawAction` with `first_each_turn`): Verbal Plasticity is a card a turn.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, planner both chairs, §71's head against this branch (with Eye for an Eye's reading, below), the same games:
+
+- Seed 2: Verbal Plasticity 6 → 121, Sneakdoor Beta 0 → 29, Word on the Street 0 → 16, S-Dobrado 0 → 8, PAN-Weave 0 → 5, Zenit Chip 3 → 6; Corp share 0.495 → 0.508 (+57 / −49).
+- Seed 3: Verbal Plasticity 10 → 117, Sneakdoor Beta 0 → 26, Word on the Street 0 → 15, S-Dobrado 0 → 7, PAN-Weave 0 → 7, Zenit Chip 1 → 8; Corp share 0.478 → 0.449 (+32 / −50).
+
+The two seeds move the Corp in opposite directions by about one and two standard errors; read together, no change.
+
+**Not taken.** Eye for an Eye's "if successful, take 1 tag and access 1 additional card when you breach HQ" was read too, as an access and a tag on the run the event began, and stayed at 0 → 0 on both seeds: an HQ access is not worth a tag at the leaf's rates. It was dropped rather than kept for nothing.
+
+**Verified.** `a_first_central_run_each_turn_is_income`, `a_redirected_run_is_the_break_it_saves`, `the_card_that_began_the_run_bypasses_its_first_encounter`, `a_payout_on_the_corps_score_is_income_once` and `a_draw_on_the_first_basic_draw_each_turn_is_a_card_a_turn`.
