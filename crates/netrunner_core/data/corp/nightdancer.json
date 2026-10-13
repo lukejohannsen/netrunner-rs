@@ -1,0 +1,47 @@
+{
+  "id": "nightdancer",
+  "title": "Nightdancer",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner loses [click], if able. You have an additional [click] to spend during your next turn.",
+      "effect": {
+        "Sequence": [
+          {
+            "LoseClicks": 1
+          },
+          {
+            "AllottedClicksNextTurn": [
+              "Corp",
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "text": "The Runner loses [click], if able. You have an additional [click] to spend during your next turn.",
+      "effect": {
+        "Sequence": [
+          {
+            "LoseClicks": 1
+          },
+          {
+            "AllottedClicksNextTurn": [
+              "Corp",
+              1
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 21030,
+  "is_playable": true
+}

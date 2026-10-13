@@ -1478,6 +1478,13 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::ShuffleIntoDeck(zones) => {
+            // R&D named alone is "shuffle R&D" (Sadaka's "either arrange
+            // them in any order or shuffle R&D"): nothing goes in, and the
+            // Corp's deck is the one shuffled.
+            if zones.as_slice() == [crate::dsl::CardZoneRef::OwnRAndD] {
+                crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+                return Ok(Vec::new());
+            }
             let mut cards = Vec::new();
             for zone in zones {
                 match zone {
