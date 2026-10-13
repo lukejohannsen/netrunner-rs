@@ -1,0 +1,76 @@
+{
+  "id": "reconstruction_contract",
+  "title": "Reconstruction Contract",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnDamageSuffered",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Damage": "Meat"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PlaceAdvancementCounters": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 advancement token on Reconstruction Contract",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner suffers any amount of meat damage, you may place 1 advancement token on Reconstruction Contract."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Corp",
+          "min": 0,
+          "max": "HostedAdvancementTokens",
+          "then": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnInstalled",
+              "filter": "Advanceable",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PlaceAdvancementCounters": "ChosenNumber"
+              }
+            }
+          },
+          "text": "Move any number of advancement tokens from Reconstruction Contract to a card that can be advanced."
+        }
+      },
+      "text": "[trash]: Move any number of advancement tokens from Reconstruction Contract to a card that can be advanced."
+    }
+  ],
+  "built_from": 21020,
+  "is_playable": true
+}

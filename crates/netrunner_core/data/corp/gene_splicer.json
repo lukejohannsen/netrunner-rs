@@ -1,0 +1,47 @@
+{
+  "id": "gene_splicer",
+  "title": "Gene Splicer",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Net",
+            "HostedAdvancementTokens"
+          ]
+        }
+      ],
+      "text": "When the Runner accesses Gene Splicer, do 1 net damage for each advancement token on Gene Splicer."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          3
+        ]
+      },
+      "effect": {
+        "AddToScoreAreaAsAgenda": {
+          "points": 1
+        }
+      },
+      "text": "[click], 3 hosted advancement tokens: Add Gene Splicer to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 21012,
+  "is_playable": true
+}

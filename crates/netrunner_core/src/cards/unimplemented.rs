@@ -96,14 +96,9 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
     ("ikawah_project", "Ikawah Project"),
-    ("gene_splicer", "Gene Splicer"),
     ("genotyping", "Genotyping"),
-    ("echo_chamber", "Echo Chamber"),
     ("self_growth_program", "Self-Growth Program"),
-    ("calibration_testing", "Calibration Testing"),
-    ("urban_renewal", "Urban Renewal"),
     ("wake_up_call", "Wake Up Call"),
-    ("reconstruction_contract", "Reconstruction Contract"),
 ];
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
@@ -123,7 +118,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("threat_assessment", "Threat Assessment"),
     ("economic_warfare", "Economic Warfare"),
     ("ssl_endorsement", "SSL Endorsement"),
-    ("ngo_front", "NGO Front"),
     ("distract_the_masses", "Distract the Masses"),
 ];
 
@@ -161,10 +155,8 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("consume", "Consume"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
-    ("bio_vault", "Bio Vault"),
     ("amani_senai", "Amani Senai"),
     ("sso_industries_fueling_innovation", "SSO Industries: Fueling Innovation"),
-    ("city_works_project", "City Works Project"),
     ("rashida_jaheem", "Rashida Jaheem"),
 ];
 
@@ -207,7 +199,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("market_forces", "Market Forces"),
     ("surveyor", "Surveyor"),
     ("high_profile_target", "High-Profile Target"),
-    ("false_flag", "False Flag"),
 ];
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.

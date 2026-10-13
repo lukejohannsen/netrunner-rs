@@ -1263,10 +1263,11 @@ pub fn evaluate_effect(
             if run::is_being_accessed(state, &card_id) {
                 return run::move_currently_accessed_card(state, registry, run::AccessedTo::RunnerScoreArea(*as_agenda));
             }
-            // An installed Corp card, off the table into the Runner's score
-            // area (Meridian's "unless the Runner adds this ice to their
-            // score area as an agenda worth -1 agenda point", the Runner's
-            // choice out of the ice's subroutine). It leaves through the one
+            // An installed Corp card, off the table into the score area the
+            // card names: the Runner's for Meridian's "unless the Runner
+            // adds this ice to their score area as an agenda worth -1 agenda
+            // point", the Corp's own for Echo Chamber's "Add Echo Chamber to
+            // your score area as an agenda". It leaves through the one
             // door, Trojans hosted on it trashed with it as a trash would;
             // the run finds its ice gone at its next step
             // (`run::reconcile_ice`), which ends the encounter and passes its position (CR 8.5.10).
@@ -1274,7 +1275,8 @@ pub fn evaluate_effect(
                 let install = state.corp.installed[position].install_id;
                 let Some((_, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
                 events.extend(cascade_trash_hosted_programs(state, install));
-                events.push(add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda));
+                let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
+                events.push(add_to_score_area_as_agenda(state, to, card_id, *as_agenda));
                 return Ok(events);
             }
             // A Runner card, out of the rig into the Runner's score area.
