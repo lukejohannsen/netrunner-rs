@@ -585,6 +585,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
+        Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
             let what = match (what, copies_of_it) {
                 (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",

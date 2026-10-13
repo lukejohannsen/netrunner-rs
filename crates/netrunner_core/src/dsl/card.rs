@@ -1411,8 +1411,10 @@ impl CardDefinition {
             EventFilter::Whose(_) | EventFilter::Anyone => triggered.trigger.states_whose(),
             EventFilter::OwnedBy { .. } => about == TriggerAbout::Card && triggered.trigger.states_whose(),
             EventFilter::ByThis => triggered.trigger == Trigger::OnIceFullyBroken,
-            // Only a card that is hosted has a host to be about.
-            EventFilter::Host => about == TriggerAbout::Card && self.installs_on_ice,
+            // Only a card that is hosted has a host to be about: one that
+            // installs on ice, or a condition, which is hosted as it
+            // becomes a counter (CR 1.13.6d).
+            EventFilter::Host => about == TriggerAbout::Card && (self.installs_on_ice || self.subtypes.contains(&CardSubtype::Condition)),
             // Only a Corp install's moment says where the card came
             // from (`listeners::Moment::from_hq`).
             EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,

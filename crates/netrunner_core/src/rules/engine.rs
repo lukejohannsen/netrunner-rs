@@ -1805,11 +1805,13 @@ pub(crate) fn play_operation_card(
     if from_archives || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
-    } else if card_def.not_trashed_until_your_next_turn {
+    } else if card_def.not_trashed_until_your_next_turn || card_def.subtypes.contains(&crate::dsl::CardSubtype::Condition) {
         // A lockdown stays in the play area, active, and is heard there:
         // its own `OnPlay` resolves as the copy with this handle
         // (`listeners::moments` pins the play to it), so a choice it makes
-        // lasts while this copy stays (CR 9.10.3c).
+        // lasts while this copy stays (CR 9.10.3c). A condition waits
+        // there too, while it resolves, until it is hosted
+        // (`Effect::HostThisAsCondition`, CR 8.6.6b: not trashed).
         let handle = next.allocate_install_id();
         next.corp.play_area.push(crate::rules::PlayedOperation { card: card_id.clone(), handle });
     } else {

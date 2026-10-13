@@ -32863,3 +32863,75 @@ mod reign_and_reverie_stage_13 {
         assert!(!crate::rules::legal_actions_for(&alone, &registry, Side::Runner).contains(&PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }));
     }
 }
+
+mod reign_and_reverie_stage_14 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice_wall_at_hq() -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// Eavesdrop played, and hosted on the one piece of ice there is.
+    fn hosted(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = vec![id("eavesdrop")];
+        state.corp.installed = vec![ice_wall_at_hq()];
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::PlayOperation { card_id: id("eavesdrop") }).expect("play Eavesdrop");
+        if state.pending_decision.is_some() {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Ice Wall").0;
+            state = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        }
+        state
+    }
+
+    #[test]
+    fn eavesdrop_becomes_a_condition_counter_on_ice_that_traces_whenever_its_host_is_encountered() {
+        let registry = registry();
+        let state = hosted(&registry);
+        assert_eq!(
+            state.corp.conditions,
+            vec![crate::rules::HostedCondition { card: id("eavesdrop"), handle: state.corp.conditions[0].handle, host: fixture_install_id("ice_wall") }],
+            "hosted on Ice Wall"
+        );
+        assert!(state.corp.play_area.is_empty() && !state.corp.archives.iter().any(|card| card.card == id("eavesdrop")), "not trashed (CR 8.6.6b)");
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.corp.conditions, state.corp.conditions, "faceup, so the Runner sees it");
+
+        // The Runner encounters Ice Wall: Trace[3], and a tag if successful.
+        let mut runner = state.clone();
+        runner.phase = GamePhase::Action(Side::Runner);
+        runner.runner.resources.credits = Credits(10);
+        let (mut run, _) = apply_action(&runner, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..12 {
+            if run.active_trace.is_some() {
+                break;
+            }
+            run = match &run.paid_ability_window {
+                Some(window) => apply_action(&run, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&run, &registry).expect("continue").0,
+            };
+        }
+        assert_eq!(run.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "Trace[3]");
+        let (bid, _) = apply_action(&run, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (tagged, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids");
+        assert_eq!(tagged.runner.tags, 1, "if successful, give the Runner 1 tag");
+
+        // It goes with its host.
+        let mut trashed = state.clone();
+        crate::rules::test_support::trash_with_what_it_hosts(&mut trashed, fixture_install_id("ice_wall"));
+        assert!(trashed.corp.conditions.is_empty());
+        assert!(trashed.corp.archives.iter().any(|card| card.card == id("eavesdrop") && !card.facedown));
+    }
+
+    #[test]
+    fn eavesdrop_needs_a_piece_of_ice_to_be_hosted_on() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("eavesdrop")];
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("eavesdrop") }));
+    }
+}
