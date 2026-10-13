@@ -4063,3 +4063,13 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §80's code against this branch on seeds 2 / 3: The Twinning 1 → 11 and 3 → 13; Wake Implant 2 → 1 and 0 → 0 — read, but R&D accesses are worth something only to the Rig plan (`rd_access_weight`), and three of the four decks that hold it are Criminal, whose plan is pressure; Conduit 59 → 59 and 36 → 42; Corp share 0.502 → 0.490 and 0.494 → 0.481 (z −1.61, −1.89), the Runner's, most of it Burn Rate's games, The Twinning's deck.
 
 **Verified.** `rd_accesses` holds Wake Implant at its counters plus a counter a turn, held at the turn's counter alone, and The Twinning at its counter plus a counter a turn.
+
+## 82. A swap of ice is the dearest piece the Runner faces traded for the cheapest: Sipa, Cordyceps — DONE (`claude/bot-blindness-batch-12`, 13 October 2026)
+
+**The debt.** Sipa's and Cordyceps's "swap 2 installed pieces of ice" was worth nothing to the evaluator: no term read `SwapInstalledIce`, so a card whose whole text is moving the Corp's best wall off the server that matters was a program costing memory and credits for no return (the planner 1 and 2 against random seats' 30-odd).
+
+**What is read now.** A card whose trigger swaps ice is worth, per use, the dearest rezzed piece's break cost on the server with the most at stake less the cheapest rezzed piece elsewhere — what the swap takes off the run the Runner wants — over as many uses as its counters (or its printed stock, held) pay for at the counters each use removes, capped at the horizon. Held and installed are read the same way, beside the other rig terms.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §81's code against this branch on seeds 2 / 3: Sipa 1 → 12 and 2 → 16; Cordyceps 1 → 3 and 1 → 7; Corp share 0.490 → 0.495 and 0.481 → 0.475 (z 0.90, −1.07), inside the band.
+
+**Verified.** With a Tollbooth on R&D and an Ice Wall on HQ against Corroder, a swap is worth the Tollbooth's break cost less the Ice Wall's per use, Sipa's five uses to Cordyceps's two.
