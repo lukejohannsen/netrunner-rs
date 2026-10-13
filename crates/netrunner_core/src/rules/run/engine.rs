@@ -554,6 +554,68 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     if run.phase != RunPhase::Movement || !installed.rezzed {
         return Ok(Vec::new());
     }
+    begin_encounter(state, registry, position, true)
+}
+
+/// Formicary's "move this ice to the innermost position protecting the
+/// approached server. The Runner moves to this ice and encounters it":
+/// from the approach to the server (CR 6.9.4e, `RunPhase::Success` before
+/// the success phase begins) the ice leaves wherever it was for the
+/// innermost position of the attacked server, keeping its install, and
+/// the Runner encounters it there. Not a forced encounter: Null Signal
+/// Games' ruling is that the Runner then passes it and approaches the
+/// server a second time, which is the ordinary end of an encounter with
+/// the innermost ice. A no-op anywhere but the approach to the server, or
+/// for ice that is not rezzed.
+pub(crate) fn move_innermost_and_encounter(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let server = run.server;
+    if run.phase != RunPhase::Success || run.reached_success_phase {
+        return Ok(Vec::new());
+    }
+    let Some(at) = state.corp.installed.iter().position(|c| c.install_id == install && c.slot == InstallSlot::Ice && c.rezzed) else { return Ok(Vec::new()) };
+    let mut ice = state.corp.installed.remove(at);
+    let from = ice.server;
+    ice.server = server;
+    let card = ice.card.clone();
+    // `corp.installed` is outermost-first per server: innermost is after
+    // the server's last piece of ice.
+    match state.corp.installed.iter().rposition(|c| c.server == server && c.slot == InstallSlot::Ice) {
+        Some(last) => state.corp.installed.insert(last + 1, ice),
+        None => state.corp.installed.push(ice),
+    }
+    let mut events = Vec::new();
+    if from != server {
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: server })?;
+    }
+    let ice: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let Some(run) = state.active_run.as_mut() else { return Ok(events) };
+    // Every entry fresh but the ones the run already had, which keep their
+    // per-run state, as `reconcile_ice` keeps them.
+    let kept: Vec<RunIce> = ice.into_iter().map(|fresh| run.ice.iter().find(|old| old.install_id == fresh.install_id).cloned().unwrap_or(fresh)).collect();
+    run.ice = kept;
+    let position = run.ice.len() - 1;
+    events.extend(begin_encounter(state, registry, position, false)?);
+    Ok(events)
+}
+
+/// An encounter with the ice at `position` begins, from wherever the run
+/// stands: a forced one (CR 6.5.9a), whose end goes back to the movement
+/// phase without a pass, or one the Runner moved to (Formicary), whose end
+/// is a pass like any other.
+fn begin_encounter(state: &mut GameState, registry: &CardRegistry, position: usize, forced: bool) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let Some(install) = run.ice.get(position).map(|ice| ice.install_id) else { return Ok(Vec::new()) };
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install) else { return Ok(Vec::new()) };
     let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
     let may_gain = crate::rules::active::may_have_granted(state, registry, install);
     let own = continuous::own_subroutines(state, registry, install);
@@ -561,7 +623,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.ice[position] = fresh;
     run.position = position;
     run.phase = RunPhase::EncounterIce;
-    run.forced_encounter = true;
+    run.forced_encounter = forced;
     run.jack_out_permitted = false;
     run.fully_broken = false;
     run.ice_bypassed = false;

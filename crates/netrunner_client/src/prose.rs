@@ -624,6 +624,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PromptMoveThisCardToAnotherRoot => "move it to the root of another server".to_string(),
         Effect::ForceEncounter => "the Runner encounters that ice again".to_string(),
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
+        Effect::MoveThisIceInnermostAndEncounter => "move this ice to the innermost position protecting the approached server, and the Runner encounters it".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
         Effect::LoseAbilities { until, identities: true, .. } => format!("each player's identity loses all abilities {}", duration(until)),
