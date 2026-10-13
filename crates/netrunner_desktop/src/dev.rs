@@ -164,7 +164,7 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
-//! - `NETRUNNER_ONLINE=hub|host|join|room|room-guest|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby`
+//! - `NETRUNNER_ONLINE=hub|host|join|room|room-guest|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby|events|event|event-entered|make-event`
 //!   — with `NETRUNNER_SCREEN=online`, that page is opened once (`join`
 //!   is `servers`, the page it became); `profile` waits for the Default
 //!   the screen connects to and opens the profile page there, and

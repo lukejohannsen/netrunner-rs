@@ -78,20 +78,20 @@ use uuid::Uuid;
 
 use netrunner_bots::{Knowledge, Level, Style};
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks::{self, DeckCategory, DeckFile};
+use netrunner_core::decks::{self, DeckCategory, DeckFile, FactionRule};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, DeckOrder, GameState, MatchRules, Side};
 use netrunner_identity::{Identity, Nonce, PublicKey, Signature, Signed};
 use netrunner_rating::Rating;
 use netrunner_rating::{Outcome, RatingBook};
-use netrunner_store::{ResultRow, Store, TournamentRow};
+use netrunner_store::{Award as StoredAward, EventRow, ResultRow, Store, TournamentRow};
 use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{queue_id, Award, Chair, ClientMessage, Opponent, QueueMode, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Presence, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{event_code, event_lobby_id, queue_id, Award, AwardSpec, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::queue::{self, Wants};
 use crate::{fixtures, net};
@@ -169,6 +169,12 @@ pub struct ServeOptions {
     /// unidentified seat plays unrated: a rating is filed under a key the
     /// player proved, never under the name they typed.
     pub data_dir: Option<PathBuf>,
+    /// The keys that may hold and close an event (Phase 4 §11,
+    /// `--operator`): the one piece of §12's administration brought
+    /// forward, because an event grants titles and badges the profile
+    /// wears everywhere on this server. Empty, nobody may. Meaningful
+    /// only with a data directory, since nothing else holds an event.
+    pub operators: Vec<PublicKey>,
     /// The store's database, as a URL (`postgres://…`, or a
     /// `sqlite://…` elsewhere than the data directory). `None` with a
     /// data directory is the zero-setup default: an SQLite file in it
@@ -191,6 +197,7 @@ impl Default for ServeOptions {
             runner_deck: None,
             formats: DEFAULT_FORMATS.to_vec(),
             data_dir: None,
+            operators: Vec::new(),
             database: None,
         }
     }
@@ -341,7 +348,10 @@ impl SeatTicket {
 }
 
 mod attached;
+mod events;
 mod store;
+
+use events::{Event, Events};
 
 use store::Writer;
 
@@ -730,6 +740,8 @@ struct Registry {
     members: HashMap<String, Vec<Member>>,
     /// The tournaments the daemon holds; see `ServeOptions::data_dir`.
     tournaments: Tournaments,
+    /// The events the daemon holds (Phase 4 §11), by code.
+    events: Events,
     /// Every attached connection, by a link id of its own, for what is
     /// pushed unasked (`Shared::announce`).
     attached: HashMap<Uuid, AttachedLink>,
@@ -800,10 +812,15 @@ impl Registry {
             // A bot sits only in a friend lobby that allows one (decided 12
             // October 2026, with the dashboard): the server's own queues,
             // Ranked and Casual alike, are between people.
-            None => {
-                let (mode, format) = server_queues(options).find(|&(mode, format)| queue_id(mode, format) == id)?;
-                (format!("{format:?}"), format, mode, false, Vec::new())
-            }
+            // An event's pool (Phase 4 §11): unrated, no bot, named by
+            // the event, and only an entrant seeks there (`attached`).
+            None => match event_code(id).and_then(|code| self.events.0.get(code)) {
+                Some(event) => (event.spec.name.clone(), event.spec.format, QueueMode::Event, false, Vec::new()),
+                None => {
+                    let (mode, format) = server_queues(options).find(|&(mode, format)| queue_id(mode, format) == id)?;
+                    (format!("{format:?}"), format, mode, false, Vec::new())
+                }
+            },
         };
         Some(LobbyInfo {
             id: id.to_string(),
@@ -1192,6 +1209,79 @@ impl Shared {
         writer.write("a tournament", move |store| async move { store.put_tournament(&row).await });
     }
 
+    /// Whether `key` may hold and close an event (`ServeOptions::operators`).
+    fn is_operator(&self, key: Option<PublicKey>) -> bool {
+        key.is_some_and(|key| self.options.operators.contains(&key))
+    }
+
+    /// Event `code` as `key` sees it, under the caller's lock: how many
+    /// seeks wait in its pool is read off the registry.
+    fn event_info(&self, registry: &Registry, code: &str, key: Option<PublicKey>) -> Option<EventInfo> {
+        let event = registry.events.0.get(code)?;
+        Some(event.info_for(code, key.map(|key| key.rating_id()).as_deref(), registry.seeking(&event_lobby_id(code))))
+    }
+
+    /// Writes event `code` to the store after a change, under the
+    /// caller's lock — the document whole, as a tournament is written.
+    fn save_event(&self, registry: &Registry, code: &str) {
+        let (Some(writer), Some(event)) = (&self.store, registry.events.0.get(code)) else { return };
+        let row = EventRow { id: code.to_string(), document: serde_json::to_string(event).expect("an event serializes"), updated_at: unix_now() as i64 };
+        writer.write("an event", move |store| async move { store.put_event(&row).await });
+    }
+
+    /// Event `code` as it now stands, pushed to every attached entrant —
+    /// or to `only` those keys — each as *they* see it, since the
+    /// message carries the viewer's own track; `except` is the
+    /// connection that asked and gets the same as its answer.
+    fn push_event(&self, registry: &Registry, code: &str, only: Option<&[PublicKey]>, except: Option<Uuid>) {
+        let Some(event) = registry.events.0.get(code) else { return };
+        for (link_id, link) in &registry.attached {
+            if Some(*link_id) == except {
+                continue;
+            }
+            let Some(key) = link.key else { continue };
+            let wanted = match only {
+                Some(keys) => keys.contains(&key),
+                None => event.entry(&key.rating_id()).is_some(),
+            };
+            if wanted && let Some(info) = self.event_info(registry, code, Some(key)) {
+                let _ = link.tx.send(ServerMessage::Event { event: info });
+            }
+        }
+    }
+
+    /// A game in event `code`'s pool ended with a winner: the tracks
+    /// move, each milestone the win reaches is granted into the awards
+    /// table under the event's name — `Store::grant`'s first caller in
+    /// production — the document is saved, and both seats are told
+    /// where they now stand.
+    fn event_ended(&self, code: &str, winner: PublicKey, loser: PublicKey, ended_at: u64) {
+        let mut registry = self.lock();
+        let Some(event) = registry.events.0.get_mut(code) else { return };
+        let reached = event.game_ended(&winner.rating_id(), &loser.rating_id(), ended_at);
+        let name = event.spec.name.clone();
+        self.save_event(&registry, code);
+        if let Some(writer) = &self.store {
+            for AwardSpec { kind, name: award } in reached {
+                tracing::info!(key = %winner.fingerprint(), event = %name, award, ?kind, "an event's milestone reached");
+                let row = StoredAward { key: winner.rating_id(), kind: kind.key().to_string(), name: award, earned_at: ended_at as i64, source: event_lobby_id(code) };
+                writer.write("an award", move |store| async move { store.grant(&row).await });
+            }
+        }
+        self.push_event(&registry, code, Some(&[winner, loser]), None);
+    }
+
+    /// Forgets every event whose page is no longer kept, in memory and
+    /// in the store. Under the caller's lock.
+    fn sweep_events(&self, registry: &mut Registry) {
+        for code in registry.events.gone(unix_now()) {
+            registry.events.0.remove(&code);
+            if let Some(writer) = &self.store {
+                writer.write("an event forgotten", move |store| async move { store.remove_event(&code).await });
+            }
+        }
+    }
+
     /// Notes that `key` has attached as `name`, in the store's players
     /// table: a first visit makes the row, a later one updates the name
     /// and the time (`Store::saw_player`).
@@ -1327,6 +1417,7 @@ struct Kept {
     lasting: bool,
     ratings: RatingBook,
     tournaments: Tournaments,
+    events: Events,
     last_corp: HashMap<(String, String), String>,
     store: Option<Store>,
 }
@@ -1334,7 +1425,7 @@ struct Kept {
 impl Kept {
     /// A daemon that keeps nothing: a key made at bind, no book, no store.
     fn nothing() -> Kept {
-        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), last_corp: HashMap::new(), store: None }
+        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), events: Events::default(), last_corp: HashMap::new(), store: None }
     }
 }
 
@@ -1350,6 +1441,11 @@ async fn load_kept(data_dir: Option<&Path>, database: Option<&str>) -> std::io::
         let tournament: Tournament = serde_json::from_str(&row.document).map_err(|error| invalid("tournaments", format!("{}: {error}", row.id)))?;
         tournaments.0.insert(row.id, tournament);
     }
+    let mut events = Events::default();
+    for row in store.events().await.map_err(|error| invalid("events", error.to_string()))? {
+        let event: Event = serde_json::from_str(&row.document).map_err(|error| invalid("events", format!("{}: {error}", row.id)))?;
+        events.0.insert(row.id, event);
+    }
     let last_corp = store
         .pairings()
         .await
@@ -1357,7 +1453,7 @@ async fn load_kept(data_dir: Option<&Path>, database: Option<&str>) -> std::io::
         .into_iter()
         .map(|pairing| (ordered_pair(&pairing.corp, &pairing.runner), pairing.corp))
         .collect();
-    Ok(Kept { identity, lasting: true, ratings, tournaments, last_corp, store: Some(store) })
+    Ok(Kept { identity, lasting: true, ratings, tournaments, events, last_corp, store: Some(store) })
 }
 
 /// The daemon's key: read, or made and written with only its owner able
@@ -1437,7 +1533,7 @@ impl Server {
 
     fn with_listener(listener: TcpListener, options: ServeOptions, kept: Kept) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let Kept { identity, lasting, ratings, tournaments, last_corp, store } = kept;
+        let Kept { identity, lasting, ratings, tournaments, events, last_corp, store } = kept;
         let cards = fixtures::sample_registry();
         // The rotating pool is gated per format, and for a better reason
         // than a pinned deck: an operator who pins a deck names it and
@@ -1465,7 +1561,7 @@ impl Server {
         let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
-            registry: Arc::new(StdMutex::new(Registry { ratings, tournaments, last_corp, bots_by_format, ..Registry::default() })),
+            registry: Arc::new(StdMutex::new(Registry { ratings, tournaments, events, last_corp, bots_by_format, ..Registry::default() })),
             options,
             base_seed,
             pinned,
@@ -2017,6 +2113,16 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         }
         let [Some(corp), Some(runner)] = keys else { return };
         let Some((Some(winner), _)) = outcome else { return };
+        // A game in an event's pool (Phase 4 §11): the winner's track
+        // moves, whatever the ladder makes of the game (nothing — the
+        // pool never rates). A stall or a draw moved nothing, above.
+        if let Some(code) = tickets.iter().find_map(|ticket| event_code(&ticket.lobby)) {
+            let (won, lost) = match winner {
+                Side::Corp => (corp, runner),
+                Side::Runner => (runner, corp),
+            };
+            shared.event_ended(code, won, lost, ended_at);
+        }
         if !rated {
             return;
         }

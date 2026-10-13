@@ -211,6 +211,13 @@ pub struct Config {
     #[arg(long)]
     pub password: Option<String>,
 
+    /// (remote mode) Look for a game in this event's pool, by the code
+    /// its page shows (Phase 4 §11): entered first if not yet, then a
+    /// seek there, which the event's rule holds the deck to. Ignored
+    /// with `--lobby`.
+    #[arg(long)]
+    pub event: Option<String>,
+
     /// (remote mode) Bring this deck — a built-in id, a saved deck's name,
     /// or a path. Its side is your seat, so `--side` may be left off (and
     /// must agree if given). Without it, `--side` brings `--corp-deck` or
@@ -550,6 +557,13 @@ pub enum Command {
     /// with enough rated games there, best first (Phase 4 §10).
     Ladder,
 
+    /// The operator's tools at the server at `--server`, over your key
+    /// (Phase 4 §12; the first of them is §11's events).
+    Admin {
+        #[command(subcommand)]
+        action: AdminAction,
+    },
+
     /// Your record against the bots: wins and losses against every rung
     /// on each chair, and the rung to try next.
     Record,
@@ -589,6 +603,104 @@ pub enum Command {
         #[arg(long)]
         at: Option<netrunner_client::replay::Start>,
     },
+}
+
+/// What an operator does at a server (`netrunner_cli admin …`).
+#[derive(Subcommand, Debug, Clone)]
+pub enum AdminAction {
+    /// Hold, list or close an event: a rolling gauntlet anyone enters any
+    /// time, with a track of wins whose milestones grant a title or a
+    /// badge (Phase 4 §11). Holding and closing take an operator's key
+    /// (`netrunner_server --operator`).
+    Event {
+        #[command(subcommand)]
+        action: EventAction,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EventAction {
+    /// Every event the server holds, as your key sees them.
+    List,
+    /// Hold an event, open from now.
+    Hold {
+        /// What players read it as.
+        #[arg(long)]
+        name: String,
+        /// The format its decks must be legal in.
+        #[arg(long, value_enum, default_value_t = FormatArg::Startup)]
+        format: FormatArg,
+        /// Wins, in any order, to clear the track.
+        #[arg(long, default_value_t = 3)]
+        wins: u32,
+        /// The factions a Corp identity may be from, comma-separated;
+        /// omitted, any.
+        #[arg(long, value_enum, value_delimiter = ',')]
+        corp_factions: Vec<FactionArg>,
+        /// The factions a Runner identity may be from; omitted, any.
+        #[arg(long, value_enum, value_delimiter = ',')]
+        runner_factions: Vec<FactionArg>,
+        /// What a win grants: `<win>=title:<name>` or `<win>=badge:<name>`
+        /// (`2=title:Net-Slinger`), repeatable, at most one per win.
+        #[arg(long = "milestone", value_parser = parse_milestone)]
+        milestones: Vec<netrunner_server::protocol::Milestone>,
+    },
+    /// Close an event: it takes no entry and no seek from now.
+    Close {
+        /// Its code, as its page and `list` show it.
+        code: String,
+    },
+}
+
+/// A faction as a flag names it.
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FactionArg {
+    Hb,
+    Jinteki,
+    Nbn,
+    Weyland,
+    Anarch,
+    Criminal,
+    Shaper,
+    Adam,
+    Apex,
+    Sunny,
+}
+
+impl From<FactionArg> for netrunner_core::card::Faction {
+    fn from(arg: FactionArg) -> Self {
+        use netrunner_core::card::Faction;
+        match arg {
+            FactionArg::Hb => Faction::HaasBioroid,
+            FactionArg::Jinteki => Faction::Jinteki,
+            FactionArg::Nbn => Faction::Nbn,
+            FactionArg::Weyland => Faction::WeylandConsortium,
+            FactionArg::Anarch => Faction::Anarch,
+            FactionArg::Criminal => Faction::Criminal,
+            FactionArg::Shaper => Faction::Shaper,
+            FactionArg::Adam => Faction::Adam,
+            FactionArg::Apex => Faction::Apex,
+            FactionArg::Sunny => Faction::SunnyLebeau,
+        }
+    }
+}
+
+/// `<win>=title:<name>` or `<win>=badge:<name>`.
+fn parse_milestone(text: &str) -> Result<netrunner_server::protocol::Milestone, String> {
+    use netrunner_server::protocol::{AwardKind, AwardSpec, Milestone};
+    let (wins, award) = text.split_once('=').ok_or("a milestone is <win>=title:<name> or <win>=badge:<name>")?;
+    let wins = wins.trim().parse::<u32>().map_err(|_| format!("{wins:?} is not a win count"))?;
+    let (kind, name) = award.split_once(':').ok_or("a milestone grants title:<name> or badge:<name>")?;
+    let kind = match kind.trim().to_lowercase().as_str() {
+        "title" => AwardKind::Title,
+        "badge" => AwardKind::Badge,
+        other => return Err(format!("{other:?} is neither title nor badge")),
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("the award needs a name".into());
+    }
+    Ok(Milestone { wins, award: AwardSpec { kind, name: name.to_string() } })
 }
 
 #[derive(Subcommand, Debug, Clone)]

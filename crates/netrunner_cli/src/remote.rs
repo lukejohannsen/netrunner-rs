@@ -60,3 +60,92 @@ pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> 
     }
     Ok(())
 }
+
+/// `netrunner_cli admin event …` (Phase 4 §11): hold, list or close an
+/// event at `--server`, on this player's key, over an attached
+/// connection that is closed once the answer is printed.
+pub async fn admin_event(config: &crate::config::Config, action: crate::config::EventAction) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::config::EventAction;
+    use netrunner_client::remote::AttachedEvent;
+    use netrunner_server::protocol::EventSpec;
+    let credentials = netrunner_client::identity::Credentials::load()?;
+    let mut attached = attach(&config.server, &crate::record::player_name(config), credentials).await?;
+    match action {
+        EventAction::List => attached.list_events(),
+        EventAction::Hold { name, format, wins, corp_factions, runner_factions, milestones } => {
+            let rule = netrunner_core::decks::FactionRule { corp: corp_factions.into_iter().map(Into::into).collect(), runner: runner_factions.into_iter().map(Into::into).collect() };
+            let spec = EventSpec { name, format: format.into(), rule: Some(rule).filter(|rule| !rule.is_open()), wins_to_clear: wins, milestones };
+            if let Some(problem) = spec.problem() {
+                return Err(problem.into());
+            }
+            attached.hold_event(spec);
+        }
+        EventAction::Close { code } => attached.close_event(code),
+    }
+    loop {
+        match attached.next().await {
+            Some(AttachedEvent::Events { events, operator }) => {
+                println!("Events at {}{}", config.server, if operator { " (your key holds events here)" } else { "" });
+                if events.is_empty() {
+                    println!("  none");
+                }
+                for info in &events {
+                    println!("  {} · {}", info.id, netrunner_client::event::line(info));
+                }
+                return Ok(());
+            }
+            Some(AttachedEvent::Event(info)) => {
+                println!("{} · {}", info.id, netrunner_client::event::line(&info));
+                for milestone in &info.milestones {
+                    println!("  {}", netrunner_client::event::milestone_line(&info, milestone));
+                }
+                return Ok(());
+            }
+            Some(AttachedEvent::EventRefused(reason)) => return Err(reason.into()),
+            Some(AttachedEvent::Link(netrunner_client::connection::Link::Down(error))) => return Err(error.into()),
+            Some(_) => {}
+            None => return Err("the connection closed before the server answered".into()),
+        }
+    }
+}
+
+/// Enters event `code` at `url` on `credentials`' key, over a connection
+/// of its own, and says where the key stands in it; entered already is
+/// no error, since the point is to be in. For `--event` in remote mode.
+pub async fn enter_event(url: &str, player_name: &str, credentials: netrunner_client::identity::Credentials, code: &str) -> Result<netrunner_server::protocol::EventInfo, Box<dyn std::error::Error>> {
+    use netrunner_client::remote::AttachedEvent;
+    let mut attached = attach(url, player_name, credentials).await?;
+    attached.enter_event(code.trim().to_uppercase());
+    loop {
+        match attached.next().await {
+            Some(AttachedEvent::Event(info)) => return Ok(info),
+            Some(AttachedEvent::EventRefused(reason)) if reason.contains("entered this event already") => {
+                attached.list_events();
+            }
+            Some(AttachedEvent::Events { events, .. }) => {
+                return events.into_iter().find(|info| info.id.eq_ignore_ascii_case(code.trim())).ok_or_else(|| "that event has gone".into());
+            }
+            Some(AttachedEvent::EventRefused(reason)) => return Err(reason.into()),
+            Some(AttachedEvent::Link(netrunner_client::connection::Link::Down(error))) => return Err(error.into()),
+            Some(_) => {}
+            None => return Err("the connection closed before the server answered".into()),
+        }
+    }
+}
+
+/// An attached connection at `url` on this key, awaited to its first
+/// `Attached`, for the one-shot commands above.
+async fn attach(url: &str, player_name: &str, credentials: netrunner_client::identity::Credentials) -> Result<netrunner_client::remote::Attached, Box<dyn std::error::Error>> {
+    use netrunner_client::connection::{Goal, Who};
+    use netrunner_client::connection::Link;
+    use netrunner_client::remote::AttachedEvent;
+    let mut attached = spawn(url.to_string(), Goal::Attach(Who { player_name: player_name.to_string(), credentials: Some(Box::new(credentials)) }));
+    loop {
+        match attached.next().await {
+            Some(AttachedEvent::Attached(_)) => return Ok(attached),
+            Some(AttachedEvent::Link(Link::Down(error))) => return Err(error.into()),
+            Some(_) => {}
+            None => return Err("the connection closed before it attached".into()),
+        }
+    }
+}

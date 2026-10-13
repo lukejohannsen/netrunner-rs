@@ -174,6 +174,9 @@ pub(crate) fn write_secret(path: &Path, text: &str) -> std::io::Result<()> {
 /// both clients say them in these words.
 pub fn key_lines(credentials: &Credentials) -> Vec<String> {
     let mut lines = vec![format!("Your key: {}", credentials.identity.public_key().fingerprint())];
+    // The whole id, for what names a key in full: a daemon's `--operator`
+    // (Phase 4 §11).
+    lines.push(format!("In full: {}", credentials.identity.public_key().rating_id()));
     if let Some(dir) = &credentials.dir {
         lines.push(format!("Kept in {}", dir.join(IDENTITY_FILE).display()));
     }

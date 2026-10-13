@@ -494,7 +494,12 @@ impl MatchSession {
                         | ClientMessage::BeginRound { .. }
                         | ClientMessage::FinishTournament { .. }
                         | ClientMessage::Sit { .. }
-                        | ClientMessage::RecordResult { .. } => continue,
+                        | ClientMessage::RecordResult { .. }
+                        | ClientMessage::ListEvents
+                        | ClientMessage::HoldEvent { .. }
+                        | ClientMessage::CloseEvent { .. }
+                        | ClientMessage::EnterEvent { .. }
+                        | ClientMessage::QuitEvent { .. } => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {

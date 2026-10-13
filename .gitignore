@@ -14,12 +14,6 @@ env/
 # roadmap records what they showed).
 /data/
 
-# Local Claude Code state (per-machine agent settings and permissions) — all
-# but the repo's skills, which are shared guidance every agent here reads
-# (.claude/skills/steward: how a PR is driven without re-running CI).
-.claude/*
-!.claude/skills/
-
 # The workflow audit's SARIF report. CI writes it in the workspace before
 # uploading it to the Security tab, so running that job's command locally
 # leaves one behind.

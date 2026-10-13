@@ -639,3 +639,100 @@ fn the_default_is_connected_to_on_opening_and_the_profile_page_wears_a_title() {
     runtime.shutdown_background();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An event through the pages (Phase 4 §11): the daemon names the
+/// operator's key, the operator holds a gauntlet from the form and lands
+/// on its page, an entrant opens it from the list and enters, both find a
+/// match in its pool and reach the board, the operator concedes, and both
+/// are back on the event's page with the tracks the server pushed — the
+/// entrant's win the first milestone, a title in the profile at once.
+#[test]
+fn an_event_is_held_entered_and_a_match_found_from_the_pages() {
+    use netrunner_server::protocol::AwardKind;
+    use netrunner_server::serve::{ServeOptions, Server};
+    let data = std::env::temp_dir().join(format!("netrunner_desktop_event_daemon_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    // The operator's client first, so its key is made before the daemon
+    // is told whose it is.
+    let (mut operator, operator_dir) = headless_client("operator");
+    let operator_key = netrunner_client::identity::Credentials::in_dir(&operator_dir.join("identity")).unwrap().identity.public_key();
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
+    let address = runtime.block_on(async {
+        let options = ServeOptions { seed: Some(1), data_dir: Some(data.clone()), operators: vec![operator_key], ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+        let address = format!("ws://{}", server.local_addr().unwrap());
+        tokio::spawn(server.run());
+        address
+    });
+    let join = |app: &mut App| {
+        app.world_mut().resource_mut::<Model>().0.address = address.clone();
+        tap_control(app, Control::Go);
+        until(app, "the server's key answer", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.key.is_some()));
+    };
+    let event = |app: &App| app.world().resource::<Model>().0.server.as_ref().and_then(|server| server.open_event().cloned());
+    let wins = |app: &App| event(app).and_then(|info| info.mine).map(|mine| (mine.wins, mine.losses));
+
+    join(&mut operator);
+    tap_control(&mut operator, Control::Open(Page::Tournaments));
+    until(&mut operator, "the list", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.events_listed && server.tournaments_listed));
+    assert!(texts(&mut operator).iter().any(|text| text == "This server holds no event."));
+    tap_control(&mut operator, Control::Open(Page::MakeEvent));
+    assert_eq!(page(&operator), Page::MakeEvent, "the operator's key may");
+    {
+        let mut model = operator.world_mut().resource_mut::<Model>();
+        let make = &mut model.0.make_event;
+        make.name = "The Red Planet Gauntlet".to_string();
+        make.wins = "2".to_string();
+        make.milestones = vec![(Some(AwardKind::Title), "Net-Slinger".to_string()), (Some(AwardKind::Badge), "red-planet".to_string())];
+    }
+    tap_control(&mut operator, Control::Go);
+    until(&mut operator, "the event's page", |app| page(app) == Page::Event && event(app).is_some_and(|info| info.name == "The Red Planet Gauntlet"));
+    assert!(find::<Control>(&mut operator, |c| *c == Control::EnterEvent).is_some(), "not entered yet");
+    assert!(find::<Control>(&mut operator, |c| *c == Control::CloseEvent).is_some(), "the operator's");
+    tap_control(&mut operator, Control::EnterEvent);
+    until(&mut operator, "the operator entered", |app| wins(app) == Some((0, 0)));
+    assert!(find::<Control>(&mut operator, |c| *c == Control::FindEventMatch).is_some());
+
+    let (mut entrant, _dir2) = headless_client("entrant");
+    join(&mut entrant);
+    tap_control(&mut entrant, Control::Open(Page::Tournaments));
+    until(&mut entrant, "the list with one", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.events.len() == 1));
+    assert!(find::<Control>(&mut entrant, |c| *c == Control::Open(Page::MakeEvent)).is_none(), "not the operator's key");
+    tap_control(&mut entrant, Control::OpenEvent(0));
+    assert_eq!(page(&entrant), Page::Event);
+    tap_control(&mut entrant, Control::EnterEvent);
+    until(&mut entrant, "the entrant entered", |app| wins(app) == Some((0, 0)));
+    assert!(texts(&mut entrant).iter().any(|text| text == "Win 1 · title \"Net-Slinger\" · one more win"), "{:?}", texts(&mut entrant));
+
+    // Both look in the pool; the board opens for each.
+    tap_control(&mut operator, Control::FindEventMatch);
+    until(&mut operator, "the operator in the pool", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(ServerState::seeking));
+    assert_eq!(page(&operator), Page::Event, "the search is over the event's page");
+    tap_control(&mut entrant, Control::FindEventMatch);
+    until(&mut operator, "the operator's board", |app| screen(app) == AppScreen::Game);
+    until(&mut entrant, "the entrant's board", |app| screen(app) == AppScreen::Game);
+    until(&mut operator, "the operator's first view", |app| app.world().resource::<Board>().0.view.is_some());
+
+    // The operator concedes: the entrant's win, and both back on the page.
+    press(&mut operator, KeyCode::Escape, Key::Escape);
+    operator.update();
+    let confirm = find::<Click>(&mut operator, |c| matches!(c, Click::ConfirmQuit)).expect("leaving asks first");
+    tap(&mut operator, confirm);
+    until(&mut operator, "Play Online again", |app| screen(app) == AppScreen::Online);
+    assert_eq!(page(&operator), Page::Event, "back from a game in the pool, the event's page");
+    until(&mut operator, "the operator's loss, pushed", |app| wins(app) == Some((0, 1)));
+    until(&mut operator, "the seat let go", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.seeking()));
+    until(&mut entrant, "the entrant's game over", |app| app.world().resource::<Board>().0.over.is_some());
+    press(&mut entrant, KeyCode::Escape, Key::Escape);
+    entrant.update();
+    if let Some(confirm) = find::<Click>(&mut entrant, |c| matches!(c, Click::ConfirmQuit)) {
+        tap(&mut entrant, confirm);
+    }
+    until(&mut entrant, "the entrant back on the event's page", |app| screen(app) == AppScreen::Online && page(app) == Page::Event);
+    until(&mut entrant, "the entrant's win, pushed", |app| wins(app) == Some((1, 0)));
+    let shown = texts(&mut entrant);
+    assert!(shown.iter().any(|text| text == "Win 1 · title \"Net-Slinger\" · earned"), "{shown:?}");
+    assert!(shown.iter().any(|text| text == "1 win, 0 losses · one more win clears it"), "{shown:?}");
+    until(&mut entrant, "the title in the profile", |app| app.world().resource::<Model>().0.server.as_ref().and_then(ServerState::known_profile).is_some_and(|profile| profile.titles.iter().any(|award| award.name == "Net-Slinger")));
+    let _ = std::fs::remove_dir_all(&data);
+}

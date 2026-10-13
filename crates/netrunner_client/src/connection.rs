@@ -87,7 +87,7 @@ struct TableTerms {
     nonce: String,
     registration: Option<RegistrationStatement>,
 }
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, Opponent, ServerMessage, TournamentInfo};
+use netrunner_protocol::{Chair, ClientMessage, EventInfo, LobbyInfo, Opponent, ServerMessage, TournamentInfo};
 use uuid::Uuid;
 
 /// What the connection is for.
@@ -240,6 +240,15 @@ pub enum Event {
     Tournament(TournamentInfo),
     /// Making, entering or leaving a tournament refused, with the reason.
     TournamentRefused(String),
+    /// The answer to `ListEvents` (Phase 4 §11): every event the server
+    /// holds, and whether this key may hold one.
+    Events { events: Vec<EventInfo>, operator: bool },
+    /// An event as it now stands for this key: the answer to holding,
+    /// entering, quitting or closing one, and pushed when a game of
+    /// this key's in it ends or the event closes.
+    Event(EventInfo),
+    /// One of those refused, with the reason.
+    EventRefused(String),
     /// A server that keeps its key, met for the first time: remember it
     /// for this address.
     ServerKey(PublicKey),
@@ -454,6 +463,15 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::TournamentRefused { reason }) => {
                 self.events.push_back(Event::TournamentRefused(reason));
             }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Events { events, operator }) => {
+                self.events.push_back(Event::Events { events, operator });
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Event { event }) => {
+                self.events.push_back(Event::Event(event));
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::EventRefused { reason }) => {
+                self.events.push_back(Event::EventRefused(reason));
+            }
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Profile { key, profile }) => {
                 self.events.push_back(Event::Profile { key, profile });
             }
@@ -642,7 +660,12 @@ impl Connection {
             | ClientMessage::BeginRound { .. }
             | ClientMessage::FinishTournament { .. }
             | ClientMessage::RecordResult { .. }
-            | ClientMessage::OfferDraw { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
+            | ClientMessage::OfferDraw { .. }
+            | ClientMessage::ListEvents
+            | ClientMessage::HoldEvent { .. }
+            | ClientMessage::CloseEvent { .. }
+            | ClientMessage::EnterEvent { .. }
+            | ClientMessage::QuitEvent { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => false,
         };
         if !allowed {

@@ -60,7 +60,7 @@ use uuid::Uuid;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_protocol::{Chair, ClientMessage, LobbyInfo, MatchSummary, Opponent, QueueMode, ServerMessage, TournamentInfo};
+use netrunner_protocol::{Chair, ClientMessage, EventInfo, EventSpec, LobbyInfo, MatchSummary, Opponent, QueueMode, ServerMessage, TournamentInfo};
 
 use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Who};
 use crate::identity::Credentials;
@@ -118,6 +118,14 @@ pub enum AttachedEvent {
     /// One of those refused, with the server's reason — or, for
     /// `register`, this end's: no key to sign with.
     TournamentRefused(String),
+    /// The answer to `list_events` (Phase 4 §11).
+    Events { events: Vec<EventInfo>, operator: bool },
+    /// An event as it now stands for this key: after `hold_event`,
+    /// `enter_event`, `quit_event` or `close_event`, and pushed when a
+    /// game of this key's in it ends or the event closes.
+    Event(EventInfo),
+    /// One of those refused, with the server's reason.
+    EventRefused(String),
     /// A place at a match, with the channels to play it through.
     Joined(Box<Joined>),
     /// The game is over and the connection is in its lobby again.
@@ -269,6 +277,33 @@ impl Attached {
         self.send(ClientMessage::OfferDraw { tournament });
     }
 
+    /// Every event the server holds (Phase 4 §11). Answered with
+    /// `AttachedEvent::Events`.
+    pub fn list_events(&self) {
+        self.send(ClientMessage::ListEvents);
+    }
+
+    /// Hold an event, as this server's operator. Answered with `Event`
+    /// or `EventRefused`.
+    pub fn hold_event(&self, event: EventSpec) {
+        self.send(ClientMessage::HoldEvent { event });
+    }
+
+    /// Close an event, as its operator.
+    pub fn close_event(&self, event: String) {
+        self.send(ClientMessage::CloseEvent { event });
+    }
+
+    /// Enter an event: this key's track starts at nothing.
+    pub fn enter_event(&self, event: String) {
+        self.send(ClientMessage::EnterEvent { event });
+    }
+
+    /// Withdraw from an event; what was earned stays earned.
+    pub fn quit_event(&self, event: String) {
+        self.send(ClientMessage::QuitEvent { event });
+    }
+
     /// The machine refuses what makes no sense where the connection is
     /// (`connection::Connection::submit`), and the server refuses the
     /// rest with a reason that comes back as an event; a send into a
@@ -386,7 +421,10 @@ impl Connecting {
             | AttachedEvent::Ladder { .. }
             | AttachedEvent::Tournaments(_)
             | AttachedEvent::Tournament(_)
-            | AttachedEvent::TournamentRefused(_) => None,
+            | AttachedEvent::TournamentRefused(_)
+            | AttachedEvent::Events { .. }
+            | AttachedEvent::Event(_)
+            | AttachedEvent::EventRefused(_) => None,
         }
     }
 }
@@ -630,6 +668,9 @@ async fn drive(
                 Event::Tournaments(tournaments) => AttachedEvent::Tournaments(tournaments),
                 Event::Tournament(tournament) => AttachedEvent::Tournament(tournament),
                 Event::TournamentRefused(reason) => AttachedEvent::TournamentRefused(reason),
+                Event::Events { events, operator } => AttachedEvent::Events { events, operator },
+                Event::Event(event) => AttachedEvent::Event(event),
+                Event::EventRefused(reason) => AttachedEvent::EventRefused(reason),
             };
             let _ = events.send(report);
         }

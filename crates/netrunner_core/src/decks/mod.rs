@@ -115,6 +115,57 @@ impl DeckCategory {
 
 }
 
+/// Which factions an identity may be from, a side each: the deck rule an
+/// event may set beyond its format (Phase 4 §11, "restricted factional
+/// constraints"). An empty list admits any faction on that side. It is a
+/// rule on the identity alone, never on the cards in the deck: a
+/// mono-faction rule, a banned card or a points cap are the "variant
+/// rules" the entry left undesigned, and the next of them is a second
+/// kind beside this one rather than a second check path.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FactionRule {
+    #[serde(default)]
+    pub corp: Vec<crate::card::Faction>,
+    #[serde(default)]
+    pub runner: Vec<crate::card::Faction>,
+}
+
+impl FactionRule {
+    /// Admits every deck.
+    pub fn is_open(&self) -> bool {
+        self.corp.is_empty() && self.runner.is_empty()
+    }
+
+    /// The factions `side` may be from under this rule, or `None` for any.
+    pub fn allowed(&self, side: Side) -> Option<&[crate::card::Faction]> {
+        let list = match side {
+            Side::Corp => &self.corp,
+            Side::Runner => &self.runner,
+        };
+        if list.is_empty() { None } else { Some(list) }
+    }
+
+    /// Why a `side` identity of `faction`, named `identity`, is refused —
+    /// `None` when it is admitted.
+    pub fn problem_with(&self, side: Side, faction: crate::card::Faction, identity: &str) -> Option<String> {
+        let allowed = self.allowed(side)?;
+        if allowed.contains(&faction) {
+            return None;
+        }
+        let names: Vec<&str> = allowed.iter().map(|faction| faction.name()).collect();
+        let listed = match names.as_slice() {
+            [one] => one.to_string(),
+            [first @ .., last] => format!("{} or {last}", first.join(", ")),
+            [] => unreachable!("allowed is never empty"),
+        };
+        Some(format!("{identity} is {}; this event takes {listed} {}", faction.name(), match side {
+            Side::Corp => "Corps",
+            Side::Runner => "Runners",
+        }))
+    }
+}
+
 /// An authored decklist — one of the published samples embedded at compile
 /// time, or one a player saved to disk.
 ///
@@ -264,6 +315,14 @@ impl DeckFile {
             return Err(DeckError::StarterIdentity(self.identity.clone()));
         }
         Ok(crate::deck::validate_deck(&self.to_decklist(registry)?, registry, format)?)
+    }
+
+    /// Why `rule` refuses this deck, or `None` when it admits it: the
+    /// first check an event makes beyond the format (Phase 4 §11).
+    pub fn rule_problem(&self, registry: &CardRegistry, rule: &FactionRule) -> Option<String> {
+        let identity = registry.get(&self.identity)?;
+        let faction = identity.faction?;
+        rule.problem_with(self.side, faction, &identity.title)
     }
 
     /// Every format this deck is legal in, in `NsgFormat::ALL`'s order:

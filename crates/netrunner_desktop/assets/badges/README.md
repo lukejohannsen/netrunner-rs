@@ -3,8 +3,9 @@
 A badge is a mark a server grants a player (an event's milestone, an
 operator's grant; Phase 4 §10–§11), and the player wears one beside their
 name on that server. The desktop draws it wherever it appears: the server
-profile page's Badge line and the grid a badge is picked from (Phase 7
-§14).
+profile page's Badge line, the grid a badge is picked from (Phase 7 §14),
+and an event's milestone line, where it is drawn before anyone has earned
+it — the ring until a file of its stem exists.
 
 | What | Path | Box (logical) | Draw at | Fit |
 |---|---|---|---|---|

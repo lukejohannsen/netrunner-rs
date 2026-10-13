@@ -1000,6 +1000,12 @@ impl OnlineScreen {
                 AttachedEvent::Tournaments(tournaments) => self.tournaments_listed(tournaments),
                 AttachedEvent::Tournament(info) => self.tournament_answered(info),
                 AttachedEvent::TournamentRefused(reason) => self.notice = Some(reason),
+                // The terminal's event pages are Phase 4 §11's stage 2:
+                // today it climbs one from `--event`, and an answer
+                // pushed to the menu is a notice.
+                AttachedEvent::Events { .. } => {}
+                AttachedEvent::Event(info) => self.notice = Some(format!("{}: {}", info.name, netrunner_client::event::standing_line(&info))),
+                AttachedEvent::EventRefused(reason) => self.notice = Some(reason),
                 AttachedEvent::LobbyJoined(lobby) => {
                     let decks = self.deck_choices(lobby.format);
                     let preferred = self.preferred.clone();
