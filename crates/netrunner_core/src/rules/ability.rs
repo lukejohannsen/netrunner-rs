@@ -2127,7 +2127,11 @@ pub fn evaluate_effect(
                         Amount::TriggeringCardPrintedCost
                         | Amount::TriggeringCardTrashCost
                         | Amount::TimesThisActionThisTurn
-                        | Amount::AboutToResolve => Some(resolve_amount(amount, ctx, state, registry)),
+                        | Amount::AboutToResolve
+                        // Oduduwa's "place X advancement tokens on another
+                        // piece of ice", X its own: inside the chosen
+                        // card's `then` the acting card is the one chosen.
+                        | Amount::HostedAdvancementTokens => Some(resolve_amount(amount, ctx, state, registry)),
                         _ => None,
                     };
                     options.iter().map(|option| option.clone().filled(&fill)).collect()

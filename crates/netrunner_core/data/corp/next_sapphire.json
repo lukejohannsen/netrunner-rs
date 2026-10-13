@@ -1,0 +1,94 @@
+{
+  "id": "next_sapphire",
+  "title": "NEXT Sapphire",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Draw up to X cards.",
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Corp",
+          "min": 0,
+          "max": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          },
+          "then": {
+            "DrawCardsAmount": [
+              "Corp",
+              "ChosenNumber"
+            ]
+          },
+          "text": "Draw up to X cards."
+        }
+      }
+    },
+    {
+      "text": "Add up to X cards from Archives to HQ.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Any",
+          "min": 0,
+          "max": 0,
+          "up_to": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          },
+          "reveal": true,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      }
+    },
+    {
+      "text": "Shuffle up to X cards from HQ into R&D.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": "Any",
+          "min": 0,
+          "max": 0,
+          "up_to": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          },
+          "reveal": false,
+          "shuffle_after": true,
+          "destination": "OwnRAndD"
+        }
+      }
+    }
+  ],
+  "built_from": 21050,
+  "is_playable": true
+}

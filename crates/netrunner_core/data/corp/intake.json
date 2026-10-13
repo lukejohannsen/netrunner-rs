@@ -1,0 +1,67 @@
+{
+  "id": "intake",
+  "title": "Intake",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "AnyOf": [
+                    {
+                      "CardType": "Program"
+                    },
+                    {
+                      "All": [
+                        {
+                          "CardType": "Resource"
+                        },
+                        {
+                          "HasSubtype": "Virtual"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": false,
+                "destination": "OpponentHand"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade anywhere except in Archives, Trace[4]. If successful, add 1 installed program or virtual resource to the grip."
+    }
+  ],
+  "built_from": 21098,
+  "is_playable": true
+}
