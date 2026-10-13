@@ -379,13 +379,35 @@ pub struct LobbyInfo {
     /// queue its maker kept bots out of, none in a format the server can
     /// deal a bot no deck in, and none on a server that offers no bots.
     pub bots: Vec<Level>,
-    /// Attached connections in the lobby.
-    pub players: usize,
-    /// Of them, how many are looking for a game: the queue's count.
-    pub seeking: usize,
+    /// Everyone attached in the lobby, in the order they came, each with
+    /// whether they are looking for a game and the side they prefer
+    /// while they are (Phase 7 §15): a hosted game's room names its
+    /// opponent and shows their Ready by it. A count is read off it
+    /// (`players`, `seeking`).
+    pub people: Vec<Presence>,
+}
+
+/// One attached connection in a lobby, as the lobby's listing shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Presence {
+    pub name: String,
+    /// Looking for a game here: a seek submitted and not yet paired.
+    pub seeking: bool,
+    /// The side the seek prefers, while one is in.
+    pub prefers: Option<Side>,
 }
 
 impl LobbyInfo {
+    /// Attached connections in the lobby.
+    pub fn players(&self) -> usize {
+        self.people.len()
+    }
+
+    /// Of them, how many are looking for a game: the queue's count.
+    pub fn seeking(&self) -> usize {
+        self.people.iter().filter(|presence| presence.seeking).count()
+    }
+
     /// The server's own queue, which never goes away.
     pub fn permanent(&self) -> bool {
         self.mode != QueueMode::Friends

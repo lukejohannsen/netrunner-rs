@@ -142,9 +142,70 @@ pub fn preference_label(prefer: Option<Side>) -> &'static str {
     }
 }
 
+/// What the Join page's one field holds (Phase 7 §15): a ticket, an
+/// address, nothing yet, or something that is neither — read off the
+/// text as it is typed, so the line under the field says which way in
+/// the connection will take before Connect is pressed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    Empty,
+    /// A host's ticket: an encrypted tunnel to their key, from anywhere.
+    Ticket,
+    /// A direct connection to this host and port, as
+    /// `hosting::normalize_address` reads it.
+    Address { host: String, port: u16 },
+    Neither,
+}
+
+impl Target {
+    pub fn detect(input: &str) -> Target {
+        let input = input.trim();
+        if input.is_empty() {
+            return Target::Empty;
+        }
+        if crate::peer::Ticket::parse(input).is_some() {
+            return Target::Ticket;
+        }
+        let url = crate::hosting::normalize_address(input);
+        // `ws://host:port`, the host bracketed for IPv6.
+        let rest = url.trim_start_matches("wss://").trim_start_matches("ws://");
+        let (host, port) = match rest.rsplit_once(':') {
+            Some((host, port)) if !host.is_empty() => (host, port),
+            _ => return Target::Neither,
+        };
+        match port.parse::<u16>() {
+            Ok(port) if host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '[' | ']' | ':' | '_')) => Target::Address { host: host.to_string(), port },
+            _ => Target::Neither,
+        }
+    }
+
+    /// The line under the field.
+    pub fn line(&self) -> String {
+        match self {
+            Target::Empty => "Nothing yet. Paste the ticket, or type the address, your opponent gave you.".to_string(),
+            Target::Ticket => "Detected: a ticket — an encrypted tunnel to their key, which works from anywhere.".to_string(),
+            Target::Address { host, port } => format!("Detected: an address — a direct connection to {host}, port {port}."),
+            Target::Neither => "That is not an address or a ticket.".to_string(),
+        }
+    }
+
+    pub fn is_usable(&self) -> bool {
+        matches!(self, Target::Ticket | Target::Address { .. })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_join_field_says_what_it_holds() {
+        assert_eq!(Target::detect("  "), Target::Empty);
+        assert_eq!(Target::detect("192.168.1.50"), Target::Address { host: "192.168.1.50".into(), port: 8080 });
+        assert_eq!(Target::detect("ws://[::1]:9000"), Target::Address { host: "[::1]".into(), port: 9000 });
+        assert_eq!(Target::detect("not an address at all!"), Target::Neither);
+        assert!(Target::detect("192.168.1.50").line().contains("port 8080"));
+    }
 
     /// Every choice is a deck — there is no deal to ask for — Corp first,
     /// and the built-in decks are there with nothing saved.
@@ -162,7 +223,7 @@ mod tests {
 
     #[test]
     fn a_lobby_is_named_by_its_mode_or_its_maker() {
-        let lobby = |id: &str, mode| LobbyInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, mode, password: false, rated: false, bots: Vec::new(), players: 0, seeking: 0 };
+        let lobby = |id: &str, mode| LobbyInfo { id: id.into(), name: "Friday".into(), format: NsgFormat::Startup, mode, password: false, rated: false, bots: Vec::new(), people: Vec::new() };
         assert_eq!(lobby_title(&lobby("ranked-startup", QueueMode::Ranked)), "Ranked · Startup");
         assert_eq!(lobby_title(&lobby("casual-startup", QueueMode::Casual)), "Casual · Startup");
         assert_eq!(lobby_title(&lobby("K7M2QX", QueueMode::Friends)), "Friday · Startup");

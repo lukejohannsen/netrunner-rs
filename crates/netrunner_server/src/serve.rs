@@ -91,7 +91,7 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{queue_id, Award, Chair, ClientMessage, Opponent, QueueMode, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{queue_id, Award, Chair, ClientMessage, Opponent, QueueMode, Entrant, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Presence, Profile, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::queue::{self, Wants};
 use crate::{fixtures, net};
@@ -379,6 +379,9 @@ fn seat_index(side: Side) -> usize {
 /// waiting for another in the same lobby.
 struct PendingHuman {
     token: Uuid,
+    /// The connection's link (`Registry::attached`), which is how the
+    /// lobby's listing marks its member as looking (`Presence::seeking`).
+    link: Uuid,
     player_name: String,
     /// The key this connection proved, if it identified: what the rating
     /// book files the player under.
@@ -690,6 +693,12 @@ impl SeatedPlayer {
     }
 }
 
+/// One attached connection in a lobby: its link and its name.
+struct Member {
+    link: Uuid,
+    name: String,
+}
+
 /// The daemon's whole bookkeeping — see the module doc for why it is one
 /// struct under one lock.
 #[derive(Default)]
@@ -715,8 +724,10 @@ struct Registry {
     bots_by_format: HashMap<NsgFormat, Vec<Level>>,
     /// The lobbies players made, by id.
     player_lobbies: HashMap<String, PlayerLobby>,
-    /// How many attached connections are in each lobby, by id.
-    members: HashMap<String, usize>,
+    /// The attached connections in each lobby, by id, in the order they
+    /// came: each by its link and the name it attached with, which is
+    /// what a hosted game's room shows its opponent by (Phase 7 §15).
+    members: HashMap<String, Vec<Member>>,
     /// The tournaments the daemon holds; see `ServeOptions::data_dir`.
     tournaments: Tournaments,
     /// Every attached connection, by a link id of its own, for what is
@@ -802,9 +813,15 @@ impl Registry {
             password,
             rated: mode == QueueMode::Ranked,
             bots,
-            players: self.members.get(id).copied().unwrap_or(0),
-            seeking: self.seeking(id),
+            people: self.members.get(id).map(|members| members.iter().map(|member| self.presence(member, id)).collect()).unwrap_or_default(),
         })
+    }
+
+    /// A member as the lobby lists them: looking, and for which side,
+    /// while their seek waits here.
+    fn presence(&self, member: &Member, lobby: &str) -> Presence {
+        let waiting = self.waiting.iter().find(|waiter| waiter.link == member.link && waiter.lobby == lobby);
+        Presence { name: member.name.clone(), seeking: waiting.is_some(), prefers: waiting.and_then(|waiter| waiter.prefer) }
     }
 
     /// The lobbies listed: the server's own queues. A friend queue is
@@ -816,7 +833,7 @@ impl Registry {
     /// A player's lobby goes when nobody is in it and nobody waits in it.
     /// The server's own never go.
     fn forget_if_empty(&mut self, id: &str) {
-        if self.player_lobbies.contains_key(id) && self.members.get(id).copied().unwrap_or(0) == 0 && self.seeking(id) == 0 {
+        if self.player_lobbies.contains_key(id) && self.members.get(id).is_none_or(Vec::is_empty) && self.seeking(id) == 0 {
             self.player_lobbies.remove(id);
             self.members.remove(id);
         }

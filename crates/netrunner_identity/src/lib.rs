@@ -74,6 +74,16 @@ impl Identity {
         PublicKey(self.0.verifying_key().to_bytes())
     }
 
+    /// The secret itself, for the one thing that needs it besides
+    /// signing: a hosted game's ticket is an iroh endpoint on an Ed25519
+    /// key of its own, and made on *this* key the ticket is the same
+    /// every time the person hosts, so a friend who saved it connects
+    /// again (Phase 7 §15). Never written anywhere but the identity
+    /// file, and never sent: the ticket carries the public half.
+    pub fn secret_bytes(&self) -> [u8; 32] {
+        self.0.to_bytes()
+    }
+
     /// The answer to a server's challenge: this key's signature over
     /// `auth_statement(server_key, nonce)`.
     pub fn prove(&self, server_key: &PublicKey, nonce: &Nonce) -> Signature {

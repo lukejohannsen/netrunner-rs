@@ -1322,7 +1322,11 @@ impl OnlineScreen {
                     self.mode = Mode::Form(form);
                     return OnlineStep::Continue;
                 };
-                match start_hosting(port, form.reach, form.format, &self.relay) {
+                // The ticket on the person's own key, so it is the same
+                // every time they host and a friend can save it (Phase 7
+                // §15); a key that cannot be made hosts on a throwaway one.
+                let key = self.identity_dir.as_deref().and_then(|dir| netrunner_client::identity::Credentials::in_dir(dir).ok()).map(|credentials| credentials.identity.secret_bytes());
+                match start_hosting(port, form.reach, form.format, &self.relay, key) {
                     Ok((hosting, local_url)) => {
                         self.hosting_lines = hosting_status(&hosting);
                         self.hosting = Some(hosting);
@@ -2115,7 +2119,7 @@ impl OnlineScreen {
                 Row::Lobby(index) => {
                     let lobby = &page.lobbies[index];
                     let here = page.lobby.as_ref().is_some_and(|current| current.id == lobby.id);
-                    let mut line = format!("{}  {} — {} here, {} looking", if here { "Here" } else { "Join" }, lobby_title(lobby), lobby.players, lobby.seeking);
+                    let mut line = format!("{}  {} — {} here, {} looking", if here { "Here" } else { "Join" }, lobby_title(lobby), lobby.players(), lobby.seeking());
                     if lobby.password {
                         line.push_str(" · password");
                     }
@@ -2424,7 +2428,7 @@ fn block_on_bounded<F: Future>(future: F) -> Option<F::Output> {
 /// Unrated, by design: a rating is a claim by a server somebody else
 /// runs, and this process holds the seed and the unmasked state of the
 /// game its own host is playing in (`docs/identity-and-rating.md`).
-fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Relay, String>) -> Result<(Hosting, String), String> {
+fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Relay, String>, key: Option<[u8; 32]>) -> Result<(Hosting, String), String> {
     let relay = match reach {
         Reach::Internet => Some(relay.clone().map_err(|error| format!("the relay setting: {error}"))?),
         _ => None,
@@ -2434,7 +2438,7 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Rela
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
     let acceptor = server.acceptor();
-    let invitation = Invitation::start(reach, port, relay, move |stream, who| {
+    let invitation = Invitation::start(reach, port, relay, key, move |stream, who| {
         let acceptor = acceptor.clone();
         tokio::spawn(async move { acceptor.serve(stream, &who).await });
     });

@@ -1273,7 +1273,7 @@ mod tests {
     async fn start_peer_host_with(relay: crate::peer::Relay) -> (crate::peer::PeerHost, String, bool) {
         let options = ServeOptions { seed: Some(1), ..ServeOptions::default() };
         let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
-        let mut host = crate::peer::PeerHost::start(relay, move |stream, who| {
+        let mut host = crate::peer::PeerHost::start(relay, None, move |stream, who| {
             let acceptor = acceptor.clone();
             tokio::spawn(async move { acceptor.serve(stream, &who).await });
         });
@@ -1314,6 +1314,31 @@ mod tests {
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
         next_view(&mut joined.rx).await;
         assert_eq!(list_matches(&ticket).await.unwrap().0.len(), 1, "the match is the server's, whoever carried it");
+    }
+
+    /// A host on its own key gives the same ticket every time it hosts
+    /// (Phase 7 §15): what lets a friend save one. Two hosts started one
+    /// after the other on the identity's bytes name one key; one on no
+    /// key names another.
+    #[tokio::test]
+    async fn a_host_on_its_own_key_gives_the_same_ticket_twice() {
+        let key = netrunner_identity::Identity::from_secret([9; 32]).secret_bytes();
+        let start = |key: Option<[u8; 32]>| async move {
+            let acceptor = Server::bind("127.0.0.1:0", ServeOptions { seed: Some(1), ..ServeOptions::default() }).await.unwrap().acceptor();
+            let mut host = crate::peer::PeerHost::start(crate::peer::Relay::Off, key, move |stream, who| {
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move { acceptor.serve(stream, &who).await });
+            });
+            let crate::peer::Offer::Ready { ticket, .. } = host.ready().await else { panic!("no ticket") };
+            drop(host);
+            ticket.host_id()
+        };
+        let first = start(Some(key)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let second = start(Some(key)).await;
+        let throwaway = start(None).await;
+        assert_eq!(first, second, "the same key, the same ticket");
+        assert_ne!(first, throwaway, "a host with no key is one game's");
     }
 
     /// A host that has stopped hosting: its ticket names a key nobody

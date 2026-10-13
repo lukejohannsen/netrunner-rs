@@ -1,10 +1,12 @@
 //! Play Online, without a window: the desktop hosts a game on this
-//! machine and is attached to its own server; it finds a match from the
-//! dashboard's Casual door; a second player joins through the real
-//! connection driver; both are seated; the board opens on the host's
-//! first view; leaving the board concedes — which reaches the opponent —
-//! and leads back to the dashboard, still attached, for the next game. A
-//! second client connects by address and makes a friend lobby of its own.
+//! machine from the hub and is in its room, attached to its own server;
+//! it is ready there; a second player joins through the real connection
+//! driver; both are seated; the board opens on the host's first view;
+//! leaving the board concedes — which reaches the opponent — and leads
+//! back to the room, still attached, for the next game. A second client
+//! connects by address and lands on the dashboard, where it makes a
+//! friend lobby of its own; another joins through the hub, both are
+//! ready and play; and a ticket pasted anywhere opens the room.
 //!
 //! Driven under `MinimalPlugins` like `tests/game.rs`; the server, the
 //! connection and the match thread are real, so the test pumps `update`
@@ -99,9 +101,12 @@ fn texts(app: &mut App) -> Vec<String> {
     app.world_mut().query::<&Text>().iter(app.world()).map(|text| text.0.clone()).collect()
 }
 
-/// Hosts for this machine on a free port: the dashboard, attached to the
-/// host's own server, with the address to give out on it beside a Copy.
+/// Hosts for this machine on a free port, from the hub: the room,
+/// attached to the host's own server and in its queue, with the address
+/// to give out beside a Copy.
 fn host(app: &mut App) -> String {
+    tap_control(app, Control::Open(Page::Hub));
+    assert_eq!(page(app), Page::Hub);
     tap_control(app, Control::Open(Page::Host));
     assert_eq!(page(app), Page::Host);
     // The port typed into its field: 0 takes any free one.
@@ -115,11 +120,12 @@ fn host(app: &mut App) -> String {
     assert_eq!(app.world().resource::<Model>().0.port, "0");
     tap_control(app, Control::Reach(Reach::ThisMachine));
     tap_control(app, Control::Go);
-    // Waiting while the host starts — or already on its page, when it
+    // Waiting while the host starts — or already in the room, when it
     // was up within the same frames, a race a fast runner won.
-    assert!(matches!(page(app), Page::Waiting | Page::Dashboard), "{:?} {:?}", page(app), app.world().resource::<Model>().0.notice);
-    until(app, "the host's dashboard", |app| page(app) == Page::Dashboard && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.hosting && !server.lobbies.is_empty()));
+    assert!(matches!(page(app), Page::Waiting | Page::Room), "{:?} {:?}", page(app), app.world().resource::<Model>().0.notice);
+    until(app, "the host's room", |app| page(app) == Page::Room && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.hosting && server.room && server.lobby.is_some()));
     assert!(app.world().get_resource::<Connected>().is_some_and(Connected::is_hosting));
+    assert!(texts(app).iter().any(|text| text == "Listening for a peer…"), "{:?}", texts(app));
     let mut address = None;
     until(app, "the host's address", |app| {
         address = texts(app).into_iter().find(|text| text.starts_with("ws://127.0.0.1:"));
@@ -130,22 +136,19 @@ fn host(app: &mut App) -> String {
 }
 
 /// A host, a guest and a spectator: the whole of Play Online, on one
-/// machine — and the host back on the Server page after the game, still
+/// machine — and the host back in the room after the game, still
 /// attached.
 #[test]
 fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     let (mut app, _dir) = headless_client("host");
     let address = host(&mut app);
 
-    // The host finds a match from the Casual door with both active decks;
-    // Ranked is shut on a hosted server.
-    let shown = texts(&mut app);
-    assert!(shown.iter().any(|text| text == "A game hosted from this machine is never rated"), "{shown:?}");
-    tap_control(&mut app, Control::OpenQueue(QueueMode::Casual));
-    assert!(find::<Control>(&mut app, |c| matches!(c, Control::QueueFormat(_))).is_some(), "the form's format pills");
-    tap_control(&mut app, Control::FindMatch);
-    until(&mut app, "the host's search", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.searching.as_ref().is_some_and(|searching| searching.position == Some(1))));
-    assert!(find::<Control>(&mut app, |c| *c == Control::CancelSeek).is_some(), "the search can be aborted");
+    // The host is ready, with both active decks: the seek in the room's
+    // queue, which Not ready after all takes back.
+    tap_control(&mut app, Control::Ready);
+    until(&mut app, "the host ready", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.searching.as_ref().is_some_and(|searching| searching.position == Some(1))));
+    assert!(find::<Control>(&mut app, |c| *c == Control::Unready).is_some(), "ready can be taken back");
+    assert!(texts(&mut app).iter().any(|text| text == "Ready. The game starts when your opponent is too."), "{:?}", texts(&mut app));
 
     // The opponent: a seat through the same driver, over the address.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
@@ -201,15 +204,122 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
     });
     assert_eq!(ended.expect("the guest heard in time"), Some((Some(host_side.other()), GameEndReason::Surrender)));
 
-    // Back on the dashboard, attached still, out of the queue and not
-    // looking: the next game is a door away.
-    assert_eq!(page(&app), Page::Dashboard);
-    until(&mut app, "the host out of the queue", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.is_none() && !server.seeking()));
+    // Back in the room, attached still, in its queue and not ready: the
+    // next game is a Ready away.
+    assert_eq!(page(&app), Page::Room);
+    until(&mut app, "the host not ready", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.lobby.is_some() && !server.seeking()));
     assert!(app.world().get_resource::<Connected>().is_some());
-    assert!(find::<Control>(&mut app, |c| *c == Control::OpenQueue(QueueMode::Casual)).is_some());
+    assert!(find::<Control>(&mut app, |c| *c == Control::Ready).is_some());
     tap_control(&mut app, Control::Disconnect);
-    assert_eq!(page(&app), Page::Servers, "disconnecting from the dashboard leads to the servers");
-    assert!(app.world().get_resource::<Connected>().is_none(), "disconnecting lets the connection and the server go");
+    assert_eq!(page(&app), Page::Hub, "stopping hosting leads to the hub");
+    assert!(app.world().get_resource::<Connected>().is_none(), "stopping lets the connection and the server go");
+}
+
+/// A guest joins through the hub (Phase 7 §15): the Join page, the
+/// host's room with the host named in it, the host remembered as a saved
+/// peer by name; both are ready and the board opens for each; leaving
+/// the board leads both back to the room, not ready, where the guest's
+/// Leave and the host's Stop hosting are the hub.
+#[test]
+fn a_guest_joins_through_the_hub_and_both_ready_is_the_game() {
+    let (mut host_app, _host_dir) = headless_client("host");
+    let address = host(&mut host_app);
+
+    let (mut guest, guest_dir) = headless_client("guest");
+    tap_control(&mut guest, Control::Open(Page::Hub));
+    assert!(texts(&mut guest).iter().any(|text| text.starts_with("Nobody yet")), "{:?}", texts(&mut guest));
+    tap_control(&mut guest, Control::Open(Page::Join));
+    assert_eq!(page(&guest), Page::Join);
+    guest.world_mut().resource_mut::<Model>().0.address = address.clone();
+    tap_control(&mut guest, Control::Go);
+    until(&mut guest, "the guest's room", |app| page(app) == Page::Room && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.room && !server.hosting && server.lobby.is_some()));
+    until(&mut guest, "the host named in the room", |app| app.world().resource::<Model>().0.room_people().1.is_some_and(|presence| presence.name == "host"));
+    guest.update();
+    let shown = texts(&mut guest);
+    assert!(shown.iter().any(|text| text == "host (host)") && shown.iter().any(|text| text == "guest (you)"), "{shown:?}");
+    assert!(find::<Control>(&mut guest, |c| matches!(c, Control::Copy(_))).is_none(), "a guest has nothing to give out");
+    // The host, remembered by name, beside the key.
+    let peers = netrunner_client::peers::PeerBook::load(&netrunner_client::peers::path_in(&guest_dir.join("identity"))).expect("the saved peers are written");
+    assert_eq!(peers.peers.iter().map(|peer| (peer.name.as_str(), peer.target.as_str())).collect::<Vec<_>>(), [("host", address.as_str())]);
+    let servers = netrunner_client::servers::ServerBook::load(&netrunner_client::servers::path_in(&guest_dir.join("identity"))).unwrap_or_default();
+    assert!(servers.find(&address).is_none(), "a friend's room is never a server row: {servers:?}");
+    // The host sees the guest arrive, polled.
+    until(&mut host_app, "the guest in the host's room", |app| app.world().resource::<Model>().0.room_people().1.is_some_and(|presence| presence.name == "guest"));
+    host_app.update();
+    assert!(texts(&mut host_app).iter().any(|text| text == "guest is here"), "{:?}", texts(&mut host_app));
+
+    // The guest is ready, preferring the Runner; the host sees it, and
+    // is ready too: the game.
+    tap_control(&mut guest, Control::Prefer(Some(netrunner_core::rules::Side::Runner)));
+    tap_control(&mut guest, Control::Ready);
+    until(&mut host_app, "the guest's Ready seen by the host", |app| app.world().resource::<Model>().0.room_people().1.is_some_and(|presence| presence.seeking && presence.prefers == Some(netrunner_core::rules::Side::Runner)));
+    host_app.update();
+    assert!(texts(&mut host_app).iter().any(|text| text == "guest is ready. Press Ready and the game starts."), "{:?}", texts(&mut host_app));
+    tap_control(&mut host_app, Control::Ready);
+    until(&mut host_app, "the host's board", |app| screen(app) == AppScreen::Game);
+    until(&mut guest, "the guest's board", |app| screen(app) == AppScreen::Game);
+    assert_eq!(guest.world().resource::<ActiveMatch>().handle.side(), netrunner_core::rules::Side::Runner, "the guest's preference met");
+    until(&mut host_app, "the host's first view", |app| app.world().resource::<Board>().0.view.is_some());
+
+    // The host concedes; both are back in the room, not ready.
+    press(&mut host_app, KeyCode::Escape, Key::Escape);
+    host_app.update();
+    let confirm = find::<Click>(&mut host_app, |c| matches!(c, Click::ConfirmQuit)).expect("leaving asks first");
+    tap(&mut host_app, confirm);
+    until(&mut host_app, "the host's room again", |app| screen(app) == AppScreen::Online && page(app) == Page::Room);
+    until(&mut host_app, "the host not ready", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.seeking()));
+    until(&mut guest, "the guest's game over", |app| app.world().resource::<Board>().0.over.is_some());
+    press(&mut guest, KeyCode::Escape, Key::Escape);
+    guest.update();
+    if let Some(confirm) = find::<Click>(&mut guest, |c| matches!(c, Click::ConfirmQuit)) {
+        tap(&mut guest, confirm);
+    }
+    until(&mut guest, "the guest's room again", |app| screen(app) == AppScreen::Online && page(app) == Page::Room);
+    until(&mut guest, "the guest not ready", |app| app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| !server.seeking()));
+    assert!(find::<Control>(&mut guest, |c| *c == Control::Ready).is_some(), "a rematch is a Ready away");
+
+    tap_control(&mut guest, Control::Disconnect);
+    assert_eq!(page(&guest), Page::Hub, "a guest's Leave is the hub");
+    assert!(guest.world().get_resource::<Connected>().is_none());
+    assert!(find::<Control>(&mut guest, |c| *c == Control::QuickConnect(0)).is_some(), "the host is a row of the hub");
+    tap_control(&mut host_app, Control::Disconnect);
+    assert_eq!(page(&host_app), Page::Hub);
+}
+
+/// A ticket pasted anywhere opens the room (Phase 7 §15): a host by
+/// ticket on its own key, with no relay — the ticket names this
+/// machine's addresses — joined from the servers page's Connect once,
+/// which is a room because a ticket is always a hosted game's; the
+/// ticket is remembered as a peer.
+#[test]
+fn a_ticket_pasted_anywhere_opens_the_room() {
+    use netrunner_server::serve::{ServeOptions, Server};
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
+    let key = netrunner_identity::Identity::from_secret([3; 32]).secret_bytes();
+    let (_host, ticket) = runtime.block_on(async {
+        let options = ServeOptions { seed: Some(1), formats: vec![netrunner_client::settings::DEFAULT_FORMAT], ..ServeOptions::default() };
+        let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
+        let mut host = netrunner_client::peer::PeerHost::start(netrunner_client::peer::Relay::Off, Some(key), move |stream, who| {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move { acceptor.serve(stream, &who).await });
+        });
+        let netrunner_client::peer::Offer::Ready { ticket, .. } = host.ready().await else { panic!("no ticket") };
+        (host, ticket.to_string())
+    });
+    let (mut guest, guest_dir) = headless_client("guest");
+    guest.world_mut().resource_mut::<Model>().0.address = ticket.clone();
+    tap_control(&mut guest, Control::Go);
+    until(&mut guest, "the room by ticket", |app| page(app) == Page::Room && app.world().resource::<Model>().0.server.as_ref().is_some_and(|server| server.room && server.lobby.is_some()));
+    let peers = netrunner_client::peers::PeerBook::load(&netrunner_client::peers::path_in(&guest_dir.join("identity"))).expect("the saved peers are written");
+    assert_eq!(peers.peers.len(), 1);
+    assert_eq!(peers.peers[0].target, ticket, "the ticket is kept: the host's key lasts");
+    let servers = netrunner_client::servers::ServerBook::load(&netrunner_client::servers::path_in(&guest_dir.join("identity"))).unwrap_or_default();
+    assert!(servers.servers.is_empty(), "a ticket is never a server row");
+    press(&mut guest, KeyCode::Escape, Key::Escape);
+    guest.update();
+    assert_eq!(page(&guest), Page::Hub, "Escape in a guest's room leaves it, to the hub");
+    assert!(guest.world().get_resource::<Connected>().is_none());
+    runtime.shutdown_background();
 }
 
 /// Tournaments from the pages (Phase 4 §7 stage 6b), at a daemon that

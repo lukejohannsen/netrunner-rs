@@ -26,6 +26,9 @@ impl Plugin for MainMenuPlugin {
 pub enum Entry {
     PlayComputer,
     Online,
+    /// The Local / P2P hub (Phase 7 §15): the Play Online screen opened
+    /// on its hub rather than on the Default server's dashboard.
+    Peer,
     Learn,
     Decks,
     Cards,
@@ -37,9 +40,10 @@ pub enum Entry {
 }
 
 impl Entry {
-    pub const ALL: [Entry; 10] = [
+    pub const ALL: [Entry; 11] = [
         Entry::PlayComputer,
         Entry::Online,
+        Entry::Peer,
         Entry::Learn,
         Entry::Decks,
         Entry::Cards,
@@ -54,6 +58,7 @@ impl Entry {
         match self {
             Entry::PlayComputer => "Play vs Computer",
             Entry::Online => "Play Online",
+            Entry::Peer => "Local / P2P Play",
             Entry::Learn => "Learn to Play",
             Entry::Decks => "Decks",
             Entry::Cards => "Cards",
@@ -68,7 +73,8 @@ impl Entry {
     pub fn blurb(self) -> &'static str {
         match self {
             Entry::PlayComputer => "A casual game against a rung of the ladder, in the style your deck chooses",
-            Entry::Online => "Host a game, join one by address or ticket, or watch one",
+            Entry::Online => "Your server's dashboard: ranked and casual queues, tournaments, your profile there",
+            Entry::Peer => "Host a game on this machine, or join a friend's by their address or ticket",
             Entry::Learn => "Both lesson tracks and the starter games",
             Entry::Decks => "Build, copy and edit decks; the same files the terminal client plays",
             Entry::Cards => "Every card, with the printed text and how the engine reads it",
@@ -95,6 +101,7 @@ impl Entry {
         match self {
             Entry::PlayComputer => Some(AppScreen::NewGame),
             Entry::Online => Some(AppScreen::Online),
+            Entry::Peer => Some(AppScreen::Online),
             Entry::Learn => Some(AppScreen::Learn),
             Entry::Decks => Some(AppScreen::Decks),
             Entry::Cards => Some(AppScreen::CardBrowser),
@@ -164,11 +171,15 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notic
     )]));
 }
 
-fn choose(mut pressed: MessageReader<Pressed>, entries: Query<&Entry>, mut navigate: MessageWriter<Navigate>, mut exit: MessageWriter<AppExit>) {
+fn choose(mut commands: Commands, mut pressed: MessageReader<Pressed>, entries: Query<&Entry>, mut navigate: MessageWriter<Navigate>, mut exit: MessageWriter<AppExit>) {
     for Pressed(entity) in pressed.read() {
         let Ok(entry) = entries.get(*entity) else { continue };
         match entry.screen() {
             Some(screen) => {
+                // The hub is the same screen opened on another page.
+                if *entry == Entry::Peer {
+                    commands.insert_resource(crate::screens::online::OpenHub);
+                }
                 navigate.write(Navigate(screen));
             }
             None => {

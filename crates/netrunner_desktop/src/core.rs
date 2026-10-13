@@ -155,6 +155,15 @@ impl ClientCore {
         self.servers_path().and_then(|path| netrunner_client::servers::ServerBook::load(&path).ok()).unwrap_or_default()
     }
 
+    /// The saved peers (`netrunner_client::peers`), beside the servers.
+    pub fn peers_path(&self) -> Option<PathBuf> {
+        self.identity_dir.as_deref().map(netrunner_client::peers::path_in)
+    }
+
+    pub fn peer_book(&self) -> netrunner_client::peers::PeerBook {
+        self.peers_path().and_then(|path| netrunner_client::peers::PeerBook::load(&path).ok()).unwrap_or_default()
+    }
+
     /// Where the model opponents' keys are kept: beside the identity key,
     /// never in the settings file (`netrunner_client::llm::secrets`).
     pub fn secrets_path(&self) -> Option<PathBuf> {

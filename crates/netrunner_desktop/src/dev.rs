@@ -164,7 +164,7 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
-//! - `NETRUNNER_ONLINE=host|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby`
+//! - `NETRUNNER_ONLINE=hub|host|join|room|room-guest|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby`
 //!   — with `NETRUNNER_SCREEN=online`, that page is opened once (`join`
 //!   is `servers`, the page it became); `profile` waits for the Default
 //!   the screen connects to and opens the profile page there, and
@@ -317,6 +317,10 @@ pub struct Dev {
     /// Whether the search has been answered, which the screenshot waits
     /// for.
     pub searched: bool,
+    /// A screen's hook is waiting for something outside the client — the
+    /// `room-guest` opponent's Ready — and the shot's frames do not count
+    /// until it clears this.
+    pub held: bool,
     /// `NETRUNNER_ONLINE`: the Play Online page to open.
     pub online: Option<String>,
     /// Hold a run at its first encounter for the screenshot.
@@ -408,6 +412,7 @@ impl Dev {
             fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
             search: std::env::var("NETRUNNER_SEARCH").ok().filter(|text| !text.trim().is_empty()),
             searched: false,
+            held: false,
             online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_flight: std::env::var_os("NETRUNNER_HOLD_FLIGHT").is_some_and(|v| !v.is_empty()),
@@ -581,7 +586,7 @@ fn screenshot_then_exit(
     // frames do not start counting until it is in hand.
     // A flight held for the shot (`NETRUNNER_HOLD_FLIGHT`) likewise waits
     // for a card to be in the air.
-    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag || (dev.hold_flight && !dev.flight_held) || (dev.search.is_some() && !dev.searched) {
+    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag || (dev.hold_flight && !dev.flight_held) || (dev.search.is_some() && !dev.searched) || dev.held {
         // The frames are counted from when the screen has nothing left
         // to do by itself, so an autoplayed board is shot after its last
         // decision, not during it.

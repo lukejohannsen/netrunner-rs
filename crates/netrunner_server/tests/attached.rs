@@ -84,14 +84,14 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let (mut socket, lobbies) = attach(&url, "browser").await;
     let ids: Vec<&str> = lobbies.iter().map(|lobby| lobby.id.as_str()).collect();
     assert_eq!(ids, ["casual-startup", "casual-standard", "casual-eternal", "casual-snapshot", "casual-unrestricted"], "`serve::DEFAULT_FORMATS`");
-    assert!(lobbies.iter().all(|lobby| lobby.permanent() && lobby.mode == QueueMode::Casual && lobby.players == 0));
+    assert!(lobbies.iter().all(|lobby| lobby.permanent() && lobby.mode == QueueMode::Casual && lobby.players() == 0));
     assert!(lobbies.iter().all(|lobby| !lobby.rated), "a daemon with no data directory rates nothing, and its lobbies say so");
     // The server's own queues offer no bot: a bot sits only in a friend
     // lobby that lets one in (12 October 2026).
     assert!(lobbies.iter().all(|lobby| lobby.bots.is_empty()), "{lobbies:?}");
 
     let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "Casual-Standard", None).await else { panic!() };
-    assert_eq!((lobby.format, lobby.players), (NsgFormat::Standard, 1));
+    assert_eq!((lobby.format, lobby.players()), (NsgFormat::Standard, 1));
     let ServerMessage::LobbyRefused { reason } = join(&mut socket, "nowhere", None).await else { panic!() };
     assert!(reason.contains("no lobby NOWHERE"), "a code is read in upper case: {reason}");
 }
@@ -115,7 +115,7 @@ async fn a_friend_queue_is_joined_by_its_code_and_password() {
     // Typed in lower case, with a space: the id is the id.
     let typed = format!(" {} ", lobby.id.to_lowercase());
     let ServerMessage::LobbyJoined { lobby: inside } = join(&mut friend, &typed, Some("swordfish")).await else { panic!() };
-    assert_eq!(inside.players, 2);
+    assert_eq!(inside.players(), 2);
 
     for socket in [&mut host, &mut friend] {
         send(socket, ClientMessage::LeaveLobby).await;
@@ -186,7 +186,7 @@ async fn a_seek_is_checked_cancelled_and_withdrawn_with_its_socket() {
     assert!(matches!(next(&mut socket).await, ServerMessage::SeekRefused { .. }), "one seek at a time");
     send(&mut socket, ClientMessage::ListLobbies).await;
     let ServerMessage::Lobbies { lobbies } = next(&mut socket).await else { panic!() };
-    assert_eq!(lobbies[0].seeking, 1);
+    assert_eq!(lobbies[0].seeking(), 1);
     send(&mut socket, ClientMessage::CancelSeek).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::SeekCancelled));
 
@@ -200,7 +200,7 @@ async fn a_seek_is_checked_cancelled_and_withdrawn_with_its_socket() {
         loop {
             send(&mut runner, ClientMessage::ListLobbies).await;
             let ServerMessage::Lobbies { lobbies } = next(&mut runner).await else { panic!() };
-            if lobbies[0].seeking == 0 {
+            if lobbies[0].seeking() == 0 {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
