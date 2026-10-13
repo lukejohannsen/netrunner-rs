@@ -1,0 +1,46 @@
+{
+  "id": "masvingo",
+  "title": "Masvingo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 3,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": "HostedAdvancementTokens"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" for each hosted advancement counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "PlaceAdvancementCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, place 1 advancement counter on it."
+    }
+  ],
+  "subroutines": [],
+  "built_from": 21099,
+  "is_playable": true
+}

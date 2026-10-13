@@ -97,7 +97,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
     ("ikawah_project", "Ikawah Project"),
     ("gene_splicer", "Gene Splicer"),
-    ("mganga", "Mganga"),
     ("genotyping", "Genotyping"),
     ("echo_chamber", "Echo Chamber"),
     ("self_growth_program", "Self-Growth Program"),
@@ -123,7 +122,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jua", "Jua"),
     ("threat_assessment", "Threat Assessment"),
     ("economic_warfare", "Economic Warfare"),
-    ("forced_connection", "Forced Connection"),
     ("ssl_endorsement", "SSL Endorsement"),
     ("ngo_front", "NGO Front"),
     ("distract_the_masses", "Distract the Masses"),
@@ -140,7 +138,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gbahali", "Gbahali"),
     ("white_hat", "White Hat"),
     ("kuwinda_k4h1u3", "Kuwinda K4H1U3"),
-    ("next_sapphire", "NEXT Sapphire"),
     ("code_replicator", "Code Replicator"),
     ("reverse_infection", "Reverse Infection"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
@@ -164,12 +161,10 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("consume", "Consume"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
-    ("tempus", "Tempus"),
     ("bio_vault", "Bio Vault"),
     ("amani_senai", "Amani Senai"),
     ("sso_industries_fueling_innovation", "SSO Industries: Fueling Innovation"),
     ("city_works_project", "City Works Project"),
-    ("oduduwa", "Oduduwa"),
     ("rashida_jaheem", "Rashida Jaheem"),
 ];
 
@@ -190,8 +185,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("viral_weaponization", "Viral Weaponization"),
     ("mwanza_city_grid", "Mwanza City Grid"),
     ("standard_procedure", "Standard Procedure"),
-    ("intake", "Intake"),
-    ("masvingo", "Masvingo"),
     ("overseer_matrix", "Overseer Matrix"),
 ];
 
@@ -208,7 +201,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("flame_out", "Flame-out"),
     ("black_hat", "Black Hat"),
     ("kasi_string", "Kasi String"),
-    ("next_diamond", "NEXT Diamond"),
     ("riot_suppression", "Riot Suppression"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
     ("better_citizen_program", "Better Citizen Program"),

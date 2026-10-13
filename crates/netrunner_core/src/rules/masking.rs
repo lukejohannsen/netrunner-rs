@@ -1090,6 +1090,14 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
         }
+        // Accessed in HQ or R&D as well (Tempus, Intake, Forced
+        // Connection, seed 167): the Runner saw the ambush that traces, a
+        // spectator did not.
+        GameEvent::TraceInitiated { base, initiating_card: Some(card) }
+            if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
+        {
+            Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
+        }
         GameEvent::TraceInitiated { .. } => visible(),
         // Same treatment for a prompt's source: struck out, not withheld —
         // the prompt itself is public, the chooser is about to act on it.
