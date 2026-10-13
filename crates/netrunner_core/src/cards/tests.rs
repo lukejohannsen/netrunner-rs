@@ -32698,3 +32698,97 @@ mod reign_and_reverie_stage_11 {
         assert_eq!((nothing.corp.resources.credits, nothing.corp.hq.len()), (Credits(6), 3));
     }
 }
+
+mod reign_and_reverie_stage_12 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let state = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card").0;
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection").0
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, option_index: usize) -> GameState {
+        apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("choose").0
+    }
+
+    /// A run on the server Daruma is in, up to its question.
+    fn asked(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run").0;
+        for _ in 0..20 {
+            if state.pending_decision.is_some() {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        panic!("Daruma never asked");
+    }
+
+    fn table() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        let root = |card: &str, server: ServerId, rezzed: bool| crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, rezzed, ..Default::default() };
+        state.corp.installed = vec![root("daruma", ServerId::Remote(0), true), root("hostile_takeover", ServerId::Remote(0), false), root("pad_campaign", ServerId::Remote(1), false)];
+        state.corp.hq = vec![id("adonis_campaign"), id("hedge_fund")];
+        state
+    }
+
+    #[test]
+    fn daruma_trashes_itself_to_swap_a_card_from_another_root_into_its_server_and_the_runner_may_jack_out() {
+        let registry = registry();
+        let question = asked(&table(), &registry);
+        // Declined, nothing happens.
+        let declined = choose(&question, &registry, 1);
+        assert!(declined.corp.installed.iter().any(|card| card.card == id("daruma")));
+
+        let trashed = choose(&question, &registry, 0);
+        assert!(!trashed.corp.installed.iter().any(|card| card.card == id("daruma")), "trash this upgrade");
+        assert!(trashed.corp.archives.iter().any(|card| card.card == id("daruma")));
+        let other = choose(&trashed, &registry, 0);
+        let pad = other.corp.installed.iter().position(|card| card.card == id("pad_campaign")).expect("installed");
+        assert_eq!(toggles(&other, &registry), vec![pad], "a card in the root of another server");
+        let here = pick(&other, &registry, pad);
+        let takeover = here.corp.installed.iter().position(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!(toggles(&here, &registry), vec![takeover], "a card in the root of this server");
+        let swapped = pick(&here, &registry, takeover);
+        let server_of = |card: &str| swapped.corp.installed.iter().find(|installed| installed.card == id(card)).map(|installed| installed.server);
+        assert_eq!((server_of("pad_campaign"), server_of("hostile_takeover")), (Some(ServerId::Remote(0)), Some(ServerId::Remote(1))), "swapped");
+        assert!(swapped.pending_paid_choice.is_some(), "the Runner may jack out");
+        let out = apply_action(&swapped, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out").0;
+        assert!(out.active_run.is_none(), "jacked out");
+        let stays = apply_action(&swapped, &registry, PlayerAction::DeclinePendingPaidChoice).expect("stay").0;
+        assert!(stays.active_run.is_some(), "the run goes on");
+    }
+
+    #[test]
+    fn daruma_may_swap_an_agenda_asset_or_upgrade_from_hq_into_its_root_instead() {
+        let registry = registry();
+        let trashed = choose(&asked(&table(), &registry), &registry, 0);
+        let from_hq = choose(&trashed, &registry, 1);
+        let takeover = from_hq.corp.installed.iter().position(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!(toggles(&from_hq, &registry), vec![takeover], "the root of this server only");
+        let hq = pick(&from_hq, &registry, takeover);
+        assert_eq!(toggles(&hq, &registry), vec![0], "an asset, never an operation");
+        let swapped = pick(&hq, &registry, 0);
+        assert!(swapped.corp.installed.iter().any(|card| card.card == id("adonis_campaign") && card.server == ServerId::Remote(0)), "into the root");
+        assert!(swapped.corp.hq.contains(&id("hostile_takeover")), "back to HQ");
+        assert!(swapped.pending_paid_choice.is_some(), "the Runner may jack out");
+    }
+}

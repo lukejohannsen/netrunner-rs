@@ -1672,6 +1672,20 @@ pub(crate) fn resolve_confirm_card_selection(
             // acts on the ice it passed) — the other half is the install
             // the choice acts as. Nothing to swap with once that has gone.
             (Effect::SwapInstalledIce(_, _), _, [chosen]) => source_install.map(|this| Effect::SwapInstalledIce(this, *chosen)),
+            // A swap that something follows — Daruma's "Swap that card with
+            // 1 card in the root of this server. If you swap cards this way,
+            // the Runner may jack out": the swap is the sentence's first
+            // effect and is substituted as it would be alone. Only the
+            // first: the rest of the sentence happens after the swap, and
+            // a `Sequence` after the selection would offer the jack out
+            // when nothing was chosen to swap. Nothing at all once the
+            // install the choice acts as has gone, as above.
+            (Effect::Sequence(mut effects), _, [chosen]) if matches!(effects.first(), Some(Effect::SwapInstalledIce(_, _))) => {
+                source_install.map(|this| {
+                    effects[0] = Effect::SwapInstalledIce(this, *chosen);
+                    Effect::Sequence(effects)
+                })
+            }
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
             // substituted here, since only this site knows both installs.
