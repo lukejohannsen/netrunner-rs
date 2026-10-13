@@ -116,7 +116,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jua", "Jua"),
     ("threat_assessment", "Threat Assessment"),
     ("economic_warfare", "Economic Warfare"),
-    ("ssl_endorsement", "SSL Endorsement"),
     ("distract_the_masses", "Distract the Masses"),
 ];
 
@@ -167,7 +166,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("compile", "Compile"),
     ("logic_bomb", "Logic Bomb"),
     ("jackpot", "Jackpot!"),
-    ("remote_enforcement", "Remote Enforcement"),
     ("warden_fatuma", "Warden Fatuma"),
     ("mwanza_city_grid", "Mwanza City Grid"),
     ("standard_procedure", "Standard Procedure"),

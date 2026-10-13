@@ -1,0 +1,42 @@
+{
+  "id": "remote_enforcement",
+  "title": "Remote Enforcement",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": "Ice",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "remote_only": true,
+                "if_installed": {
+                  "RezInstalled": {
+                    "install": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score Remote Enforcement, you may search R&D for a piece of ice, install it protecting a remote server (paying its install cost), and rez it, ignoring its rez cost, then shuffle R&D."
+    }
+  ],
+  "built_from": 21091,
+  "is_playable": true
+}
