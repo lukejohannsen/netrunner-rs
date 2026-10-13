@@ -1,0 +1,91 @@
+{
+  "id": "gatekeeper",
+  "title": "Gatekeeper",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 6
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnOnThisCopy": "OnRez"
+          },
+          1
+        ]
+      },
+      "text": "Gatekeeper has +6 strength if you rezzed it this turn."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Draw up to 3 cards. Reveal up to 3 agendas in HQ and/or Archives, then shuffle those agendas into R&D.",
+      "effect": {
+        "Sequence": [
+          {
+            "ChooseNumber": {
+              "chooser": "Corp",
+              "max": {
+                "Fixed": 3
+              },
+              "then": {
+                "DrawCardsAmount": [
+                  "Corp",
+                  "ChosenNumber"
+                ]
+              },
+              "text": "Draw up to 3 cards"
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": {
+                "CardType": "Agenda"
+              },
+              "min": 0,
+              "max": 3,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OwnRAndD",
+              "then": {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "CardType": "Agenda"
+                  },
+                  "min": 0,
+                  "max": 0,
+                  "reveal": true,
+                  "shuffle_after": true,
+                  "destination": "OwnRAndD",
+                  "up_to": {
+                    "RemainingAfterSelection": 3
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 22029,
+  "is_playable": true
+}

@@ -269,6 +269,11 @@ pub enum Until {
     /// whose prohibition binds the next action and no other
     /// (`EffectDuration::NextAction`).
     ActionsFinished { turn: u32, count: u32 },
+    /// Until the turn numbered so begins: it holds through every turn
+    /// before it (`EffectDuration::UntilYourNextTurnBegins`, Saraswati
+    /// Mnemonics). `NextTurnOf` is not it — that holds until something
+    /// takes it off, which only `AllottedClicks` ever does.
+    BeforeTurn(u32),
 }
 
 impl LingeringEffect {
@@ -284,6 +289,7 @@ impl LingeringEffect {
                 state.turn == turn && (now == begun || (now == begun + 1 && state.active_run.is_some()))
             }
             Until::EndOfTurn(turn) => state.turn <= turn,
+            Until::BeforeTurn(turn) => state.turn < turn,
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
             Until::WhileInstalled(install) => {
@@ -307,6 +313,10 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::ThroughYourNextTurn => {
             let theirs_now = crate::rules::listeners::active_side(state) == controller;
             Ok(Until::EndOfTurn(state.turn + if theirs_now { 2 } else { 1 }))
+        }
+        EffectDuration::UntilYourNextTurnBegins => {
+            let theirs_now = crate::rules::listeners::active_side(state) == controller;
+            Ok(Until::BeforeTurn(state.turn + if theirs_now { 2 } else { 1 }))
         }
         EffectDuration::Encounter => run
             .filter(|run| run.phase == RunPhase::EncounterIce)
@@ -686,6 +696,7 @@ mod tests {
         assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp, None), Ok(Until::EndOfTurn(state.turn + 1)));
         state.phase = crate::rules::GamePhase::Action(Side::Corp);
         assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp, None), Ok(Until::EndOfTurn(state.turn + 2)));
+        assert_eq!(until(&state, EffectDuration::UntilYourNextTurnBegins, Side::Corp, None), Ok(Until::BeforeTurn(state.turn + 2)), "made on the Corp's turn, it holds through the Runner's");
     }
 
     #[test]
