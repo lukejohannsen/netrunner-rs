@@ -1469,6 +1469,17 @@ pub enum Effect {
     /// the parking card may be the ice: Magnet's "Host that program on this
     /// ice", where the chosen program is `card` and the ice is `host`.
     HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
+    /// The condition operation being played becomes a condition counter
+    /// hosted on the install `host` (CR 1.13.6d, CR 3.5.1a) — Eavesdrop's
+    /// "Install Eavesdrop on a piece of ice as a hosted condition counter".
+    /// Both are authored as `InstallId::PLACEHOLDER` and substituted when
+    /// the parking `PromptChooseCards` resolves, as `HostRigCardOnInstall`'s
+    /// are: `condition` becomes the operation's handle in the play area,
+    /// where a condition is filed while it resolves, and `host` the
+    /// selected install. Composition didn't work: no effect moves a card
+    /// out of the play area, and a counter is not an install, so no install
+    /// effect may put it on the table (CR 1.13.6d).
+    HostThisAsCondition { condition: crate::rules::InstallId, host: crate::rules::InstallId },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
     /// of the turn" (Luminal Transubstantiation): a `rules::lingering`
@@ -3385,6 +3396,7 @@ impl Effect {
             | Effect::GainIceSubtype { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
+            | Effect::HostThisAsCondition { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)

@@ -147,6 +147,10 @@ pub struct PublicCorpState {
     /// (`CorpState::play_area`, a lockdown).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<crate::rules::PlayedOperation>,
+    /// Never masked: a condition counter is faceup on its host
+    /// (`CorpState::conditions`, Eavesdrop).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<crate::rules::HostedCondition>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -1530,6 +1534,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         removed_from_game: corp.removed_from_game.clone(),
         set_aside: corp.set_aside.clone(),
         play_area: corp.play_area.clone(),
+        conditions: corp.conditions.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),

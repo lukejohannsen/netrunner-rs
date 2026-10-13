@@ -1694,6 +1694,20 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardHosted { card: hosted_card, host: Some(host_card) }])
         }
 
+        // A condition operation leaves the play area it resolved in and is
+        // hosted on the install chosen. Nothing happens when the host has
+        // left the table while the choice was parked: the operation stays
+        // in the play area until the Corp's next turn, as a lockdown would.
+        Effect::HostThisAsCondition { condition, host } => {
+            let Some(host_card) = state.corp.installed.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()) else {
+                return Ok(Vec::new());
+            };
+            let position = state.corp.play_area.iter().position(|played| played.handle == *condition).ok_or(RulesError::InstallNotFound(*condition))?;
+            let played = state.corp.play_area.remove(position);
+            state.corp.conditions.push(crate::rules::state::HostedCondition { card: played.card.clone(), handle: played.handle, host: *host });
+            Ok(vec![GameEvent::CardHosted { card: played.card, host: Some(host_card) }])
+        }
+
         Effect::InstallRunnerCardFromGrip => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Eligibility may have shifted since the selection was offered
@@ -3654,6 +3668,13 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
 
 pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
+    // A condition counter goes with its host (CR 1.13.6d), faceup into
+    // Archives, where every played operation would have gone.
+    while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
+        let removed = state.corp.conditions.remove(position);
+        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
+    }
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());

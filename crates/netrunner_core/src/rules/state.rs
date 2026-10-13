@@ -411,6 +411,17 @@ pub struct CorpState {
     /// by the view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<PlayedOperation>,
+    /// Condition counters the Corp's operations became, each hosted on an
+    /// install (CR 1.13.6d, CR 3.5.1a: Eavesdrop "as a hosted condition
+    /// counter" on a piece of ice). Active while hosted (CR 1.9.5j), so
+    /// `rules::active` lists each in its host's server, and trashed with
+    /// the host (`ability::cascade_trash_hosted_programs`, the one place a
+    /// piece of ice takes what it hosts with it). Not on `InstalledCard`:
+    /// a counter is not an install, and a list beside the table keeps every
+    /// scan of the table as it was. Faceup, so public, and carried whole by
+    /// the view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<HostedCondition>,
     /// Ids of the cards in this deck that can be *played from Archives*
     /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
     /// Play this operation from Archives"). Seeded once by
@@ -422,6 +433,19 @@ pub struct CorpState {
     /// deck-wide list is seeded at setup instead of per entry.
     #[serde(default)]
     pub playable_from_archives: Vec<CardId>,
+}
+
+/// A condition counter on the table — see `CorpState::conditions`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostedCondition {
+    pub card: CardId,
+    /// The handle the operation was played with (`PlayedOperation::
+    /// handle`), kept as it becomes a counter: a trigger is pinned to the
+    /// copy that heard it, and its host's filter (`EventFilter::Host`)
+    /// finds it by this.
+    pub handle: InstallId,
+    /// The install it is hosted on.
+    pub host: InstallId,
 }
 
 /// An operation in the play area after it resolved — see

@@ -524,6 +524,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // gone when the Corp's next turn begins, which is the line's to say
         // because nothing on the board stands for it.
         .chain(view.corp.play_area.iter().map(|played| format!("in play until the Corp's next turn: {}", title(&played.card))))
+        // A condition counter (Eavesdrop, CR 1.13.6d): faceup and active on
+        // its host, named by the host's card when the viewer can see it,
+        // since nothing on the board stands for a counter with text.
+        .chain(view.corp.conditions.iter().map(|condition| {
+            let on = super::facts::card_of(view, condition.host).map_or_else(|| "a facedown card".to_string(), |card| title(&card));
+            format!("hosted on {on}: {}", title(&condition.card))
+        }))
         .collect()
 }
 

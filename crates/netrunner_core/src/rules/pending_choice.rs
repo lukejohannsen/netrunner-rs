@@ -1699,6 +1699,9 @@ pub(crate) fn resolve_confirm_card_selection(
                     Effect::HostRigCardOnInstall { card: this, host: *chosen }
                 }
             }),
+            // The condition being played is the parking card's handle in
+            // the play area; its host is the install chosen.
+            (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => source_install.map(|this| Effect::HostThisAsCondition { condition: this, host: *chosen }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),

@@ -1,0 +1,60 @@
+{
+  "id": "eavesdrop",
+  "title": "Eavesdrop",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": "Ice"
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Ice",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "HostThisAsCondition": {
+                "condition": 0,
+                "host": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Install Eavesdrop on a piece of ice as a hosted condition counter"
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "GiveTags": {
+              "Fixed": 1
+            }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner encounters host ice, Trace[3]. If successful, give the Runner 1 tag."
+    }
+  ],
+  "built_from": 22047,
+  "is_playable": true
+}

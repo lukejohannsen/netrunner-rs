@@ -81,6 +81,11 @@ pub struct CorpClientView {
     /// client draws beside the Corp's identity and a bot's sample copies.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<crate::rules::PlayedOperation>,
+    /// Public — see `CorpState::conditions`: each condition counter and the
+    /// install it is hosted on, which a client draws on its host and a
+    /// bot's sample copies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<crate::rules::HostedCondition>,
     /// Power counters on the Corp's identity (AU Co.) — public, and
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
@@ -424,6 +429,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         removed_from_game: public.corp.removed_from_game,
         set_aside: public.corp.set_aside,
         play_area: public.corp.play_area,
+        conditions: public.corp.conditions,
     };
 
     let runner = RunnerClientView {

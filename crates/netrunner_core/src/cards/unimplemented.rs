@@ -84,7 +84,6 @@ pub(crate) const CORE2_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
-    ("eavesdrop", "Eavesdrop"),
 ];
 
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.
