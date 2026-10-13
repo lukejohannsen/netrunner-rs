@@ -132,7 +132,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
 pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knobkierie", "Knobkierie"),
-    ("419_amoral_scammer", "419: Amoral Scammer"),
     ("rogue_trading", "Rogue Trading"),
     ("because_i_can", "Because I Can"),
     ("nyashia", "Nyashia"),
@@ -148,7 +147,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("freedom_khumalo_crypto_anarchist", "Freedom Khumalo: Crypto-Anarchist"),
     ("trypano", "Trypano"),
     ("contaminate", "Contaminate"),
-    ("embezzle", "Embezzle"),
     ("slipstream", "Slipstream"),
     ("laamb", "Laamb"),
     ("gebrselassie", "Gebrselassie"),

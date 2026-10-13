@@ -1,0 +1,125 @@
+{
+  "id": "advance_fee",
+  "name": "Advance Fee",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "419_amoral_scammer",
+  "cards": [
+    {
+      "card": "poison_vial",
+      "count": 2
+    },
+    {
+      "card": "tremolo",
+      "count": 2
+    },
+    {
+      "card": "jeitinho",
+      "count": 3
+    },
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "laser_pointer",
+      "count": 2
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "hot_pursuit",
+      "count": 2
+    },
+    {
+      "card": "mr_li",
+      "count": 2
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "pan_weave",
+      "count": 2
+    },
+    {
+      "card": "no_free_lunch",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "cats_cradle",
+      "count": 2
+    },
+    {
+      "card": "penumbral_toolkit",
+      "count": 2
+    },
+    {
+      "card": "networking",
+      "count": 2
+    },
+    {
+      "card": "swift",
+      "count": 1
+    },
+    {
+      "card": "prognostic_q_loop",
+      "count": 1
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "doppelganger",
+      "count": 1
+    },
+    {
+      "card": "easy_mark",
+      "count": 1
+    },
+    {
+      "card": "special_order",
+      "count": 1
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "bankroll",
+      "count": 2
+    },
+    {
+      "card": "thunder_art_gallery",
+      "count": 1
+    },
+    {
+      "card": "credit_kiting",
+      "count": 2
+    }
+  ]
+}

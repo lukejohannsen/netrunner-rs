@@ -648,6 +648,9 @@ mod tests {
             // FFG F2 Stage 9: Acme Consulting's deck, on Broadcast Hour's
             // list.
             ("truth_you_need", &neither),
+            // Kitara Stage 6b: 419: Amoral Scammer's deck, on Cold
+            // Reading's frame.
+            ("advance_fee", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),
