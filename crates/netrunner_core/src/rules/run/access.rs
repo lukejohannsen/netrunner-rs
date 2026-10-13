@@ -1321,6 +1321,12 @@ fn move_to_archives(
 /// Carnivore's "trash 2 cards from your grip: trash the card you are
 /// accessing." `RulesError::NotInAccessPhase` if the Runner isn't currently
 /// mid-resolution of a specific accessed card.
+///
+/// Or heard as the card is accessed, before its access decision exists —
+/// By Any Means' "whenever you access a card not in Archives, trash it":
+/// the card is the one `currently_accessing` names, and the breach moves on
+/// from `enter_pending_choice`, which sees it has left (`left_its_place`),
+/// as [`move_currently_accessed_card`] does for a card moved there.
 pub fn trash_currently_accessed_card_without_cost(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -1330,10 +1336,10 @@ pub fn trash_currently_accessed_card_without_cost(
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let AccessPhase::PendingChoice { card_id, .. } = &access.phase else {
-        return Err(RulesError::NotInAccessPhase);
+    let (card_id, at_decision) = match &access.phase {
+        AccessPhase::PendingChoice { card_id, .. } => (card_id.clone(), true),
+        _ => (access.currently_accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false),
     };
-    let card_id = card_id.clone();
     let server = access.server;
     let install = access.pending_install;
     if accessing_in_the_discard_pile(state) {
@@ -1344,7 +1350,9 @@ pub fn trash_currently_accessed_card_without_cost(
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0, install };
     events.push(trashed_event.clone());
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
-    events.extend(advance_or_finish(state, registry, server, card_id)?);
+    if at_decision {
+        events.extend(advance_or_finish(state, registry, server, card_id)?);
+    }
     Ok(events)
 }
 

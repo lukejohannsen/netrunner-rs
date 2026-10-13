@@ -1,0 +1,50 @@
+{
+  "id": "glut_cipher",
+  "title": "Glut Cipher",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Archives",
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 5,
+                "max": 5,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHq",
+                "then": {
+                  "Repeat": {
+                    "times": {
+                      "Fixed": 5
+                    },
+                    "effect": {
+                      "TrashCard": {
+                        "RandomFromHand": "Corp"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, instead of breaching Archives, the Corp adds exactly 5 cards from Archives to HQ, if able. If they do, they trash 5 cards from HQ at random."
+    }
+  ],
+  "built_from": 21061,
+  "is_playable": true
+}

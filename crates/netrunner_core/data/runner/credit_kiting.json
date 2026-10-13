@@ -1,0 +1,56 @@
+{
+  "id": "credit_kiting",
+  "title": "Credit Kiting",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "ServerKind": "Central"
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "InstallableRunnerCardWithDiscount": {
+                "Credits": 8
+              }
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "InstallRunnerCardFromGripWithDiscount": {
+                "Credits": 8
+              }
+            }
+          }
+        },
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Install a card from your grip, lowering its install cost by 8[credit], and take 1 tag."
+    }
+  ],
+  "built_from": 21023,
+  "is_playable": true
+}

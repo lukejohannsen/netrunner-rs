@@ -1,0 +1,45 @@
+{
+  "id": "by_any_means",
+  "title": "By Any Means",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "play_requirement": "NoActionTakenThisTurn",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "LaterThisTurn": {
+            "when": "OnAccessed",
+            "every_time": true,
+            "effect": {
+              "EffectIf": {
+                "condition": {
+                  "Not": {
+                    "AccessingIn": "Archives"
+                  }
+                },
+                "effect": {
+                  "Sequence": [
+                    "TrashCurrentlyAccessedCard",
+                    {
+                      "DealDamage": [
+                        "Meat",
+                        1
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "For the remainder of the turn, whenever you access a card not in Archives, trash it and suffer 1 meat damage."
+    }
+  ],
+  "built_from": 21001,
+  "is_playable": true
+}
