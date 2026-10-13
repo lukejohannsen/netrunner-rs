@@ -111,6 +111,8 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         set_aside_facedown_cards: _, // drawn: hud::in_effect, named to the Runner (Ayla's six); the chooser's pop-up draws the ones it offers
         installed_facedown_count: _, // drawn: hud::in_effect ("installed facedown: N cards"), both clients: Reboot's blank, inactive installs (CR 8.1.4a)
         installed_facedown_cards: _, // drawn: hud::in_effect, named to the Runner (CR 1.21.2a)
+        other_identities: _, // drawn: the selection pop-up draws the ones DJ Fenris offers; engine's otherwise, the pile is every identity but the Runner's own (CR 1.5.4a)
+        hosted_identities: _, // drawn: hud::in_effect ("hosted on DJ Fenris, with its text: …"), both clients, and its abilities named on the host's menu (actions::abilities_card_id)
         play_area: _,           // drawn: hud::in_effect ("resolving: …"), both clients: an event whose own choice is still open (CR 3.7.1)
         rig,                    // below
         link_strength: _,       // drawn: hud::details

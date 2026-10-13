@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Effect};
+use crate::dsl::{CardId, CardType, Effect};
 use crate::rules::ability;
 use crate::rules::deck::{validate_deck, Deck};
 use crate::rules::error::RulesError;
@@ -63,6 +63,22 @@ impl GameState {
             .map(|(card, _)| card.clone())
             .filter(|card| registry.get(card).is_some_and(|def| def.playable_from_archives))
             .collect();
+
+        // The pile of other identities (CR 1.5.4a), for a deck with a card
+        // that refers to one: every playable Runner identity but the
+        // Runner's own, which is what a player may bring. Sorted by id, so
+        // the pile is the same in every game, and a choice from it means
+        // the same card by position.
+        let refers = runner_deck.cards.iter().any(|(card, _)| registry.get(card).is_some_and(|def| def.refers_to_other_identities));
+        if refers {
+            let mut pile: Vec<CardId> = registry
+                .iter()
+                .filter(|def| def.side == Side::Runner && def.card_type == CardType::Identity && def.is_playable && def.id != runner_deck.identity)
+                .map(|def| def.id.clone())
+                .collect();
+            pile.sort();
+            state.runner.other_identities = pile;
+        }
 
         state.corp.resources.credits = Credits(STARTING_CREDITS);
         state.runner.resources.credits = Credits(STARTING_CREDITS);

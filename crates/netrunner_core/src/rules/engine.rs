@@ -690,7 +690,7 @@ fn ability_is_action(state: &GameState, registry: &CardRegistry, target: Install
             .find_corp_install(target)
             .map(|c| &c.card)
             .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
-            .or_else(|| state.find_rig_install(target).map(|c| &c.card))
+            .or_else(|| state.rig_abilities_card(target))
             .or_else(|| state.runner.find_stolen(target).map(|s| &s.card)),
     };
     card.and_then(|card| registry.get(card))
@@ -2565,7 +2565,9 @@ fn activate_ability(
     let runner_card = match target {
         InstallId::RUNNER_IDENTITY => state.runner.identity.clone(),
         InstallId::RUN_EVENT => run::run_event(state, registry).cloned(),
-        _ => state.find_rig_install(target).map(|c| c.card.clone()),
+        // A rig card's abilities, or those of the identity it gains the
+        // text of (DJ Fenris's).
+        _ => state.rig_abilities_card(target).cloned(),
     };
     let runner_active = runner_card.is_some();
     // Neither an identity nor the run's event has an install of its own.

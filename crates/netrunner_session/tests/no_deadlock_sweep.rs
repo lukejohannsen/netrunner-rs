@@ -283,7 +283,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                     if !view.selection.is_empty() {
                         selections_seen += 1;
                     }
-                    assert_cards_are_conserved(session.state(), &corp_deck.to_deck(), &runner_deck.to_deck(), seed, &matchup);
+                    assert_cards_are_conserved(session.state(), session.registry(), &corp_deck.to_deck(), &runner_deck.to_deck(), seed, &matchup);
 
                     assert!(
                         !view.legal_actions.is_empty(),
@@ -337,7 +337,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
 /// agenda stayed in the Corp's zone *and* entered the Runner's score area
 /// (one card in two places), and a played Event went nowhere (one card in
 /// no place) — and neither was visible to a test that looked at one zone.
-fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: &Deck, seed: u64, matchup: &str) {
+fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::cards::CardRegistry, corp_deck: &Deck, runner_deck: &Deck, seed: u64, matchup: &str) {
     use std::collections::BTreeMap;
 
     fn tally<'a>(ids: impl Iterator<Item = &'a netrunner_core::dsl::CardId>) -> BTreeMap<String, u32> {
@@ -382,7 +382,9 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .iter()
             .chain(&runner.stack)
             .chain(&runner.heap)
-            .chain(&runner.removed_from_game)
+            // Less an identity DJ Fenris hosted, removed from the game with
+            // him and never a card of the deck (CR 1.5.4).
+            .chain(runner.removed_from_game.iter().filter(|id| registry.get(id).is_none_or(|card| card.card_type != netrunner_core::dsl::CardType::Identity)))
             .chain(&runner.set_aside)
             // Ayla's six, set aside facedown before her starting hand.
             .chain(&runner.set_aside_facedown)

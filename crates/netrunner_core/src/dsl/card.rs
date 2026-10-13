@@ -685,6 +685,14 @@ pub struct CardDefinition {
     /// none.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub playable_from_archives: bool,
+    /// This card refers to identities other than the Runner's own (CR
+    /// 1.5.4: "Two cards, Rebirth and DJ Fenris"), so a deck holding it
+    /// brings a pile of them (`RunnerState::other_identities`, seeded at
+    /// setup). A declaration rather than a scan of the card's effects for
+    /// the zone, as `playable_from_archives` is: setup asks it of a deck,
+    /// and the rule names its two cards.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub refers_to_other_identities: bool,
 
     /// This event is removed from the game once it has resolved, rather
     /// than trashed — Take a Dive's and Kompromat's last line, "Remove
@@ -1217,6 +1225,8 @@ pub enum CardValidationError {
     RecurringCreditsWithNowhereToGo(CardId),
     #[error("Runner identity {0:?} prints recurring credits, and only the Corp's identity can host credits in this engine (`CorpState::identity_counters`)")]
     RunnerIdentityHostsNothing(CardId),
+    #[error("card {0:?} refers to other identities and prints an ability of its own: the identity it hosts gains it abilities by its install (`GameState::rig_abilities_card`), so it can print none (CR 1.5.4)")]
+    OtherIdentitiesBesideAbilities(CardId),
     #[error("card {0:?} trashes itself when a payment empties it (`trash_when_empty`) but no payment can take its credits (`pays_for` is empty)")]
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("card {0:?} reads `Amount::ChosenNumber` outside the `then` of an `Effect::ChooseNumber`, where no number has been chosen and it is 0")]
@@ -1302,6 +1312,7 @@ impl Default for CardDefinition {
             dividends: None,
             stolen_with_agenda_counters: None,
             playable_from_archives: false,
+            refers_to_other_identities: false,
             removed_after_play: false,
             not_trashed_until_your_next_turn: false,
             pays_for: Vec::new(),
@@ -1456,6 +1467,9 @@ impl CardDefinition {
         }
         if !self.deck_rules.is_empty() && self.card_type != CardType::Identity {
             return Err(CardValidationError::DeckRuleOffAnIdentity(self.id.clone()));
+        }
+        if self.refers_to_other_identities && !self.abilities.is_empty() {
+            return Err(CardValidationError::OtherIdentitiesBesideAbilities(self.id.clone()));
         }
         if self.before_starting_hand.is_some() && self.card_type != CardType::Identity {
             return Err(CardValidationError::SetupOffAnIdentity(self.id.clone()));

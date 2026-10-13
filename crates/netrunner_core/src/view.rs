@@ -147,6 +147,15 @@ pub struct RunnerClientView {
     /// Which, to the Runner alone (CR 1.21.2a).
     #[serde(default)]
     pub installed_facedown_cards: Option<Vec<CardId>>,
+    /// Public — see `RunnerState::other_identities`: the pile a card that
+    /// refers to another identity chooses from (DJ Fenris).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_identities: Vec<CardId>,
+    /// Public — see `RunnerState::hosted_identities`: each identity and the
+    /// rig card that hosts it and has its text, which a client names on the
+    /// host's abilities and a bot's sample copies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_identities: Vec<crate::rules::HostedIdentity>,
     /// Public — see `RunnerState::play_area`: an event still resolving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -457,6 +466,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside_facedown_cards: zone_cards(&public.runner.set_aside_facedown),
         installed_facedown_count: zone_count(&public.runner.installed_facedown),
         installed_facedown_cards: zone_cards(&public.runner.installed_facedown),
+        other_identities: public.runner.other_identities,
+        hosted_identities: public.runner.hosted_identities,
         play_area: public.runner.play_area,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,

@@ -358,7 +358,7 @@ pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, 
             .map(|c| (c.install_id, c.card.clone()))
             .chain(state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| (scored.install_id, scored.card.clone())))
             .collect(),
-        Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, c.card.clone())).collect(),
+        Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, state.rig_abilities_card(c.install_id).unwrap_or(&c.card).clone())).collect(),
     }
 }
 
