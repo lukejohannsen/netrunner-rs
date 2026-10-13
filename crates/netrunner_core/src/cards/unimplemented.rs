@@ -95,7 +95,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("upya", "Upya"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
-    ("ikawah_project", "Ikawah Project"),
     ("genotyping", "Genotyping"),
     ("self_growth_program", "Self-Growth Program"),
     ("wake_up_call", "Wake Up Call"),
@@ -136,8 +135,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reverse_infection", "Reverse Infection"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
     ("degree_mill", "Degree Mill"),
-    ("personalized_portal", "Personalized Portal"),
-    ("armed_intimidation", "Armed Intimidation"),
     ("death_and_taxes", "Death and Taxes"),
     ("trojan_horse", "Trojan Horse"),
     ("technoco", "TechnoCo"),
@@ -157,7 +154,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kill_switch", "Kill Switch"),
     ("amani_senai", "Amani Senai"),
     ("sso_industries_fueling_innovation", "SSO Industries: Fueling Innovation"),
-    ("rashida_jaheem", "Rashida Jaheem"),
 ];
 
 /// *Whispers in Nalubaale* (`whispers_in_nalubaale`): tranche F3 of the FFG plan.
@@ -174,7 +170,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jackpot", "Jackpot!"),
     ("remote_enforcement", "Remote Enforcement"),
     ("warden_fatuma", "Warden Fatuma"),
-    ("viral_weaponization", "Viral Weaponization"),
     ("mwanza_city_grid", "Mwanza City Grid"),
     ("standard_procedure", "Standard Procedure"),
 ];

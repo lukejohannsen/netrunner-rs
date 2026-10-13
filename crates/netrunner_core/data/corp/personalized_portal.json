@@ -1,0 +1,37 @@
+{
+  "id": "personalized_portal",
+  "title": "Personalized Portal",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Every": {
+                "amount": {
+                  "CardsInHand": "Runner"
+                },
+                "every": 2
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When your turn begins, the Runner draws 1 card. You may gain 1[credit] for every 2 cards in the grip."
+    }
+  ],
+  "built_from": 21056,
+  "is_playable": true
+}

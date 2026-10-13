@@ -1,0 +1,33 @@
+{
+  "id": "viral_weaponization",
+  "title": "Viral Weaponization",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "LaterThisTurn": {
+            "when": "OnDiscardPhaseEnd",
+            "effect": {
+              "DealDamageAmount": [
+                "Net",
+                {
+                  "CardsInHand": "Runner"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When the turn on which you scored Viral Weaponization ends, do 1 net damage for each card in the grip."
+    }
+  ],
+  "built_from": 21094,
+  "is_playable": true
+}

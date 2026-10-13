@@ -33736,3 +33736,103 @@ mod kitara_stage_3b {
         assert!(cashed.pending_paid_choice.is_none(), "the Corp's own trash");
     }
 }
+
+mod kitara_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn in_remote(card: &str, rezzed: bool, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, advancement_tokens: tokens, ..Default::default() }
+    }
+
+    fn scored(card: &str, tokens: u32, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.installed = vec![in_remote(card, false, tokens)];
+        apply_action(&state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id(card) }).expect("score").0
+    }
+
+    /// From the Runner's turn to the Corp's, through every window.
+    fn into_corp_turn(mut state: GameState, registry: &CardRegistry) -> GameState {
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("runner ends turn");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn armed_intimidation_lets_the_runner_choose_meat_damage_or_tags() {
+        let registry = registry();
+        let mut state = scored("armed_intimidation", 4, &registry);
+        state.runner.grip = vec![id("sure_gamble"); 6];
+        assert!(state.pending_decision.is_some(), "the Runner must either");
+        let (tagged, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("take 2 tags");
+        assert_eq!(tagged.runner.tags, 2);
+        let (hurt, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("suffer 5 meat damage");
+        assert_eq!(hurt.runner.grip.len(), 1);
+        assert_eq!(hurt.runner.tags, 0);
+    }
+
+    #[test]
+    fn ikawah_project_costs_a_click_and_two_credits_to_steal() {
+        let registry = registry();
+        for (clicks, credits, stolen) in [(2, 2, true), (1, 2, false), (2, 1, false)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.resources.clicks = Clicks(clicks);
+            state.runner.resources.credits = Credits(credits);
+            state.corp.installed = vec![in_remote("ikawah_project", false, 0)];
+            let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+            let steal = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("ikawah_project") });
+            assert_eq!(steal.is_ok(), stolen, "{clicks} click(s), {credits} credit(s)");
+            if let Ok((state, _)) = steal {
+                assert_eq!(state.runner.resources.clicks, Clicks(0));
+                assert_eq!(state.runner.resources.credits, Credits(0));
+                assert_eq!(state.runner.resources.agenda_points, AgendaPoints(3));
+            }
+        }
+    }
+
+    #[test]
+    fn viral_weaponization_does_net_damage_for_the_grip_when_the_turn_ends() {
+        let registry = registry();
+        let mut state = scored("viral_weaponization", 4, &registry);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        assert_eq!(state.runner.grip.len(), 3, "not yet");
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.runner.grip.is_empty(), "1 net damage for each card in the grip");
+        assert!(!matches!(ended.phase, GamePhase::GameOver(_)), "3 damage, 3 cards");
+    }
+
+    #[test]
+    fn personalized_portal_draws_the_runner_a_card_and_pays_for_every_two_in_the_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![in_remote("personalized_portal", true, 0)];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.runner.stack = vec![id("sure_gamble"); 2];
+        let credits = state.corp.resources.credits.0;
+        let turn = into_corp_turn(state, &registry);
+        assert_eq!(turn.runner.grip.len(), 5, "the Runner draws 1 card");
+        assert_eq!(turn.corp.resources.credits.0, credits + 2, "1[credit] for every 2 cards in the grip");
+    }
+
+    #[test]
+    fn rashida_jaheem_may_trash_herself_for_three_credits_and_three_cards() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![in_remote("rashida_jaheem", true, 0)];
+        let credits = state.corp.resources.credits.0;
+        let turn = into_corp_turn(state, &registry);
+        assert!(turn.pending_paid_choice.is_some(), "you may trash Rashida Jaheem");
+        let (paid, _) = apply_action(&turn, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash her");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert!(paid.corp.installed.is_empty());
+        assert_eq!(paid.corp.resources.credits.0, credits + 3);
+        assert_eq!(paid.corp.hq.len(), 4, "3 cards, and the turn's own draw after the turn-begins choice");
+    }
+}

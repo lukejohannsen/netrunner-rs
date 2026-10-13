@@ -1,0 +1,22 @@
+{
+  "id": "ikawah_project",
+  "title": "Ikawah Project",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "AllOf": [
+      {
+        "Clicks": 1
+      },
+      {
+        "Credits": 2
+      }
+    ]
+  },
+  "triggers": [],
+  "built_from": 21010,
+  "is_playable": true
+}

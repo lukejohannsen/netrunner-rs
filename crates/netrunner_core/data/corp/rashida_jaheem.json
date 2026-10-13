@@ -1,0 +1,45 @@
+{
+  "id": "rashida_jaheem",
+  "title": "Rashida Jaheem",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    3
+                  ]
+                },
+                {
+                  "DrawCards": [
+                    "Corp",
+                    3
+                  ]
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash Rashida Jaheem to gain 3[credit] and draw 3 cards"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash Rashida Jaheem to gain 3[credit] and draw 3 cards."
+    }
+  ],
+  "built_from": 21080,
+  "is_playable": true
+}
