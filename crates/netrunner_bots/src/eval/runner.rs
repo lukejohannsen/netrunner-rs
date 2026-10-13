@@ -2928,6 +2928,12 @@ mod tests {
         assert_eq!(rd_accesses(&printed(&pool, "conduit"), Some(3), 9), 3 + 9, "its counters, and one its runs place a turn");
         assert_eq!(rd_accesses(&printed(&pool, "conduit"), None, 5), 5, "in hand, the counters its runs will place (Phase 5 §32)");
         assert_eq!(rd_accesses(&printed(&pool, "leech"), None, 9), 0, "a counter a run places is an access only on a card that accesses by its counters");
+        // Wake Implant v2A-JRJ (Phase 5 §81): "remove up to 3 hosted power
+        // counters to access that many additional cards", its counters
+        // placed by successful HQ runs, reads as Conduit's do.
+        assert_eq!(rd_accesses(&printed(&pool, "wake_implant_v2a_jrj"), Some(2), 5), 2 + 5);
+        assert_eq!(rd_accesses(&printed(&pool, "wake_implant_v2a_jrj"), None, 5), 5);
+        assert_eq!(rd_accesses(&printed(&pool, "the_twinning"), Some(1), 5), 1 + 5, "a counter the first time each turn is a counter a turn");
 
         // The rig's breach access is the run's (Phase 5 §32): Docklands
         // Pass makes an HQ run one more fresh access, and an R&D run none.
