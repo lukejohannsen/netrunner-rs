@@ -4011,3 +4011,13 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §75's code against this branch on seeds 2 / 3: Mr. Hendrik 7 → 30 / 0 → 31; Corp share 0.527 → 0.521, 0.476 → 0.478 (z −0.78, 0.19).
 
 **Verified.** `a_trap_that_works_only_installed_is_held_in_a_root`: Mr. Hendrik is a root trap and Snare! a hand trap; in HQ the Hendrik counts nothing, face down in R&D's root one, seen nothing.
+
+## 77. A piece chosen on install is the way past it, and a counter a turn is a card a turn: Femme Fatale, Solidarity Badge — DONE (`claude/bot-blindness-batch-7`, 13 October 2026)
+
+**The debt.** Femme Fatale's bypass was priced on a run once a piece was chosen (§65), but the piece is chosen when the program is installed, so the held card read as a 9[credit] sentry breaker and nothing else (random seats 23, the planner 1 and 0). Solidarity Badge's "the first time each turn you trash a Corp card, place 1 power counter" and "when your turn begins, you may remove 1 hosted power counter to draw 1 card" were two halves no reading joined: the counter was never income and the draw was a paid choice `declared_income` did not fold.
+
+**What is read now.** `runner::chosen_ice_value`: a card whose install trigger remembers a selected card (`chooses_ice_on_install`, a card whose use is its own trash — Boomerang — left out) is worth, held, the table with the best rezzed piece chosen against the same card with none (`best_break_saving`), a run a turn over the horizon at `future_credit_weight`; installed, `rig_chosen_ice_value` reads the piece it chose. `read::declared_income` folds a turn-start "you may remove N counters to …" as what it pays at N counters a use, and a "first time each turn" counter on a trash as `counters_per_turn`, so `future_credits` reads the Badge as a card a turn, no more than it hosts plus what it earns.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, main (4b56caa) against this branch on seeds 2 / 3: Solidarity Badge 10 → 38 and 5 → 38; Femme Fatale 1 → 14 and 17 → 6, 18 → 20 over both — `main` already installed it on one seed, so the reading is right and its effect is inside the drift; Amanuensis, whose counters are not the Badge's kind, 18 → 14 and 17 → 16; Corp share 0.497 → 0.505 and 0.506 → 0.497 (z 1.04, −1.18).
+
+**Verified.** `a_piece_chosen_on_install_is_the_way_past_it`: Femme Fatale opens HQ's Tollbooth, held and installed alike, at the rate an opened server is read; Boomerang is not read. The income test reads the Badge as one card a turn from a counter a turn.

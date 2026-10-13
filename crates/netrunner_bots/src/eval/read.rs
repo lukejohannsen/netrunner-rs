@@ -1390,6 +1390,16 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
         let sum = tally_list(&trigger.effects, side);
         match trigger.trigger {
             Trigger::OnTurnStart => {
+                // "You may remove 1 hosted power counter to draw 1 card"
+                // (Solidarity Badge, Amanuensis; Phase 5 §77): what the
+                // counter pays, out of the stock — a paid choice's cost is
+                // not an effect, so the tally read it as nothing.
+                let sum = trigger.effects.iter().fold(sum, |sum, effect| match effect {
+                    Effect::OfferPaidChoice { side: payer, cost: Cost::RemoveCounters(n), if_paid, .. } if *payer == side => {
+                        sum.add(tally(if_paid, side)).add(Tally { counters: -(*n as i32), ..Default::default() })
+                    }
+                    _ => sum,
+                });
                 income.turn_credits += sum.credits.max(0) as u32;
                 income.turn_cards += sum.cards.max(0) as u32;
                 if sum.counters < 0 {
@@ -1421,6 +1431,10 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 run_counters += sum.counters.max(0) as u32;
             }
             Trigger::OnTrashedFromAccess | Trigger::OnAgendaStolen if sum.counters > 0 => income.counters_per_turn = 1,
+            // "The first time each turn you trash a Corp card" by any means
+            // (Solidarity Badge's second trigger, Phase 5 §77), as the
+            // access trash is read.
+            Trigger::OnCardTrashed if sum.counters > 0 && trigger.first_each_turn => income.counters_per_turn = 1,
             // "Instead of breaching that server, you may take any number
             // of credits from this resource" (Bank Job; Phase 5 §66): its
             // counters cash at a credit apiece, on the runs that take them.
@@ -1636,7 +1650,9 @@ fn click_cost(cost: Option<&Cost>) -> (u32, bool) {
 pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32) -> f64 {
     let stock = if income.stocked { Some(hosted.unwrap_or(income.printed_stock)) } else { None };
     let turn = (income.turn_credits + income.turn_cards) * horizon;
-    let turn = stock.map_or(turn, |stock| turn.min(stock));
+    // The stock a turn's use draws on grows by what the card places on
+    // itself a turn (Solidarity Badge's counter a trash; Phase 5 §77).
+    let turn = stock.map_or(turn, |stock| turn.min(stock + income.counters_per_turn * horizon));
     // A run's credits are a run a turn's (`Income::run_credits`), and the
     // stock they are placed into is not printed, so nothing bounds them.
     let run = (income.run_credits + income.run_cards) * horizon;
@@ -2712,6 +2728,11 @@ mod tests {
         assert!(!regolith.click_places);
         let fermenter = income("fermenter");
         assert_eq!((fermenter.cashout_per_counter, fermenter.printed_stock), (2, 1));
+        // A counter a trash, spent on a card a turn (Phase 5 §77): nothing
+        // in hand without a stock, a card a turn as the trashes place them.
+        let badge = income("solidarity_badge");
+        assert_eq!((badge.turn_cards, badge.stocked, badge.counters_per_turn, badge.printed_stock), (1, true, 1, 0));
+        assert!((future_credits(&badge, None, 5) - 5.0).abs() < 1e-9, "a card a turn over five turns");
         let rioters = income("rent_rioters");
         assert_eq!((rioters.click_credits, rioters.click_cost, rioters.click_trashes), (9, 3, true));
 

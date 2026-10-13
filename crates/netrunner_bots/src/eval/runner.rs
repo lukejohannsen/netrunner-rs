@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + chosen_ice_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -664,6 +664,77 @@ pub(super) fn strength_cut_value(state: &GameState, registry: &CardRegistry, def
         held(None)
     };
     saving * f64::from(horizon) * w.future_credit_weight
+}
+
+/// Whether `def` chooses a piece of ice when it is installed and keeps it
+/// for as long as it is installed (Femme Fatale's "when you install this
+/// program, choose 1 installed piece of ice"; Phase 5 §77), its way past
+/// the chosen piece usable more than once — a card whose use is its own
+/// trash (Boomerang) is one run, not one a turn.
+fn chooses_ice_on_install(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::{Remembered, Cost};
+    let mut remembers = false;
+    for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnInstall) {
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut |effect| remembers |= matches!(effect, Effect::Remember { what: Remembered::SelectedCard, .. }));
+        }
+    }
+    remembers && !def.abilities.iter().any(|ability| matches!(ability.cost, Some(Cost::TrashSelf)))
+}
+
+/// The chosen piece as the engine remembers it for `install`.
+fn chosen(install: netrunner_core::rules::InstallId, ice: netrunner_core::rules::InstallId, card: &netrunner_core::dsl::CardId) -> netrunner_core::rules::lingering::LingeringEffect {
+    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+    LingeringEffect { what: Lingering::ChosenCard(ice), on: On::Install(install), until: Until::WhileInstalled(install), source: card.clone() }
+}
+
+/// What choosing a piece of ice on install saves the Runner (Phase 5
+/// §77): the held card on the table with the best rezzed piece chosen,
+/// against the same card with none — Femme Fatale's "whenever you
+/// encounter the chosen ice, you may pay 1[credit] for each subroutine it
+/// has. If you do, bypass that ice" — a run a turn over the horizon at
+/// `future_credit_weight`, as `strength_cut_value` reads a strength.
+/// Against the card with no piece chosen, so the breaks it has anywhere
+/// are not counted twice beside `breaker_coverage`. **Why:** the bypass
+/// was priced on a run once a piece was chosen (§65), but the choice is
+/// made on install, so the held card read as a 9[credit] sentry breaker
+/// and the planner installed it 1 time where random seats did 23.
+pub(super) fn chosen_ice_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::rules::{InstallId, InstallSlot, InstalledRunnerCard};
+    if w.future_credit_weight == 0.0 || !chooses_ice_on_install(def) {
+        return 0.0;
+    }
+    let install = InstallId(u32::MAX);
+    let mut unchosen = state.clone();
+    unchosen.runner.rig.push(InstalledRunnerCard { card: def.id.clone(), install_id: install, ..Default::default() });
+    let saving = state
+        .corp
+        .installed
+        .iter()
+        .filter(|ice| ice.rezzed && ice.slot == InstallSlot::Ice)
+        .map(|ice| {
+            let mut after = unchosen.clone();
+            after.lingering.push(chosen(install, ice.install_id, &def.id));
+            best_break_saving(&unchosen, &after, registry, w)
+        })
+        .fold(0.0, f64::max);
+    saving * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `chosen_ice_value` for each such card in the rig: the table with its
+/// piece chosen against the same table with none (Phase 5 §77).
+pub(super) fn rig_chosen_ice_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::rules::lingering::Lingering;
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let mut value = 0.0;
+    for card in state.runner.rig.iter().filter(|card| registry.get(&card.card).is_some_and(chooses_ice_on_install)) {
+        let mut before = state.clone();
+        before.lingering.retain(|effect| !(matches!(effect.what, Lingering::ChosenCard(_)) && effect.on == netrunner_core::rules::lingering::On::Install(card.install_id)));
+        value += best_break_saving(&before, state, registry, w) * f64::from(horizon) * w.future_credit_weight;
+    }
+    value
 }
 
 /// `strength_cut_value` for each such card in the rig: the table with it
@@ -1051,6 +1122,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A card that lowers the strength of ice is the break credits it
     // saves (`strength_cut_value`, Phase 5 §67).
     *score += rig_strength_cut_value(state, registry, w, horizon);
+    // A card that chose a piece of ice on install is the way past it
+    // (`chosen_ice_value`, Phase 5 §77).
+    *score += rig_chosen_ice_value(state, registry, w, horizon);
     // A card that raises the rez cost of ice is the Corp's credits it
     // takes (`rez_tax_value`, Phase 5 §71).
     *score += rig_rez_tax_value(state, registry, w, horizon);
@@ -1323,6 +1397,31 @@ mod tests {
         assert!((strength_cut_value(&state, &pool, card("k2cp_turbine"), &guide, 5) - 2.0 * per_turn).abs() < 1e-9);
         state.runner.rig.push(InstalledRunnerCard { card: CardId("gamedragon_pro".to_string()), install_id: InstallId(11), hosted_on_rig_card: Some(InstallId(10)), ..Default::default() });
         assert!((rig_strength_cut_value(&state, &pool, &guide, 5) - per_turn).abs() < 1e-9, "installed, credited the same");
+    }
+
+    /// A piece of ice chosen on install is the way past it (Phase 5
+    /// §77): Femme Fatale cannot break Tollbooth, a code gate, but its
+    /// bypass of the chosen piece opens HQ — held and installed alike —
+    /// and Boomerang, whose use is its own trash, is not read here.
+    #[test]
+    fn a_piece_chosen_on_install_is_the_way_past_it() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![InstalledCard { card: CardId("tollbooth".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let opened = guide.unbreakable_ice_weight / guide.own_credit_weight * 5.0 * guide.future_credit_weight;
+        assert!(opened > 0.0);
+        assert!((chosen_ice_value(&state, &pool, card("femme_fatale"), &guide, 5) - opened).abs() < 1e-9);
+        assert_eq!(chosen_ice_value(&state, &pool, card("boomerang"), &guide, 5), 0.0, "one use");
+        assert_eq!(chosen_ice_value(&state, &pool, card("femme_fatale"), &Weights::default(), 5), 0.0);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("femme_fatale".to_string()), install_id: InstallId(10), ..Default::default() }];
+        assert_eq!(rig_chosen_ice_value(&state, &pool, &guide, 5), 0.0, "nothing chosen");
+        state.lingering.push(chosen(InstallId(10), InstallId(1), &CardId("femme_fatale".to_string())));
+        assert!((rig_chosen_ice_value(&state, &pool, &guide, 5) - opened).abs() < 1e-9, "installed, credited the same");
     }
 
     /// A click ability whose run's breach is replaced is worth what the
