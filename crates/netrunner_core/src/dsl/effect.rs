@@ -943,6 +943,18 @@ pub enum Effect {
         /// destinations is the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         any_position: bool,
+        /// Offer only this server, its root or protecting it — Fast Break's
+        /// "Install up to X cards in the root of and/or protecting **a
+        /// single remote server**". The server is written as a placeholder
+        /// and is the one the first install chose: each install after the
+        /// first is the `then` of a selection inside the previous
+        /// install's `then`, and `pending_choice::substitute_install_server`
+        /// writes the chosen server into every one of them when the first
+        /// lands (the convention `MoveThisCardToRoot` follows). A field for
+        /// the reason `remote_only` is one: what narrows an install's
+        /// destinations is the install's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_server: Option<ServerId>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -2478,6 +2490,12 @@ pub enum Amount {
     /// not one. Composition didn't work: `InScoreAreaWithSubtype` counts a
     /// subtype, and Sting!'s, Ambush, is printed on other agendas.
     CopiesInScoreArea(Side),
+    /// The agendas in `side`'s score area, every one, a card added there
+    /// "as an agenda" included (CR 10.1.3) — Fast Break's "X is equal to
+    /// the number of agendas in the Runner's score area". Composition
+    /// didn't work: `CopiesInScoreArea` counts one card and
+    /// `InScoreAreaWithSubtype` one subtype, and `AgendaPoints` sums points.
+    AgendasInScoreArea(Side),
     /// The counters of this kind on the acting card's controller's
     /// installed cards, all of them — The Nihilist's "remove any 2 virus
     /// counters from your installed cards", which is not offered unless
@@ -3201,7 +3219,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, only_server } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -3217,6 +3235,7 @@ impl Effect {
                     if_installed,
                     ignore_credit_costs,
                     any_position,
+                    only_server,
                 }
             }
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {

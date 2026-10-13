@@ -1768,6 +1768,46 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
     }
 }
 
+/// Writes the server the Corp just installed into over every later
+/// install's `only_server` placeholder in the rider (Fast Break's "in the
+/// root of and/or protecting **a single remote server**"): through the
+/// selections and installs nested in it, which is where each later
+/// install of the same instruction waits. Apart from
+/// `substitute_chosen_server`, which stops at a selection, because a
+/// selection's own `then` is resolved as the card it chose and an access
+/// or a run rider inside one was never written for the server an install
+/// chose.
+fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
+    let boxed = |effect: Box<Effect>| Box::new(substitute_install_server(*effect, server));
+    match effect {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
+            Effect::PromptInstallCorpCard {
+                origin_zone,
+                ignore_costs,
+                discount,
+                then: then.map(boxed),
+                remote_only,
+                central_only,
+                another_server,
+                new_remote,
+                rez,
+                if_rezzed,
+                if_installed,
+                ignore_credit_costs,
+                not_in_root_of,
+                any_position,
+                only_server: only_server.map(|_| server),
+            }
+        }
+        Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+        }
+        Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(|e| substitute_install_server(e, server)).collect()),
+        Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+        other => other,
+    }
+}
+
 /// What an install "in any position" asks (`PendingDecision::ChooseNumber::
 /// install`): the printed clause, and what the number means.
 pub(crate) const ANY_POSITION_PROMPT: &str = "in any position protecting a server — how many pieces of ice are outward of it (0 is the outermost)";
@@ -1893,7 +1933,7 @@ fn install_parked(
     // (`PromptInstallCorpCard::then`) — resolved as the parking install,
     // never as the card that just landed.
     if let Some(then) = pending_install.then {
-        let effect = substitute_chosen_server(*then, server);
+        let effect = substitute_install_server(substitute_chosen_server(*then, server), server);
         let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
         ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
         events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);

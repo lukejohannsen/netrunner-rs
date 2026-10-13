@@ -85,7 +85,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("patchwork", "Patchwork"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
-    ("fast_break", "Fast Break"),
     ("daruma", "Daruma"),
     ("eavesdrop", "Eavesdrop"),
 ];
