@@ -1,0 +1,25 @@
+{
+  "id": "kongamato",
+  "title": "Kongamato",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "DuringEncounter",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "[trash]: Break the first subroutine on the encountered piece of ice."
+    }
+  ],
+  "triggers": [],
+  "built_from": 21027,
+  "is_playable": true
+}

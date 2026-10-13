@@ -34354,3 +34354,141 @@ mod kitara_stage_6b {
         assert_eq!(wrong.runner.resources.credits.0, 9);
     }
 }
+
+/// Kitara Stage 7a: breakers and break triggers, composed.
+mod kitara_stage_7a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn rig(card: &str, install: u32, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), base_strength: strength, ..Default::default() }
+    }
+
+    fn ice_at(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// The run on HQ, every window passed, up to its first encounter, with
+    /// any "when you encounter" offer still open.
+    fn encountering(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut at, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        while at.active_run.as_ref().is_some_and(|run| run.phase != crate::rules::RunPhase::EncounterIce) && at.pending_decision.is_none() && at.pending_paid_choice.is_none() {
+            let legal = crate::rules::legal_actions(&at, registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .expect("a way on");
+            at = apply_action(&at, registry, next).expect("on").0;
+        }
+        at
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, install: u32, ability_index: usize) -> GameState {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index }).expect("use it").0
+    }
+
+    fn all_broken(state: &GameState) -> bool {
+        state.active_run.as_ref().is_some_and(|run| run.ice[0].subroutines.iter().all(|sub| sub.status == crate::rules::SubroutineStatus::Broken))
+    }
+
+    #[test]
+    fn amina_breaks_three_code_gate_subroutines_and_costs_the_corp_a_credit_once_a_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq)];
+        state.runner.rig = vec![rig("amina", 2001, 3)];
+        let at = encountering(&state, &registry);
+        let broken = close_all_windows(act(&at, &registry, 2001, 0), &registry).0;
+        assert_eq!(broken.runner.resources.credits.0, 8);
+        assert_eq!(broken.corp.resources.credits.0, 9, "fully broken: the Corp loses 1[credit]");
+    }
+
+    #[test]
+    fn cyberdelia_pays_a_credit_the_first_time_each_turn_any_ice_is_fully_broken() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq)];
+        state.runner.rig = vec![rig("amina", 2001, 3), rig("cyberdelia", 2002, 0)];
+        let at = encountering(&state, &registry);
+        let mut broken = act(&at, &registry, 2001, 0);
+        while broken.pending_decision.is_some() {
+            let first = crate::rules::legal_actions(&broken, &registry).into_iter().next().expect("an answer");
+            broken = apply_action(&broken, &registry, first).expect("order the two").0;
+        }
+        let broken = close_all_windows(broken, &registry).0;
+        assert_eq!(broken.runner.resources.credits.0, 10 - 2 + 1);
+        let mut bare = broken.clone();
+        bare.runner.rig.retain(|card| card.card != id("cyberdelia"));
+        assert_eq!(crate::rules::memory::available_memory(&broken, &registry), crate::rules::memory::available_memory(&bare, &registry) + 1, "+1[mu]");
+    }
+
+    #[test]
+    fn laamb_and_engolo_pay_2_once_a_turn_to_give_the_encountered_ice_their_type() {
+        let registry = registry();
+        for (breaker, ice, ice_type) in [("laamb", "enigma", crate::dsl::IceType::Barrier), ("engolo", "ice_wall", crate::dsl::IceType::CodeGate)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice_at(ice, ServerId::Hq)];
+            state.runner.rig = vec![rig(breaker, 2001, 2)];
+            let offered = encountering(&state, &registry);
+            assert!(offered.pending_paid_choice.is_some(), "{breaker}: you may pay 2[credit]");
+            let (paid, _) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+            assert!(crate::rules::continuous::ice_gains_subtype(&paid, &registry, fixture_install_id(ice), ice_type), "{breaker}: gains it");
+            let broken = act(&paid, &registry, 2001, 0);
+            assert!(all_broken(&broken), "{breaker}: its own type now");
+        }
+    }
+
+    #[test]
+    fn kongamato_and_logic_bomb_trash_themselves_to_break_or_bypass() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq)];
+        state.runner.rig = vec![rig("kongamato", 2001, 0), rig("logic_bomb", 2002, 0)];
+        let at = encountering(&state, &registry);
+        let broke = act(&at, &registry, 2001, 0);
+        assert!(all_broken(&broke), "the first subroutine");
+        assert!(broke.runner.heap.contains(&id("kongamato")));
+
+        let bypassed = close_all_windows(act(&at, &registry, 2002, 0), &registry).0;
+        assert!(bypassed.runner.heap.contains(&id("logic_bomb")));
+        assert_eq!(bypassed.runner.resources.clicks.0, 0, "lose any remaining clicks");
+        assert!(bypassed.active_run.as_ref().is_none_or(|run| run.phase != crate::rules::RunPhase::EncounterIce), "bypassed");
+    }
+
+    #[test]
+    fn takobi_banks_a_counter_per_fully_broken_ice_and_spends_two_for_plus_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq)];
+        state.runner.rig = vec![rig("amina", 2001, 3), crate::rules::InstalledRunnerCard { counters: 2, ..rig("takobi", 2002, 0) }];
+        let at = encountering(&state, &registry);
+        let asked = act(&at, &registry, 2002, 0);
+        let toggle = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).expect("Amina");
+        let (asked, _) = apply_action(&asked, &registry, toggle).expect("toggle");
+        let (pumped, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let amina = pumped.runner.rig.iter().find(|card| card.card == id("amina")).expect("Amina");
+        assert_eq!(crate::rules::continuous::breaker_strength(&pumped, &registry, amina), 6);
+        assert_eq!(pumped.runner.rig.iter().find(|card| card.card == id("takobi")).map(|card| card.counters), Some(0));
+
+        let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back");
+        let mut placed = act(&pumped, &registry, 2001, 0);
+        // The Corp's lost credit and Takobi's offer, then "you may": the
+        // first answer each time, which places the counter.
+        while placed.pending_decision.is_some() {
+            let first = crate::rules::legal_actions(&placed, &registry).into_iter().next().expect("an answer");
+            placed = apply_action(&placed, &registry, first).expect("answer").0;
+        }
+        assert_eq!(placed.runner.rig.iter().find(|card| card.card == id("takobi")).map(|card| card.counters), Some(1));
+    }
+}
