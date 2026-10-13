@@ -1,0 +1,35 @@
+{
+  "id": "market_forces",
+  "title": "Market Forces",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCreditsAmount": [
+            "Runner",
+            {
+              "Times": {
+                "amount": "RunnerTags",
+                "times": 3
+              }
+            }
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            "CreditsLostThisResolution"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 21117,
+  "is_playable": true
+}

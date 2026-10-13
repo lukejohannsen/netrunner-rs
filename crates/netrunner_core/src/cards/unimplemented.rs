@@ -95,9 +95,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("upya", "Upya"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
-    ("genotyping", "Genotyping"),
-    ("self_growth_program", "Self-Growth Program"),
-    ("wake_up_call", "Wake Up Call"),
 ];
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
@@ -114,9 +111,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jinja_city_grid", "Jinja City Grid"),
     ("bacterial_programming", "Bacterial Programming"),
     ("jua", "Jua"),
-    ("threat_assessment", "Threat Assessment"),
-    ("economic_warfare", "Economic Warfare"),
-    ("distract_the_masses", "Distract the Masses"),
 ];
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
@@ -168,7 +162,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jackpot", "Jackpot!"),
     ("warden_fatuma", "Warden Fatuma"),
     ("mwanza_city_grid", "Mwanza City Grid"),
-    ("standard_procedure", "Standard Procedure"),
 ];
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.
@@ -184,11 +177,8 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("flame_out", "Flame-out"),
     ("black_hat", "Black Hat"),
     ("kasi_string", "Kasi String"),
-    ("riot_suppression", "Riot Suppression"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
-    ("market_forces", "Market Forces"),
     ("surveyor", "Surveyor"),
-    ("high_profile_target", "High-Profile Target"),
 ];
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.

@@ -1,0 +1,29 @@
+{
+  "id": "high_profile_target",
+  "title": "High-Profile Target",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Meat",
+            {
+              "Times": {
+                "amount": "RunnerTags",
+                "times": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 21119,
+  "is_playable": true
+}

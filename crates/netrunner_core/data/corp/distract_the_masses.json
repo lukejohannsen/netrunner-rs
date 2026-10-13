@@ -1,0 +1,48 @@
+{
+  "id": "distract_the_masses",
+  "title": "Distract the Masses",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 2,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 0,
+                "max": 2,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnRAndD"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21040,
+  "is_playable": true
+}
