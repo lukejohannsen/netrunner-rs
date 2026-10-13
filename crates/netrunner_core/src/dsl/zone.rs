@@ -234,6 +234,19 @@ pub enum CardFilter {
     /// the parking card is a Trojan in the rig, so `NotSourceCard` admits
     /// every piece of ice, its host among them.
     NotThisCardsHost,
+    /// No piece of ice whose subroutine is already resolving through this
+    /// one's — Ravana 1.0's "Resolve 1 subroutine on **another** rezzed
+    /// bioroid ice", asked by a Ravana whose own subroutine another
+    /// Ravana resolved (`EncounterTally::relayed`). Null Signal Games'
+    /// ruling on Ravana: with only Ravanas rezzed, "a mandatory loop is
+    /// created … the Corp chooses a number X and the loop continues X
+    /// iterations and then stops", and "the subroutine does not have any
+    /// effect"; going back to an ice already in the chain is that loop, and
+    /// whatever it could reach the first pass already offered, so the chain
+    /// is left out and a chain with nowhere new to go ends. Instance-level,
+    /// compared by install. Composition didn't work: `NotSourceCard` knows
+    /// only the parking card, and two Ravanas each chose the other forever.
+    NotRelaying,
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
     InstallableRunnerCardWithDiscount(crate::dsl::Discount),
@@ -663,6 +676,7 @@ impl CardFilter {
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
+                | CardFilter::NotRelaying
                 | CardFilter::InChosenServer
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
@@ -764,6 +778,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
+        CardFilter::NotRelaying => true,
         CardFilter::InChosenServer => true,
         // Written over before it is read; unresolved, nothing was chosen.
         CardFilter::OfChosenCardType => false,

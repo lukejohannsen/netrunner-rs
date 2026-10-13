@@ -87,7 +87,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("dj_fenris", "DJ Fenris"),
     ("fast_break", "Fast Break"),
     ("daruma", "Daruma"),
-    ("acme_consulting_the_truth_you_need", "Acme Consulting: The Truth You Need"),
     ("eavesdrop", "Eavesdrop"),
     ("formicary", "Formicary"),
 ];
