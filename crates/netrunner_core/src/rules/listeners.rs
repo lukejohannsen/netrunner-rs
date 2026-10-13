@@ -980,17 +980,39 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // agenda beside it. Its "this server" is the attacked one (the
     // listener's `server`, and `EffectRequirement::
     // AgendaCameFromThisCardsServer`'s fallback).
+    // A persisting card that is itself the subject — Overseer Matrix's
+    // "whenever the Runner trashes a card from this server", heard of its
+    // own trash — already listens as the subject, once per copy trashed.
     if let Some(run) = &state.active_run {
-        corp.extend(run.persistent_trashed_upgrades.iter().map(|card| Listener {
-            side: Side::Corp,
-            card: card.clone(),
-            install: None,
-            server: Some(run.server),
-            active: true,
-            in_discard: false,
-            in_runner_score_area: false,
-            while_unrezzed: false,
-        }));
+        let mut subjects: Vec<&CardId> = moments
+            .iter()
+            .filter_map(|moment| match &moment.about {
+                About::Card { card, .. } if moment.trashed_install.is_some() => Some(card),
+                _ => None,
+            })
+            .collect();
+        let persisting: Vec<Listener> = run
+            .persistent_trashed_upgrades
+            .iter()
+            .filter(|card| match subjects.iter().position(|subject| subject == card) {
+                Some(position) => {
+                    subjects.remove(position);
+                    false
+                }
+                None => true,
+            })
+            .map(|card| Listener {
+                side: Side::Corp,
+                card: card.clone(),
+                install: None,
+                server: Some(run.server),
+                active: true,
+                in_discard: false,
+                in_runner_score_area: false,
+                while_unrezzed: false,
+            })
+            .collect();
+        corp.extend(persisting);
     }
 
     // A card in the Runner's heap whose text is active there (CR 9.1.8b:
