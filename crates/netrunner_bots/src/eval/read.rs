@@ -173,7 +173,7 @@ pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::Serve
 /// `installed` as a run first meets it — rezzed, every printed
 /// subroutine pending, nothing gained — or `None` for a card that is no
 /// piece of ice.
-fn as_first_met(installed: &InstalledCard, def: &CardDefinition) -> Option<netrunner_core::rules::RunIce> {
+pub(super) fn as_first_met(installed: &InstalledCard, def: &CardDefinition) -> Option<netrunner_core::rules::RunIce> {
     use netrunner_core::rules::{EncounteredSubroutine, RunIce};
     let CardType::Ice(ice_type) = def.card_type else { return None };
     Some(RunIce {

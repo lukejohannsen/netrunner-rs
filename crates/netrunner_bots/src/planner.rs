@@ -2966,6 +2966,13 @@ mod positions {
         state.runner.memory_units = MemoryUnits(4);
         state.runner.grip = vec![CardId("boomerang".to_string())];
         state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        // The seat knows its own deck, so the sample deals it the stack it
+        // has: with none, the sample drew the format's pool, where Tsakhia
+        // "Bankhar" Gantulga opens this sentry too (§80), and three draws
+        // chasing it outbid the reading under test.
+        let identity = CardId("chaos_theory_wunderkind".to_string());
+        state.runner.identity = Some(identity.clone());
+        let deck = netrunner_core::rules::Deck { identity, cards: vec![(CardId("boomerang".to_string()), 1), (CardId("sure_gamble".to_string()), 10)] };
         state.corp.resources.credits = Credits(5);
         // Next to nothing in the centrals, so the remote is the run: a sample
         // that deals R&D an agenda must not outbid the reading under test.
@@ -2975,11 +2982,10 @@ mod positions {
         state.corp.installed.push(InstalledCard { card: CardId("offworld_office".to_string()), install_id: InstallId(5), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 3, ..Default::default() });
         state.next_install_id = 10;
 
-        // One sample decides this position, so the seed is one the reading
-        // holds on: seed 3 drew three times once Patchwork joined the pool
-        // (any hardware did it, read as drift), and seeds 1, 2 and 4–7 all
-        // install Boomerang and run.
-        let mut agent = PlanningAgent::new(Side::Runner, 1);
+        // One sample decides this position. Seed 3 once drew three times
+        // after Patchwork joined the pool, because the sample dealt the
+        // stack from the pool; with the deck known (above) any seed holds.
+        let mut agent = PlanningAgent::new(Side::Runner, 1).with_knowledge(crate::knowledge::Knowledge::new(netrunner_core::format::NsgFormat::Unrestricted, Some(deck)));
         let mut actions = Vec::new();
         for _ in 0..20 {
             match current_actor(&state) {

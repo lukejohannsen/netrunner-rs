@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + chosen_ice_value(state, registry, def, w, horizon) + prevention_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + chosen_ice_value(state, registry, def, w, horizon) + subroutine_swap_value(state, registry, def, w, horizon) + pass_click_value(state, registry, def, w, horizon) + prevention_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -735,6 +735,109 @@ pub(super) fn chosen_ice_value(state: &GameState, registry: &CardRegistry, def: 
         })
         .fold(0.0, f64::max);
     saving * f64::from(horizon) * w.future_credit_weight
+}
+
+/// What a card that swaps the subroutines of the first piece of ice it
+/// meets each turn on a server it chooses saves the Runner (Phase 5 §80):
+/// Tsakhia "Bankhar" Gantulga's "whenever the Corp would resolve a
+/// subroutine, instead they resolve 'Do 1 net damage'" is the outermost
+/// rezzed piece of the server best for it let through for a net damage a
+/// subroutine — its break credits (a piece no rig card breaks at the rate
+/// `best_break_saving` reads a server opened) less that damage at the
+/// rate the Runner fears a trap's, in credits — a run a turn over the
+/// horizon at `future_credit_weight`. The swap is resolved in the run
+/// itself, so a run reads it once it is made; this is why the card is
+/// worth its install, where it read as 1[credit] for nothing. Read for
+/// the held card and the installed one alike, since the server is
+/// chosen each turn.
+pub(super) fn subroutine_swap_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::rules::InstallSlot;
+    if w.future_credit_weight == 0.0 || !def.triggers.iter().any(|trigger| trigger.effects.iter().any(|effect| matches!(effect, Effect::ReplaceSubroutines))) {
+        return 0.0;
+    }
+    let mut seen = Vec::new();
+    let mut best = 0.0_f64;
+    for installed in state.corp.installed.iter().filter(|card| card.rezzed && card.slot == InstallSlot::Ice) {
+        // The outermost piece is first in `installed`.
+        if seen.contains(&installed.server) {
+            continue;
+        }
+        seen.push(installed.server);
+        let Some(ice) = registry.get(&installed.card).and_then(|ice| read::as_first_met(installed, ice)) else { continue };
+        let broken = match read::cheapest_break_cost(state, &ice, registry, &mut read::fresh_stock(state)) {
+            Some(credits) => f64::from(credits),
+            None => w.unbreakable_ice_weight / w.own_credit_weight.max(f64::EPSILON),
+        };
+        let damage = ice.subroutines.len() as f64 * w.known_trap_damage_weight / w.own_credit_weight.max(f64::EPSILON);
+        best = best.max(broken - damage);
+    }
+    best * f64::from(horizon) * w.future_credit_weight
+}
+
+/// `subroutine_swap_value` for each such card in the rig (Phase 5 §80).
+pub(super) fn rig_subroutine_swap_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card)).map(|def| subroutine_swap_value(state, registry, def, w, horizon)).sum()
+}
+
+/// The clicks a program hosted on ice gains each time its host is passed
+/// (Pichação's "whenever you pass host ice, you may gain [click]"; Phase
+/// 5 §80), read off an `OnIcePassed` trigger about the host.
+fn clicks_on_passing_host(def: &CardDefinition) -> u32 {
+    let mut clicks = 0;
+    for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnIcePassed && def.installs_on_ice) {
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut |effect| {
+                if let Effect::GainClicks(Side::Runner, n) = effect {
+                    clicks = clicks.max(*n);
+                }
+            });
+        }
+    }
+    clicks
+}
+
+/// What a click gained on passing host ice is worth (Phase 5 §80): a
+/// click a turn over the horizon at `future_credit_weight`, a click at
+/// `click_weight` in credits — only on a rezzed piece the rig gets past,
+/// since a host the Runner never passes pays nothing. Pichação read as
+/// 1[credit] and 1[mu] for nothing, and the planner installed it 2 times
+/// where random seats did 11. Held, the best host on the table; the
+/// second click a run turns it back to the grip, which caps it at one a
+/// turn.
+pub(super) fn pass_click_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    let clicks = clicks_on_passing_host(def);
+    if w.future_credit_weight == 0.0 || clicks == 0 || !state.corp.installed.iter().any(|ice| passable(state, registry, ice)) {
+        return 0.0;
+    }
+    pass_click_worth(clicks, w, horizon)
+}
+
+/// `pass_click_value` for each such program in the rig, on its own host.
+pub(super) fn rig_pass_click_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| state.corp.installed.iter().any(|ice| Some(ice.install_id) == card.hosted_on_ice && passable(state, registry, ice)))
+        .filter_map(|card| registry.get(&card.card))
+        .map(clicks_on_passing_host)
+        .filter(|clicks| *clicks > 0)
+        .map(|clicks| pass_click_worth(clicks, w, horizon))
+        .sum()
+}
+
+fn pass_click_worth(clicks: u32, w: &Weights, horizon: u32) -> f64 {
+    f64::from(clicks) * w.click_weight / w.own_credit_weight.max(f64::EPSILON) * f64::from(horizon) * w.future_credit_weight
+}
+
+/// A rezzed piece of ice some card in the rig breaks.
+fn passable(state: &GameState, registry: &CardRegistry, ice: &netrunner_core::rules::InstalledCard) -> bool {
+    ice.rezzed
+        && ice.slot == netrunner_core::rules::InstallSlot::Ice
+        && registry.get(&ice.card).and_then(|def| read::as_first_met(ice, def)).is_some_and(|met| read::cheapest_break_cost(state, &met, registry, &mut read::fresh_stock(state)).is_some())
 }
 
 /// The harm a Corp card can do the Runner that a prevention answers:
@@ -1271,6 +1374,8 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A card that chose a piece of ice on install is the way past it
     // (`chosen_ice_value`, Phase 5 §77).
     *score += rig_chosen_ice_value(state, registry, w, horizon);
+    *score += rig_subroutine_swap_value(state, registry, w, horizon);
+    *score += rig_pass_click_value(state, registry, w, horizon);
     // A prevention ready against what the Corp threatens is the harm it
     // will prevent (`prevention_value`, Phase 5 §78).
     *score += rig_prevention_value(state, registry, w, horizon);
@@ -1578,6 +1683,52 @@ mod tests {
     /// Stargate's three looks at R&D over one hidden access, at the
     /// guide's rate; nothing at the reference's, and nothing for a
     /// breaker.
+    /// A click gained on passing host ice is a click a turn (Phase 5 §80):
+    /// Pichação is worth it with an Ice Wall Corroder breaks on the table,
+    /// held and hosted alike, and nothing on ice the rig cannot pass.
+    #[test]
+    fn a_click_on_passing_host_ice_is_a_click_a_turn() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let pool = crate::eval::test_support::pool();
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = netrunner_core::rules::Credits(10);
+        state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        assert_eq!(pass_click_value(&state, &pool, card("pichacao"), &guide, 5), 0.0, "no rig card passes Ice Wall");
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() }];
+        let click = guide.click_weight / guide.own_credit_weight * 5.0 * guide.future_credit_weight;
+        assert!((pass_click_value(&state, &pool, card("pichacao"), &guide, 5) - click).abs() < 1e-9);
+        assert_eq!(pass_click_value(&state, &pool, card("corroder"), &guide, 5), 0.0);
+        assert_eq!(rig_pass_click_value(&state, &pool, &guide, 5), 0.0);
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("pichacao".to_string()), install_id: InstallId(11), hosted_on_ice: Some(InstallId(1)), ..Default::default() });
+        assert!((rig_pass_click_value(&state, &pool, &guide, 5) - click).abs() < 1e-9, "hosted, credited the same");
+    }
+
+    /// The first piece met each turn on the chosen server is let through
+    /// for a net damage a subroutine (Phase 5 §80): Tsakhia against an
+    /// Ice Wall no rig card breaks is the server opened less one net
+    /// damage; against one Corroder breaks for a credit, the damage costs
+    /// more than the break and the card is worth nothing; and a card that
+    /// swaps nothing is not read.
+    #[test]
+    fn a_subroutine_swap_is_the_first_piece_let_through_for_its_damage() {
+        use netrunner_core::rules::{InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let pool = crate::eval::test_support::pool();
+        let guide = Weights::default().at_the_guides_rate();
+        let card = |id: &str| pool.get(&CardId(id.to_string())).expect("card");
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = netrunner_core::rules::Credits(10);
+        state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        let opened = (guide.unbreakable_ice_weight - guide.known_trap_damage_weight) / guide.own_credit_weight * 5.0 * guide.future_credit_weight;
+        assert!(opened > 0.0);
+        assert!((subroutine_swap_value(&state, &pool, card("tsakhia_bankhar_gantulga"), &guide, 5) - opened).abs() < 1e-9);
+        assert_eq!(subroutine_swap_value(&state, &pool, card("corroder"), &guide, 5), 0.0);
+        assert_eq!(subroutine_swap_value(&state, &pool, card("tsakhia_bankhar_gantulga"), &Weights::default(), 5), 0.0);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() }];
+        assert_eq!(subroutine_swap_value(&state, &pool, card("tsakhia_bankhar_gantulga"), &guide, 5), 0.0, "a credit's break is cheaper than a net damage");
+    }
+
     #[test]
     fn stargate_is_worth_its_looks_over_a_breach() {
         let mut pool = CardRegistry::new();
