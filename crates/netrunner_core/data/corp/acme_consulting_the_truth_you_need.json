@@ -1,0 +1,25 @@
+{
+  "id": "acme_consulting_the_truth_you_need",
+  "title": "Acme Consulting: The Truth You Need",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "Tags": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": "EncounteringOutermostIce",
+      "text": "The Runner is considered to have 1 additional tag (even if they have 0) during encounters with the outermost piece of ice protecting any server."
+    }
+  ],
+  "triggers": [],
+  "built_from": 22042,
+  "is_playable": true
+}

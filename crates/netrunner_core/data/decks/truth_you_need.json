@@ -1,0 +1,105 @@
+{
+  "id": "truth_you_need",
+  "name": "The Truth You Need",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "acme_consulting_the_truth_you_need",
+  "cards": [
+    {
+      "card": "gold_farmer",
+      "count": 3
+    },
+    {
+      "card": "f2p",
+      "count": 1
+    },
+    {
+      "card": "hydra",
+      "count": 2
+    },
+    {
+      "card": "lethe",
+      "count": 2
+    },
+    {
+      "card": "capacitor",
+      "count": 2
+    },
+    {
+      "card": "scapenet",
+      "count": 2
+    },
+    {
+      "card": "kingmaking",
+      "count": 3
+    },
+    {
+      "card": "freedom_of_information",
+      "count": 2
+    },
+    {
+      "card": "arella_salvatore",
+      "count": 1
+    },
+    {
+      "card": "siu",
+      "count": 1
+    },
+    {
+      "card": "attitude_adjustment",
+      "count": 2
+    },
+    {
+      "card": "tollbooth",
+      "count": 2
+    },
+    {
+      "card": "tgtbt",
+      "count": 2
+    },
+    {
+      "card": "fly_on_the_wall",
+      "count": 2
+    },
+    {
+      "card": "klevetnik",
+      "count": 2
+    },
+    {
+      "card": "unsmiling_tsarevna",
+      "count": 2
+    },
+    {
+      "card": "turtlebacks",
+      "count": 2
+    },
+    {
+      "card": "vladisibirsk_city_grid",
+      "count": 2
+    },
+    {
+      "card": "hostile_infrastructure",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    },
+    {
+      "card": "ganked",
+      "count": 2
+    },
+    {
+      "card": "game_over",
+      "count": 2
+    },
+    {
+      "card": "bernice_mai",
+      "count": 2
+    }
+  ]
+}

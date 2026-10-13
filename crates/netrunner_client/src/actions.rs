@@ -350,6 +350,13 @@ pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
         .or_else(|| scored_card_id(view, id))
 }
 
+/// The card whose abilities the install `id` has: the identity it hosts
+/// when it gains one's text (DJ Fenris's, `GameState::rig_abilities_card`),
+/// else its own card.
+pub fn abilities_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
+    view.runner.hosted_identities.iter().find(|hosted| hosted.host == *id).map(|hosted| hosted.card.clone()).or_else(|| installed_card_id(view, id))
+}
+
 /// An agenda in either score area by the handle it kept there — a scored
 /// agenda's ability (Proprionegation) and a stolen one's, which the Corp
 /// uses from the Runner's score area (Oracle Thinktank). Faceup in both.
@@ -790,7 +797,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // index alone names nothing.
         PlayerAction::ActivateAbility { target, ability_index } => {
             let ability = view
-                .and_then(|v| installed_card_id(v, target))
+                .and_then(|v| abilities_card_id(v, target))
                 .and_then(|card| registry.get(&card))
                 .and_then(|def| def.abilities.get(*ability_index));
             match ability {
@@ -890,6 +897,11 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                 view.and_then(|v| v.pending_payment.as_ref()?.own.as_ref())
             {
                 return crate::prose::rez_alternative_label(card, *option_index, registry);
+            }
+            if let Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Interrupt { card, less }, .. }) =
+                view.and_then(|v| v.pending_payment.as_ref()?.own.as_ref())
+            {
+                return crate::prose::interrupt_label(card, *less, *option_index, registry);
             }
             let parked = view.and_then(|v| match &v.pending_decision {
                 Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {

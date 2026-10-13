@@ -1,0 +1,41 @@
+{
+  "id": "najja_1_0",
+  "title": "Najja 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 21011,
+  "is_playable": true
+}

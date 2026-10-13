@@ -1,0 +1,39 @@
+{
+  "id": "reboot",
+  "title": "Reboot",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Archives",
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnHeap",
+                "filter": "Any",
+                "min": 0,
+                "max": 5,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnInstalledFacedown"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, instead of breaching Archives, install up to 5 cards from your heap facedown."
+    }
+  ],
+  "built_from": 22023,
+  "is_playable": true
+}

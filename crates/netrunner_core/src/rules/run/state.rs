@@ -100,6 +100,15 @@ pub struct GainedForTheRun {
 /// set of keys, as the run's are.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncounterTally {
+    /// The cards a "resolve 1 subroutine on another … ice" chain has gone
+    /// through this encounter, in order: the card that began it, then each
+    /// piece of ice whose subroutine was resolved through the one before
+    /// (`Effect::ResolveSubroutineOfSelectedIce`), which `CardFilter::
+    /// NotRelaying` leaves out of the next choice. On the tally, so it ends
+    /// with the encounter; state rather than context, because each link
+    /// parks a selection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relayed: Vec<InstallId>,
     /// Printed subroutines broken by a breaker the ice's `BreakLimit` does
     /// not except.
     pub limited_breaks: u32,

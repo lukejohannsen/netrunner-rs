@@ -1,0 +1,103 @@
+{
+  "id": "anansi",
+  "title": "Anansi",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 8,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "This",
+      "requirement": {
+        "Not": "IceFullyBrokenThatEncounter"
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever an encounter with this ice ends, if the Runner did not fully break it, do 3 net damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Look at the top 5 cards of R&D and arrange them in any order.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "TopOfZone": 5
+          },
+          "min": 0,
+          "max": 5,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnRAndD"
+        }
+      }
+    },
+    {
+      "text": "You may draw 1 card. The Runner may pay 2[credit] to draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          },
+          {
+            "OfferPaidChoice": {
+              "side": "Runner",
+              "cost": {
+                "Credits": 2
+              },
+              "if_paid": {
+                "DrawCards": [
+                  "Runner",
+                  1
+                ]
+              },
+              "if_declined": {
+                "Sequence": []
+              },
+              "text": "The Runner may pay 2[credit] to draw 1 card"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 21051,
+  "is_playable": true
+}

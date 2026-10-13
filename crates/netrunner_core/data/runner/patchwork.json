@@ -1,0 +1,58 @@
+{
+  "id": "patchwork",
+  "title": "Patchwork",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "Interrupt": {
+          "cost": {
+            "Trash": {
+              "from": "OwnGrip",
+              "filter": "Any",
+              "count": 1
+            }
+          },
+          "less": 2
+        }
+      },
+      "applies_to": {
+        "Installing": "Any"
+      },
+      "text": "When you would play or install a card, you may trash 1 card from your grip. If you do, instead play or install that card paying 2[credit] less."
+    },
+    {
+      "kind": {
+        "Interrupt": {
+          "cost": {
+            "Trash": {
+              "from": "OwnGrip",
+              "filter": "Any",
+              "count": 1
+            }
+          },
+          "less": 2
+        }
+      },
+      "applies_to": {
+        "Playing": "Any"
+      },
+      "text": "When you would play or install a card, you may trash 1 card from your grip. If you do, instead play or install that card paying 2[credit] less."
+    }
+  ],
+  "triggers": [],
+  "built_from": 22004,
+  "is_playable": true
+}

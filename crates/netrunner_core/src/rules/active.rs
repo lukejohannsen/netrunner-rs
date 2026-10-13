@@ -90,6 +90,12 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         server: Some(installed.server),
         place: Place::Installed,
     });
+    // A condition counter is active while it is hosted (CR 1.9.5j), in its
+    // host's server, after the table it is on.
+    let conditions = state.corp.conditions.iter().filter_map(|condition| {
+        let host = state.find_corp_install(condition.host)?;
+        Some(ActiveCard { side: Side::Corp, card: &condition.card, install: Some(condition.handle), server: Some(host.server), place: Place::Installed })
+    });
     // A lockdown in the play area (CR 1.8.3a), after the table: it was
     // played after anything installed there.
     let in_play = state.corp.play_area.iter().map(|played| ActiveCard {
@@ -99,7 +105,7 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         server: None,
         place: Place::PlayArea,
     });
-    identity.chain(scored).chain(installed).chain(in_play)
+    identity.chain(scored).chain(installed).chain(conditions).chain(in_play)
 }
 
 pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
@@ -116,6 +122,13 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         server: installed.hosted_on_ice.and_then(|host| state.corp.installed.iter().find(|ice| ice.install_id == host)).map(|ice| ice.server),
         place: Place::Installed,
     });
+    // An identity a rig card hosts and gains the text of (DJ Fenris's),
+    // active as that install for as long as the host is in the rig: its
+    // triggers are heard, and its standing effects apply, as the host's.
+    let hosted_identities = state.runner.hosted_identities.iter().filter_map(|hosted| {
+        let host = state.find_rig_install(hosted.host)?;
+        Some(ActiveCard { side: Side::Runner, card: &hosted.card, install: Some(host.install_id), server: None, place: Place::Installed })
+    });
     let run_event = crate::rules::run::run_event(state, registry).into_iter().map(|card| ActiveCard {
         side: Side::Runner,
         card,
@@ -123,7 +136,7 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         server: None,
         place: Place::PlayArea,
     });
-    identity.chain(rig).chain(run_event)
+    identity.chain(rig).chain(hosted_identities).chain(run_event)
 }
 
 /// Whether the install `install` has lost all its abilities (CR 9.1.9a):

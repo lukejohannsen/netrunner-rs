@@ -173,7 +173,7 @@ pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::Serve
 /// `installed` as a run first meets it — rezzed, every printed
 /// subroutine pending, nothing gained — or `None` for a card that is no
 /// piece of ice.
-fn as_first_met(installed: &InstalledCard, def: &CardDefinition) -> Option<netrunner_core::rules::RunIce> {
+pub(super) fn as_first_met(installed: &InstalledCard, def: &CardDefinition) -> Option<netrunner_core::rules::RunIce> {
     use netrunner_core::rules::{EncounteredSubroutine, RunIce};
     let CardType::Ice(ice_type) = def.card_type else { return None };
     Some(RunIce {
@@ -1292,6 +1292,17 @@ fn instead(effect: &Effect, state: &GameState, registry: &CardRegistry, hosted: 
             Instead::default()
         }
         Effect::Access { from: CardZoneRef::OpponentSetAside, .. } => Instead { looks: *set_aside, ..Default::default() },
+        // "Instead of breaching HQ, breach R&D. When you do, access 1
+        // additional card" (Beatriz Friere Gonzalez; Phase 5 §79): a breach
+        // of R&D is its one access, and each card added to it one more.
+        // The added cards are counted ahead of the breach they join, as
+        // set-aside cards are ahead of their access: looks are a `max` in
+        // a sequence, because Stargate's look and its trash are one card.
+        Effect::Breach(netrunner_core::rules::ServerId::RnD) => Instead { looks: 1 + *set_aside, ..Default::default() },
+        Effect::AddAdditionalAccess { server: netrunner_core::rules::ServerId::RnD, count } => {
+            *set_aside += count;
+            Instead::default()
+        }
         Effect::PromptChooseCards { source: CardZoneRef::OpponentDeck, filter: CardFilter::TopOfZone(n), .. } => {
             Instead { looks: (*n).min(state.corp.r_and_d.len() as u32), ..Default::default() }
         }
@@ -1390,6 +1401,16 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
         let sum = tally_list(&trigger.effects, side);
         match trigger.trigger {
             Trigger::OnTurnStart => {
+                // "You may remove 1 hosted power counter to draw 1 card"
+                // (Solidarity Badge, Amanuensis; Phase 5 §77): what the
+                // counter pays, out of the stock — a paid choice's cost is
+                // not an effect, so the tally read it as nothing.
+                let sum = trigger.effects.iter().fold(sum, |sum, effect| match effect {
+                    Effect::OfferPaidChoice { side: payer, cost: Cost::RemoveCounters(n), if_paid, .. } if *payer == side => {
+                        sum.add(tally(if_paid, side)).add(Tally { counters: -(*n as i32), ..Default::default() })
+                    }
+                    _ => sum,
+                });
                 income.turn_credits += sum.credits.max(0) as u32;
                 income.turn_cards += sum.cards.max(0) as u32;
                 if sum.counters < 0 {
@@ -1421,6 +1442,10 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 run_counters += sum.counters.max(0) as u32;
             }
             Trigger::OnTrashedFromAccess | Trigger::OnAgendaStolen if sum.counters > 0 => income.counters_per_turn = 1,
+            // "The first time each turn you trash a Corp card" by any means
+            // (Solidarity Badge's second trigger, Phase 5 §77), as the
+            // access trash is read.
+            Trigger::OnCardTrashed if sum.counters > 0 && trigger.first_each_turn => income.counters_per_turn = 1,
             // "Instead of breaching that server, you may take any number
             // of credits from this resource" (Bank Job; Phase 5 §66): its
             // counters cash at a credit apiece, on the runs that take them.
@@ -1636,7 +1661,9 @@ fn click_cost(cost: Option<&Cost>) -> (u32, bool) {
 pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32) -> f64 {
     let stock = if income.stocked { Some(hosted.unwrap_or(income.printed_stock)) } else { None };
     let turn = (income.turn_credits + income.turn_cards) * horizon;
-    let turn = stock.map_or(turn, |stock| turn.min(stock));
+    // The stock a turn's use draws on grows by what the card places on
+    // itself a turn (Solidarity Badge's counter a trash; Phase 5 §77).
+    let turn = stock.map_or(turn, |stock| turn.min(stock + income.counters_per_turn * horizon));
     // A run's credits are a run a turn's (`Income::run_credits`), and the
     // stock they are placed into is not printed, so nothing bounds them.
     let run = (income.run_credits + income.run_cards) * horizon;
@@ -2292,6 +2319,13 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: 
     for_each_declared_effect(def, &mut |effect| match effect {
         Effect::AddAdditionalAccess { server: ServerId::RnD, count } => fixed += *count,
         Effect::AddAdditionalAccessAmount { server: ServerId::RnD, amount: Amount::HostedCounters } => per_counter = true,
+        // "You may remove up to 3 hosted power counters to access that
+        // many additional cards" (Wake Implant v2A-JRJ; Phase 5 §81): the
+        // number chosen is of the counters it hosts, so it reads as they
+        // do, where the chosen number had read as no access at all.
+        Effect::ChooseNumber { of: Some(Amount::HostedCounters), then, .. } => then.for_each_effect(&mut |effect| {
+            per_counter |= matches!(effect, Effect::AddAdditionalAccessAmount { server: ServerId::RnD, amount: Amount::ChosenNumber });
+        }),
         _ => {}
     });
     let hosted = if per_counter { counters.unwrap_or_else(|| declared_income(def).printed_stock) } else { 0 };
@@ -2299,7 +2333,11 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: 
     // choice's options are compared by what they pay (`Tally::worth`),
     // which a counter is not, so the placement is looked for outright.
     let grows = per_counter
-        && def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnSuccessfulRun && trigger.requirement.is_none()).any(|trigger| {
+        // And a counter placed the first time each turn something happens
+        // (The Twinning's "the first time each turn you spend credits from
+        // an installed card"; Phase 5 §81), read as a counter a turn — the
+        // decks that hold it hold the cards it is spent from.
+        && def.triggers.iter().filter(|trigger| (trigger.trigger == Trigger::OnSuccessfulRun || trigger.first_each_turn) && trigger.requirement.is_none()).any(|trigger| {
             let mut places = false;
             for effect in &trigger.effects {
                 effect.for_each_effect(&mut |effect| places |= matches!(effect, Effect::AddCounters(n) if *n > 0));
@@ -2712,6 +2750,11 @@ mod tests {
         assert!(!regolith.click_places);
         let fermenter = income("fermenter");
         assert_eq!((fermenter.cashout_per_counter, fermenter.printed_stock), (2, 1));
+        // A counter a trash, spent on a card a turn (Phase 5 §77): nothing
+        // in hand without a stock, a card a turn as the trashes place them.
+        let badge = income("solidarity_badge");
+        assert_eq!((badge.turn_cards, badge.stocked, badge.counters_per_turn, badge.printed_stock), (1, true, 1, 0));
+        assert!((future_credits(&badge, None, 5) - 5.0).abs() < 1e-9, "a card a turn over five turns");
         let rioters = income("rent_rioters");
         assert_eq!((rioters.click_credits, rioters.click_cost, rioters.click_trashes), (9, 3, true));
 

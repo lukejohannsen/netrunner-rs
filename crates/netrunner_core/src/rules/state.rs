@@ -411,6 +411,17 @@ pub struct CorpState {
     /// by the view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<PlayedOperation>,
+    /// Condition counters the Corp's operations became, each hosted on an
+    /// install (CR 1.13.6d, CR 3.5.1a: Eavesdrop "as a hosted condition
+    /// counter" on a piece of ice). Active while hosted (CR 1.9.5j), so
+    /// `rules::active` lists each in its host's server, and trashed with
+    /// the host (`ability::cascade_trash_hosted_programs`, the one place a
+    /// piece of ice takes what it hosts with it). Not on `InstalledCard`:
+    /// a counter is not an install, and a list beside the table keeps every
+    /// scan of the table as it was. Faceup, so public, and carried whole by
+    /// the view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<HostedCondition>,
     /// Ids of the cards in this deck that can be *played from Archives*
     /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
     /// Play this operation from Archives"). Seeded once by
@@ -422,6 +433,28 @@ pub struct CorpState {
     /// deck-wide list is seeded at setup instead of per entry.
     #[serde(default)]
     pub playable_from_archives: Vec<CardId>,
+}
+
+/// A condition counter on the table — see `CorpState::conditions`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostedCondition {
+    pub card: CardId,
+    /// The handle the operation was played with (`PlayedOperation::
+    /// handle`), kept as it becomes a counter: a trigger is pinned to the
+    /// copy that heard it, and its host's filter (`EventFilter::Host`)
+    /// finds it by this.
+    pub handle: InstallId,
+    /// The install it is hosted on.
+    pub host: InstallId,
+}
+
+/// An identity hosted on a rig card — see `RunnerState::hosted_identities`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostedIdentity {
+    pub card: CardId,
+    /// The rig card hosting it, whose text it is now part of: its
+    /// triggers are heard and its abilities used as that install's.
+    pub host: InstallId,
 }
 
 /// An operation in the play area after it resolved — see
@@ -743,6 +776,35 @@ pub struct RunnerState {
     /// whole and every reader of it would have had to learn to mask.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside_facedown: Vec<CardId>,
+    /// Runner cards installed facedown (CR 8.1.4) — Reboot's "install up
+    /// to 5 cards from your heap facedown". Blank and inactive (8.1.4a),
+    /// with no install cost (8.5.11a), so a list beside the rig keeps every
+    /// reader of the rig from learning to skip them: nothing there can see
+    /// a card with no characteristics. Hidden from the Corp as the grip is
+    /// (`masking`, 4.6.3); the Runner may look at them (1.21.2a). Nothing
+    /// in the pool turns one faceup or targets one, so a card here stays
+    /// until the game ends; Apex is the card that will.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub installed_facedown: Vec<CardId>,
+    /// The pile of other Runner identities brought with the deck (CR
+    /// 1.5.4a), which an ability that refers to an identity other than the
+    /// Runner's own reads (1.5.4b): DJ Fenris's "host a g-mod identity".
+    /// Seeded at setup, and only for a deck holding such a card
+    /// (`CardDefinition::refers_to_other_identities`), with every playable
+    /// Runner identity but the Runner's own — what a player may bring,
+    /// since a deck file lists no pile. Empty, and never cloned, in every
+    /// other game. The Runner may look at it at any time (1.5.4a), and it
+    /// says nothing the registry does not, so the view carries it whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_identities: Vec<CardId>,
+    /// Identities hosted on a rig card that gains their text — DJ Fenris's
+    /// "DJ Fenris gains the text of hosted identity". A list beside the
+    /// rig, as `CorpState::conditions` is beside the table: a hosted
+    /// identity is not installed, so no scan of the rig counts it, and
+    /// `rules::active` lists it as active at its host's install for as long
+    /// as the host is in the rig. Faceup, and carried whole by the view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_identities: Vec<HostedIdentity>,
     /// The Runner's events played and not yet fully resolved, because a
     /// choice their text parked is still open: "once those abilities are
     /// fully resolved the event is trashed" (CR 3.7.1). Déjà Vu's "from
@@ -1988,6 +2050,22 @@ impl GameState {
     /// The rig-side mirror of `find_corp_install`.
     pub fn find_rig_install(&self, id: InstallId) -> Option<&InstalledRunnerCard> {
         self.runner.rig.iter().find(|c| c.install_id == id)
+    }
+
+    /// The card whose printed abilities the rig install `id` has: the
+    /// identity it hosts when it gains one's text (DJ Fenris, who prints
+    /// no ability of his own — `CardDefinition::validate` holds a card that
+    /// refers to other identities to that), else its own card. **The one
+    /// lookup** for an `ActivateAbility` on a rig card, so a hosted
+    /// Quetzal's break is offered, priced and used through the same
+    /// action, index and `ActionSpace` slot as any rig card's.
+    pub fn rig_abilities_card(&self, id: InstallId) -> Option<&CardId> {
+        self.runner
+            .hosted_identities
+            .iter()
+            .find(|hosted| hosted.host == id)
+            .map(|hosted| &hosted.card)
+            .or_else(|| self.find_rig_install(id).map(|c| &c.card))
     }
 
     /// Whether the game has concluded. A pure query over `phase` — every

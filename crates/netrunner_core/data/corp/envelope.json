@@ -1,0 +1,28 @@
+{
+  "id": "envelope",
+  "title": "Envelope",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 21095,
+  "is_playable": true
+}

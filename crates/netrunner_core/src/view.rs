@@ -81,6 +81,11 @@ pub struct CorpClientView {
     /// client draws beside the Corp's identity and a bot's sample copies.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<crate::rules::PlayedOperation>,
+    /// Public — see `CorpState::conditions`: each condition counter and the
+    /// install it is hosted on, which a client draws on its host and a
+    /// bot's sample copies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<crate::rules::HostedCondition>,
     /// Power counters on the Corp's identity (AU Co.) — public, and
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
@@ -134,6 +139,23 @@ pub struct RunnerClientView {
     /// `grip_cards` is: "You may look at those cards at any time."
     #[serde(default)]
     pub set_aside_facedown_cards: Option<Vec<CardId>>,
+    /// How many cards the Runner has installed facedown
+    /// (`RunnerState::installed_facedown`, Reboot's) — public, as the grip's
+    /// count is.
+    #[serde(default)]
+    pub installed_facedown_count: usize,
+    /// Which, to the Runner alone (CR 1.21.2a).
+    #[serde(default)]
+    pub installed_facedown_cards: Option<Vec<CardId>>,
+    /// Public — see `RunnerState::other_identities`: the pile a card that
+    /// refers to another identity chooses from (DJ Fenris).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_identities: Vec<CardId>,
+    /// Public — see `RunnerState::hosted_identities`: each identity and the
+    /// rig card that hosts it and has its text, which a client names on the
+    /// host's abilities and a bot's sample copies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_identities: Vec<crate::rules::HostedIdentity>,
     /// Public — see `RunnerState::play_area`: an event still resolving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -424,6 +446,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         removed_from_game: public.corp.removed_from_game,
         set_aside: public.corp.set_aside,
         play_area: public.corp.play_area,
+        conditions: public.corp.conditions,
     };
 
     let runner = RunnerClientView {
@@ -441,6 +464,10 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside: public.runner.set_aside,
         set_aside_facedown_count: zone_count(&public.runner.set_aside_facedown),
         set_aside_facedown_cards: zone_cards(&public.runner.set_aside_facedown),
+        installed_facedown_count: zone_count(&public.runner.installed_facedown),
+        installed_facedown_cards: zone_cards(&public.runner.installed_facedown),
+        other_identities: public.runner.other_identities,
+        hosted_identities: public.runner.hosted_identities,
         play_area: public.runner.play_area,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,

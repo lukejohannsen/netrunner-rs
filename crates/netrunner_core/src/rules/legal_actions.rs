@@ -342,7 +342,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                     .find_corp_install(*target)
                     .map(|c| c.card.clone())
                     .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
-                    .or_else(|| state.find_rig_install(*target).map(|c| c.card.clone()))
+                    .or_else(|| state.rig_abilities_card(*target).cloned())
                     .or_else(|| state.runner.find_stolen(*target).map(|s| s.card.clone()))
             };
             if let Some(used_by) = card
@@ -827,7 +827,8 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
     }
     for rig_card in &state.runner.rig {
-        candidates.extend(paid_ability_candidates(&rig_card.card, rig_card.install_id, registry));
+        let card = state.rig_abilities_card(rig_card.install_id).unwrap_or(&rig_card.card);
+        candidates.extend(paid_ability_candidates(card, rig_card.install_id, registry));
     }
     // Identities are always active — Topan's click ability.
     if let Some(identity) = &state.corp.identity {

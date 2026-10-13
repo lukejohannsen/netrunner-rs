@@ -384,6 +384,20 @@ pub fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 
     sum(state, registry, Target::Player(side), hand_size) + sum(state, registry, Target::Bound(side), hand_size)
 }
 
+/// How many tags the Runner has, as anything that counts them or asks
+/// whether the Runner is tagged sees it: the tags they were given, and the
+/// ones a card says they are considered to have (CR 1.9.4, `ContinuousKind::
+/// Tags`, Acme Consulting). A considered tag cannot be removed or spent, so
+/// a removal, a cost paid in tags and the Runner's own action to remove one
+/// read `RunnerState::tags`, never this.
+pub fn tags(state: &GameState, registry: &CardRegistry) -> u32 {
+    let considered = sum(state, registry, Target::Bound(Side::Runner), |kind| match kind {
+        ContinuousKind::Tags(number) => Some(number),
+        _ => None,
+    });
+    (i64::from(state.runner.tags) + i64::from(considered)).max(0) as u32
+}
+
 /// What `side`'s active cards add to the clicks it gains as its turn
 /// begins (Basilar Synthgland 2KVJ), asked as the allotment is assigned.
 pub(crate) fn allotted_clicks(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
@@ -855,6 +869,20 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
         }
     });
     costs
+}
+
+/// Every interrupt on paying for `card` as it is played or installed
+/// (`ContinuousKind::Interrupt`, Patchwork), each with the card that prints
+/// it and that card's install, as [`score_costs`] has them. Whether its use
+/// this turn is spent is the payer's question (`payment::interrupt`).
+pub(crate) fn interrupts(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Vec<(Cost, u32, CardId, Option<InstallId>)> {
+    let mut found = Vec::new();
+    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::Interrupt { .. }), |effect, source, _| {
+        if let ContinuousKind::Interrupt { cost, less } = &effect.kind {
+            found.push((cost.clone(), *less, source.card.clone(), source.install));
+        }
+    });
+    found
 }
 
 /// Every additional cost to trash the rig install `install` with the basic

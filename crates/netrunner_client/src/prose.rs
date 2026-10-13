@@ -135,6 +135,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
         Amount::InZone { zone, filter } => format!("the cards in {} ({})", describe_zone(zone), humanize(format!("{filter:?}")).to_lowercase()),
+        Amount::AgendasInScoreArea(side) => format!("the number of agendas in the {side:?}'s score area"),
         Amount::CopiesInScoreArea(side) => format!("the copies of this card in the {side:?}'s score area"),
         Amount::CountersOnOwnInstalls(kind) => format!("the {} counters on your installed cards", humanize(format!("{kind:?}")).to_lowercase()),
         Amount::Credits(Side::Corp) => "the Corp's credits".to_string(),
@@ -158,6 +159,8 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnHeap => "the heap",
         CardZoneRef::OwnSetAside => "the cards set aside",
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown",
+        CardZoneRef::OwnInstalledFacedown => "your facedown installed cards",
+        CardZoneRef::OtherIdentities => "your other identities",
         CardZoneRef::OpponentSetAside => "the opponent's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
@@ -584,6 +587,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
+        Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
+        Effect::HostOtherIdentity { .. } => "host it on this card, which gains its text".to_string(),
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
             let what = match (what, copies_of_it) {
                 (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",
@@ -624,6 +629,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PromptMoveThisCardToAnotherRoot => "move it to the root of another server".to_string(),
         Effect::ForceEncounter => "the Runner encounters that ice again".to_string(),
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
+        Effect::MoveThisIceInnermostAndEncounter => "move this ice to the innermost position protecting the approached server, and the Runner encounters it".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
         Effect::LoseAbilities { until, identities: true, .. } => format!("each player's identity loses all abilities {}", duration(until)),
@@ -934,10 +940,12 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
+        ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
+        ContinuousKind::Interrupt { less, .. } => format!("once per turn, may pay a cost to pay {less} [credit] less"),
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
         ContinuousKind::RunCost(cost) => format!("costs the Runner \"{}\" to make, as the server is announced", describe_cost(cost)),
@@ -1080,6 +1088,25 @@ pub fn rez_alternative_label(card: &netrunner_core::dsl::CardId, index: usize, r
     words
 }
 
+/// The two buttons of an interrupt on paying (`PaymentAsk::Interrupt`,
+/// Patchwork): what using it costs and takes off the price, or not using
+/// it. Read off the card's own interrupt, so the cost is the one it prints.
+pub fn interrupt_label(card: &netrunner_core::dsl::CardId, less: u32, index: usize, registry: &CardRegistry) -> String {
+    if index as u32 != netrunner_core::rules::INTERRUPT_USED {
+        return format!("Do not use {}", title(card, registry));
+    }
+    let cost = registry.get(card).and_then(|def| {
+        def.continuous.iter().find_map(|effect| match &effect.kind {
+            netrunner_core::dsl::ContinuousKind::Interrupt { cost, .. } => Some(describe_cost(cost)),
+            _ => None,
+        })
+    });
+    match cost {
+        Some(cost) => format!("Use {}: {cost}, {} off", title(card, registry), plural(less, "credit", "credits")),
+        None => format!("Use {}: {} off", title(card, registry), plural(less, "credit", "credits")),
+    }
+}
+
 /// The line under an install's question (CR 8.5.6): why a card has to go,
 /// or that the rest is up to the installer.
 pub fn install_trash_detail(question: &netrunner_core::rules::InstallQuestion) -> String {
@@ -1110,6 +1137,9 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             ),
             netrunner_core::rules::PaymentAsk::Alternative { card, .. } => format!("Rez {} — how will you pay?", title(card, registry)),
             netrunner_core::rules::PaymentAsk::X { max } => format!("Choose X, from 0 to {max} — you pay X credits"),
+            netrunner_core::rules::PaymentAsk::Interrupt { card, less } => {
+                format!("Use {} to pay {} less?", title(card, registry), plural(*less, "credit", "credits"))
+            }
             netrunner_core::rules::PaymentAsk::Install(question) => {
                 format!("Install {} — trash which first? {}", title(&question.card, registry), install_trash_detail(question))
             }

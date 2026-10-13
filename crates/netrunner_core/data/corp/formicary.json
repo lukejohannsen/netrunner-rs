@@ -1,0 +1,75 @@
+{
+  "id": "formicary",
+  "title": "Formicary",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "subject": "Any",
+      "while_unrezzed": true,
+      "text": "Whenever the Runner approaches a server, you may rez this ice. If you do, move this ice to the innermost position protecting the approached server. The Runner moves to this ice and encounters it.",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RezInstalled": {
+                      "install": 0,
+                      "pay_cost": true
+                    }
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "ActingCardMatches": "Rezzed"
+                      },
+                      "effect": "MoveThisIceInnermostAndEncounter"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may rez this ice",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner suffers 2 net damage.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "SufferDamage": [
+              "Net",
+              2
+            ]
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner suffers 2 net damage"
+        }
+      }
+    }
+  ],
+  "built_from": 22054,
+  "is_playable": true
+}

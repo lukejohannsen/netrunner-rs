@@ -53,7 +53,7 @@ pub use dispatcher::dispatch_event;
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::{GameEvent, TrashedInstall};
-pub use payment::{Ask as PaymentAsk, CardQuestion as PaymentCardQuestion, InstallCandidate, InstallQuestion, Pool, Question as PaymentQuestion};
+pub use payment::{Ask as PaymentAsk, CardQuestion as PaymentCardQuestion, InstallCandidate, InstallQuestion, Pool, INTERRUPT_DECLINED, INTERRUPT_USED, Question as PaymentQuestion};
 pub use legal_actions::{
     apply_sampled_legal_action, current_actor, legal_actions, legal_actions_for, legal_transitions, legal_transitions_for,
 };
@@ -73,7 +73,7 @@ pub use state::{MatchRules, DEFAULT_WINNING_AGENDA_POINTS,
     ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, OncePerTurnKey, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PsiBid, PendingPaidChoice, PendingPaidChoiceResume, PendingPayment,
-    PendingPrevention, PlayedOperation, PlayerResources, PreventionResume, RevealedCard, RunnerState, ScoredAgenda, Side,
+    PendingPrevention, PlayedOperation, HostedCondition, HostedIdentity, PlayerResources, PreventionResume, RevealedCard, RunnerState, ScoredAgenda, Side,
     TraceResume, TraceState, WindowCheckpoint, WouldHappen,
 };
 pub use turn::end_turn;

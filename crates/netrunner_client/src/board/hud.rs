@@ -510,6 +510,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             Some(cards) => format!("set aside facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
             None => format!("set aside facedown: {} {}", view.runner.set_aside_facedown_count, if view.runner.set_aside_facedown_count == 1 { "card" } else { "cards" }),
         }))
+        // The Runner's facedown installs (Reboot's): blank and inactive
+        // (CR 8.1.4a), named to the Runner, who may look at them, and
+        // counted for the Corp.
+        .chain((view.runner.installed_facedown_count > 0).then(|| match &view.runner.installed_facedown_cards {
+            Some(cards) => format!("installed facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
+            None => format!("installed facedown: {} {}", view.runner.installed_facedown_count, if view.runner.installed_facedown_count == 1 { "card" } else { "cards" }),
+        }))
         // An event still resolving (Déjà Vu while the Runner chooses from
         // the heap): faceup in the play area, and in the heap once it has
         // resolved (CR 3.7.1).
@@ -524,6 +531,19 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // gone when the Corp's next turn begins, which is the line's to say
         // because nothing on the board stands for it.
         .chain(view.corp.play_area.iter().map(|played| format!("in play until the Corp's next turn: {}", title(&played.card))))
+        // A condition counter (Eavesdrop, CR 1.13.6d): faceup and active on
+        // its host, named by the host's card when the viewer can see it,
+        // since nothing on the board stands for a counter with text.
+        .chain(view.corp.conditions.iter().map(|condition| {
+            let on = super::facts::card_of(view, condition.host).map_or_else(|| "a facedown card".to_string(), |card| title(&card));
+            format!("hosted on {on}: {}", title(&condition.card))
+        }))
+        // An identity a rig card hosts and has the text of (DJ Fenris's):
+        // faceup, and nothing on the board stands for it.
+        .chain(view.runner.hosted_identities.iter().map(|hosted| {
+            let on = super::facts::card_of(view, hosted.host).map_or_else(|| "a rig card".to_string(), |card| title(&card));
+            format!("hosted on {on}, with its text: {}", title(&hosted.card))
+        }))
         .collect()
 }
 

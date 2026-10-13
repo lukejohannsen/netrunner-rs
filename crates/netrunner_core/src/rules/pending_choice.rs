@@ -112,6 +112,8 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OwnSetAsideFacedown => state.runner.set_aside_facedown.clone(),
+        CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.clone(),
+        CardZoneRef::OtherIdentities => state.runner.other_identities.clone(),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => state.corp.set_aside.clone(),
             Side::Runner => state.runner.set_aside.clone(),
@@ -504,6 +506,15 @@ fn instance_matches_filter(
         CardFilter::NotSourceCard => {
             zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != source || source.is_none()
         }
+        // Ravana's "another" when another Ravana resolved it: nothing
+        // already in the chain (`EncounterTally::relayed`). The chain's
+        // first card is the one that began it, which asks with nothing
+        // excluded but itself.
+        CardFilter::NotRelaying => {
+            let chain = state.active_run.as_ref().map(|run| run.this_encounter.relayed.as_slice()).unwrap_or_default();
+            let relayed = source.is_some_and(|source| chain.iter().skip(1).any(|install| *install == source));
+            !relayed || zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_none_or(|install| !chain.contains(&install))
+        }
         // Hush's "another installed piece of ice": not the one the parking
         // Trojan is hosted on.
         CardFilter::NotThisCardsHost => {
@@ -617,6 +628,10 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // trash it", asked of the ice the Runner chose after the Corp's
         // answer (`ActingCardMatches(Unrezzed)`).
         CardFilter::Unrezzed => installed.is_some_and(|c| !c.rezzed),
+        // Formicary's "If you do", asked of the ice its rez was offered to
+        // (`ActingCardMatches(Rezzed)`): a rez that could not be paid left
+        // it facedown.
+        CardFilter::Rezzed => installed.is_some_and(|c| c.rezzed),
         CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
         // ZATO City Grid's "each piece of ice protecting this server" and
         // Tsakhia's "protecting the chosen server", in a `when`: the place
@@ -647,6 +662,8 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
         CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
         CardZoneRef::OwnSetAsideFacedown => Some(&mut state.runner.set_aside_facedown),
+        CardZoneRef::OwnInstalledFacedown => Some(&mut state.runner.installed_facedown),
+        CardZoneRef::OtherIdentities => Some(&mut state.runner.other_identities),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => Some(&mut state.corp.set_aside),
             Side::Runner => Some(&mut state.runner.set_aside),
@@ -1659,6 +1676,20 @@ pub(crate) fn resolve_confirm_card_selection(
             // acts on the ice it passed) — the other half is the install
             // the choice acts as. Nothing to swap with once that has gone.
             (Effect::SwapInstalledIce(_, _), _, [chosen]) => source_install.map(|this| Effect::SwapInstalledIce(this, *chosen)),
+            // A swap that something follows — Daruma's "Swap that card with
+            // 1 card in the root of this server. If you swap cards this way,
+            // the Runner may jack out": the swap is the sentence's first
+            // effect and is substituted as it would be alone. Only the
+            // first: the rest of the sentence happens after the swap, and
+            // a `Sequence` after the selection would offer the jack out
+            // when nothing was chosen to swap. Nothing at all once the
+            // install the choice acts as has gone, as above.
+            (Effect::Sequence(mut effects), _, [chosen]) if matches!(effects.first(), Some(Effect::SwapInstalledIce(_, _))) => {
+                source_install.map(|this| {
+                    effects[0] = Effect::SwapInstalledIce(this, *chosen);
+                    Effect::Sequence(effects)
+                })
+            }
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
             // substituted here, since only this site knows both installs.
@@ -1672,6 +1703,11 @@ pub(crate) fn resolve_confirm_card_selection(
                     Effect::HostRigCardOnInstall { card: this, host: *chosen }
                 }
             }),
+            // The condition being played is the parking card's handle in
+            // the play area; its host is the install chosen.
+            (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => source_install.map(|this| Effect::HostThisAsCondition { condition: this, host: *chosen }),
+            // The identity chosen from the pile, hosted on the parking card.
+            (Effect::HostOtherIdentity { .. }, [chosen, ..], _) => source_install.map(|this| Effect::HostOtherIdentity { identity: chosen.clone(), host: this }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),
@@ -1751,6 +1787,46 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
             effect: Box::new(substitute_chosen_server(*effect, server)),
             otherwise: otherwise.map(|otherwise| Box::new(substitute_chosen_server(*otherwise, server))),
         },
+        other => other,
+    }
+}
+
+/// Writes the server the Corp just installed into over every later
+/// install's `only_server` placeholder in the rider (Fast Break's "in the
+/// root of and/or protecting **a single remote server**"): through the
+/// selections and installs nested in it, which is where each later
+/// install of the same instruction waits. Apart from
+/// `substitute_chosen_server`, which stops at a selection, because a
+/// selection's own `then` is resolved as the card it chose and an access
+/// or a run rider inside one was never written for the server an install
+/// chose.
+fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
+    let boxed = |effect: Box<Effect>| Box::new(substitute_install_server(*effect, server));
+    match effect {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
+            Effect::PromptInstallCorpCard {
+                origin_zone,
+                ignore_costs,
+                discount,
+                then: then.map(boxed),
+                remote_only,
+                central_only,
+                another_server,
+                new_remote,
+                rez,
+                if_rezzed,
+                if_installed,
+                ignore_credit_costs,
+                not_in_root_of,
+                any_position,
+                only_server: only_server.map(|_| server),
+            }
+        }
+        Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+        }
+        Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(|e| substitute_install_server(e, server)).collect()),
+        Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
         other => other,
     }
 }
@@ -1880,7 +1956,7 @@ fn install_parked(
     // (`PromptInstallCorpCard::then`) — resolved as the parking install,
     // never as the card that just landed.
     if let Some(then) = pending_install.then {
-        let effect = substitute_chosen_server(*then, server);
+        let effect = substitute_install_server(substitute_chosen_server(*then, server), server);
         let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
         ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
         events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);

@@ -943,6 +943,18 @@ pub enum Effect {
         /// destinations is the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         any_position: bool,
+        /// Offer only this server, its root or protecting it — Fast Break's
+        /// "Install up to X cards in the root of and/or protecting **a
+        /// single remote server**". The server is written as a placeholder
+        /// and is the one the first install chose: each install after the
+        /// first is the `then` of a selection inside the previous
+        /// install's `then`, and `pending_choice::substitute_install_server`
+        /// writes the chosen server into every one of them when the first
+        /// lands (the convention `MoveThisCardToRoot` follows). A field for
+        /// the reason `remote_only` is one: what narrows an install's
+        /// destinations is the install's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_server: Option<ServerId>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -1279,6 +1291,8 @@ pub enum Effect {
     /// Share's alone, and took the zones when Ashen Epilogue needed two
     /// more. With no zones it shuffles the stack alone — Bring Them Home's
     /// "the Runner shuffles it into the stack", after an `AddToDeck`.
+    /// `OwnRAndD` alone is the Corp's "shuffle R&D" (Sadaka), the one Corp
+    /// zone it names: nothing goes in, so no faceup card is turned down.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Places credits on the run's event, spendable during the run as its
     /// others are (`RunState::bonus_run_credits`, Overclock's pool) —
@@ -1457,6 +1471,28 @@ pub enum Effect {
     /// the parking card may be the ice: Magnet's "Host that program on this
     /// ice", where the chosen program is `card` and the ice is `host`.
     HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
+    /// The condition operation being played becomes a condition counter
+    /// hosted on the install `host` (CR 1.13.6d, CR 3.5.1a) — Eavesdrop's
+    /// "Install Eavesdrop on a piece of ice as a hosted condition counter".
+    /// Both are authored as `InstallId::PLACEHOLDER` and substituted when
+    /// the parking `PromptChooseCards` resolves, as `HostRigCardOnInstall`'s
+    /// are: `condition` becomes the operation's handle in the play area,
+    /// where a condition is filed while it resolves, and `host` the
+    /// selected install. Composition didn't work: no effect moves a card
+    /// out of the play area, and a counter is not an install, so no install
+    /// effect may put it on the table (CR 1.13.6d).
+    HostThisAsCondition { condition: crate::rules::InstallId, host: crate::rules::InstallId },
+    /// The identity `identity`, chosen from the pile the Runner brought
+    /// (`CardZoneRef::OtherIdentities`, CR 1.5.4), is hosted on the rig
+    /// install `host`, which gains its text — DJ Fenris's "Host a g-mod
+    /// identity … on DJ Fenris when he is installed. DJ Fenris gains the
+    /// text of hosted identity". Both are placeholders substituted when the
+    /// parking `PromptChooseCards` resolves: `identity` becomes the card
+    /// chosen and `host` the parking card's install. Composition didn't
+    /// work: a selection's `destination` moves a card into a zone, and the
+    /// one zone on a rig card (`HostedOnSource`, Madani's) holds cards that
+    /// are inactive, where this one's text is the host's.
+    HostOtherIdentity { identity: CardId, host: crate::rules::InstallId },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
     /// of the turn" (Luminal Transubstantiation): a `rules::lingering`
@@ -1789,6 +1825,18 @@ pub enum Effect {
     /// attacked server. Composition didn't work: nothing moved a run back
     /// to an encounter, and every encounter's end was a pass.
     ForceEncounter,
+    /// Moves the acting ice to the innermost position protecting the
+    /// server the Runner is approaching, and the Runner moves to it and
+    /// encounters it — Formicary's "move this ice to the innermost position
+    /// protecting the approached server. The Runner moves to this ice and
+    /// encounters it" (`run::move_innermost_and_encounter`). Not a forced
+    /// encounter: the Runner passes it after and approaches the server
+    /// again (Null Signal Games' ruling). One effect rather than a move and
+    /// an encounter, because the encounter is of the place the move puts
+    /// it and no other card moves ice inward. Composition didn't work:
+    /// `MoveThisIceToOutermost` is the other end and leaves the run to
+    /// approach it, and `ForceEncounter` returns without a pass.
+    MoveThisIceInnermostAndEncounter,
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
@@ -2466,6 +2514,12 @@ pub enum Amount {
     /// not one. Composition didn't work: `InScoreAreaWithSubtype` counts a
     /// subtype, and Sting!'s, Ambush, is printed on other agendas.
     CopiesInScoreArea(Side),
+    /// The agendas in `side`'s score area, every one, a card added there
+    /// "as an agenda" included (CR 10.1.3) — Fast Break's "X is equal to
+    /// the number of agendas in the Runner's score area". Composition
+    /// didn't work: `CopiesInScoreArea` counts one card and
+    /// `InScoreAreaWithSubtype` one subtype, and `AgendaPoints` sums points.
+    AgendasInScoreArea(Side),
     /// The counters of this kind on the acting card's controller's
     /// installed cards, all of them — The Nihilist's "remove any 2 virus
     /// counters from your installed cards", which is not offered unless
@@ -3189,7 +3243,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, only_server } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -3205,6 +3259,7 @@ impl Effect {
                     if_installed,
                     ignore_credit_costs,
                     any_position,
+                    only_server,
                 }
             }
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
@@ -3354,6 +3409,8 @@ impl Effect {
             | Effect::GainIceSubtype { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
+            | Effect::HostThisAsCondition { .. }
+            | Effect::HostOtherIdentity { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)
@@ -3365,6 +3422,7 @@ impl Effect {
             | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::MoveThisIceToOutermost
             | Effect::ForceEncounter
+            | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::LoseAbilities { .. }

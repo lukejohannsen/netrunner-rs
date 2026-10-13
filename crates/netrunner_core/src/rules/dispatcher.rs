@@ -563,6 +563,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
                 // Project Vacheron, heard from the Runner's score area.
                 || state.runner.scored_agendas.iter().any(|scored| scored.install_id == install)
                 || state.corp.play_area.iter().any(|played| played.handle == install)
+                || state.corp.conditions.iter().any(|condition| condition.handle == install)
         }
         _ => true,
     };
@@ -601,6 +602,23 @@ pub(crate) fn drain_deferred_triggers(
     }
     while !state.resolution_halted() && !state.deferred_triggers.is_empty() {
         let due = state.deferred_triggers.remove(0);
+        events.extend(fire_one(state, registry, &due)?);
+    }
+    Ok(events)
+}
+
+/// Fires the rest of a subroutine that waited behind its own decision —
+/// the continuation `ability::evaluate_sequence` queued for the encountered
+/// ice's install — before the ice's next subroutine is resolved. Without
+/// this the next subroutine fired first, from `paid_ability::
+/// resolve_encounter_ice`, and the first one's rest after it: Sadaka's "You
+/// may draw 1 card" was offered after its second subroutine had trashed it.
+/// Stops when one parks something new, as `drain_deferred_triggers` does.
+pub(crate) fn drain_continuations_of(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    while !state.resolution_halted() {
+        let Some(position) = state.deferred_triggers.iter().position(|due| due.continuation.is_some() && due.install == Some(install)) else { break };
+        let due = state.deferred_triggers.remove(position);
         events.extend(fire_one(state, registry, &due)?);
     }
     Ok(events)

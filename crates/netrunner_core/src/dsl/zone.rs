@@ -33,6 +33,18 @@ pub enum CardZoneRef {
     /// identity to your grip". The Runner may look at them, so a selection
     /// over it shows the chooser nothing new; the Corp sees how many.
     OwnSetAsideFacedown,
+    /// The Runner's own cards installed facedown (`RunnerState::
+    /// installed_facedown`, CR 8.1.4) — where Reboot's "install up to 5
+    /// cards from your heap facedown" puts the cards it chose, as a
+    /// selection's `destination`. The Runner may look at them; the Corp sees
+    /// how many.
+    OwnInstalledFacedown,
+    /// The pile of other identities the Runner brought (`RunnerState::
+    /// other_identities`, CR 1.5.4a) — DJ Fenris's "host a g-mod identity".
+    /// Outside the game (CR 4.1.3) and in no zone, but the one source an
+    /// ability that brings a card in from there names. The Runner may look
+    /// at it at any time, so choosing from it shows nothing new.
+    OtherIdentities,
     /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
     /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
     /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
@@ -120,6 +132,8 @@ impl CardZoneRef {
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
+            | CardZoneRef::OwnInstalledFacedown
+            | CardZoneRef::OtherIdentities
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
@@ -146,6 +160,8 @@ impl CardZoneRef {
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
+            | CardZoneRef::OwnInstalledFacedown
+            | CardZoneRef::OtherIdentities
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource
@@ -234,6 +250,19 @@ pub enum CardFilter {
     /// the parking card is a Trojan in the rig, so `NotSourceCard` admits
     /// every piece of ice, its host among them.
     NotThisCardsHost,
+    /// No piece of ice whose subroutine is already resolving through this
+    /// one's — Ravana 1.0's "Resolve 1 subroutine on **another** rezzed
+    /// bioroid ice", asked by a Ravana whose own subroutine another
+    /// Ravana resolved (`EncounterTally::relayed`). Null Signal Games'
+    /// ruling on Ravana: with only Ravanas rezzed, "a mandatory loop is
+    /// created … the Corp chooses a number X and the loop continues X
+    /// iterations and then stops", and "the subroutine does not have any
+    /// effect"; going back to an ice already in the chain is that loop, and
+    /// whatever it could reach the first pass already offered, so the chain
+    /// is left out and a chain with nowhere new to go ends. Instance-level,
+    /// compared by install. Composition didn't work: `NotSourceCard` knows
+    /// only the parking card, and two Ravanas each chose the other forever.
+    NotRelaying,
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
     InstallableRunnerCardWithDiscount(crate::dsl::Discount),
@@ -663,6 +692,7 @@ impl CardFilter {
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
+                | CardFilter::NotRelaying
                 | CardFilter::InChosenServer
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
@@ -764,6 +794,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
+        CardFilter::NotRelaying => true,
         CardFilter::InChosenServer => true,
         // Written over before it is read; unresolved, nothing was chosen.
         CardFilter::OfChosenCardType => false,

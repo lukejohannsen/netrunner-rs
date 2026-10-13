@@ -4011,3 +4011,65 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §75's code against this branch on seeds 2 / 3: Mr. Hendrik 7 → 30 / 0 → 31; Corp share 0.527 → 0.521, 0.476 → 0.478 (z −0.78, 0.19).
 
 **Verified.** `a_trap_that_works_only_installed_is_held_in_a_root`: Mr. Hendrik is a root trap and Snare! a hand trap; in HQ the Hendrik counts nothing, face down in R&D's root one, seen nothing.
+
+## 77. A piece chosen on install is the way past it, and a counter a turn is a card a turn: Femme Fatale, Solidarity Badge — DONE (`claude/bot-blindness-batch-7`, 13 October 2026)
+
+**The debt.** Femme Fatale's bypass was priced on a run once a piece was chosen (§65), but the piece is chosen when the program is installed, so the held card read as a 9[credit] sentry breaker and nothing else (random seats 23, the planner 1 and 0). Solidarity Badge's "the first time each turn you trash a Corp card, place 1 power counter" and "when your turn begins, you may remove 1 hosted power counter to draw 1 card" were two halves no reading joined: the counter was never income and the draw was a paid choice `declared_income` did not fold.
+
+**What is read now.** `runner::chosen_ice_value`: a card whose install trigger remembers a selected card (`chooses_ice_on_install`, a card whose use is its own trash — Boomerang — left out) is worth, held, the table with the best rezzed piece chosen against the same card with none (`best_break_saving`), a run a turn over the horizon at `future_credit_weight`; installed, `rig_chosen_ice_value` reads the piece it chose. `read::declared_income` folds a turn-start "you may remove N counters to …" as what it pays at N counters a use, and a "first time each turn" counter on a trash as `counters_per_turn`, so `future_credits` reads the Badge as a card a turn, no more than it hosts plus what it earns.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, main (4b56caa) against this branch on seeds 2 / 3: Solidarity Badge 10 → 38 and 5 → 38; Femme Fatale 1 → 14 and 17 → 6, 18 → 20 over both — `main` already installed it on one seed, so the reading is right and its effect is inside the drift; Amanuensis, whose counters are not the Badge's kind, 18 → 14 and 17 → 16; Corp share 0.497 → 0.505 and 0.506 → 0.497 (z 1.04, −1.18).
+
+**Verified.** `a_piece_chosen_on_install_is_the_way_past_it`: Femme Fatale opens HQ's Tollbooth, held and installed alike, at the rate an opened server is read; Boomerang is not read. The income test reads the Badge as one card a turn from a counter a turn.
+
+## 78. A prevention is the harm it prevents, where the Corp threatens it: Net Shield, AirbladeX — DONE (`claude/bot-blindness-batch-8`, 13 October 2026)
+
+**The debt.** An interrupt is worth something only once the harm is parked, so a held or installed card whose text prevents damage or a tag read as its price and memory, and the planner kept it in the grip: Net Shield (random seats 48, the planner 7 and 4), Decoy (27; 4 and 2), AirbladeX (JSRF Ed.) (17; 0 and 4).
+
+**What is read now.** `runner::prevention_value`: each paid ability or first-each-turn trigger that prevents damage or tags (`preventions`) is worth the harm it stops — a tag at `tag_weight`, a point of core damage at `core_damage_weight`, any other at `known_trap_damage_weight` — times the amount, times its uses (one for a card that trashes itself, the counters it hosts over what a use removes, a use a turn over the horizon otherwise), at `future_credit_weight` over `own_credit_weight`, a promise discounted as income is. **Only where the Corp threatens it** (`corp_threatens`): an NBN identity for tags, a Jinteki one for net damage, or a rezzed subroutine that gives tags or does damage of that kind — so Net Shield against a Haas-Bioroid glacier with no damage is its price, as it should be.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §77's code against this branch on seeds 2 / 3: Net Shield 9 → 60 and 6 → 59; AirbladeX (JSRF Ed.) 2 → 17 and 0 → 11; Decoy 1 → 0 and 2 → 2, read but not played (not traced); Sacrificial Construct 108 → 123 and 111 → 113, Lucky Charm and Fall Guy unmoved; Corp share 0.505 → 0.505 and 0.497 → 0.497 (z 0.00 on both).
+
+**Verified.** `a_prevention_is_the_harm_it_prevents_where_the_corp_threatens_it`: each card's worth against a Corp that threatens its harm, and nothing against one that does not.
+
+## 79. A run that breaches elsewhere is read for its extra card, and a lockdown's strength is a tax: Beatriz Friere Gonzalez, NEXT Activation Command — DONE (`claude/bot-blindness-batch-9`, 13 October 2026)
+
+**The debt.** Beatriz Friere Gonzalez's "[click][click]: Run HQ. If successful, instead of breaching HQ, breach R&D. When you do, access 1 additional card" read as one look: `instead` folds a sequence's looks as a `max`, because Stargate's look and its trash are one card, so the added access vanished beside the breach it joins, and her second click was never charged. NEXT Activation Command's "each piece of ice gets +2 strength" is no trigger `lockdown_tax` hears, so the Corp read it as nothing (random seats 33, the planner 3 and 4).
+
+**What is read now.** `read::instead` counts R&D's breach as one look plus the accesses added ahead of it, and `run_replacement_value` charges what a run ability costs beyond a run's click (`beyond_a_run`: Beatriz's second click, Eru Ayase-Pessoa's tag). `corp::lockdown_break_tax` reads the lockdowns in play as the break credits they add to the Runner's next run on the server it most wants (`server_stakes`, as `breach_denial` reads it), at the rate the Corp reads the Runner's credits, and a server they make unbreakable as that run's stakes denied — not the cheapest server's, since Archives with no ice is nearly always the cheapest and nobody runs it for nothing.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §78's code against this branch on seeds 2 / 3: Beatriz Friere Gonzalez 2 → 9 and 7 → 19; NEXT Activation Command 3 → 10 and 4 → 21; Eru Ayase-Pessoa unmoved (9, 5); Corp share 0.505 → 0.500 and 0.497 → 0.495 (z −0.83, −0.30).
+
+**Verified.** `stargate_is_worth_its_looks_over_a_breach` now holds Beatriz to two looks less a breach and a click, and Eru to nothing; `a_lockdown_that_raises_strength_is_the_break_credits_it_adds`: NEXT on R&D's Ice Wall is Corroder's pump, and nothing with no lockdown or with R&D bare.
+
+## 80. A swap of the first piece's subroutines is a way past it, and a click on passing host ice is a click a turn: Tsakhia "Bankhar" Gantulga, Pichação — DONE (`claude/bot-blindness-batch-10`, 13 October 2026)
+
+**The debt.** Tsakhia "Bankhar" Gantulga's "during the first encounter each turn with a piece of ice protecting the chosen server, whenever the Corp would resolve a subroutine, instead they resolve 'Do 1 net damage'" is resolved in the run, so a run that meets it reads it, but nothing read it before the run: the card was 1[credit] for nothing (random seats 11, the planner 0 and 1). Pichação's "whenever you pass host ice, you may gain [click]" was the same: no reading of a trigger on passing ice paid a click (random 11; 1 and 1).
+
+**What is read now.** `runner::subroutine_swap_value`: a card whose trigger holds `Effect::ReplaceSubroutines` is worth the outermost rezzed piece of the server best for it let through for a net damage a subroutine — its break credits (a piece no rig card breaks at the rate `best_break_saving` reads a server opened) less that damage at `known_trap_damage_weight` — a run a turn over the horizon at `future_credit_weight`, held and installed alike since the server is chosen each turn. `runner::pass_click_value`: a program hosted on ice that gains clicks when its host is passed is worth those clicks a turn, a click at `click_weight`, only on a rezzed piece the rig breaks (`passable`); installed, on its own host.
+
+**A test that sampled the pool.** `installs_boomerang_on_the_ice_in_the_way_and_runs_through_it` gave its Runner no identity, so the sample dealt its stack from the format's pool, where Tsakhia opens the test's sentry too, and three draws chasing it outbid the Boomerang line. The Runner now knows its own deck (Chaos Theory, Boomerang and ten Sure Gambles), as a seated bot does.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §79's code against this branch on seeds 2 / 3: Tsakhia 0 → 24 and 1 → 23; Pichação 1 → 11 and 1 → 13; Boomerang 4 → 8 and 6 → 4; Corp share 0.500 → 0.502 and 0.495 → 0.494 (z 0.06, −0.06). About 160 games each way changed winner on each seed, every deck's own share drifting: a card every Runner sample can now draw for moves every trajectory, and the drift nets to nothing.
+
+**Verified.** `a_subroutine_swap_is_the_first_piece_let_through_for_its_damage`: Tsakhia against an Ice Wall no rig card breaks is the server opened less a net damage, and nothing where Corroder breaks it for a credit; `a_click_on_passing_host_ice_is_a_click_a_turn`: Pichação is a click a turn once the rig passes its host, held and hosted alike.
+
+## 81. Counters spent on accesses are read whatever number is chosen, and a counter the first time each turn is a counter a turn: The Twinning, Wake Implant v2A-JRJ — DONE (`claude/bot-blindness-batch-11`, 13 October 2026)
+
+**The debt.** `read::rd_accesses` read a card's hosted counters as R&D accesses only where the card printed `AddAdditionalAccessAmount` of its counters (Conduit). The Twinning's and Wake Implant v2A-JRJ's "you may remove up to N hosted power counters to access that many additional cards" choose a number of their counters first, so the access is of the number chosen, and read as none. And a counter placed the first time each turn something happens (The Twinning's "the first time each turn you spend credits from an installed card") was no growth, where a successful run's was (random seats 14, the planner 1 and 3).
+
+**What is read now.** A `ChooseNumber` of the card's hosted counters whose number is an R&D access reads as the counters do, and a counter placed by a first-each-turn trigger grows the count a turn over the horizon, as a run's does. The Twinning's decks hold the cards it is spent from, so the counter is read as certain.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §80's code against this branch on seeds 2 / 3: The Twinning 1 → 11 and 3 → 13; Wake Implant 2 → 1 and 0 → 0 — read, but R&D accesses are worth something only to the Rig plan (`rd_access_weight`), and three of the four decks that hold it are Criminal, whose plan is pressure; Conduit 59 → 59 and 36 → 42; Corp share 0.502 → 0.490 and 0.494 → 0.481 (z −1.61, −1.89), the Runner's, most of it Burn Rate's games, The Twinning's deck.
+
+**Verified.** `rd_accesses` holds Wake Implant at its counters plus a counter a turn, held at the turn's counter alone, and The Twinning at its counter plus a counter a turn.
+
+## 82. A swap of ice is the dearest piece the Runner faces traded for the cheapest: Sipa, Cordyceps — DONE (`claude/bot-blindness-batch-12`, 13 October 2026)
+
+**The debt.** Sipa's and Cordyceps's "swap 2 installed pieces of ice" was worth nothing to the evaluator: no term read `SwapInstalledIce`, so a card whose whole text is moving the Corp's best wall off the server that matters was a program costing memory and credits for no return (the planner 1 and 2 against random seats' 30-odd).
+
+**What is read now.** A card whose trigger swaps ice is worth, per use, the dearest rezzed piece's break cost on the server with the most at stake less the cheapest rezzed piece elsewhere — what the swap takes off the run the Runner wants — over as many uses as its counters (or its printed stock, held) pay for at the counters each use removes, capped at the horizon. Held and installed are read the same way, beside the other rig terms.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §81's code against this branch on seeds 2 / 3: Sipa 1 → 12 and 2 → 16; Cordyceps 1 → 3 and 1 → 7; Corp share 0.490 → 0.495 and 0.481 → 0.475 (z 0.90, −1.07), inside the band.
+
+**Verified.** With a Tollbooth on R&D and an Ice Wall on HQ against Corroder, a swap is worth the Tollbooth's break cost less the Ice Wall's per use, Sipa's five uses to Cordyceps's two.

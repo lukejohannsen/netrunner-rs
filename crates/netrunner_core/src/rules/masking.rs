@@ -147,6 +147,10 @@ pub struct PublicCorpState {
     /// (`CorpState::play_area`, a lockdown).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<crate::rules::PlayedOperation>,
+    /// Never masked: a condition counter is faceup on its host
+    /// (`CorpState::conditions`, Eavesdrop).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<crate::rules::HostedCondition>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -280,6 +284,19 @@ pub struct PublicRunnerState {
     /// Corp sees how many.
     #[serde(default = "MaskedZone::empty")]
     pub set_aside_facedown: MaskedZone,
+    /// `RunnerState::installed_facedown`, masked as the grip is: secret
+    /// information the Runner controls (CR 4.6.3), counted for the Corp.
+    #[serde(default = "MaskedZone::empty")]
+    pub installed_facedown: MaskedZone,
+    /// Never masked: the pile of other identities (`RunnerState::
+    /// other_identities`) is every playable identity but the Runner's own,
+    /// which says nothing the registry does not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_identities: Vec<CardId>,
+    /// Never masked: a hosted identity is faceup on its host
+    /// (`RunnerState::hosted_identities`, DJ Fenris's).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_identities: Vec<crate::rules::HostedIdentity>,
     /// Never masked: faceup (`RunnerState::play_area`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -1530,6 +1547,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         removed_from_game: corp.removed_from_game.clone(),
         set_aside: corp.set_aside.clone(),
         play_area: corp.play_area.clone(),
+        conditions: corp.conditions.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),
@@ -1591,6 +1609,9 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         removed_from_game: runner.removed_from_game.clone(),
         set_aside: runner.set_aside.clone(),
         set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
+        installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
+        other_identities: runner.other_identities.clone(),
+        hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the

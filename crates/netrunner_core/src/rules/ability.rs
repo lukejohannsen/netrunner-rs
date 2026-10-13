@@ -1478,6 +1478,13 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::ShuffleIntoDeck(zones) => {
+            // R&D named alone is "shuffle R&D" (Sadaka's "either arrange
+            // them in any order or shuffle R&D"): nothing goes in, and the
+            // Corp's deck is the one shuffled.
+            if zones.as_slice() == [crate::dsl::CardZoneRef::OwnRAndD] {
+                crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+                return Ok(Vec::new());
+            }
             let mut cards = Vec::new();
             for zone in zones {
                 match zone {
@@ -1692,6 +1699,34 @@ pub fn evaluate_effect(
             let hosted_card = hosted.card.clone();
             let host_card = state.runner.rig.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).unwrap();
             Ok(vec![GameEvent::CardHosted { card: hosted_card, host: Some(host_card) }])
+        }
+
+        // A condition operation leaves the play area it resolved in and is
+        // hosted on the install chosen. Nothing happens when the host has
+        // left the table while the choice was parked: the operation stays
+        // in the play area until the Corp's next turn, as a lockdown would.
+        Effect::HostThisAsCondition { condition, host } => {
+            let Some(host_card) = state.corp.installed.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()) else {
+                return Ok(Vec::new());
+            };
+            let position = state.corp.play_area.iter().position(|played| played.handle == *condition).ok_or(RulesError::InstallNotFound(*condition))?;
+            let played = state.corp.play_area.remove(position);
+            state.corp.conditions.push(crate::rules::state::HostedCondition { card: played.card.clone(), handle: played.handle, host: *host });
+            Ok(vec![GameEvent::CardHosted { card: played.card, host: Some(host_card) }])
+        }
+
+        Effect::HostOtherIdentity { identity, host } => {
+            // The host left the rig while the choice was parked: nothing to
+            // host it on, so it stays in the pile.
+            let Some(host_card) = state.find_rig_install(*host).map(|c| c.card.clone()) else {
+                return Ok(Vec::new());
+            };
+            let Some(position) = state.runner.other_identities.iter().position(|card| card == identity) else {
+                return Ok(Vec::new());
+            };
+            let card = state.runner.other_identities.remove(position);
+            state.runner.hosted_identities.push(crate::rules::state::HostedIdentity { card: card.clone(), host: *host });
+            Ok(vec![GameEvent::CardHosted { card, host: Some(host_card) }])
         }
 
         Effect::InstallRunnerCardFromGrip => {
@@ -2418,7 +2453,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -2456,6 +2491,9 @@ pub fn evaluate_effect(
             }
             if *central_only {
                 allowed.retain(|server| !matches!(server, crate::rules::run::ServerId::Remote(_)));
+            }
+            if let Some(only) = only_server {
+                allowed.retain(|server| server == only);
             }
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
@@ -2536,6 +2574,11 @@ pub fn evaluate_effect(
         Effect::ForceEncounter => {
             let Some(install) = ctx.acting_install else { return Ok(Vec::new()) };
             crate::rules::run::force_encounter(state, registry, install)
+        }
+
+        Effect::MoveThisIceInnermostAndEncounter => {
+            let Some(install) = ctx.acting_install else { return Ok(Vec::new()) };
+            crate::rules::run::move_innermost_and_encounter(state, registry, install)
         }
 
         Effect::MoveThisIceToOutermost => {
@@ -2704,6 +2747,16 @@ pub fn evaluate_effect(
 
         Effect::ResolveSubroutineOfSelectedIce => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            // The chain `CardFilter::NotRelaying` reads: a card already in
+            // it continues from where it stands, any other begins it anew.
+            if let (Some(run), Some(chosen)) = (state.active_run.as_mut(), ctx.acting_install) {
+                let chain = &mut run.this_encounter.relayed;
+                match ctx.prompting_install.and_then(|by| chain.iter().position(|install| *install == by)) {
+                    Some(at) => chain.truncate(at + 1),
+                    None => *chain = ctx.prompting_install.into_iter().collect(),
+                }
+                chain.push(chosen);
+            }
             let Some(card_def) = registry.get(card_id) else { return Ok(Vec::new()) };
             let options: Vec<Effect> = card_def.subroutines.iter().map(|sub| sub.effect.clone()).collect();
             // Each option is the ice's own printed subroutine (the Linked
@@ -3636,6 +3689,13 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
 
 pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
+    // A condition counter goes with its host (CR 1.13.6d), faceup into
+    // Archives, where every played operation would have gone.
+    while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
+        let removed = state.corp.conditions.remove(position);
+        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
+    }
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
@@ -4039,7 +4099,13 @@ pub(crate) fn pay_cost_ctx(
         // pools, an identity's and a card's hosted credits are sources
         // beside the credit pool, and which of them this payment may use
         // is read off `purpose`.
-        Cost::Credits(amount) => payment::pay(state, registry, side, *amount, purpose),
+        // A price may be interrupted first (Patchwork): what is left is
+        // paid, and the interrupt's own cost's events go with the payment's.
+        Cost::Credits(amount) => {
+            let (amount, mut events) = payment::interrupt(state, registry, side, *amount, purpose)?;
+            events.extend(payment::pay(state, registry, side, amount, purpose)?);
+            Ok(events)
+        }
         Cost::CreditsFrom { amount, from } => {
             let amount = resolve_amount(amount, ctx, state, registry);
             payment::pay_from(state, registry, side, amount, purpose, Some(from))
@@ -4605,7 +4671,7 @@ pub fn check_requirement(
 ) -> Result<(), RulesError> {
     match requirement {
         EffectRequirement::IsTagged => {
-            if !state.runner.is_tagged() {
+            if crate::rules::continuous::tags(state, registry) == 0 {
                 return Err(RulesError::RunnerNotTagged);
             }
             Ok(())
@@ -4839,6 +4905,15 @@ pub fn check_requirement(
             };
             let matches = state.active_run.as_ref().is_some_and(|run| {
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
+            });
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::EncounteringOutermostIce => {
+            let matches = state.active_run.as_ref().is_some_and(|run| {
+                run.phase == RunPhase::EncounterIce
+                    && run.ice.get(run.position).is_some_and(|encountered| {
+                        state.corp.installed.iter().find(|card| card.server == run.server && card.slot == crate::rules::state::InstallSlot::Ice).is_some_and(|outermost| outermost.install_id == encountered.install_id)
+                    })
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -5340,6 +5415,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Corp, |card| card.side);
             crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len() as u32
         }
+        Amount::AgendasInScoreArea(side) => match side {
+            Side::Corp => state.corp.scored_agendas.len() as u32,
+            Side::Runner => state.runner.scored_agendas.len() as u32,
+        },
         Amount::CopiesInScoreArea(side) => {
             let Some(card) = ctx.acting_card else { return 0 };
             let area = match side {
@@ -5408,7 +5487,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // through the registry, the same way `win::check_for_winner` does,
         // rather than a running counter that a forfeit would have to
         // decrement.
-        Amount::RunnerTags => state.runner.tags,
+        Amount::RunnerTags => crate::rules::continuous::tags(state, registry),
         Amount::BadPublicity => state.corp.bad_publicity,
         Amount::CoreDamageTaken => state.runner.brain_damage as u32,
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
@@ -5601,6 +5680,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
+        | EffectRequirement::EncounteringOutermostIce
         | EffectRequirement::EncounteringChosenIce
         | EffectRequirement::EncounteringChosenIceType
         | EffectRequirement::ResolvingThisIcesSubroutines

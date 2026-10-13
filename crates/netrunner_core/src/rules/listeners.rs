@@ -724,6 +724,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         let About::Card { install: Some(about), .. } = moment.about else { return false };
         return install.is_some_and(|install| {
             state.runner.rig.iter().any(|card| card.install_id == install && (card.hosted_on_ice == Some(about) || card.hosted_on_rig_card == Some(about)))
+                || state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == about)
         });
     }
     // "The Corp installs a card in the root of a server": every Corp

@@ -266,3 +266,11 @@ pub(crate) fn clicks_spent(state: &GameState) -> GameState {
 pub(crate) fn enter_start_of_turn(state: &mut GameState, registry: &crate::cards::CardRegistry, side: crate::rules::state::Side) {
     crate::rules::turn::enter_start_of_turn(state, registry, &mut Vec::new(), side).expect("the turn starts");
 }
+
+/// Takes the install `install` off the table and trashes what it hosted, as
+/// every site that trashes a piece of ice does
+/// (`ability::cascade_trash_hosted_programs`).
+pub(crate) fn trash_with_what_it_hosts(state: &mut GameState, install: InstallId) {
+    state.corp.installed.retain(|card| card.install_id != install);
+    crate::rules::ability::cascade_trash_hosted_programs(state, install);
+}

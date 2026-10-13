@@ -320,6 +320,7 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.corp.removed_from_game.iter().cloned());
     ids.extend(view.corp.set_aside.iter().cloned());
     ids.extend(view.corp.play_area.iter().map(|played| played.card.clone()));
+    ids.extend(view.corp.conditions.iter().map(|condition| condition.card.clone()));
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
@@ -335,6 +336,9 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.runner.removed_from_game.iter().cloned());
     ids.extend(view.runner.set_aside.iter().cloned());
     if let Some(cards) = &view.runner.set_aside_facedown_cards {
+        ids.extend(cards.iter().cloned());
+    }
+    if let Some(cards) = &view.runner.installed_facedown_cards {
         ids.extend(cards.iter().cloned());
     }
     ids.extend(view.runner.play_area.iter().cloned());
@@ -395,14 +399,18 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.corp.removed_from_game.len()
                 + view.corp.set_aside.len()
                 + view.corp.play_area.len()
+                + view.corp.conditions.len()
         }
         Side::Runner => {
             view.runner.grip_count
                 + view.runner.stack_count
                 + view.runner.heap.len()
-                + view.runner.removed_from_game.len()
+                // An identity DJ Fenris hosted is removed from the game
+                // with him, and was never a card of the deck.
+                + view.runner.removed_from_game.iter().filter(|card| registry.get(card).is_none_or(|definition| definition.card_type != CardType::Identity)).count()
                 + view.runner.set_aside.len()
                 + view.runner.set_aside_facedown_count
+                + view.runner.installed_facedown_count
                 + view.runner.play_area.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
@@ -983,6 +991,9 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // without it would steal under NAPD Cordon for nothing and break
         // NEXT Activation Command's ice at its printed strength.
         play_area: view.corp.play_area.clone(),
+        // Public, and carried: Eavesdrop on a piece of ice is active, so a
+        // sample without it would encounter its host for nothing.
+        conditions: view.corp.conditions.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
         // is equivalent, since it is only ever consulted for cards that
@@ -1072,6 +1083,13 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // and drawn from the same pool, after the stack so that a game
         // without any draws exactly what it drew before.
         set_aside_facedown: determinize_zone(&view.runner.set_aside_facedown_cards, view.runner.set_aside_facedown_count, &mut pools, Slot::RunnerAny),
+        // Reboot's facedown installs: hidden from the Corp the same way,
+        // drawn after them for the same reason.
+        installed_facedown: determinize_zone(&view.runner.installed_facedown_cards, view.runner.installed_facedown_count, &mut pools, Slot::RunnerAny),
+        // The pile of other identities and the one DJ Fenris hosts: faceup,
+        // and no card of the deck, so copied whole and never drawn.
+        other_identities: view.runner.other_identities.clone(),
+        hosted_identities: view.runner.hosted_identities.clone(),
         play_area: view.runner.play_area.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
@@ -1372,6 +1390,9 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     if view.runner.set_aside_facedown_cards.is_none() && !state.runner.set_aside_facedown.is_empty() {
         state.runner.set_aside_facedown = pools.draw_n(Slot::RunnerAny, state.runner.set_aside_facedown.len());
     }
+    if view.runner.installed_facedown_cards.is_none() && !state.runner.installed_facedown.is_empty() {
+        state.runner.installed_facedown = pools.draw_n(Slot::RunnerAny, state.runner.installed_facedown.len());
+    }
     seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
@@ -1451,7 +1472,7 @@ mod tests {
                 identity_copy: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
-                removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), once_per_turn_used: Default::default(),
+                removed_from_game: Vec::new(), set_aside: Vec::new(), play_area: Vec::new(), conditions: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -1481,6 +1502,9 @@ mod tests {
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
                 set_aside_facedown: Vec::new(),
+                installed_facedown: Vec::new(),
+                other_identities: Vec::new(),
+                hosted_identities: Vec::new(),
                 play_area: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
@@ -1522,6 +1546,7 @@ mod tests {
                 .chain(&state.corp.removed_from_game)
                 .chain(&state.corp.set_aside)
                 .chain(state.corp.play_area.iter().map(|played| &played.card))
+                .chain(state.corp.conditions.iter().map(|condition| &condition.card))
                 .cloned(),
         )
     }
