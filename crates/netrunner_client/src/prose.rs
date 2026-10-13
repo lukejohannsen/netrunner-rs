@@ -96,6 +96,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
+        Amount::PrintedAgendaPoints => "its agenda points".to_string(),
         Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
         Amount::PaidCardPrintedCost => "the printed cost of the card trashed to pay".to_string(),
         Amount::TriggeringCardPrintedCost => "the printed cost of the trashed card".to_string(),
@@ -266,6 +267,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::WhileInstalled => "while this card is installed",
         EffectDuration::NextAction => "for the next action",
         EffectDuration::NextBreach => "during the next breach",
+        EffectDuration::UntilYourNextTurnBegins => "until your next turn begins",
     }
 }
 
@@ -303,6 +305,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::WhileInstalled => "the time this card is installed",
                 EffectDuration::NextAction => "the next action",
                 EffectDuration::NextBreach => "the next breach",
+                EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -559,6 +562,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::WhileInstalled => "as long as this card is installed",
                 netrunner_core::dsl::EffectDuration::NextAction => "the next action",
                 netrunner_core::dsl::EffectDuration::NextBreach => "the next breach",
+                netrunner_core::dsl::EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }

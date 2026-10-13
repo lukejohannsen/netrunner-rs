@@ -32347,3 +32347,149 @@ mod reign_and_reverie_stage_7_divide_and_conquer {
         assert_eq!(begun.first(), Some(&ServerId::Archives));
     }
 }
+
+mod reign_and_reverie_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root(card: &str, remote: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index: 0 }).expect("use it").0
+    }
+
+    #[test]
+    fn gatekeeper_is_six_stronger_the_turn_it_is_rezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("gatekeeper"), card: id("gatekeeper"), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() }];
+        let strength = |state: &GameState| crate::rules::continuous::installed_ice_strength(state, &registry, &id("gatekeeper"), fixture_install_id("gatekeeper"));
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.resources.credits = Credits(10);
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (approached, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach Gatekeeper");
+        let (rezzed, _) = apply_action(&approached, &registry, PlayerAction::RezIce { ice: fixture_install_id("gatekeeper") }).expect("rez");
+        assert_eq!(strength(&rezzed), 6, "rezzed this turn");
+        let mut next = rezzed.clone();
+        next.active_run = None;
+        crate::rules::test_support::enter_start_of_turn(&mut next, &registry, Side::Runner);
+        assert_eq!(strength(&next), 0, "a turn later");
+    }
+
+    #[test]
+    fn gatekeepers_first_subroutine_draws_up_to_three_and_shuffles_up_to_three_agendas_back() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hostile_takeover"), id("hedge_fund")];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("private_security_force"), facedown: false }];
+        state.corp.r_and_d = vec![id("ice_wall"); 4];
+        let gatekeeper = id("gatekeeper");
+        let effect = registry.get(&gatekeeper).unwrap().subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(&mut state, &effect, &mut crate::rules::ResolutionContext::for_card(Some(&gatekeeper)), &registry).expect("the subroutine");
+        let (drew, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("draw 2");
+        assert_eq!(drew.corp.hq.len(), 4);
+        let from_hq = pick(&drew, &registry, &[0]);
+        let from_archives = pick(&from_hq, &registry, &[0]);
+        assert!(!from_archives.corp.hq.contains(&id("hostile_takeover")) && from_archives.corp.archives.is_empty(), "both agendas back");
+        assert_eq!(from_archives.corp.r_and_d.len(), 4, "two drawn, two shuffled in");
+    }
+
+    #[test]
+    fn drudge_work_gains_an_agendas_points_for_a_counter_and_is_trashed_with_its_last() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root("drudge_work", 0, false)];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("drudge_work") }).expect("rez");
+        let mut state = close_all_windows(rezzed, &registry).0;
+        assert_eq!(state.corp.installed[0].counters, 3);
+        state.corp.hq = vec![id("private_security_force")];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let credits = state.corp.resources.credits.0;
+        let asked = use_ability(&state, &registry, "drudge_work");
+        let revealed = pick(&asked, &registry, &[0]);
+        let revealed = if revealed.pending_decision.is_some() { pick(&revealed, &registry, &[]) } else { revealed };
+        assert_eq!(revealed.corp.resources.credits.0, credits + 2, "Private Security Force is worth 2");
+        assert!(revealed.corp.r_and_d.contains(&id("private_security_force")) && revealed.corp.hq.is_empty());
+        assert_eq!(revealed.corp.installed[0].counters, 2);
+
+        let mut last = revealed;
+        last.corp.installed[0].counters = 1;
+        last.corp.resources.clicks = Clicks(3);
+        let mut done = use_ability(&last, &registry, "drudge_work");
+        while done.pending_decision.is_some() {
+            done = pick(&done, &registry, &[]);
+        }
+        assert!(done.corp.installed.is_empty(), "no counters left: trashed");
+    }
+
+    #[test]
+    fn lady_liberty_scores_an_agenda_from_hq_worth_exactly_its_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        let mut lady = root("lady_liberty", 0, true);
+        lady.counters = 2;
+        state.corp.installed = vec![lady];
+        state.corp.hq = vec![id("hostile_takeover"), id("private_security_force")];
+        let asked = use_ability(&state, &registry, "lady_liberty");
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "Hostile Takeover is worth 1");
+        let scored = pick(&asked, &registry, &[1]);
+        assert_eq!(scored.corp.resources.agenda_points.0, 2);
+        assert_eq!(scored.corp.hq, vec![id("hostile_takeover")]);
+    }
+
+    #[test]
+    fn saraswati_installs_in_a_remote_root_with_a_counter_it_cannot_score_or_rez_until_the_corps_next_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("saraswati_mnemonics_endless_exploration"));
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.hq = vec![id("ice_wall"), id("hostile_takeover"), id("pad_campaign")];
+        let ability = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ActivateAbility { .. }))
+            .expect("[click], 1[credit]");
+        let (asked, _) = apply_action(&state, &registry, ability.clone()).expect("use it");
+        assert_eq!((asked.corp.resources.clicks, asked.corp.resources.credits), (Clicks(state.corp.resources.clicks.0 - 1), Credits(state.corp.resources.credits.0 - 1)));
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).is_err(), "ice goes in no root");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Hostile Takeover");
+        let (chosen, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let servers: Vec<ServerId> = crate::rules::legal_actions_for(&chosen, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert!(!servers.is_empty() && servers.iter().all(|server| matches!(server, ServerId::Remote(_))), "a remote server's root: {servers:?}");
+        let (installed, _) = apply_action(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: servers[0] }).expect("install");
+        let (mut installed, _) = close_all_windows(installed, &registry);
+        let agenda = installed.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed");
+        assert_eq!((agenda.slot, agenda.advancement_tokens), (InstallSlot::Root, 1));
+        let agenda = agenda.install_id;
+
+        // Hostile Takeover needs 2; with one more counter it is scorable
+        // but for the lock, which holds through the Runner's turn.
+        installed.corp.installed.iter_mut().find(|card| card.install_id == agenda).expect("installed").advancement_tokens = 2;
+        let score = PlayerAction::ScoreAgenda { target: agenda };
+        assert!(!crate::rules::legal_actions_for(&installed, &registry, Side::Corp).contains(&score));
+        let mut runners = installed.clone();
+        runners.turn += 1;
+        assert!(crate::rules::continuous::cannot_install(&runners, &registry, crate::dsl::Prohibition::ScoreAgendas, agenda), "through the Runner's turn");
+        let mut next = installed;
+        next.turn += 2;
+        assert!(crate::rules::legal_actions_for(&next, &registry, Side::Corp).contains(&score), "the Corp's next turn has begun");
+    }
+}

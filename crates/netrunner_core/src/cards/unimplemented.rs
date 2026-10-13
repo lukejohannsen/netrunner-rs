@@ -85,15 +85,11 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("patchwork", "Patchwork"),
     ("reboot", "Reboot"),
     ("dj_fenris", "DJ Fenris"),
-    ("gatekeeper", "Gatekeeper"),
     ("fast_break", "Fast Break"),
-    ("saraswati_mnemonics_endless_exploration", "Saraswati Mnemonics: Endless Exploration"),
     ("daruma", "Daruma"),
     ("acme_consulting_the_truth_you_need", "Acme Consulting: The Truth You Need"),
     ("eavesdrop", "Eavesdrop"),
-    ("drudge_work", "Drudge Work"),
     ("formicary", "Formicary"),
-    ("lady_liberty", "Lady Liberty"),
 ];
 
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.

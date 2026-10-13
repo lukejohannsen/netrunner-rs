@@ -460,6 +460,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     _ => ", until the end of the Corp's next turn",
                 },
                 Until::NextTurnOf(_) => "",
+                Until::BeforeTurn(_) => match registry.get(&effect.source).map(|card| card.side) {
+                    Some(Side::Runner) => ", until the Runner's next turn begins",
+                    _ => ", until the Corp's next turn begins",
+                },
                 Until::WhileRezzed(_) => ", while it remains rezzed",
                 Until::WhileInstalled(_) => ", while it remains installed",
                 Until::WhileInPlay(_) => ", while it stays in play",
