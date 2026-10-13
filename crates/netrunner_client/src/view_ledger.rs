@@ -139,6 +139,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             counters: _,           // drawn: board::facts tile_tokens
             advancement_requirement: _, // drawn: board::facts tile_tokens ("2/3") and install_facts ("Prints … its text makes it …"); the terminal's server line ("2/3 adv")
             seen_by_runner: _,     // drawn: facts::seen_face_down — "seen" on the Corp's tile, a line on its sheet, the terminal's server line
+            this_turn: _,          // engine's: what a copy's "this turn" reads (Gatekeeper's strength, which the tile draws); the rez and the advances are in the log
         } in ice.into_iter().chain(root)
         {}
     }

@@ -1,0 +1,100 @@
+{
+  "id": "drudge_work",
+  "title": "Drudge Work",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3 power counters on Drudge Work when it is rezzed."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": {
+                "CardType": "Agenda"
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OwnRAndD",
+              "then": {
+                "Sequence": [
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "PrintedAgendaPoints"
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnArchives",
+                      "filter": {
+                        "CardType": "Agenda"
+                      },
+                      "min": 0,
+                      "max": 0,
+                      "reveal": true,
+                      "shuffle_after": true,
+                      "destination": "OwnRAndD",
+                      "up_to": {
+                        "RemainingAfterSelection": 1
+                      },
+                      "then": {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "PrintedAgendaPoints"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click], hosted power counter: Reveal an agenda in HQ or Archives. Gain credits equal to its agenda points, then shuffle it into R&D."
+    }
+  ],
+  "built_from": 22052,
+  "is_playable": true
+}

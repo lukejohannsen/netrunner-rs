@@ -95,6 +95,14 @@ pub struct PublicInstalledCard {
     /// the Runner can name as still face down.
     #[serde(default)]
     pub seen_by_runner: bool,
+    /// Never masked: what happened to this copy this turn
+    /// (`InstalledCard::this_turn`), which counts only advancing and
+    /// rezzing it, both done in front of the Runner. In the view since
+    /// Gatekeeper's "+6 strength if you rezzed it this turn": a sample that
+    /// started each copy's turn afresh gave a Gatekeeper rezzed this turn
+    /// its printed 0 against the 6 the view showed.
+    #[serde(default)]
+    pub this_turn: crate::rules::turn_log::CopyTurn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1458,6 +1466,7 @@ fn mask_installed_card(state: &GameState, registry: &CardRegistry, installed: &I
             .then(|| crate::rules::continuous::advancement_requirement(state, registry, installed.install_id))
             .flatten(),
         seen_by_runner: installed.seen_by_runner,
+        this_turn: installed.this_turn,
     }
 }
 

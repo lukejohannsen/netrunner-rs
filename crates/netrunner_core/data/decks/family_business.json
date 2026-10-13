@@ -3,7 +3,7 @@
   "name": "Family Business",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach The Outfit: Family Owned and Operated, Reign and Reverie's Weyland identity, which gains 3[credit] whenever it takes bad publicity. Hostile Bid's frame of bad publicity, with two Broad Daylight for its two Azef Protocol, point for point, an agenda that takes a bad publicity and counts every one into meat damage. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5.",
+  "description": "Not a published list: built so the sweeps reach The Outfit: Family Owned and Operated, Reign and Reverie's Weyland identity, which gains 3[credit] whenever it takes bad publicity. Hostile Bid's frame of bad publicity, with two Broad Daylight for its two Azef Protocol, point for point, an agenda that takes a bad publicity and counts every one into meat damage. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5. FFG F2 Stage 8: two Drudge Work for its two Wall to Wall, asset for asset.",
   "style": [
     "traps"
   ],
@@ -51,10 +51,6 @@
     },
     {
       "card": "crisium_grid",
-      "count": 2
-    },
-    {
-      "card": "wall_to_wall",
       "count": 2
     },
     {
@@ -120,6 +116,10 @@
     {
       "card": "under_the_bus",
       "count": 1
+    },
+    {
+      "card": "drudge_work",
+      "count": 2
     }
   ]
 }

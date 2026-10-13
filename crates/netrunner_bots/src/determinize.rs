@@ -549,8 +549,9 @@ fn determinize_installed(
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
         seen_by_runner: card.seen_by_runner,
-        // Nor what happened to the copy this turn (`turn_log::CopyTurn`).
-        this_turn: Default::default(),
+        // What happened to the copy this turn is public (`turn_log::
+        // CopyTurn`: an advance, a rez) and the view carries it.
+        this_turn: card.this_turn,
     })).collect();
     let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpRoot)),
@@ -570,8 +571,9 @@ fn determinize_installed(
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
         seen_by_runner: card.seen_by_runner,
-        // Nor what happened to the copy this turn (`turn_log::CopyTurn`).
-        this_turn: Default::default(),
+        // What happened to the copy this turn is public (`turn_log::
+        // CopyTurn`: an advance, a rez) and the view carries it.
+        this_turn: card.this_turn,
     }));
     ice.into_iter().chain(root).collect()
 }

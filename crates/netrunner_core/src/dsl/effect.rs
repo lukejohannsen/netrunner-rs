@@ -2218,6 +2218,11 @@ pub enum Amount {
     /// any other event. Composition didn't work: `TriggeringCardPrintedCost`
     /// is the play or install cost, and `CardTrashed` carries no trash cost.
     TriggeringCardTrashCost,
+    /// The printed agenda points of the acting card — Drudge Work's
+    /// "Reveal an agenda in HQ or Archives. Gain credits equal to its agenda
+    /// points", read in the reveal's `then`, which resolves as the card
+    /// selected. `PrintedCost`'s twin for points; 0 for a card with none.
+    PrintedAgendaPoints,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
@@ -2599,6 +2604,12 @@ pub enum EffectDuration {
     /// turn if none begins. Composition didn't work: `Turn` would close the
     /// root to a second run on R&D the same turn.
     NextBreach,
+    /// Until the controller's next turn begins — Saraswati Mnemonics's
+    /// "You cannot score or rez that card until your next turn begins",
+    /// made on the Corp's turn and holding through the Runner's after it
+    /// (`Until::BeforeTurn`). Composition didn't work: `ThroughYourNextTurn`
+    /// holds through that turn, and the card is free the moment it begins.
+    UntilYourNextTurnBegins,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word

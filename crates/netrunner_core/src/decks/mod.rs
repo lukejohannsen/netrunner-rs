@@ -583,6 +583,9 @@ mod tests {
             // Package's and Hostile Bid's frames.
             ("go_big", &neither),
             ("family_business", &neither),
+            // FFG F2 Stage 8: Saraswati Mnemonics's deck, on A Thousand
+            // Cuts' frame.
+            ("endless_exploration", &neither),
             // Downfall Stage 1: Az McCaffrey's deck, on Picket Line's
             // frame, which holds no Core Set card, so it is Standard too.
             ("moonlighting", &not_startup),

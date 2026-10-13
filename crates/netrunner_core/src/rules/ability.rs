@@ -5280,6 +5280,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             _ => 0,
         },
         Amount::PrintedCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
+        Amount::PrintedAgendaPoints => ctx.acting_card.and_then(|card| registry.get(card)).and_then(|def| def.agenda_points).unwrap_or(0),
         Amount::PaidCardPrintedCost => ctx.paid_with.first().and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::TriggeringCardPrintedCost => match ctx.triggering_event {
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
