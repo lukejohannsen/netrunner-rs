@@ -464,6 +464,14 @@ pub enum Scope {
     /// price asked onto nothing cannot know (`continuous::Target::
     /// InstallingOnto`).
     InstallingOntoThis(CardFilter),
+    /// A card the *other* player is installing, matching the filter —
+    /// TechnoCo's "the install cost of each program, piece of hardware,
+    /// and virtual resource is increased by 1", printed on a Corp asset
+    /// about the Runner's installs. Not `Installing`, which is its
+    /// controller's own by the words every card using it prints ("you
+    /// install"); a whose on the filter would have been a second way to
+    /// say the first's side, and `CardFilter` names no player.
+    OpponentInstalling(CardFilter),
     /// Each piece of ice matching the filter — Fransofia Ward's "each piece
     /// of ice" (`Any`), Cat's Cradle's "each piece of **code gate** ice".
     /// The filter is read off the definition and off the copy, as

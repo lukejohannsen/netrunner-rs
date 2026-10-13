@@ -137,7 +137,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("degree_mill", "Degree Mill"),
     ("death_and_taxes", "Death and Taxes"),
     ("trojan_horse", "Trojan Horse"),
-    ("technoco", "TechnoCo"),
 ];
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
@@ -189,7 +188,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("kasi_string", "Kasi String"),
     ("riot_suppression", "Riot Suppression"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
-    ("better_citizen_program", "Better Citizen Program"),
     ("market_forces", "Market Forces"),
     ("surveyor", "Surveyor"),
     ("high_profile_target", "High-Profile Target"),

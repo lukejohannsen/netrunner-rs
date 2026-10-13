@@ -1,0 +1,15 @@
+# Every thread a test or a dev build spawns without saying how big its
+# stack is gets 16 MiB, `netrunner_client::play::MATCH_STACK`'s size.
+#
+# An unoptimised engine keeps whole `GameState`s in its frames (`apply_action`
+# and a parked payment's replay alone take hundreds of kilobytes), so a
+# planner seat played on libtest's 2 MiB test thread sat a few hundred bytes
+# from the edge: the turn log's icebreaker columns (FFG F3 Stage 4b) grew the
+# state by 720 bytes and three suites overflowed — a client tally test, the
+# single-player history test and the terminal client's. The match threads
+# both clients spawn already ask for MATCH_STACK, and the sweeps for
+# `parallel::SWEEP_STACK`; this is the same answer for the threads that do
+# not ask, rather than one `stack_size` per test. An optimised build needs
+# a fraction of it.
+[env]
+RUST_MIN_STACK = "16777216"

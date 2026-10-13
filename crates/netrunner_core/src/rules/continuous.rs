@@ -247,6 +247,9 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::Installing(filter), Target::Card(card) | Target::InstallingOnto { card, .. }) => {
             card.side == source.side && card_matches_filter(card, filter)
         }
+        (Scope::OpponentInstalling(filter), Target::Card(card) | Target::InstallingOnto { card, .. }) => {
+            card.side != source.side && card_matches_filter(card, filter)
+        }
         (Scope::InstallingOntoThis(filter), Target::InstallingOnto { card, host }) => {
             source.install == Some(*host) && card.side == source.side && card_matches_filter(card, filter)
         }

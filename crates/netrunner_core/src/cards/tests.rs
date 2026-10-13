@@ -33836,3 +33836,88 @@ mod kitara_stage_4 {
         assert_eq!(paid.corp.hq.len(), 4, "3 cards, and the turn's own draw after the turn-begins choice");
     }
 }
+
+mod kitara_stage_4b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    fn install_program(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        apply_action(&state, registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false, host: None }).expect("install").0
+    }
+
+    fn install_resource(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        apply_action(&state, registry, PlayerAction::InstallResource { card_id: id(card), host: None }).expect("install").0
+    }
+
+    /// The Corp's "you may" answered yes, wherever the engine asked it.
+    fn corp_says_yes(state: &GameState, registry: &CardRegistry) -> GameState {
+        let yes = PlayerAction::ResolvePendingChoice { option_index: 0 };
+        assert!(crate::rules::legal_actions_for(state, registry, Side::Corp).contains(&yes), "the Corp is asked");
+        close_all_windows(apply_action(state, registry, yes).expect("give the Runner 1 tag").0, registry).0
+    }
+
+    #[test]
+    fn technoco_taxes_programs_hardware_and_virtual_resources_and_pays_the_corp() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("technoco"), card: id("technoco"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        let corp = state.corp.resources.credits.0;
+
+        let program = close_all_windows(install_program(&state, &registry, "corroder"), &registry).0;
+        assert_eq!(program.runner.resources.credits.0, 20 - 3, "Corroder's 2, increased by 1");
+        assert_eq!(program.corp.resources.credits.0, corp + 1, "you may gain 1[credit]");
+
+        let virtual_resource = close_all_windows(install_resource(&state, &registry, "xanadu"), &registry).0;
+        assert_eq!(virtual_resource.runner.resources.credits.0, 20 - 4, "a virtual resource");
+        assert_eq!(virtual_resource.corp.resources.credits.0, corp + 1);
+
+        let other = close_all_windows(install_resource(&state, &registry, "armitage_codebusting"), &registry).0;
+        assert_eq!(other.runner.resources.credits.0, 20 - 1, "not virtual: untaxed");
+        assert_eq!(other.corp.resources.credits.0, corp, "and no credit");
+    }
+
+    #[test]
+    fn better_citizen_program_may_tag_the_first_icebreaker_or_run_event_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("better_citizen_program"))];
+
+        let first = corp_says_yes(&install_program(&state, &registry, "corroder"), &registry);
+        assert_eq!(first.runner.tags, 1, "the first icebreaker this turn");
+        let second = install_program(&first, &registry, "cleaver");
+        assert!(!crate::rules::legal_actions_for(&second, &registry, Side::Corp).contains(&PlayerAction::ResolvePendingChoice { option_index: 0 }), "not the second");
+
+        // A virus icebreaker is an icebreaker, and a plain program is not.
+        let plain = install_program(&state, &registry, "imp");
+        assert!(!crate::rules::legal_actions_for(&plain, &registry, Side::Corp).contains(&PlayerAction::ResolvePendingChoice { option_index: 0 }), "not an icebreaker");
+        let virus = corp_says_yes(&install_program(&plain, &registry, "darwin"), &registry);
+        assert_eq!(virus.runner.tags, 1, "Darwin is a virus icebreaker");
+
+        // A run event is the same printed ability: one count between them.
+        let mut event = state.clone();
+        event.runner.grip.push(id("dirty_laundry"));
+        let (played, _) = apply_action(&event, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play the run event");
+        let (played, _) = apply_action(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run on HQ");
+        let tagged = corp_says_yes(&played, &registry);
+        assert_eq!(tagged.runner.tags, 1, "the first run event this turn");
+        let mut after = first.clone();
+        after.runner.grip.push(id("dirty_laundry"));
+        let (after, _) = apply_action(&after, &registry, PlayerAction::PlayEvent { card_id: id("dirty_laundry") }).expect("play the run event");
+        let (after, _) = apply_action(&after, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run on HQ");
+        assert!(!crate::rules::legal_actions_for(&after, &registry, Side::Corp).contains(&PlayerAction::ResolvePendingChoice { option_index: 0 }), "a run event after the turn's icebreaker is not the first");
+    }
+}

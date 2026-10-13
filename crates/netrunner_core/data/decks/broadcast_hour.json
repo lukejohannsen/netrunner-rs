@@ -3,7 +3,7 @@
   "name": "Broadcast Hour",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Near-Earth Hub: Broadcast Center, System Update 2021's NBN identity, which draws a card the first time each turn it creates a remote server. On Pay to Win's frame, its identity swapped. Two Turtlebacks for its two Drago Ivanov, a Jinteki asset that gains a credit whenever a server is created; two Hostile Infrastructure for its two Chekist Scion, a Jinteki asset that does a net damage whenever the Runner trashes a Corp card, itself included. Ten influence of seventeen. Pay to Win keeps every card given up here. Tranche 8 Stage 4. Tranche 8 Stage 7b: two Tollbooth for its two Virtual Service Agent, a code gate for a code gate, whose 3[credit] the Runner must pay if able or the run ends; Paid Content, Grand Opening and Pay to Win keep Virtual Service Agent. FFG F1 Stage 4: two TGTBT for its two Oracle Thinktank, a 1-point agenda for a 1-point agenda, which tags the Runner who accesses it and is revealed in R&D; three decks keep Oracle Thinktank. FFG F1 Stage 5: two Bernice Mai for its two Sync Rerouting, an upgrade whose Trace[5] tags the Runner or trashes her; another deck keeps Sync Rerouting. FFG F2 Stage 5: two Fly on the Wall for its two Post-Truth Dividend, point for point, Arella Salvatore for its The Holo Man, an upgrade for an upgrade, and SIU for its Janaína \"JK\" Dumont Kindelán, an asset for an asset; other decks keep all three. Reign and Reverie Stage 14: two Eavesdrop for its two Ganked!; two other decks keep Ganked!. Kitara Stage 1: two Endless EULA for its two Tollbooth and two Sandman for its two Hydra; each is in another deck. Kitara Stage 3 took two Echo Chamber and two Calibration Testing for its Capacitors and Lethes.",
+  "description": "Not a published list: built so the sweeps reach Near-Earth Hub: Broadcast Center, System Update 2021's NBN identity, which draws a card the first time each turn it creates a remote server. On Pay to Win's frame, its identity swapped. Two Turtlebacks for its two Drago Ivanov, a Jinteki asset that gains a credit whenever a server is created; two Hostile Infrastructure for its two Chekist Scion, a Jinteki asset that does a net damage whenever the Runner trashes a Corp card, itself included. Ten influence of seventeen. Pay to Win keeps every card given up here. Tranche 8 Stage 4. Tranche 8 Stage 7b: two Tollbooth for its two Virtual Service Agent, a code gate for a code gate, whose 3[credit] the Runner must pay if able or the run ends; Paid Content, Grand Opening and Pay to Win keep Virtual Service Agent. FFG F1 Stage 4: two TGTBT for its two Oracle Thinktank, a 1-point agenda for a 1-point agenda, which tags the Runner who accesses it and is revealed in R&D; three decks keep Oracle Thinktank. FFG F1 Stage 5: two Bernice Mai for its two Sync Rerouting, an upgrade whose Trace[5] tags the Runner or trashes her; another deck keeps Sync Rerouting. FFG F2 Stage 5: two Fly on the Wall for its two Post-Truth Dividend, point for point, Arella Salvatore for its The Holo Man, an upgrade for an upgrade, and SIU for its Janaína \"JK\" Dumont Kindelán, an asset for an asset; other decks keep all three. Reign and Reverie Stage 14: two Eavesdrop for its two Ganked!; two other decks keep Ganked!. Kitara Stage 1: two Endless EULA for its two Tollbooth and two Sandman for its two Hydra; each is in another deck. Kitara Stage 3 took two Echo Chamber and two Calibration Testing for its Capacitors and Lethes. Kitara Stage 4b: two Better Citizen Program for two Freedom of Information, and TechnoCo for an F2P.",
   "style": [
     "fast-advance"
   ],
@@ -14,20 +14,12 @@
       "count": 3
     },
     {
-      "card": "f2p",
-      "count": 1
-    },
-    {
       "card": "scapenet",
       "count": 2
     },
     {
       "card": "kingmaking",
       "count": 3
-    },
-    {
-      "card": "freedom_of_information",
-      "count": 2
     },
     {
       "card": "arella_salvatore",
@@ -100,6 +92,14 @@
     {
       "card": "calibration_testing",
       "count": 2
+    },
+    {
+      "card": "better_citizen_program",
+      "count": 2
+    },
+    {
+      "card": "technoco",
+      "count": 1
     }
   ]
 }
