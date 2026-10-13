@@ -1,0 +1,50 @@
+{
+  "id": "ngo_front",
+  "title": "NGO Front",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 1,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveAdvancementCounters": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          5
+        ]
+      },
+      "text": "[trash],1 hosted advancement token: Gain 5[credit]."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveAdvancementCounters": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          8
+        ]
+      },
+      "text": "[trash],2 hosted advancement tokens: Gain 8[credit]."
+    }
+  ],
+  "built_from": 21039,
+  "is_playable": true
+}

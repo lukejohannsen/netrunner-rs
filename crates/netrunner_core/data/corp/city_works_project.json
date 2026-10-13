@@ -1,0 +1,35 @@
+{
+  "id": "city_works_project",
+  "title": "City Works Project",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "installs_faceup": true,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Meat",
+            {
+              "Increased": {
+                "amount": {
+                  "Fixed": 2
+                },
+                "by": "HostedAdvancementTokens"
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When the Runner accesses City Works Project while it is installed, do 2 meat damage and 1 additional meat damage for each advancement token on it."
+    }
+  ],
+  "built_from": 21078,
+  "is_playable": true
+}

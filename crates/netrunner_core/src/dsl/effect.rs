@@ -170,10 +170,11 @@ pub struct AsAgenda {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtype: Option<crate::dsl::CardSubtype>,
     /// "Add this operation to **the Runner's** score area" (Hangeki): a
-    /// Corp operation resolving goes to its controller's score area
-    /// (Myōshu) unless the card names the Runner's. Every other card's
-    /// score area is fixed by where it is — an accessed or installed Corp
-    /// card, a Runner card — so only an operation reads this.
+    /// Corp card goes to its controller's score area (Myōshu, Echo
+    /// Chamber's "add Echo Chamber to your score area") unless the card
+    /// names the Runner's (Hangeki; Meridian's "the Runner adds this ice to
+    /// their score area"). A Corp card being accessed and a Runner card
+    /// are fixed by where they are, and do not read this.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub to_the_runner: bool,
 }

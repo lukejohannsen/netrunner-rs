@@ -17,7 +17,8 @@
           "options": [
             {
               "AddToScoreAreaAsAgenda": {
-                "points": -1
+                "points": -1,
+                "to_the_runner": true
               }
             },
             {

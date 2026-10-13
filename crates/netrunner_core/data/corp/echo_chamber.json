@@ -1,0 +1,25 @@
+{
+  "id": "echo_chamber",
+  "title": "Echo Chamber",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "AddToScoreAreaAsAgenda": {
+          "points": 1
+        }
+      },
+      "text": "[click], [click], [click]: Add Echo Chamber to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 21015,
+  "is_playable": true
+}

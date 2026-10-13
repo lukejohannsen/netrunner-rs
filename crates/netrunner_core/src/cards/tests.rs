@@ -33496,3 +33496,179 @@ mod kitara_stage_2 {
         assert!(accessed.active_trace.is_none(), "anywhere except in Archives");
     }
 }
+
+mod kitara_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn in_remote(card: &str, remote: u32, rezzed: bool, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, rezzed, advancement_tokens: tokens, ..Default::default() }
+    }
+
+    fn corp_turn(installed: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.installed = installed;
+        state
+    }
+
+    fn runner_turn(installed: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.corp.installed = installed;
+        state
+    }
+
+    fn activate(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index }).map(|(state, _)| state)
+    }
+
+    fn in_corp_score_area(state: &GameState, card: &str) -> bool {
+        state.corp.scored_agendas.iter().any(|agenda| agenda.card == id(card))
+    }
+
+    #[test]
+    fn echo_chamber_spends_three_clicks_to_become_a_one_point_agenda() {
+        let registry = registry();
+        let state = corp_turn(vec![in_remote("echo_chamber", 0, true, 0)]);
+        let scored = activate(&state, &registry, "echo_chamber", 0).expect("[click], [click], [click]");
+        assert!(in_corp_score_area(&scored, "echo_chamber"), "your score area");
+        assert!(scored.corp.installed.is_empty());
+        assert_eq!(scored.corp.resources.clicks.0, 0);
+    }
+
+    #[test]
+    fn gene_splicer_does_net_damage_per_token_and_scores_with_three() {
+        let registry = registry();
+        let mut state = runner_turn(vec![in_remote("gene_splicer", 0, false, 2)]);
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        let (accessed, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert_eq!(accessed.runner.grip.len(), 2, "1 net damage for each advancement token");
+
+        let short = corp_turn(vec![in_remote("gene_splicer", 0, true, 2)]);
+        assert!(activate(&short, &registry, "gene_splicer", 0).is_err(), "3 hosted advancement tokens");
+        let ready = corp_turn(vec![in_remote("gene_splicer", 0, true, 3)]);
+        assert!(in_corp_score_area(&activate(&ready, &registry, "gene_splicer", 0).expect("score it"), "gene_splicer"));
+    }
+
+    #[test]
+    fn false_flag_tags_for_every_two_tokens_and_scores_three_points_with_seven() {
+        let registry = registry();
+        let (accessed, _) = run_to_completion(runner_turn(vec![in_remote("false_flag", 0, false, 5)]), &registry, ServerId::Remote(0));
+        let (accessed, _) = close_all_windows(accessed, &registry);
+        assert_eq!(accessed.runner.tags, 2, "1 tag for every 2 advancement tokens");
+        let ready = corp_turn(vec![in_remote("false_flag", 0, true, 7)]);
+        let scored = activate(&ready, &registry, "false_flag", 0).expect("score it");
+        assert_eq!(scored.corp.scored_agendas[0].as_agenda.map(|as_agenda| as_agenda.points), Some(3));
+    }
+
+    #[test]
+    fn ngo_front_trades_its_tokens_for_credits() {
+        let registry = registry();
+        let state = corp_turn(vec![in_remote("ngo_front", 0, true, 2)]);
+        let credits = state.corp.resources.credits.0;
+        let gained = activate(&state, &registry, "ngo_front", 1).expect("[trash], 2 hosted advancement tokens");
+        assert_eq!(gained.corp.resources.credits.0, credits + 8);
+        assert!(gained.corp.installed.is_empty(), "trashed");
+        let one = corp_turn(vec![in_remote("ngo_front", 0, true, 1)]);
+        assert!(activate(&one, &registry, "ngo_front", 1).is_err(), "needs 2");
+        assert_eq!(activate(&one, &registry, "ngo_front", 0).expect("1 token").corp.resources.credits.0, credits + 5);
+    }
+
+    #[test]
+    fn calibration_testing_advances_a_card_in_its_root() {
+        let registry = registry();
+        let state = corp_turn(vec![in_remote("calibration_testing", 0, true, 0), in_remote("ngo_front", 0, false, 0)]);
+        let choosing = activate(&state, &registry, "calibration_testing", 0).expect("[trash]");
+        let select = crate::rules::legal_actions_for(&choosing, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .expect("NGO Front is offered");
+        let (selected, _) = apply_action(&choosing, &registry, select).expect("choose NGO Front");
+        let (placed, _) = apply_action(&selected, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(placed.corp.installed.len(), 1, "Calibration Testing trashed");
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn bio_vault_ends_a_run_for_two_tokens_and_only_during_one() {
+        let registry = registry();
+        let vault = in_remote("bio_vault", 0, true, 2);
+        assert!(activate(&corp_turn(vec![vault.clone()]), &registry, "bio_vault", 0).is_err(), "only during a run");
+        let state = runner_turn(vec![vault]);
+        let end = PlayerAction::ActivateAbility { target: fixture_install_id("bio_vault"), ability_index: 0 };
+        let (mut run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        for _ in 0..12 {
+            if crate::rules::legal_actions_for(&run, &registry, Side::Corp).contains(&end) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let (ended, _) = apply_action(&run, &registry, end).expect("End the run");
+        assert!(ended.active_run.is_none(), "the run ended");
+        assert!(ended.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn city_works_project_does_meat_damage_by_its_tokens_when_accessed_installed() {
+        let registry = registry();
+        let mut state = runner_turn(vec![in_remote("city_works_project", 0, false, 2)]);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let (accessed, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert_eq!(accessed.runner.grip.len(), 1, "2 meat damage and 1 more for each of its 2 tokens");
+    }
+
+    #[test]
+    fn reconstruction_contract_banks_meat_damage_and_moves_its_tokens() {
+        let registry = registry();
+        let mut state = runner_turn(vec![in_remote("city_works_project", 0, false, 0), in_remote("reconstruction_contract", 1, true, 0)]);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let (accessed, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let decision = accessed.pending_decision.as_ref().expect("you may place 1 advancement token");
+        assert!(matches!(decision, crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. }));
+        let (banked, _) = apply_action(&accessed, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place it");
+        let contract = banked.corp.installed.iter().find(|card| card.card == id("reconstruction_contract")).expect("installed");
+        assert_eq!(contract.advancement_tokens, 1);
+
+        let state = corp_turn(vec![in_remote("reconstruction_contract", 1, true, 3), in_remote("ngo_front", 0, false, 0)]);
+        let asked = activate(&state, &registry, "reconstruction_contract", 0).expect("[trash]");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("move 2");
+        let select = crate::rules::legal_actions_for(&choosing, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .expect("NGO Front can be advanced");
+        let (selected, _) = apply_action(&choosing, &registry, select).expect("choose NGO Front");
+        let (moved, _) = apply_action(&selected, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(moved.corp.installed.len(), 1);
+        assert_eq!(moved.corp.installed[0].advancement_tokens, 2);
+    }
+
+    #[test]
+    fn urban_renewal_counts_down_at_the_corps_turn_and_then_does_four_meat_damage() {
+        let registry = registry();
+        let mut renewal = in_remote("urban_renewal", 0, true, 0);
+        renewal.counters = 1;
+        let mut state = runner_turn(vec![renewal]);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let mut state = crate::rules::test_support::clicks_spent(&state);
+        state = apply_action(&state, &registry, PlayerAction::EndTurn).expect("the Runner ends the turn").0;
+        for _ in 0..8 {
+            if state.phase == GamePhase::Action(Side::Corp) && state.paid_ability_window.is_none() {
+                break;
+            }
+            let Some(window) = &state.paid_ability_window else { break };
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0;
+        }
+        assert!(state.corp.installed.is_empty(), "no power counters left: trashed");
+        assert_eq!(state.runner.grip.len(), 1, "4 meat damage");
+    }
+}

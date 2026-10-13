@@ -1,0 +1,31 @@
+{
+  "id": "bio_vault",
+  "title": "Bio Vault",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "advancement_requirement": 0,
+  "install_only_in": [
+    "Remote"
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveAdvancementCounters": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "requirement": "DuringRun",
+      "effect": "EndTheRun",
+      "text": "[trash], 2 hosted advancement counters: End the run."
+    }
+  ],
+  "built_from": 21072,
+  "is_playable": true
+}
