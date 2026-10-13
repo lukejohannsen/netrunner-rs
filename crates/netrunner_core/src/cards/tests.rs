@@ -33921,3 +33921,78 @@ mod kitara_stage_4b {
         assert!(!crate::rules::legal_actions_for(&after, &registry, Side::Corp).contains(&PlayerAction::ResolvePendingChoice { option_index: 0 }), "a run event after the turn's icebreaker is not the first");
     }
 }
+
+mod kitara_stage_4c {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn scored(card: &str, tokens: u32, registry: &CardRegistry, mut state: GameState) -> GameState {
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: tokens, ..Default::default() });
+        apply_action(&state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id(card) }).expect("score").0
+    }
+
+    #[test]
+    fn remote_enforcement_installs_ice_from_rnd_on_a_remote_and_rezzes_it_free() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("hedge_fund")];
+        let state = scored("remote_enforcement", 4, &registry, state);
+        let pick = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .expect("Ice Wall is offered");
+        let (state, _) = apply_action(&state, &registry, pick).expect("choose Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let servers: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { .. }))
+            .collect();
+        assert!(!servers.is_empty() && servers.iter().all(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(_) })), "a remote server only: {servers:?}");
+        let credits = state.corp.resources.credits.0;
+        let (state, _) = apply_action(&state, &registry, servers[0].clone()).expect("protect it");
+        let wall = state.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("installed");
+        assert!(wall.rezzed, "rezzed, ignoring its rez cost");
+        assert_eq!(state.corp.resources.credits.0, credits, "the first ice on a server costs nothing to install, and the rez is free");
+        assert_eq!(state.corp.r_and_d.len(), 2);
+    }
+
+    #[test]
+    fn ssl_endorsement_pays_three_a_turn_from_either_score_area() {
+        let registry = registry();
+        let state = scored("ssl_endorsement", 5, &registry, base_state());
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 9, "place 9[credit] on it");
+
+        let mut runner_turn = state.clone();
+        runner_turn.phase = GamePhase::Action(Side::Runner);
+        runner_turn.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let credits = runner_turn.corp.resources.credits.0;
+        let (turn, _) = apply_action(&crate::rules::test_support::clicks_spent(&runner_turn), &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (turn, _) = close_all_windows(turn, &registry);
+        let (took, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 3[credit]");
+        let (took, _) = close_all_windows(took, &registry);
+        assert_eq!(took.corp.resources.credits.0, credits + 3);
+        assert_eq!(took.corp.scored_agendas[0].agenda_counters, 6);
+
+        // Stolen: on it with its credits, still the Corp's to take.
+        let mut stolen = base_state();
+        stolen.phase = GamePhase::Action(Side::Runner);
+        stolen.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("ssl_endorsement"), card: id("ssl_endorsement"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        let (stolen, _) = run_to_completion(stolen, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&stolen, &registry, PlayerAction::StealAgenda { card_id: id("ssl_endorsement") }).expect("steal");
+        let (stolen, _) = close_all_windows(stolen, &registry);
+        assert_eq!(stolen.runner.scored_agendas[0].agenda_counters, 9);
+        let mut stolen = stolen;
+        stolen.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let credits = stolen.corp.resources.credits.0;
+        let (turn, _) = apply_action(&crate::rules::test_support::clicks_spent(&stolen), &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (turn, _) = close_all_windows(turn, &registry);
+        let (took, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 3[credit]");
+        let (took, _) = close_all_windows(took, &registry);
+        assert_eq!(took.corp.resources.credits.0, credits + 3, "active even while in the Runner's score area");
+        assert_eq!(took.runner.scored_agendas[0].agenda_counters, 6);
+    }
+}

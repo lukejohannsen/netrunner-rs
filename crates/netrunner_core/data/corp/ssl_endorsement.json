@@ -1,0 +1,113 @@
+{
+  "id": "ssl_endorsement",
+  "title": "SSL Endorsement",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "stolen_with_agenda_counters": 9,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 9
+        }
+      ],
+      "text": "When this agenda is scored or stolen, place 9[credit] on it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          3
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RemoveCounters": {
+                      "Fixed": 3
+                    }
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "they may take 3[credit] from this agenda",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Corp's turn begins, they may take 3[credit] from this agenda. This ability is active even while this agenda is in the Runner's score area."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "from_runner_score_area": true,
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          3
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RemoveCounters": {
+                      "Fixed": 3
+                    }
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "they may take 3[credit] from this agenda",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When the Corp's turn begins, they may take 3[credit] from this agenda. This ability is active even while this agenda is in the Runner's score area."
+    }
+  ],
+  "built_from": 21038,
+  "is_playable": true
+}
