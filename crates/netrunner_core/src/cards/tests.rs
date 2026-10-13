@@ -33996,3 +33996,161 @@ mod kitara_stage_4c {
         assert_eq!(took.runner.scored_agendas[0].agenda_counters, 6);
     }
 }
+
+/// Kitara Stage 5a: ten Corp operations, every one of them composed from
+/// words the DSL already had.
+mod kitara_stage_5a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, RulesError> {
+        let mut state = state.clone();
+        state.corp.hq.push(id(card));
+        apply_action(&state, registry, PlayerAction::PlayOperation { card_id: id(card) }).map(|(state, _)| state)
+    }
+
+    /// Toggles the `nth` card the open selection offers, then confirms.
+    fn choose(state: &GameState, registry: &CardRegistry, nth: &[usize]) -> GameState {
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        let mut state = state.clone();
+        for &n in nth {
+            state = apply_action(&state, registry, toggles[n].clone()).expect("toggle").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn trashed_a_corp_card_last_turn(state: &mut GameState, registry: &CardRegistry) {
+        crate::rules::turn_log::record(state, registry, &crate::rules::GameEvent::CardTrashedFromAccess { card: id("pad_campaign"), cost_paid: 4, install: None });
+        crate::rules::turn_log::rotate(state);
+    }
+
+    #[test]
+    fn distract_the_masses_and_genotyping_recycle_archives_and_leave_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("enigma"))];
+        let runner = state.runner.resources.credits.0;
+        let asked = play(&state, &registry, "distract_the_masses").expect("play");
+        assert_eq!(asked.runner.resources.credits.0, runner + 2, "the Runner gains 2[credit]");
+        let trashed = choose(&asked, &registry, &[0, 1]);
+        assert!(trashed.corp.hq.is_empty(), "up to 2 cards from HQ");
+        assert_eq!(trashed.corp.archives.len(), 3);
+        let done = choose(&trashed, &registry, &[0, 1]);
+        assert_eq!(done.corp.r_and_d.len(), 2, "up to 2 from Archives into R&D");
+        assert_eq!(done.corp.removed_from_game, vec![id("distract_the_masses")]);
+
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let asked = play(&state, &registry, "genotyping").expect("play");
+        assert_eq!(asked.corp.r_and_d.len(), 1, "the top 2 cards of R&D are trashed");
+        let done = choose(&asked, &registry, &[0, 1]);
+        assert_eq!(done.corp.r_and_d.len(), 3);
+        assert_eq!(done.corp.removed_from_game, vec![id("genotyping")]);
+    }
+
+    #[test]
+    fn economic_warfare_and_standard_procedure_need_a_successful_run_last_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"), id("dirty_laundry"), id("corroder")];
+        assert!(play(&state, &registry, "economic_warfare").is_err());
+        assert!(play(&state, &registry, "standard_procedure").is_err());
+        crate::rules::test_support::a_run_succeeded_last_turn(&mut state);
+        let warfare = play(&state, &registry, "economic_warfare").expect("play");
+        assert_eq!(warfare.runner.resources.credits.0, 6);
+        let mut poor = state.clone();
+        poor.runner.resources.credits = Credits(3);
+        assert_eq!(play(&poor, &registry, "economic_warfare").expect("play").runner.resources.credits.0, 3, "fewer than 4[credit]: nothing");
+
+        let asked = play(&state, &registry, "standard_procedure").expect("play");
+        let credits = asked.corp.resources.credits.0;
+        let (events, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("events");
+        assert_eq!(events.corp.resources.credits.0, credits + 4, "2[credit] for each of the 2 events");
+    }
+
+    #[test]
+    fn tag_punishment_scales_with_tags() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        assert!(play(&state, &registry, "high_profile_target").is_err(), "not tagged");
+        assert!(play(&state, &registry, "market_forces").is_err(), "not tagged");
+        assert!(play(&state, &registry, "self_growth_program").is_err(), "not tagged");
+        state.runner.tags = 2;
+        let hit = play(&state, &registry, "high_profile_target").expect("play");
+        let (hit, _) = close_all_windows(hit, &registry);
+        assert_eq!(hit.runner.grip.len(), 1, "4 meat damage");
+
+        state.runner.resources.credits = Credits(5);
+        let corp = state.corp.resources.credits.0;
+        let forces = play(&state, &registry, "market_forces").expect("play");
+        assert_eq!(forces.runner.resources.credits.0, 0, "6[credit] asked, 5 lost");
+        assert_eq!(forces.corp.resources.credits.0, corp + 5, "1[credit] for each credit lost");
+
+        state.runner.rig = vec![rig("corroder", 2001), rig("daily_casts", 2002)];
+        state.runner.grip.clear();
+        let asked = play(&state, &registry, "self_growth_program").expect("play");
+        let once = choose(&asked, &registry, &[0]);
+        let twice = choose(&once, &registry, &[0]);
+        assert!(twice.runner.rig.is_empty());
+        assert_eq!(twice.runner.grip.len(), 2, "2 installed Runner cards to the grip");
+    }
+
+    #[test]
+    fn reprisals_need_a_trashed_corp_card_and_let_the_runner_pick_the_penalty() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.rig = vec![rig("corroder", 2001), rig("daily_casts", 2002)];
+        for card in ["riot_suppression", "threat_assessment", "wake_up_call"] {
+            assert!(play(&state, &registry, card).is_err(), "{card}: nothing trashed last turn");
+        }
+        trashed_a_corp_card_last_turn(&mut state, &registry);
+
+        let riot = play(&state, &registry, "riot_suppression").expect("play");
+        let (core, _) = apply_action(&riot, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("core damage");
+        let (core, _) = close_all_windows(core, &registry);
+        assert_eq!(core.runner.brain_damage, 1);
+        let (clicks, _) = apply_action(&riot, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("-3 clicks");
+        assert_eq!(clicks.runner.brain_damage, 0);
+        assert!(!clicks.lingering.is_empty(), "-3 allotted [click] waits for the Runner's next turn");
+        assert_eq!(clicks.corp.removed_from_game, vec![id("riot_suppression")]);
+
+        let threat = choose(&play(&state, &registry, "threat_assessment").expect("play"), &registry, &[0]);
+        let (tags, _) = apply_action(&threat, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("tags");
+        let (tags, _) = close_all_windows(tags, &registry);
+        assert_eq!(tags.runner.tags, 2);
+        assert_eq!(tags.runner.rig.len(), 2);
+        let (stacked, _) = apply_action(&threat, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("stack it");
+        assert_eq!(stacked.runner.rig.len(), 1);
+        assert_eq!(stacked.runner.stack.last(), Some(&id("corroder")), "the top of the stack");
+        assert_eq!(stacked.corp.removed_from_game, vec![id("threat_assessment")]);
+
+        // Corroder is a program: only Daily Casts is offered.
+        let call = choose(&play(&state, &registry, "wake_up_call").expect("play"), &registry, &[0]);
+        let (trashed, _) = apply_action(&call, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash");
+        let (trashed, _) = close_all_windows(trashed, &registry);
+        assert_eq!(trashed.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("corroder")]);
+        let (meat, _) = apply_action(&call, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("meat");
+        let (meat, _) = close_all_windows(meat, &registry);
+        assert_eq!(meat.runner.grip.len(), 1, "4 meat damage");
+        assert_eq!(meat.runner.rig.len(), 2);
+
+        let mut programs_only = state.clone();
+        programs_only.runner.rig = vec![rig("corroder", 2001)];
+        assert!(play(&programs_only, &registry, "wake_up_call").is_err(), "no hardware or non-virtual resource");
+        programs_only.runner.rig.clear();
+        assert!(play(&programs_only, &registry, "threat_assessment").is_err(), "no installed card");
+    }
+}

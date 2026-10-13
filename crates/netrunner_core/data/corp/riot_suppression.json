@@ -1,0 +1,75 @@
+{
+  "id": "riot_suppression",
+  "title": "Riot Suppression",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "Not": {
+      "And": [
+        {
+          "Not": {
+            "AmountAtLeast": [
+              {
+                "TimesLastTurn": "OnTrashedFromAccess"
+              },
+              1
+            ]
+          }
+        },
+        {
+          "Not": {
+            "AmountAtLeast": [
+              {
+                "TimesLastTurnWhen": {
+                  "trigger": "OnCardTrashed",
+                  "when": {
+                    "OwnedBy": {
+                      "owner": "Corp",
+                      "whose": "Runner"
+                    }
+                  }
+                }
+              },
+              1
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DealDamage": [
+                  "Brain",
+                  1
+                ]
+              },
+              {
+                "AllottedClicksNextTurn": [
+                  "Runner",
+                  -3
+                ]
+              }
+            ],
+            "texts": [
+              "The Runner may suffer 1 core damage",
+              "If they do not, they get -3 allotted [click] for their next turn"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21113,
+  "is_playable": true
+}

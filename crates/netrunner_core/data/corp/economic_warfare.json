@@ -1,0 +1,43 @@
+{
+  "id": "economic_warfare",
+  "title": "Economic Warfare",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnSuccessfulRun"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "Credits": "Runner"
+                },
+                4
+              ]
+            },
+            "effect": {
+              "LoseCredits": [
+                "Runner",
+                4
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21036,
+  "is_playable": true
+}

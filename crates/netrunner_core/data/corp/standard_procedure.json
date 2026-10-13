@@ -1,0 +1,138 @@
+{
+  "id": "standard_procedure",
+  "title": "Standard Procedure",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnSuccessfulRun"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      {
+                        "Times": {
+                          "amount": {
+                            "InZone": {
+                              "zone": "OpponentHand",
+                              "filter": {
+                                "CardType": "Event"
+                              }
+                            }
+                          },
+                          "times": 2
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      {
+                        "Times": {
+                          "amount": {
+                            "InZone": {
+                              "zone": "OpponentHand",
+                              "filter": {
+                                "CardType": "Hardware"
+                              }
+                            }
+                          },
+                          "times": 2
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      {
+                        "Times": {
+                          "amount": {
+                            "InZone": {
+                              "zone": "OpponentHand",
+                              "filter": {
+                                "CardType": "Program"
+                              }
+                            }
+                          },
+                          "times": 2
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "RevealHand": "Runner"
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      {
+                        "Times": {
+                          "amount": {
+                            "InZone": {
+                              "zone": "OpponentHand",
+                              "filter": {
+                                "CardType": "Resource"
+                              }
+                            }
+                          },
+                          "times": 2
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              "Choose a card type \u2014 event",
+              "Choose a card type \u2014 hardware",
+              "Choose a card type \u2014 program",
+              "Choose a card type \u2014 resource"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21097,
+  "is_playable": true
+}

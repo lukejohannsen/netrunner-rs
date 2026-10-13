@@ -3,7 +3,7 @@
   "name": "The Truth You Need",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9.",
+  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment.",
   "style": [
     "fast-advance"
   ],
@@ -50,10 +50,6 @@
       "count": 1
     },
     {
-      "card": "attitude_adjustment",
-      "count": 2
-    },
-    {
       "card": "tollbooth",
       "count": 2
     },
@@ -94,11 +90,15 @@
       "count": 2
     },
     {
-      "card": "game_over",
+      "card": "bernice_mai",
       "count": 2
     },
     {
-      "card": "bernice_mai",
+      "card": "market_forces",
+      "count": 2
+    },
+    {
+      "card": "self_growth_program",
       "count": 2
     }
   ]

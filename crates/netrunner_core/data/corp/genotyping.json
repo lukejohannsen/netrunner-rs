@@ -1,0 +1,38 @@
+{
+  "id": "genotyping",
+  "title": "Genotyping",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Corp",
+            "amount": {
+              "Fixed": 2
+            }
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 4,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnRAndD"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21014,
+  "is_playable": true
+}
