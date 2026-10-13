@@ -1292,6 +1292,17 @@ fn instead(effect: &Effect, state: &GameState, registry: &CardRegistry, hosted: 
             Instead::default()
         }
         Effect::Access { from: CardZoneRef::OpponentSetAside, .. } => Instead { looks: *set_aside, ..Default::default() },
+        // "Instead of breaching HQ, breach R&D. When you do, access 1
+        // additional card" (Beatriz Friere Gonzalez; Phase 5 §79): a breach
+        // of R&D is its one access, and each card added to it one more.
+        // The added cards are counted ahead of the breach they join, as
+        // set-aside cards are ahead of their access: looks are a `max` in
+        // a sequence, because Stargate's look and its trash are one card.
+        Effect::Breach(netrunner_core::rules::ServerId::RnD) => Instead { looks: 1 + *set_aside, ..Default::default() },
+        Effect::AddAdditionalAccess { server: netrunner_core::rules::ServerId::RnD, count } => {
+            *set_aside += count;
+            Instead::default()
+        }
         Effect::PromptChooseCards { source: CardZoneRef::OpponentDeck, filter: CardFilter::TopOfZone(n), .. } => {
             Instead { looks: (*n).min(state.corp.r_and_d.len() as u32), ..Default::default() }
         }

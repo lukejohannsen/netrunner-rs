@@ -4031,3 +4031,13 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §77's code against this branch on seeds 2 / 3: Net Shield 9 → 60 and 6 → 59; AirbladeX (JSRF Ed.) 2 → 17 and 0 → 11; Decoy 1 → 0 and 2 → 2, read but not played (not traced); Sacrificial Construct 108 → 123 and 111 → 113, Lucky Charm and Fall Guy unmoved; Corp share 0.505 → 0.505 and 0.497 → 0.497 (z 0.00 on both).
 
 **Verified.** `a_prevention_is_the_harm_it_prevents_where_the_corp_threatens_it`: each card's worth against a Corp that threatens its harm, and nothing against one that does not.
+
+## 79. A run that breaches elsewhere is read for its extra card, and a lockdown's strength is a tax: Beatriz Friere Gonzalez, NEXT Activation Command — DONE (`claude/bot-blindness-batch-9`, 13 October 2026)
+
+**The debt.** Beatriz Friere Gonzalez's "[click][click]: Run HQ. If successful, instead of breaching HQ, breach R&D. When you do, access 1 additional card" read as one look: `instead` folds a sequence's looks as a `max`, because Stargate's look and its trash are one card, so the added access vanished beside the breach it joins, and her second click was never charged. NEXT Activation Command's "each piece of ice gets +2 strength" is no trigger `lockdown_tax` hears, so the Corp read it as nothing (random seats 33, the planner 3 and 4).
+
+**What is read now.** `read::instead` counts R&D's breach as one look plus the accesses added ahead of it, and `run_replacement_value` charges what a run ability costs beyond a run's click (`beyond_a_run`: Beatriz's second click, Eru Ayase-Pessoa's tag). `corp::lockdown_break_tax` reads the lockdowns in play as the break credits they add to the Runner's next run on the server it most wants (`server_stakes`, as `breach_denial` reads it), at the rate the Corp reads the Runner's credits, and a server they make unbreakable as that run's stakes denied — not the cheapest server's, since Archives with no ice is nearly always the cheapest and nobody runs it for nothing.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §78's code against this branch on seeds 2 / 3: Beatriz Friere Gonzalez 2 → 9 and 7 → 19; NEXT Activation Command 3 → 10 and 4 → 21; Eru Ayase-Pessoa unmoved (9, 5); Corp share 0.505 → 0.500 and 0.497 → 0.495 (z −0.83, −0.30).
+
+**Verified.** `stargate_is_worth_its_looks_over_a_breach` now holds Beatriz to two looks less a breach and a click, and Eru to nothing; `a_lockdown_that_raises_strength_is_the_break_credits_it_adds`: NEXT on R&D's Ice Wall is Corroder's pump, and nothing with no lockdown or with R&D bare.
