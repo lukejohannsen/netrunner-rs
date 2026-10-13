@@ -2319,6 +2319,13 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: 
     for_each_declared_effect(def, &mut |effect| match effect {
         Effect::AddAdditionalAccess { server: ServerId::RnD, count } => fixed += *count,
         Effect::AddAdditionalAccessAmount { server: ServerId::RnD, amount: Amount::HostedCounters } => per_counter = true,
+        // "You may remove up to 3 hosted power counters to access that
+        // many additional cards" (Wake Implant v2A-JRJ; Phase 5 §81): the
+        // number chosen is of the counters it hosts, so it reads as they
+        // do, where the chosen number had read as no access at all.
+        Effect::ChooseNumber { of: Some(Amount::HostedCounters), then, .. } => then.for_each_effect(&mut |effect| {
+            per_counter |= matches!(effect, Effect::AddAdditionalAccessAmount { server: ServerId::RnD, amount: Amount::ChosenNumber });
+        }),
         _ => {}
     });
     let hosted = if per_counter { counters.unwrap_or_else(|| declared_income(def).printed_stock) } else { 0 };
@@ -2326,7 +2333,11 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: 
     // choice's options are compared by what they pay (`Tally::worth`),
     // which a counter is not, so the placement is looked for outright.
     let grows = per_counter
-        && def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnSuccessfulRun && trigger.requirement.is_none()).any(|trigger| {
+        // And a counter placed the first time each turn something happens
+        // (The Twinning's "the first time each turn you spend credits from
+        // an installed card"; Phase 5 §81), read as a counter a turn — the
+        // decks that hold it hold the cards it is spent from.
+        && def.triggers.iter().filter(|trigger| (trigger.trigger == Trigger::OnSuccessfulRun || trigger.first_each_turn) && trigger.requirement.is_none()).any(|trigger| {
             let mut places = false;
             for effect in &trigger.effects {
                 effect.for_each_effect(&mut |effect| places |= matches!(effect, Effect::AddCounters(n) if *n > 0));
