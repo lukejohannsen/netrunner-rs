@@ -39,6 +39,12 @@ pub enum CardZoneRef {
     /// selection's `destination`. The Runner may look at them; the Corp sees
     /// how many.
     OwnInstalledFacedown,
+    /// The pile of other identities the Runner brought (`RunnerState::
+    /// other_identities`, CR 1.5.4a) — DJ Fenris's "host a g-mod identity".
+    /// Outside the game (CR 4.1.3) and in no zone, but the one source an
+    /// ability that brings a card in from there names. The Runner may look
+    /// at it at any time, so choosing from it shows nothing new.
+    OtherIdentities,
     /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
     /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
     /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
@@ -127,6 +133,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OwnInstalledFacedown
+            | CardZoneRef::OtherIdentities
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
@@ -154,6 +161,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
             | CardZoneRef::OwnInstalledFacedown
+            | CardZoneRef::OtherIdentities
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource

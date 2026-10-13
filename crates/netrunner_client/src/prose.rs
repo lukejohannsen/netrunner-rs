@@ -160,6 +160,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnSetAside => "the cards set aside",
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown",
         CardZoneRef::OwnInstalledFacedown => "your facedown installed cards",
+        CardZoneRef::OtherIdentities => "your other identities",
         CardZoneRef::OpponentSetAside => "the opponent's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
@@ -587,6 +588,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
+        Effect::HostOtherIdentity { .. } => "host it on this card, which gains its text".to_string(),
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
             let what = match (what, copies_of_it) {
                 (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",

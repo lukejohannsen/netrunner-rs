@@ -56,6 +56,7 @@ use crate::rules::win;
 /// The win first: once a side has won, nothing else is the game's to do.
 pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event: Option<&GameEvent>) -> Vec<GameEvent> {
     expire_durations(state);
+    remove_unhosted_identities(state);
     win::refresh_tallies(state, registry);
     let mut events = win::check_win_conditions(state, registry);
     if !state.is_over() {
@@ -146,6 +147,23 @@ fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameE
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
+}
+
+/// "Remove hosted identity from the game if DJ Fenris is uninstalled":
+/// an identity whose host has left the rig, however it left — trashed,
+/// returned to the grip, added to a score area — is removed from the game.
+/// A standing condition rather than a step of every site that takes a card
+/// out of the rig, which is the unique rule's nine install paths over
+/// again; and it never reacts to anything, since `rules::active` already
+/// stopped listing the identity the moment its host was gone.
+fn remove_unhosted_identities(state: &mut GameState) {
+    if state.runner.hosted_identities.is_empty() {
+        return;
+    }
+    let (kept, gone): (Vec<_>, Vec<_>) =
+        std::mem::take(&mut state.runner.hosted_identities).into_iter().partition(|hosted| state.find_rig_install(hosted.host).is_some());
+    state.runner.hosted_identities = kept;
+    state.runner.removed_from_game.extend(gone.into_iter().map(|hosted| hosted.card));
 }
 
 /// Drops the lingering effects whose duration has run out. Five call sites

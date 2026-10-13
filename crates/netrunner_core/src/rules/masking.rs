@@ -288,6 +288,15 @@ pub struct PublicRunnerState {
     /// information the Runner controls (CR 4.6.3), counted for the Corp.
     #[serde(default = "MaskedZone::empty")]
     pub installed_facedown: MaskedZone,
+    /// Never masked: the pile of other identities (`RunnerState::
+    /// other_identities`) is every playable identity but the Runner's own,
+    /// which says nothing the registry does not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub other_identities: Vec<CardId>,
+    /// Never masked: a hosted identity is faceup on its host
+    /// (`RunnerState::hosted_identities`, DJ Fenris's).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted_identities: Vec<crate::rules::HostedIdentity>,
     /// Never masked: faceup (`RunnerState::play_area`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -1601,6 +1610,8 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         set_aside: runner.set_aside.clone(),
         set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
         installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
+        other_identities: runner.other_identities.clone(),
+        hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the

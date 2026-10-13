@@ -32998,3 +32998,132 @@ mod reign_and_reverie_stage_15 {
         assert_eq!(runner_view.runner.installed_facedown_cards.as_ref().map(Vec::len), Some(2), "the Runner may look at their own facedown cards");
     }
 }
+
+/// Reign and Reverie Stage 16: DJ Fenris, an identity from outside the game.
+mod reign_and_reverie_stage_16 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// DJ Fenris installed by an Anarch, with a pile of four identities to
+    /// host one from, and the one at `pick` (of those eligible) hosted.
+    fn installed(registry: &CardRegistry, identity: &str, pick: usize) -> (GameState, Vec<CardId>) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id(identity));
+        state.runner.grip = vec![id("dj_fenris")];
+        state.runner.other_identities =
+            ["chaos_theory_wunderkind", "liza_talking_thunder_prominent_legislator", "quetzal_free_spirit", "noise_hacker_extraordinaire", "reina_roja_freedom_fighter", "ayla_bios_rahim_simulant_specialist"]
+                .into_iter()
+                .map(id)
+                .filter(|card| Some(card) != state.runner.identity.as_ref())
+                .collect();
+        let (state, _) = apply_action(&state, registry, PlayerAction::InstallResource { card_id: id("dj_fenris"), host: None }).expect("install DJ Fenris");
+        let decision = state.pending_decision.clone().expect("host a g-mod identity, when he is installed");
+        let eligible: Vec<CardId> = crate::rules::legal_actions_for(&state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => state.runner.other_identities.get(position).cloned(),
+                _ => None,
+            })
+            .collect();
+        let _ = decision;
+        let position = state.runner.other_identities.iter().position(|card| *card == eligible[pick]).unwrap();
+        let (chosen, _) = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("choose");
+        let (hosted, _) = apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        (hosted, eligible)
+    }
+
+    fn dj(state: &GameState) -> InstallId {
+        state.runner.rig.iter().find(|card| card.card == id("dj_fenris")).expect("DJ Fenris installed").install_id
+    }
+
+    #[test]
+    fn dj_fenris_hosts_a_g_mod_identity_of_another_faction_and_gains_its_text() {
+        let registry = registry();
+        let (state, eligible) = installed(&registry, "noise_hacker_extraordinaire", 0);
+        // Anarch: Quetzal and Reina Roja match the faction, Ayla is no g-mod.
+        assert_eq!(eligible, vec![id("chaos_theory_wunderkind"), id("liza_talking_thunder_prominent_legislator")]);
+        assert_eq!(state.runner.hosted_identities, vec![crate::rules::HostedIdentity { card: id("chaos_theory_wunderkind"), host: dj(&state) }]);
+        assert!(!state.runner.other_identities.contains(&id("chaos_theory_wunderkind")), "out of the pile");
+        assert!(state.runner.rig.iter().all(|card| card.card != id("chaos_theory_wunderkind")), "hosted, not installed");
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 5, "Chaos Theory's +1[mu], as DJ Fenris's");
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.runner.hosted_identities, state.runner.hosted_identities, "faceup");
+
+        // Remove hosted identity from the game if DJ Fenris is uninstalled.
+        let mut trashed = state.clone();
+        trashed.phase = GamePhase::Action(Side::Corp);
+        trashed.runner.tags = 1;
+        let (trashed, _) = apply_action(&trashed, &registry, PlayerAction::TrashResource { target: dj(&state) }).expect("trash DJ Fenris");
+        assert!(trashed.runner.hosted_identities.is_empty());
+        assert!(trashed.runner.removed_from_game.contains(&id("chaos_theory_wunderkind")));
+        assert_eq!(crate::rules::memory::memory_balance(&trashed, &registry), 4);
+    }
+
+    #[test]
+    fn a_deck_with_dj_fenris_brings_the_pile_of_other_identities_and_no_other_deck_does() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("dead_reckoning").expect("DJ Fenris's deck").to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        let pile = &state.runner.other_identities;
+        assert!(pile.contains(&id("quetzal_free_spirit")) && pile.contains(&id("chaos_theory_wunderkind")));
+        assert!(!pile.contains(&runner.identity), "every identity but the Runner's own (CR 1.5.4a)");
+        assert!(pile.windows(2).all(|pair| pair[0] < pair[1]), "in one order every game");
+        let other = crate::decks::by_id("simulant").expect("a deck without DJ Fenris").to_deck();
+        let (state, _) = GameState::setup(&corp, &other, &registry, 7).expect("setup");
+        assert!(state.runner.other_identities.is_empty());
+    }
+
+    #[test]
+    fn a_hosted_identity_s_trigger_is_heard_as_dj_fenris_s() {
+        let registry = registry();
+        let (state, _) = installed(&registry, "noise_hacker_extraordinaire", 1);
+        assert_eq!(state.runner.hosted_identities[0].card, id("liza_talking_thunder_prominent_legislator"));
+        let mut state = state;
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let grip = state.runner.grip.len();
+        let (done, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert_eq!(done.runner.grip.len(), grip + 2, "the first successful run on a central each turn: draw 2 cards");
+        assert_eq!(done.runner.tags, 1, "and take 1 tag");
+    }
+
+    #[test]
+    fn a_hosted_identity_s_paid_ability_is_used_from_dj_fenris() {
+        let registry = registry();
+        let (_, eligible) = installed(&registry, "steve_cambridge_master_grifter", 0);
+        assert!(eligible.contains(&id("quetzal_free_spirit")));
+        let position = eligible.iter().position(|card| *card == id("quetzal_free_spirit")).unwrap();
+        let (state, _) = installed(&registry, "steve_cambridge_master_grifter", position);
+        let dj = dj(&state);
+        assert_eq!(state.rig_abilities_card(dj), Some(&id("quetzal_free_spirit")));
+        let mut running = state.clone();
+        running.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (mut run, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|r| r.phase == crate::rules::RunPhase::EncounterIce) && run.paid_ability_window.as_ref().is_some_and(|w| w.active_priority == Side::Runner) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let quetzal = PlayerAction::ActivateAbility { target: dj, ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&run, &registry, Side::Runner).contains(&quetzal), "Once per turn → 0[credit]: Break 1 barrier subroutine");
+        let (broken, _) = apply_action(&run, &registry, quetzal.clone()).expect("break Ice Wall's subroutine");
+        assert!(broken.active_run.as_ref().unwrap().ice[0].subroutines.iter().all(|sub| sub.status == crate::rules::SubroutineStatus::Broken), "Ice Wall's one subroutine is broken");
+        assert!(!crate::rules::legal_actions_for(&broken, &registry, Side::Runner).contains(&quetzal), "once per turn");
+    }
+}

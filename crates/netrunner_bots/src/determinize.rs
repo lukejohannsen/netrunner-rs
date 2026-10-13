@@ -405,7 +405,9 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
             view.runner.grip_count
                 + view.runner.stack_count
                 + view.runner.heap.len()
-                + view.runner.removed_from_game.len()
+                // An identity DJ Fenris hosted is removed from the game
+                // with him, and was never a card of the deck.
+                + view.runner.removed_from_game.iter().filter(|card| registry.get(card).is_none_or(|definition| definition.card_type != CardType::Identity)).count()
                 + view.runner.set_aside.len()
                 + view.runner.set_aside_facedown_count
                 + view.runner.installed_facedown_count
@@ -1084,6 +1086,10 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // Reboot's facedown installs: hidden from the Corp the same way,
         // drawn after them for the same reason.
         installed_facedown: determinize_zone(&view.runner.installed_facedown_cards, view.runner.installed_facedown_count, &mut pools, Slot::RunnerAny),
+        // The pile of other identities and the one DJ Fenris hosts: faceup,
+        // and no card of the deck, so copied whole and never drawn.
+        other_identities: view.runner.other_identities.clone(),
+        hosted_identities: view.runner.hosted_identities.clone(),
         play_area: view.runner.play_area.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
@@ -1497,6 +1503,8 @@ mod tests {
                 set_aside: Vec::new(),
                 set_aside_facedown: Vec::new(),
                 installed_facedown: Vec::new(),
+                other_identities: Vec::new(),
+                hosted_identities: Vec::new(),
                 play_area: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,

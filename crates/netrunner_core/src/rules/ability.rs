@@ -1708,6 +1708,20 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardHosted { card: played.card, host: Some(host_card) }])
         }
 
+        Effect::HostOtherIdentity { identity, host } => {
+            // The host left the rig while the choice was parked: nothing to
+            // host it on, so it stays in the pile.
+            let Some(host_card) = state.find_rig_install(*host).map(|c| c.card.clone()) else {
+                return Ok(Vec::new());
+            };
+            let Some(position) = state.runner.other_identities.iter().position(|card| card == identity) else {
+                return Ok(Vec::new());
+            };
+            let card = state.runner.other_identities.remove(position);
+            state.runner.hosted_identities.push(crate::rules::state::HostedIdentity { card: card.clone(), host: *host });
+            Ok(vec![GameEvent::CardHosted { card, host: Some(host_card) }])
+        }
+
         Effect::InstallRunnerCardFromGrip => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Eligibility may have shifted since the selection was offered

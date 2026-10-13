@@ -113,6 +113,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OwnSetAsideFacedown => state.runner.set_aside_facedown.clone(),
         CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.clone(),
+        CardZoneRef::OtherIdentities => state.runner.other_identities.clone(),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => state.corp.set_aside.clone(),
             Side::Runner => state.runner.set_aside.clone(),
@@ -662,6 +663,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
         CardZoneRef::OwnSetAsideFacedown => Some(&mut state.runner.set_aside_facedown),
         CardZoneRef::OwnInstalledFacedown => Some(&mut state.runner.installed_facedown),
+        CardZoneRef::OtherIdentities => Some(&mut state.runner.other_identities),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => Some(&mut state.corp.set_aside),
             Side::Runner => Some(&mut state.runner.set_aside),
@@ -1704,6 +1706,8 @@ pub(crate) fn resolve_confirm_card_selection(
             // The condition being played is the parking card's handle in
             // the play area; its host is the install chosen.
             (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => source_install.map(|this| Effect::HostThisAsCondition { condition: this, host: *chosen }),
+            // The identity chosen from the pile, hosted on the parking card.
+            (Effect::HostOtherIdentity { .. }, [chosen, ..], _) => source_install.map(|this| Effect::HostOtherIdentity { identity: chosen.clone(), host: this }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),

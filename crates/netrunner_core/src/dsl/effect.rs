@@ -1480,6 +1480,17 @@ pub enum Effect {
     /// out of the play area, and a counter is not an install, so no install
     /// effect may put it on the table (CR 1.13.6d).
     HostThisAsCondition { condition: crate::rules::InstallId, host: crate::rules::InstallId },
+    /// The identity `identity`, chosen from the pile the Runner brought
+    /// (`CardZoneRef::OtherIdentities`, CR 1.5.4), is hosted on the rig
+    /// install `host`, which gains its text — DJ Fenris's "Host a g-mod
+    /// identity … on DJ Fenris when he is installed. DJ Fenris gains the
+    /// text of hosted identity". Both are placeholders substituted when the
+    /// parking `PromptChooseCards` resolves: `identity` becomes the card
+    /// chosen and `host` the parking card's install. Composition didn't
+    /// work: a selection's `destination` moves a card into a zone, and the
+    /// one zone on a rig card (`HostedOnSource`, Madani's) holds cards that
+    /// are inactive, where this one's text is the host's.
+    HostOtherIdentity { identity: CardId, host: crate::rules::InstallId },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
     /// of the turn" (Luminal Transubstantiation): a `rules::lingering`
@@ -3397,6 +3408,7 @@ impl Effect {
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::HostThisAsCondition { .. }
+            | Effect::HostOtherIdentity { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)

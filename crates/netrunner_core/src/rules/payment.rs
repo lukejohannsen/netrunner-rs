@@ -711,7 +711,7 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
                     .find_corp_install(target)
                     .map(|c| &c.card)
                     .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
-                    .or_else(|| state.find_rig_install(target).map(|c| &c.card))
+                    .or_else(|| state.rig_abilities_card(target))
                     .or_else(|| state.runner.find_stolen(target).map(|s| &s.card)),
             };
             card.and_then(|card| registry.get(card))
