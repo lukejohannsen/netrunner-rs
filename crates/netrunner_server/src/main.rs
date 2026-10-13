@@ -137,6 +137,14 @@ struct Config {
     #[arg(long, requires = "data_dir")]
     database: Option<String>,
 
+    /// (serve mode) A key that may hold and close an event (Phase 4
+    /// §11) — `key:<base32>`, as `netrunner_cli identity` prints it —
+    /// repeatable. An event grants titles and badges the profile wears
+    /// everywhere on this server, so only an operator's key holds one; a
+    /// tournament, whose only prize is its standings, is anyone's.
+    #[arg(long = "operator", value_parser = parse_key, requires = "data_dir")]
+    operators: Vec<netrunner_identity::PublicKey>,
+
     /// (serve mode) Rebuild the store's ratings and results from
     /// `results.jsonl` in the data directory before serving. The results
     /// log is the truth and the store its index: a corrupt store, a
@@ -260,6 +268,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         runner_deck: config.runner_deck.clone(),
         formats: config.formats.iter().map(|&format| format.into()).collect(),
         data_dir: config.data_dir.clone(),
+        operators: config.operators.clone(),
         database: config.database.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
@@ -295,6 +304,10 @@ mod tests {
 /// `--bots`: the rungs a daemon offers.
 #[derive(Debug, Clone)]
 struct Bots(Vec<netrunner_bots::Level>);
+
+fn parse_key(text: &str) -> Result<netrunner_identity::PublicKey, String> {
+    text.trim().parse::<netrunner_identity::PublicKey>().map_err(|error| error.to_string())
+}
 
 fn parse_bots(text: &str) -> Result<Bots, String> {
     if text.trim().eq_ignore_ascii_case("none") {

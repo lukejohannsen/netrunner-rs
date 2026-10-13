@@ -51,6 +51,21 @@ the server looks, the dashboard shows what it is looking for and how long
 it has been, with **Abort**. Two players who meet again swap the chairs
 they last took.
 
+**Events are the third door's other half** (Phase 4 §11, 12 October 2026).
+A tournament is structured — a fixed start, decks locked, Swiss in
+lockstep — and an event is rolling: a gauntlet the server's operator holds
+in one format, with a rule on which factions your identities may be from
+if they chose one, and a track of wins to clear. Enter it any time with
+your active decks; **Find event match** pairs you at once against anyone
+else looking in that event's pool, never rated; a win moves your track, a
+loss counts and costs nothing, and a milestone reached is a title or a
+badge of yours on that server the moment the game ends, worn from your
+profile page. **Quit event** withdraws your entry (what you earned stays);
+to stop looking, press Abort. A cleared track keeps playing. An operator
+holds one from the page, or from the terminal: `netrunner_cli admin event
+hold --name … --format startup --wins 3 --milestone 1=title:Net-Slinger`,
+on a key the daemon was started with as `--operator`.
+
 To play the people you know, open Casual and make a **friend lobby**: it is
 never listed and never rated, your group joins it by the code the server
 gives it (also under Casual), and whoever is looking there plays whoever

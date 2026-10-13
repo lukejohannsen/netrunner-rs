@@ -95,7 +95,11 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         None => {
             let deck = brought.expect("a player always brings a deck");
             let mode = if config.ranked { QueueMode::Ranked } else { QueueMode::Casual };
-            let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::queue_id(mode, config.format.into()));
+            let lobby = match (&config.lobby, &config.event) {
+                (Some(lobby), _) => lobby.clone(),
+                (None, Some(code)) => netrunner_server::protocol::event_lobby_id(&code.trim().to_uppercase()),
+                (None, None) => netrunner_server::protocol::queue_id(mode, config.format.into()),
+            };
             // No data directory plays unrated, and says so; a key file
             // that is there and unreadable stops here rather than play a
             // game that quietly counts for nothing.
@@ -106,6 +110,14 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                     None
                 }
             };
+            // An event's pool takes an entrant's seek alone (Phase 4
+            // §11): entered first, on a connection of its own, since the
+            // seek below is a script the driver plays whole.
+            if let (Some(code), None) = (&config.event, &config.lobby) {
+                let credentials = credentials.clone().ok_or("an event is entered by a key, and this client has none")?;
+                let entered = remote::enter_event(&config.server, &record::player_name(config), credentials, code).await?;
+                eprintln!("{}: {}", entered.name, netrunner_client::event::standing_line(&entered));
+            }
             // A person: a bot sits only in a friend lobby that lets bots
             // in, asked for from the menu's Server page.
             let seat = remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials);

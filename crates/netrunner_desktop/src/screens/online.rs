@@ -82,6 +82,8 @@ use crate::audio::{ButtonSound, Sfx};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, TokioRuntime};
 use crate::models::online::{lobby_title, AwardKind, Field, Intent, OnlineForm, Outcome, Page, RowProfile, Searching, ServerState};
+use netrunner_client::event;
+use netrunner_core::card::Faction;
 use crate::widgets::badge::{self, BadgeGlyphs};
 use crate::widgets::card_face::{spawn_face, FaceSize};
 use crate::widgets::reader::Readable;
@@ -280,6 +282,15 @@ pub enum Control {
     FinishTournament,
     RecordResult(usize, TableOutcome),
     OfferDraw,
+    /// The events (Phase 4 §11): one opened by its row; its page's
+    /// buttons; the form's faction pills and a milestone's kind.
+    OpenEvent(usize),
+    EnterEvent,
+    QuitEvent,
+    FindEventMatch,
+    CloseEvent,
+    EventFaction(Side, Faction),
+    MilestoneKind(u32, Option<AwardKind>),
     Disconnect,
     /// The servers page's, by row; `EditRow(None)` is Add a server.
     ConnectRow(usize),
@@ -453,7 +464,7 @@ fn opening(
     // A dev hook that opened a page of its own this frame (`dev_page`,
     // before this) is left on it; the hooks that need the Default — the
     // dashboard, its forms, the profile — are what this connects for.
-    let needs_default = |page: &str| page == "dashboard" || page.starts_with("profile") || matches!(page, "queue" | "queue-ranked" | "searching" | "make-lobby" | "friend-lobby");
+    let needs_default = |page: &str| page == "dashboard" || page.starts_with("profile") || matches!(page, "queue" | "queue-ranked" | "searching" | "make-lobby" | "friend-lobby" | "events" | "event" | "event-entered" | "make-event");
     if dev.as_ref().and_then(|dev| dev.online.as_deref()).is_some_and(|page| !needs_default(page)) {
         return;
     }
@@ -599,6 +610,13 @@ fn controls(
             Control::FinishTournament => Intent::FinishTournament,
             Control::RecordResult(table, outcome) => Intent::RecordResult(table, outcome),
             Control::OfferDraw => Intent::OfferDraw,
+            Control::OpenEvent(index) => Intent::OpenEvent(index),
+            Control::EnterEvent => Intent::EnterEvent,
+            Control::QuitEvent => Intent::QuitEvent,
+            Control::FindEventMatch => Intent::FindEventMatch,
+            Control::CloseEvent => Intent::CloseEvent,
+            Control::EventFaction(side, faction) => Intent::ToggleEventFaction(side, faction),
+            Control::MilestoneKind(win, kind) => Intent::SetMilestoneKind(win, kind),
             Control::Disconnect => Intent::Disconnect,
             Control::ConnectRow(index) => Intent::ConnectRow(index),
             Control::DefaultRow(index) => Intent::ToggleDefault(index),
@@ -729,6 +747,10 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::FinishTournament { .. }
             | Outcome::RecordResult { .. }
             | Outcome::OfferDraw { .. }
+            | Outcome::HoldEvent(_)
+            | Outcome::EnterEvent(_)
+            | Outcome::QuitEvent(_)
+            | Outcome::CloseEvent(_)
             | Outcome::SetProfile { .. }
             | Outcome::Ladder(_) => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
@@ -858,7 +880,15 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::CreateLobby { name, format, password, bots } => connected.attached.create_lobby(name, format, password, bots),
         Outcome::Seek(chair, opponent) => connected.attached.seek(chair, opponent),
         Outcome::CancelSeek => connected.attached.cancel_seek(),
-        Outcome::ListTournaments => connected.attached.list_tournaments(),
+        // One page lists both.
+        Outcome::ListTournaments => {
+            connected.attached.list_tournaments();
+            connected.attached.list_events();
+        }
+        Outcome::HoldEvent(spec) => connected.attached.hold_event(spec),
+        Outcome::EnterEvent(event) => connected.attached.enter_event(event),
+        Outcome::QuitEvent(event) => connected.attached.quit_event(event),
+        Outcome::CloseEvent(event) => connected.attached.close_event(event),
         Outcome::CreateTournament { name, format } => connected.attached.create_tournament(name, format),
         Outcome::Register { tournament, corp, runner } => connected.attached.register(tournament, *corp, *runner),
         Outcome::Unregister { tournament } => connected.attached.unregister(tournament),
@@ -957,6 +987,51 @@ fn dev_page(
                 "profile-badges" => form.apply(Intent::Choose(AwardKind::Badge)),
                 _ => Outcome::Nothing,
             };
+        }
+        return;
+    }
+    // The events (Phase 4 §11): the page lists once the server answers,
+    // and an event's page needs the list; the hook's daemon holds one.
+    if matches!(page.as_str(), "events" | "event" | "event-entered" | "make-event") {
+        // The shot waits for the pages, which wait for the server's
+        // answers: the lobbies, then the list, then an entry.
+        if !*done && let Some(dev) = dev.as_mut() {
+            dev.held = true;
+        }
+        let Some(server) = form.server.as_ref() else { return };
+        if server.lobbies.is_empty() {
+            return;
+        }
+        if !*done {
+            *done = true;
+            dirty.0 = true;
+            let outcome = form.apply(Intent::Open(Page::Tournaments));
+            carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+            return;
+        }
+        let listed = server.events_listed && !server.events.is_empty();
+        let release = |dev: &mut Option<ResMut<crate::dev::Dev>>| {
+            if let Some(dev) = dev.as_mut() {
+                dev.held = false;
+            }
+        };
+        match (form.page, page.as_str()) {
+            (Page::Tournaments, "events") if listed => release(&mut dev),
+            (Page::Tournaments, _) if listed => {
+                dirty.0 = true;
+                let outcome = match page.as_str() {
+                    "make-event" => form.apply(Intent::Open(Page::MakeEvent)),
+                    _ => {
+                        form.apply(Intent::OpenEvent(0));
+                        if page == "event-entered" { form.apply(Intent::EnterEvent) } else { Outcome::Nothing }
+                    }
+                };
+                carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+            }
+            (Page::MakeEvent, _) => release(&mut dev),
+            (Page::Event, "event") => release(&mut dev),
+            (Page::Event, _) if server.open_event().is_some_and(|info| info.mine.is_some()) => release(&mut dev),
+            _ => {}
         }
         return;
     }
@@ -1244,7 +1319,9 @@ fn net(
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
                 AttachedEvent::Tournament(info) => Intent::Tournament(info),
-                AttachedEvent::TournamentRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::TournamentRefused(reason) | AttachedEvent::EventRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::Events { events, operator } => Intent::Events { events, operator },
+                AttachedEvent::Event(info) => Intent::Event(info),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
                 AttachedEvent::LobbyLeft => Intent::LobbyLeft,
                 AttachedEvent::LobbyRefused(reason) | AttachedEvent::SeekRefused(reason) | AttachedEvent::ProfileRefused(reason) => Intent::Refused(reason),
@@ -1345,6 +1422,9 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::ServerName => &form.edit.name,
         Field::ServerAddress => &form.edit.address,
         Field::PeerName => &form.edit_peer.name,
+        Field::EventName => &form.make_event.name,
+        Field::EventWins => &form.make_event.wins,
+        Field::Milestone(win) => form.make_event.milestones.get(win.saturating_sub(1) as usize).map_or("", |line| line.1.as_str()),
     }
 }
 
@@ -1459,17 +1539,23 @@ fn refresh(
         // The hub's peers list scrolls inside the panel rather than
         // pushing Back off the window: the panel may shrink below its
         // content there, and its column is capped by the window.
-        node.min_height = if model.0.page == Page::Hub { px(0) } else { Val::Auto };
+        node.min_height = if matches!(model.0.page, Page::Hub | Page::Event | Page::MakeEvent) { px(0) } else { Val::Auto };
     }
     // Every badge the page may draw, looked up once a name.
     let basic = core.settings.desktop.basic_graphics;
-    let pictures: HashMap<String, Option<Handle<Image>>> = model
+    let mut pictures: HashMap<String, Option<Handle<Image>>> = model
         .0
         .server
         .as_ref()
         .and_then(ServerState::known_profile)
         .map(|profile| profile.badges.iter().map(|award| (award.name.clone(), glyphs.of(&award.name, basic, images.as_deref_mut()))).collect())
         .unwrap_or_default();
+    // And the badges the open event's milestones grant (Phase 4 §11).
+    if let Some(info) = model.0.server.as_ref().and_then(ServerState::open_event) {
+        for milestone in info.milestones.iter().filter(|milestone| milestone.award.kind == AwardKind::Badge) {
+            pictures.entry(milestone.award.name.clone()).or_insert_with(|| glyphs.of(&milestone.award.name, basic, images.as_deref_mut()));
+        }
+    }
     commands.entity(root).despawn_children().with_children(|parent| spawn_page(parent, &theme, &model.0, &net, &pictures, &core, &card_images));
     for entity in &shown {
         commands.entity(entity).despawn();
@@ -1481,7 +1567,7 @@ fn refresh(
     }
     // The dashboard's overlays: the search over everything, else the
     // queue form.
-    if let Some(server) = model.0.server.as_ref().filter(|_| matches!(model.0.page, Page::Dashboard | Page::FriendLobby)) {
+    if let Some(server) = model.0.server.as_ref().filter(|_| matches!(model.0.page, Page::Dashboard | Page::FriendLobby | Page::Event)) {
         if let Some(searching) = &server.searching {
             let pulse = images.as_deref_mut().map(|images| images.add(widgets::pulse_image()));
             commands.entity(screen).with_children(|parent| spawn_searching(parent, &theme, &model.0, searching, pulse));
@@ -1518,10 +1604,12 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
             Some(server) => spawn_profile(parent, theme, form, server, pictures),
             None => spawn_waiting(parent, theme, form),
         },
-        Page::Tournaments | Page::Tournament | Page::MakeTournament => match &form.server {
+        Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Event | Page::MakeEvent => match &form.server {
             Some(server) => match form.page {
                 Page::Tournaments => spawn_tournaments(parent, theme, server),
                 Page::Tournament => spawn_tournament(parent, theme, server),
+                Page::Event => spawn_event(parent, theme, form, server, pictures, core, images),
+                Page::MakeEvent => spawn_make_event(parent, theme, form),
                 _ => spawn_make_tournament(parent, theme, form),
             },
             None => spawn_waiting(parent, theme, form),
@@ -1529,7 +1617,7 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
     }
     // A notice goes on the overlay while one is up, where the person is
     // looking.
-    let overlay = form.page == Page::Dashboard && form.server.as_ref().is_some_and(|server| server.queue.is_some() || server.seeking());
+    let overlay = matches!(form.page, Page::Dashboard | Page::Event) && form.server.as_ref().is_some_and(|server| server.queue.is_some() || server.seeking());
     if let Some(notice) = form.notice.as_ref().filter(|_| !overlay) {
         parent.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
@@ -1597,7 +1685,7 @@ fn spawn_dashboard(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onli
             row.spawn(widgets::tile_button(theme, ButtonKind::Primary, "Ranked ladder", ranked.unwrap_or("Rated, between players with keys"), width, ranked.is_some(), Control::OpenQueue(QueueMode::Ranked)));
             let casual = if server.offers(QueueMode::Casual) { "Relaxed matching, never rated; friend lobbies" } else { "This server lists no Casual queue" };
             row.spawn(widgets::tile_button(theme, if ranked.is_some() { ButtonKind::Primary } else { ButtonKind::Secondary }, "Casual / unranked", casual, width, !server.offers(QueueMode::Casual), Control::OpenQueue(QueueMode::Casual)));
-            row.spawn(widgets::tile_button(theme, ButtonKind::Secondary, "Tournaments & events", "Swiss rounds with locked decks", width, false, Control::Open(Page::Tournaments)));
+            row.spawn(widgets::tile_button(theme, ButtonKind::Secondary, "Tournaments & events", "Rolling gauntlets, and Swiss with locked decks", width, false, Control::Open(Page::Tournaments)));
         });
     });
     // Back leaves the screen, and the connection with it; Disconnect lets
@@ -1676,7 +1764,7 @@ fn spawn_queue_form(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onl
     let (title, blurb) = match queue.mode {
         QueueMode::Ranked => ("Configure queue: Ranked ladder", "Rated between players with keys; your standing moves with every game."),
         QueueMode::Casual => ("Configure queue: Casual / unranked", "Never rated. Whoever is looking plays whoever else is."),
-        QueueMode::Friends => ("Configure queue", ""),
+        QueueMode::Friends | QueueMode::Event => ("Configure queue", ""),
     };
     parent
         .spawn((
@@ -2500,10 +2588,29 @@ fn deck_slot_of(parent: &mut ChildSpawnerCommands, theme: &Theme, decks: Vec<&De
 
 /// The server's tournaments, each a button to its page, and the way to
 /// hold one.
+/// The third door's page (Phase 4 §11): the events first — rolling,
+/// entered any time — and the tournaments under them.
 fn spawn_tournaments(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &ServerState) {
-    parent.spawn(widgets::heading(theme, format!("Tournaments at {}", shortened(&server.address))));
-    parent.spawn((widgets::dim(theme, "Run as Null Signal Games run theirs: each entrant locks two decks, one a side, for the whole event behind a signed commitment; the lists stay private. The rounds come in a later stage."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    section(parent, theme, "Tournaments", |section| {
+    parent.spawn(widgets::heading(theme, format!("Tournaments & events at {}", shortened(&server.address))));
+    section(parent, theme, "Events — rolling", |section| {
+        section.spawn((widgets::dim(theme, "Enter any time, find a match in the event's pool, and climb a track of wins: a milestone reached is a title or a badge of yours here."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        match (server.events_listed, server.events.is_empty()) {
+            (false, _) => section.spawn(widgets::dim(theme, "Asking the server…")),
+            (true, true) => section.spawn(widgets::dim(theme, "This server holds no event.")),
+            (true, false) => section.spawn(widgets::dim(theme, "Open one to see its track, and to enter.")),
+        };
+        for (index, info) in server.events.iter().enumerate() {
+            section.spawn(widgets::styled_button(theme, ButtonKind::Secondary, event::line(info), percent(100), Control::OpenEvent(index)));
+        }
+        // The operator's alone: the server says whose key may.
+        if server.may_hold_events {
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Hold an event…", Control::Open(Page::MakeEvent)));
+            });
+        }
+    });
+    section(parent, theme, "Tournaments — structured", |section| {
+        section.spawn((widgets::dim(theme, "Run as Null Signal Games run theirs: each entrant locks two decks, one a side, for the whole event behind a signed commitment, and the rounds are single-sided Swiss in lockstep."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         match (server.tournaments_listed, server.tournaments.is_empty()) {
             (false, _) => section.spawn(widgets::dim(theme, "Asking the server…")),
             (true, true) => section.spawn(widgets::dim(theme, "This server holds none.")),
@@ -2655,6 +2762,173 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
 /// countdown.
 fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+/// One event (Phase 4 §11): the active decks, greyed by the format and
+/// the event's rule; the track as a row of steps lit by this key's wins,
+/// a line per milestone with its badge drawn; the chair preference; and
+/// Enter, or Quit event and Find event match. Find event match is greyed
+/// with the reason when a deck is refused, as the queue form greys a
+/// pill.
+#[allow(clippy::too_many_arguments)]
+fn spawn_event(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, pictures: &HashMap<String, Option<Handle<Image>>>, core: &ClientCore, images: &CardImages) {
+    let Some(info) = server.open_event() else {
+        parent.spawn(widgets::heading(theme, "Event"));
+        parent.spawn(widgets::dim(theme, "The server no longer lists it."));
+        buttons(parent, |row| {
+            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        });
+        return;
+    };
+    parent.spawn(widgets::heading(theme, info.name.clone()));
+    let mut line = vec![format!("Code {}", info.id), capitalised(format_name(info.format))];
+    if let Some(rule) = &info.rule {
+        line.push(event::rule_line(rule));
+    }
+    line.push(event::count_line(info));
+    if !info.open {
+        line.push("closed".to_string());
+    }
+    parent.spawn((widgets::dim(theme, line.join(" · ")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    let entered = info.mine.is_some();
+    let problem = form.event_problem();
+    scrolling_body(parent, theme, |parent| {
+    section(parent, theme, "Your decks", |section| {
+        spawn_deck_pair(section, theme, form, info.format, core, images);
+        if let Some(problem) = &problem {
+            section.spawn((Text::new(problem.clone()), theme.font(size::SMALL), TextColor(theme.caution), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+    });
+    section(parent, theme, format!("Progression — {}", event::wins_line(info.wins_to_clear)), |section| {
+        let wins = info.mine.as_ref().map_or(0, |mine| mine.wins);
+        // The track: a step per win, those reached filled, the last one
+        // marked final.
+        section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(8), row_gap: px(6), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+            for step in 1..=info.wins_to_clear {
+                let reached = wins >= step;
+                let label = if step == info.wins_to_clear { format!("Win {step} · final") } else { format!("Win {step}") };
+                row.spawn((
+                    Node { padding: UiRect::axes(px(12), px(6)), border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() },
+                    BackgroundColor(if reached { theme.accent.with_alpha(0.35) } else { theme.glass }),
+                    BorderColor::all(if reached { theme.accent } else { theme.glass_border }),
+                    children![(Text::new(label), theme.font(size::SMALL), TextColor(if reached { theme.text } else { theme.text_dim }))],
+                ));
+                if step < info.wins_to_clear {
+                    row.spawn((Text::new("›"), theme.font(size::BODY), TextColor(theme.text_dim)));
+                }
+            }
+        });
+        section.spawn(widgets::label(theme, event::standing_line(info)));
+        for milestone in &info.milestones {
+            section.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                if milestone.award.kind == AwardKind::Badge {
+                    widgets::badge::spawn_glyph(row, theme, &milestone.award.name, pictures.get(&milestone.award.name).cloned().flatten(), 28.0);
+                }
+                let text = event::milestone_line(info, milestone);
+                if event::reached(info, milestone) {
+                    row.spawn(widgets::label(theme, text));
+                } else {
+                    row.spawn(widgets::dim(theme, text));
+                }
+            });
+        }
+    });
+    if entered && info.open {
+        section(parent, theme, "Play as — you bring both decks", |section| {
+            section.spawn(widgets::row(10.0)).with_children(|row| {
+                for prefer in [Some(Side::Corp), None, Some(Side::Runner)] {
+                    let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    row.spawn(widgets::styled_button(theme, kind, preference_label(prefer), Val::Auto, Control::Prefer(prefer)));
+                }
+            });
+        });
+    }
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        if server.may_hold_events && info.open {
+            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Close event", Val::Auto, Control::CloseEvent));
+        }
+        match (entered, info.open) {
+            (false, true) => {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Enter", px(220), Control::EnterEvent));
+            }
+            (true, open) => {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Quit event", Val::Auto, Control::QuitEvent));
+                if open {
+                    match &problem {
+                        None => {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Find event match", px(220), Control::FindEventMatch));
+                        }
+                        Some(_) => {
+                            row.spawn(widgets::disabled_button(theme, "Find event match", px(220), Control::FindEventMatch));
+                        }
+                    }
+                }
+            }
+            (false, false) => {}
+        }
+    });
+}
+
+/// The operator's form (Phase 4 §11): the name, the format, which
+/// factions each side's identity may be from, the wins to clear, and a
+/// line per win for what it grants.
+fn spawn_make_event(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    let make = &form.make_event;
+    parent.spawn(widgets::heading(theme, "Hold an event"));
+    parent.spawn((widgets::dim(theme, "Rolling: open from now, anyone enters any time and finds a match in its pool; a milestone on the track of wins grants a title or a badge, worn on this server. Never rated."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    scrolling_body(parent, theme, |parent| {
+    section(parent, theme, "Name", |section| field_box(section, theme, Field::EventName, &make.name, "what the players see", false));
+    format_section(parent, theme, make.format, "The format every entrant's decks must be legal in.");
+    // The two sides' pills in one section, small; the body scrolls past
+    // a 1280 × 720 window, the buttons staying in view.
+    section(parent, theme, "Factions — any, or only those lit", |section| {
+        for (side, label, factions) in [(Side::Corp, "Corps", Faction::CORP.as_slice()), (Side::Runner, "Runners", Faction::RUNNER.as_slice())] {
+            section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(8), row_gap: px(6), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                row.spawn((Node { width: px(72), flex_shrink: 0.0, ..default() }, children![(Text::new(label), theme.font(size::BODY), TextColor(theme.text))]));
+                let open = make.rule.allowed(side).is_none();
+                for &faction in factions {
+                    let kind = if !open && make.allows(side, faction) { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    row.spawn(widgets::small_button(theme, kind, faction.name(), Control::EventFaction(side, faction)));
+                }
+            });
+        }
+    });
+    section(parent, theme, "Wins to clear", |section| {
+        section.spawn(Node { width: px(160), ..default() }).with_children(|slot| field_box(slot, theme, Field::EventWins, &make.wins, "3", false));
+    });
+    section(parent, theme, "Milestones — what a win grants, if anything", |section| {
+        for (index, (kind, name)) in make.milestones.iter().enumerate() {
+            let win = index as u32 + 1;
+            section.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(10), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                row.spawn((Node { width: px(64), flex_shrink: 0.0, ..default() }, children![(Text::new(format!("Win {win}")), theme.font(size::BODY), TextColor(theme.text))]));
+                for (choice, label) in [(None, "Nothing"), (Some(AwardKind::Title), "Title"), (Some(AwardKind::Badge), "Badge")] {
+                    let chosen = *kind == choice;
+                    row.spawn(widgets::small_button(theme, if chosen { ButtonKind::Primary } else { ButtonKind::Secondary }, label, Control::MilestoneKind(win, choice)));
+                }
+                if kind.is_some() {
+                    row.spawn(Node { flex_grow: 1.0, min_width: px(0), ..default() }).with_children(|slot| field_box(slot, theme, Field::Milestone(win), name, "its name", false));
+                }
+            });
+        }
+    });
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Open the event", px(220), Control::Go));
+    });
+}
+
+/// A page's body that scrolls inside the panel past a small window — by
+/// the wheel and its bar, as the hub's peers do — so the buttons under it
+/// stay in view. The panel's `min_height` is 0 on the pages that use it
+/// (`draw`), or the column would grow with the content instead.
+fn scrolling_body(parent: &mut ChildSpawnerCommands, theme: &Theme, content: impl FnOnce(&mut ChildSpawnerCommands)) {
+    let body = parent.spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(16), overflow: Overflow::scroll_y(), ..default() }).with_children(content).id();
+    parent.spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() }).add_child(body).with_children(|row| {
+        row.spawn(widgets::scrollbar(theme, body));
+    });
 }
 
 fn spawn_make_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {

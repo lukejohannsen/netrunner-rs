@@ -82,13 +82,15 @@ use std::time::Instant;
 use netrunner_client::identity::{ProfileHere, PublicKey};
 use netrunner_client::peers::{PeerBook, PeerEdit};
 use netrunner_client::servers::{ServerBook, ServerEdit};
-use netrunner_client::online::{queue_problem, ActiveDeck, Target};
+use netrunner_client::online::{event_problem, queue_problem, ActiveDeck, Target};
 use netrunner_client::tournament;
-use netrunner_core::decks::DeckFile;
+use netrunner_core::card::Faction;
+use netrunner_core::decks::{DeckFile, FactionRule};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{queue_id, Chair, LadderRow, Level, LobbyInfo, Opponent, Presence, Profile, QueueMode, TournamentInfo, TournamentState};
+use netrunner_server::protocol::{event_lobby_id, queue_id, AwardSpec, Chair, EventInfo, EventSpec, LadderRow, Level, LobbyInfo, Milestone, Opponent, Presence, Profile, QueueMode, TournamentInfo, TournamentState};
+pub use netrunner_server::protocol::AwardKind;
 use netrunner_server::MatchSummary;
 
 /// The page up.
@@ -132,6 +134,11 @@ pub enum Page {
     Tournament,
     /// The form for a tournament of this key's own.
     MakeTournament,
+    /// One event (Phase 4 §11): its track, its milestones, this key's
+    /// standing in it, and Find event match.
+    Event,
+    /// The form for an event, which the server's operator holds.
+    MakeEvent,
     /// Attached: what this server keeps of the person — the standing per
     /// format, the titles and badges earned and the ones worn, chosen
     /// here — and its ladder (Phase 4 §10).
@@ -157,6 +164,11 @@ pub enum Field {
     ServerAddress,
     /// Rename a peer's.
     PeerName,
+    /// Hold an event's: its name, the wins to clear, and the award a
+    /// milestone grants, by win from 1.
+    EventName,
+    EventWins,
+    Milestone(u32),
 }
 
 impl Field {
@@ -168,7 +180,8 @@ impl Field {
             Field::Lobby => 16,
             Field::Password | Field::LobbyPassword => 64,
             Field::Port => 5,
-            Field::LobbyName | Field::TournamentName => 40,
+            Field::LobbyName | Field::TournamentName | Field::EventName | Field::Milestone(_) => 40,
+            Field::EventWins => 2,
             Field::ServerName => netrunner_client::servers::MAX_NAME,
             Field::PeerName => netrunner_client::peers::MAX_NAME,
         }
@@ -234,6 +247,22 @@ pub enum Intent {
     RecordResult(usize, TableOutcome),
     /// Offer the opponent at this round's table an intentional draw.
     OfferDraw,
+    /// The events (Phase 4 §11): one opened by its row; its page's Enter,
+    /// Quit event, Find event match — which joins the event's pool and
+    /// looks for a game with both active decks — and the operator's
+    /// Close event; the form's faction pills and milestone kinds.
+    OpenEvent(usize),
+    EnterEvent,
+    QuitEvent,
+    FindEventMatch,
+    CloseEvent,
+    ToggleEventFaction(Side, Faction),
+    SetMilestoneKind(u32, Option<AwardKind>),
+    /// The server's events, and whether this key may hold one; one as it
+    /// now stands, after holding, entering, quitting or closing it, or
+    /// pushed when a game of this key's in it ends.
+    Events { events: Vec<EventInfo>, operator: bool },
+    Event(EventInfo),
     Disconnect,
     /// The screen has started what `Go` or `Watch` asked for; this is its
     /// first line.
@@ -308,13 +337,6 @@ pub enum Intent {
     Ladder { format: NsgFormat, rows: Vec<LadderRow> },
 }
 
-/// Which of a profile's awards the chooser lists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AwardKind {
-    Title,
-    Badge,
-}
-
 /// A row's answer about the person, as the servers page draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RowProfile {
@@ -361,8 +383,16 @@ pub enum Outcome {
     CreateLobby { name: String, format: NsgFormat, password: Option<String>, bots: bool },
     Seek(Chair, Opponent),
     CancelSeek,
+    /// The tournaments and the events, which share a page: the screen
+    /// asks for both.
     ListTournaments,
     CreateTournament { name: String, format: NsgFormat },
+    /// An event held, entered, left or closed (Phase 4 §11), the last
+    /// three by its code.
+    HoldEvent(EventSpec),
+    EnterEvent(String),
+    QuitEvent(String),
+    CloseEvent(String),
     /// Enter the tournament with these two decks; the driver signs the
     /// commitment and keeps the salt.
     Register { tournament: String, corp: Box<DeckFile>, runner: Box<DeckFile> },
@@ -436,6 +466,16 @@ pub struct ServerState {
     pub tournament_decks: Vec<DeckFile>,
     pub tournament_corp: usize,
     pub tournament_runner: usize,
+    /// The server's events (Phase 4 §11), as last listed, whether the
+    /// list is an answer yet, and whether this key may hold one.
+    pub events: Vec<EventInfo>,
+    pub events_listed: bool,
+    pub may_hold_events: bool,
+    /// The event whose page is open, by code.
+    pub event: Option<String>,
+    /// Find event match pressed: the event's pool is being joined, and
+    /// the seek goes the moment the server says the person is in it.
+    pub pending_event: Option<String>,
     /// The profile page's pop-up, while it is open: the titles or the
     /// badges earned, to scroll through and pick one from.
     pub choosing: Option<AwardKind>,
@@ -466,6 +506,11 @@ impl ServerState {
             tournament_decks: Vec::new(),
             tournament_corp: 0,
             tournament_runner: 0,
+            events: Vec::new(),
+            events_listed: false,
+            may_hold_events: false,
+            event: None,
+            pending_event: None,
             choosing: None,
             ladder_format: netrunner_client::settings::DEFAULT_FORMAT,
             ladder: None,
@@ -477,6 +522,27 @@ impl ServerState {
         match &self.profile {
             ProfileHere::Known(profile) => Some(profile),
             _ => None,
+        }
+    }
+
+    /// The event whose page is open, as the list last had it.
+    pub fn open_event(&self) -> Option<&EventInfo> {
+        let id = self.event.as_deref()?;
+        self.events.iter().find(|info| info.id == id)
+    }
+
+    /// One event as the server now reports it, into the list — in its
+    /// place, or at the end if it is new. Whether it was new.
+    fn put_event(&mut self, info: EventInfo) -> bool {
+        match self.events.iter_mut().find(|listed| listed.id == info.id) {
+            Some(listed) => {
+                *listed = info;
+                false
+            }
+            None => {
+                self.events.push(info);
+                true
+            }
         }
     }
 
@@ -687,6 +753,58 @@ pub struct MakeTournament {
     pub format: NsgFormat,
 }
 
+/// The most wins a track the form makes may take: a milestone line each.
+pub const MAX_WINS: u32 = 20;
+
+/// The event being held (Phase 4 §11), on the operator's form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeEvent {
+    pub name: String,
+    pub format: NsgFormat,
+    /// Which factions an identity may be from, a side each; empty is any.
+    pub rule: FactionRule,
+    /// Typed, digits; read on Hold.
+    pub wins: String,
+    /// What each win grants, by win from 1: a kind and a name, or
+    /// nothing. As long as the track.
+    pub milestones: Vec<(Option<AwardKind>, String)>,
+}
+
+impl MakeEvent {
+    fn new(format: NsgFormat) -> Self {
+        let mut form = MakeEvent { name: String::new(), format, rule: FactionRule::default(), wins: "3".to_string(), milestones: Vec::new() };
+        form.fit();
+        form
+    }
+
+    pub fn wins_to_clear(&self) -> u32 {
+        self.wins.parse().unwrap_or(0).min(MAX_WINS)
+    }
+
+    /// One milestone line per win on the track.
+    fn fit(&mut self) {
+        self.milestones.resize(self.wins_to_clear() as usize, (None, String::new()));
+    }
+
+    /// Whether `faction` is allowed on `side`: listed, or the list is
+    /// open.
+    pub fn allows(&self, side: Side, faction: Faction) -> bool {
+        self.rule.allowed(side).is_none_or(|allowed| allowed.contains(&faction))
+    }
+
+    /// The event as the server would hold it: the milestones that name
+    /// an award, and the rule only where it narrows a side.
+    pub fn spec(&self) -> EventSpec {
+        let milestones = self
+            .milestones
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (kind, name))| Some(Milestone { wins: index as u32 + 1, award: AwardSpec { kind: (*kind)?, name: name.trim().to_string() } }))
+            .collect();
+        EventSpec { name: self.name.trim().to_string(), format: self.format, rule: Some(self.rule.clone()).filter(|rule| !rule.is_open()), wins_to_clear: self.wins_to_clear(), milestones }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OnlineForm {
     /// The active deck a side (`Settings::active_deck`, Phase 7 §16),
@@ -707,6 +825,7 @@ pub struct OnlineForm {
     pub format: NsgFormat,
     pub make: MakeLobby,
     pub make_tournament: MakeTournament,
+    pub make_event: MakeEvent,
     pub watch_from: Side,
     pub matches: Vec<MatchSummary>,
     /// Whether Watch's list is an answer from the address shown, so an
@@ -750,6 +869,7 @@ impl OnlineForm {
             format,
             make: MakeLobby { name: String::new(), format, password: String::new(), bots: false },
             make_tournament: MakeTournament { name: String::new(), format },
+            make_event: MakeEvent::new(format),
             watch_from: Side::Corp,
             matches: Vec::new(),
             listed: false,
@@ -801,7 +921,10 @@ impl OnlineForm {
             // the lobby.
             let on_tournament = self.page == Page::Tournament && self.server.as_ref().is_some_and(|server| server.tournament.is_some());
             let in_friend_lobby = self.page == Page::FriendLobby && self.server.as_ref().is_some_and(|server| server.friend_lobby().is_some());
-            if !on_tournament && !in_friend_lobby {
+            // Back from a game in an event's pool, the event: the track
+            // moved, and the next match is a press away.
+            let on_event = self.page == Page::Event && self.server.as_ref().is_some_and(|server| server.event.is_some());
+            if !on_tournament && !in_friend_lobby && !on_event {
                 self.page = Page::Dashboard;
             }
         } else {
@@ -965,6 +1088,19 @@ impl OnlineForm {
                 server.tournaments_listed = false;
                 Outcome::ListTournaments
             }
+            // Held by the operator alone: the button is drawn for an
+            // operator's key, and anyone else who reaches the page is told.
+            Intent::Open(Page::MakeEvent) => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                if !server.may_hold_events {
+                    self.notice = Some("Only this server's operator holds an event".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                self.page = Page::MakeEvent;
+                self.make_event.format = server.lobby.as_ref().map_or(self.make_event.format, |lobby| lobby.format);
+                Outcome::Redraw
+            }
             Intent::Open(Page::MakeTournament) => {
                 let Some(server) = &self.server else { return Outcome::Nothing };
                 if server.key.is_none() {
@@ -1081,7 +1217,16 @@ impl OnlineForm {
                     self.notice = None;
                     Outcome::Redraw
                 }
-                Page::Tournament | Page::MakeTournament => {
+                Page::Tournament | Page::MakeTournament | Page::MakeEvent => {
+                    self.page = Page::Tournaments;
+                    self.notice = None;
+                    Outcome::Redraw
+                }
+                // A search in the pool is aborted first; the page stays.
+                Page::Event => {
+                    if self.server.as_ref().is_some_and(ServerState::seeking) {
+                        return Outcome::CancelSeek;
+                    }
                     self.page = Page::Tournaments;
                     self.notice = None;
                     Outcome::Redraw
@@ -1140,6 +1285,16 @@ impl OnlineForm {
                     Field::ServerName => self.edit.name = text,
                     Field::ServerAddress => self.edit.address = text,
                     Field::PeerName => self.edit_peer.name = text,
+                    Field::EventName => self.make_event.name = text,
+                    Field::EventWins => {
+                        self.make_event.wins = text.chars().filter(char::is_ascii_digit).collect();
+                        self.make_event.fit();
+                    }
+                    Field::Milestone(win) => {
+                        if let Some(line) = self.make_event.milestones.get_mut(win.saturating_sub(1) as usize) {
+                            line.1 = text;
+                        }
+                    }
                 }
                 Outcome::Redraw
             }
@@ -1151,6 +1306,7 @@ impl OnlineForm {
                 match self.page {
                     Page::MakeLobby => self.make.format = format,
                     Page::MakeTournament => self.make_tournament.format = format,
+                    Page::MakeEvent => self.make_event.format = format,
                     // A greyed pill, pressed, says why rather than changing
                     // anything, as the queue form's does.
                     Page::Host => match queue_problem(format, self.active(Side::Corp), self.active(Side::Runner)) {
@@ -1288,7 +1444,7 @@ impl OnlineForm {
                     return Outcome::Nothing;
                 }
                 match self.page {
-                    Page::Tournaments | Page::Tournament | Page::MakeTournament => Outcome::ListTournaments,
+                    Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Event | Page::MakeEvent => Outcome::ListTournaments,
                     _ => Outcome::ListLobbies,
                 }
             }
@@ -1524,6 +1680,22 @@ impl OnlineForm {
                     server.lobby = Some(lobby);
                     self.page = Page::Room;
                     return self.peer_edit().unwrap_or(Outcome::Redraw);
+                }
+                // Find event match's pool, joined: the seek goes now, and
+                // the page stays the event's (Phase 4 §11).
+                if server.pending_event.take().is_some_and(|id| id == lobby.id) {
+                    server.lobby = Some(lobby.clone());
+                    self.page = Page::Event;
+                    return match chair {
+                        Ok(chair) => {
+                            server.searching = Some(Searching::new(Some(lobby), prefer, Opponent::Person));
+                            Outcome::Seek(chair, Opponent::Person)
+                        }
+                        Err(problem) => {
+                            self.notice = Some(problem);
+                            Outcome::LeaveLobby
+                        }
+                    };
                 }
                 // Find match's queue, joined: the seek goes now.
                 if server.pending.take().is_some_and(|queue| queue_id(queue.mode, queue.format) == lobby.id) {
@@ -1848,7 +2020,120 @@ impl OnlineForm {
                 }
                 Outcome::Redraw
             }
+            Intent::Events { events, operator } => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                server.events = events;
+                server.events_listed = true;
+                server.may_hold_events = operator;
+                Outcome::Redraw
+            }
+            // After holding one, its page; an answer about the open one,
+            // or a push about a game's end, brings the page level.
+            Intent::Event(info) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                let id = info.id.clone();
+                let new = server.put_event(info);
+                self.notice = None;
+                if self.page == Page::MakeEvent && new {
+                    server.event = Some(id);
+                    self.page = Page::Event;
+                }
+                Outcome::Redraw
+            }
+            Intent::OpenEvent(index) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                let Some(info) = server.events.get(index) else { return Outcome::Nothing };
+                server.event = Some(info.id.clone());
+                self.notice = None;
+                self.page = Page::Event;
+                Outcome::Redraw
+            }
+            Intent::EnterEvent => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                let Some(info) = server.open_event() else { return Outcome::Nothing };
+                if server.key.is_none() {
+                    self.notice = Some("An event is entered by a key, and this client has none: connect with one first".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                Outcome::EnterEvent(info.id.clone())
+            }
+            Intent::QuitEvent => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                let Some(info) = server.open_event() else { return Outcome::Nothing };
+                if server.seeking() {
+                    return Outcome::Nothing;
+                }
+                self.notice = None;
+                Outcome::QuitEvent(info.id.clone())
+            }
+            Intent::CloseEvent => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                let Some(info) = server.open_event() else { return Outcome::Nothing };
+                self.notice = None;
+                Outcome::CloseEvent(info.id.clone())
+            }
+            // The event's pool is a lobby: joined, then the seek, as Find
+            // match does — with the event's rule checked here first, as
+            // the greyed button says it.
+            Intent::FindEventMatch => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                let Some(info) = server.open_event() else { return Outcome::Nothing };
+                if info.mine.is_none() {
+                    self.notice = Some("Enter the event first".to_string());
+                    return Outcome::Redraw;
+                }
+                if let Some(problem) = self.event_problem() {
+                    self.notice = Some(problem);
+                    return Outcome::Redraw;
+                }
+                let chair = match self.chair(info.format) {
+                    Ok(chair) => chair,
+                    Err(problem) => {
+                        self.notice = Some(problem);
+                        return Outcome::Redraw;
+                    }
+                };
+                let id = event_lobby_id(&info.id);
+                let server = self.server.as_mut().expect("an event page is on a server");
+                if server.seeking() {
+                    return Outcome::Nothing;
+                }
+                self.notice = None;
+                if server.lobby.as_ref().is_some_and(|current| current.id == id) {
+                    server.searching = Some(Searching::new(server.lobby.clone(), server.prefer, Opponent::Person));
+                    return Outcome::Seek(chair, Opponent::Person);
+                }
+                server.pending_event = Some(id.clone());
+                Outcome::JoinLobby { id, password: None }
+            }
+            Intent::ToggleEventFaction(side, faction) => {
+                let list = match side {
+                    Side::Corp => &mut self.make_event.rule.corp,
+                    Side::Runner => &mut self.make_event.rule.runner,
+                };
+                match list.iter().position(|listed| *listed == faction) {
+                    Some(index) => {
+                        list.remove(index);
+                    }
+                    None => list.push(faction),
+                }
+                Outcome::Redraw
+            }
+            Intent::SetMilestoneKind(win, kind) => {
+                if let Some(line) = self.make_event.milestones.get_mut(win.saturating_sub(1) as usize) {
+                    line.0 = kind;
+                }
+                Outcome::Redraw
+            }
         }
+    }
+
+    /// Why the open event's Find event match is greyed, when it is: the
+    /// format, then the event's faction rule, read off the active decks.
+    pub fn event_problem(&self) -> Option<String> {
+        let info = self.server.as_ref()?.open_event()?;
+        event_problem(info, self.active(Side::Corp), self.active(Side::Runner))
     }
 
     fn disconnect(&mut self) -> Outcome {
@@ -1924,8 +2209,20 @@ impl OnlineForm {
                 self.notice = None;
                 Outcome::CreateTournament { name: self.make_tournament.name.clone(), format: self.make_tournament.format }
             }
+            Page::MakeEvent => {
+                if self.server.is_none() {
+                    return Outcome::Nothing;
+                }
+                let spec = self.make_event.spec();
+                if let Some(problem) = spec.problem() {
+                    self.notice = Some(problem);
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                Outcome::HoldEvent(spec)
+            }
             Page::EditServer => self.apply(Intent::SaveServer),
-            Page::Hub | Page::Room | Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Profile => Outcome::Nothing,
+            Page::Hub | Page::Room | Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Event | Page::Profile => Outcome::Nothing,
         }
     }
 }
@@ -2402,6 +2699,127 @@ mod tests {
 
     fn presence(name: &str, seeking: bool, prefers: Option<Side>) -> Presence {
         Presence { name: name.into(), seeking, prefers }
+    }
+
+    fn gauntlet(mine: Option<netrunner_server::protocol::EventEntry>) -> EventInfo {
+        EventInfo {
+            id: "ABC123".into(),
+            name: "The Red Planet Gauntlet".into(),
+            format: NsgFormat::Startup,
+            rule: Some(FactionRule { corp: vec![Faction::WeylandConsortium], runner: Vec::new() }),
+            wins_to_clear: 3,
+            milestones: vec![Milestone { wins: 1, award: AwardSpec { kind: AwardKind::Title, name: "Net-Slinger".into() } }],
+            open: true,
+            created_at: 1,
+            entered: 4,
+            looking: 1,
+            mine,
+        }
+    }
+
+    fn pool() -> LobbyInfo {
+        LobbyInfo { mode: QueueMode::Event, name: "The Red Planet Gauntlet".into(), rated: false, ..lobby("event:ABC123", NsgFormat::Startup) }
+    }
+
+    /// An event (Phase 4 §11) is opened from the third door's list, which
+    /// asks for both tournaments and events; entered with a key; Find
+    /// event match joins its pool and seeks there with both active decks,
+    /// the page staying the event's; a game's end leads back to it with
+    /// the track the server pushed; and quitting is its own message.
+    #[test]
+    fn an_event_is_entered_and_a_match_found_in_its_pool_from_its_page() {
+        let mut form = attached();
+        assert_eq!(form.apply(Intent::Open(Page::Tournaments)), Outcome::ListTournaments);
+        assert_eq!(form.apply(Intent::Events { events: vec![gauntlet(None)], operator: false }), Outcome::Redraw);
+        assert!(form.server.as_ref().is_some_and(|server| server.events_listed && !server.may_hold_events));
+        assert_eq!(form.apply(Intent::OpenEvent(0)), Outcome::Redraw);
+        assert_eq!(form.page, Page::Event);
+        assert_eq!(form.apply(Intent::EnterEvent), Outcome::Redraw, "no key proved yet");
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("this client has none")));
+        form.apply(Intent::Profile { key: Some(key(1)), profile: ProfileHere::Unkept });
+        assert_eq!(form.apply(Intent::EnterEvent), Outcome::EnterEvent("ABC123".into()));
+        assert_eq!(form.apply(Intent::FindEventMatch), Outcome::Redraw, "not entered until the server says so");
+        assert_eq!(form.notice.as_deref(), Some("Enter the event first"));
+        let entered = gauntlet(Some(netrunner_server::protocol::EventEntry { wins: 0, losses: 0, entered_at: 5, cleared_at: None }));
+        assert_eq!(form.apply(Intent::Event(entered)), Outcome::Redraw);
+        assert_eq!(form.notice, None);
+        assert_eq!(form.event_problem(), None, "a Weyland Corp passes the rule");
+        form.apply(Intent::SetPrefer(Some(Side::Corp)));
+        assert_eq!(form.apply(Intent::FindEventMatch), Outcome::JoinLobby { id: "event:ABC123".into(), password: None });
+        let Outcome::Seek(Chair::Either { prefer, .. }, Opponent::Person) = form.apply(Intent::LobbyJoined(pool())) else { panic!("the seek goes once the pool is joined") };
+        assert_eq!(prefer, Some(Side::Corp));
+        assert_eq!(form.page, Page::Event, "the page stays the event's");
+        assert!(form.server.as_ref().is_some_and(|server| server.seeking() && server.searching.as_ref().is_some_and(|searching| searching.lobby.as_ref().is_some_and(|lobby| lobby.mode == QueueMode::Event))));
+        assert_eq!(form.apply(Intent::FindEventMatch), Outcome::Nothing, "one search at a time");
+        assert_eq!(form.apply(Intent::Back), Outcome::CancelSeek, "Back aborts the search first");
+        form.apply(Intent::SeekCancelled);
+        assert_eq!(form.page, Page::Event);
+        assert_eq!(form.apply(Intent::FindEventMatch), Outcome::Seek(form.chair(NsgFormat::Startup).unwrap(), Opponent::Person), "already in the pool: the seek goes at once");
+        // The game: back on the page with the pushed track.
+        form.apply(Intent::Queued(1));
+        form.reopen(true);
+        assert_eq!(form.page, Page::Event);
+        let won = gauntlet(Some(netrunner_server::protocol::EventEntry { wins: 1, losses: 0, entered_at: 5, cleared_at: None }));
+        form.apply(Intent::Event(won));
+        assert_eq!(form.server.as_ref().unwrap().open_event().and_then(|info| info.mine.as_ref()).map(|mine| mine.wins), Some(1));
+        assert_eq!(form.apply(Intent::BackInLobby(Some(pool()))), Outcome::LeaveLobby, "the pool is left after the game, as a queue is");
+        assert_eq!(form.apply(Intent::QuitEvent), Outcome::QuitEvent("ABC123".into()));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Tournaments);
+    }
+
+    /// Find event match is greyed, with the reason, by the event's rule
+    /// as the queue form greys a format: an NBN Corp in a Weyland-only
+    /// event.
+    #[test]
+    fn the_event_page_greys_find_event_match_by_the_faction_rule() {
+        let mut nbn = active("ad_nihilum", &[]);
+        nbn.faction = Some(Faction::Nbn);
+        let mut form = attached().with_active([Some(nbn), Some(active("stolen_goods", &[]))]);
+        form.apply(Intent::Profile { key: Some(key(1)), profile: ProfileHere::Unkept });
+        form.apply(Intent::Events { events: vec![gauntlet(Some(netrunner_server::protocol::EventEntry { wins: 0, losses: 0, entered_at: 5, cleared_at: None }))], operator: false });
+        form.apply(Intent::OpenEvent(0));
+        let problem = form.event_problem().expect("refused");
+        assert!(problem.starts_with("Corp deck:") && problem.contains("is NBN") && problem.contains("Weyland Consortium Corps"), "{problem}");
+        assert_eq!(form.apply(Intent::FindEventMatch), Outcome::Redraw);
+        assert_eq!(form.notice.as_deref(), Some(problem.as_str()));
+    }
+
+    /// The operator's form (Phase 4 §11): offered to an operator's key
+    /// alone, the track's milestone lines follow the wins typed, a faction
+    /// pill narrows a side, and Open the event is the spec the server
+    /// takes; its answer opens the event's page.
+    #[test]
+    fn an_event_is_held_from_the_form_by_the_operator() {
+        let mut form = attached();
+        form.apply(Intent::Events { events: Vec::new(), operator: false });
+        assert_eq!(form.apply(Intent::Open(Page::MakeEvent)), Outcome::Redraw);
+        assert_ne!(form.page, Page::MakeEvent, "not the operator");
+        form.apply(Intent::Events { events: Vec::new(), operator: true });
+        assert_eq!(form.apply(Intent::Open(Page::MakeEvent)), Outcome::Redraw);
+        assert_eq!(form.page, Page::MakeEvent);
+        assert_eq!(form.make_event.milestones.len(), 3, "a line per win, three by default");
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        assert_eq!(form.notice.as_deref(), Some("an event needs a name"));
+        form.apply(Intent::Typed(Field::EventName, " The Red Planet Gauntlet ".to_string()));
+        form.apply(Intent::SetFormat(NsgFormat::Standard));
+        form.apply(Intent::Typed(Field::EventWins, "2x".to_string()));
+        assert_eq!((form.make_event.wins.as_str(), form.make_event.milestones.len()), ("2", 2), "digits only, and the lines follow");
+        form.apply(Intent::ToggleEventFaction(Side::Corp, Faction::WeylandConsortium));
+        form.apply(Intent::ToggleEventFaction(Side::Corp, Faction::Jinteki));
+        form.apply(Intent::ToggleEventFaction(Side::Corp, Faction::Jinteki));
+        assert!(form.make_event.allows(Side::Corp, Faction::WeylandConsortium) && !form.make_event.allows(Side::Corp, Faction::Jinteki) && form.make_event.allows(Side::Runner, Faction::Anarch));
+        form.apply(Intent::SetMilestoneKind(1, Some(AwardKind::Title)));
+        form.apply(Intent::Typed(Field::Milestone(1), "Net-Slinger".to_string()));
+        form.apply(Intent::SetMilestoneKind(2, Some(AwardKind::Badge)));
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        assert_eq!(form.notice.as_deref(), Some("the milestone at win 2 names no badge"));
+        form.apply(Intent::Typed(Field::Milestone(2), "red-planet".to_string()));
+        let Outcome::HoldEvent(spec) = form.apply(Intent::Go) else { panic!("the spec goes to the server") };
+        assert_eq!((spec.name.as_str(), spec.format, spec.wins_to_clear, spec.milestones.len()), ("The Red Planet Gauntlet", NsgFormat::Standard, 2, 2));
+        assert_eq!(spec.rule.as_ref().map(|rule| (rule.corp.clone(), rule.runner.len())), Some((vec![Faction::WeylandConsortium], 0)));
+        assert_eq!(form.apply(Intent::Event(gauntlet(None))), Outcome::Redraw);
+        assert_eq!((form.page, form.server.as_ref().unwrap().event.as_deref()), (Page::Event, Some("ABC123")), "the answer opens the event's page");
     }
 
     /// A hosted game's one queue, with these people in it.

@@ -149,6 +149,11 @@ pub struct TournamentRow {
     pub updated_at: i64,
 }
 
+/// An event as the server keeps it (Phase 4 §11): as a tournament, a
+/// document nothing queries inside — its roster is small and the
+/// awards it grants are rows of `awards` — so one row holds its JSON.
+pub type EventRow = TournamentRow;
+
 /// The open store. Cheap to clone: a handle on one pool.
 #[derive(Clone)]
 pub struct Store {
@@ -453,6 +458,29 @@ impl Store {
         let rows = sqlx::query("SELECT id, document, updated_at FROM tournaments ORDER BY id").fetch_all(&self.pool).await?;
         Ok(rows.iter().map(|row| TournamentRow { id: row.get(0), document: row.get(1), updated_at: row.get(2) }).collect())
     }
+
+    // ----- events ---------------------------------------------------
+
+    pub async fn put_event(&self, row: &EventRow) -> Result<()> {
+        sqlx::query("INSERT INTO events (id, document, updated_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET document = excluded.document, updated_at = excluded.updated_at")
+            .bind(&row.id)
+            .bind(&row.document)
+            .bind(row.updated_at)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn remove_event(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM events WHERE id = $1").bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Every event, by id.
+    pub async fn events(&self) -> Result<Vec<EventRow>> {
+        let rows = sqlx::query("SELECT id, document, updated_at FROM events ORDER BY id").fetch_all(&self.pool).await?;
+        Ok(rows.iter().map(|row| EventRow { id: row.get(0), document: row.get(1), updated_at: row.get(2) }).collect())
+    }
 }
 
 async fn put_rating_in(conn: &mut sqlx::AnyConnection, row: &RatingRow) -> Result<()> {
@@ -539,6 +567,7 @@ const SCHEMA: &[&str] = &[
         one TEXT NOT NULL, other TEXT NOT NULL, corp TEXT NOT NULL, played_at BIGINT NOT NULL, \
         PRIMARY KEY (one, other))",
     "CREATE TABLE IF NOT EXISTS tournaments (id TEXT PRIMARY KEY, document TEXT NOT NULL, updated_at BIGINT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, document TEXT NOT NULL, updated_at BIGINT NOT NULL)",
 ];
 
 /// A namespace of a test's own on a shared Postgres server (Phase 4 §10
@@ -743,6 +772,12 @@ mod tests {
             assert_eq!(store.tournaments().await.unwrap(), vec![TournamentRow { id: "T1".into(), document: "{\"v\":2}".into(), updated_at: 2 }]);
             store.remove_tournament("T1").await.unwrap();
             assert!(store.tournaments().await.unwrap().is_empty());
+
+            store.put_event(&EventRow { id: "E1".into(), document: "{\"wins\":1}".into(), updated_at: 1 }).await.unwrap();
+            store.put_event(&EventRow { id: "E1".into(), document: "{\"wins\":2}".into(), updated_at: 2 }).await.unwrap();
+            assert_eq!(store.events().await.unwrap(), vec![EventRow { id: "E1".into(), document: "{\"wins\":2}".into(), updated_at: 2 }], "an event is a document replaced whole, as a tournament is");
+            store.remove_event("E1").await.unwrap();
+            assert!(store.events().await.unwrap().is_empty());
             store.close().await;
             place.remove().await;
         }

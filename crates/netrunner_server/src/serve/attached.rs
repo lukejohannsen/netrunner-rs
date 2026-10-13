@@ -249,6 +249,28 @@ impl Attached {
                     Err(reason) => self.send(ServerMessage::SeekRefused { reason }),
                 }
             }
+            // Events (Phase 4 §11): held and closed by an operator's key,
+            // entered and left by any proved key.
+            ClientMessage::ListEvents => {
+                let events = self.list_events();
+                self.send(events);
+            }
+            ClientMessage::HoldEvent { event } => match self.hold_event(event) {
+                Ok(event) => self.send(ServerMessage::Event { event }),
+                Err(reason) => self.send(ServerMessage::EventRefused { reason }),
+            },
+            ClientMessage::CloseEvent { event } => match self.close_event(&event) {
+                Ok(event) => self.send(ServerMessage::Event { event }),
+                Err(reason) => self.send(ServerMessage::EventRefused { reason }),
+            },
+            ClientMessage::EnterEvent { event } => match self.enter_event(&event) {
+                Ok(event) => self.send(ServerMessage::Event { event }),
+                Err(reason) => self.send(ServerMessage::EventRefused { reason }),
+            },
+            ClientMessage::QuitEvent { event } => match self.quit_event(&event) {
+                Ok(event) => self.send(ServerMessage::Event { event }),
+                Err(reason) => self.send(ServerMessage::EventRefused { reason }),
+            },
             // A key is proved before attaching, never after.
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }
@@ -300,11 +322,21 @@ impl Attached {
         let Some(lobby) = self.lobby.clone() else { return Err("join a lobby first".into()) };
         let info = self.shared.lock().lobby_info(&lobby, &self.shared.options).ok_or("that lobby has gone")?;
         let format = info.format;
+        // An event's pool takes an entrant's seek alone, and holds the
+        // decks to its rule beyond the format (Phase 4 §11).
+        let rule = match event_code(&lobby) {
+            Some(code) => self.event_terms(code)?,
+            None => None,
+        };
         let check = |deck: &DeckFile, side: Side| -> Result<(), String> {
             if deck.side != side {
                 return Err(format!("{:?} is a {:?} deck, not a {side:?} one", deck.name, deck.side));
             }
-            deck.validate(&self.shared.cards, format).map(drop).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))
+            deck.validate(&self.shared.cards, format).map(drop).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))?;
+            match rule.as_ref().and_then(|rule| deck.rule_problem(&self.shared.cards, rule)) {
+                Some(problem) => Err(format!("your {side:?} deck: {problem}")),
+                None => Ok(()),
+            }
         };
         let (deck, random, prefer) = match chair {
             Chair::Corp(deck) => {
@@ -326,6 +358,7 @@ impl Attached {
         {
             return Err(match info.mode {
                 QueueMode::Ranked | QueueMode::Casual => "a bot sits only in a friend lobby that allows one: make one, or look for a person here".to_string(),
+                QueueMode::Event => "an event is between people: no bot sits in its pool".to_string(),
                 QueueMode::Friends if info.bots.is_empty() && self.shared.options.bots.is_empty() => "this server offers no bot".to_string(),
                 QueueMode::Friends if info.bots.is_empty() && !self.shared.lock().bots_in(format) => format!("this server offers no bot in {format:?}"),
                 QueueMode::Friends if info.bots.is_empty() => "this lobby's maker kept bots out of it".to_string(),
@@ -864,9 +897,129 @@ impl Attached {
     }
 }
 
+impl Attached {
+    /// Every event, open first, as this key sees them, and whether this
+    /// key may hold one. Sweeps the events whose page is no longer kept.
+    fn list_events(&self) -> ServerMessage {
+        let mut registry = self.shared.lock();
+        self.shared.sweep_events(&mut registry);
+        let key = self.key.map(|key| key.rating_id());
+        let events = registry.events.list(key.as_deref(), unix_now(), |code| registry.seeking(&event_lobby_id(code)));
+        ServerMessage::Events { events, operator: self.shared.is_operator(self.key) }
+    }
+
+    /// The operator's own check: a proved key named by `--operator`, on
+    /// a daemon that keeps things.
+    fn operating(&self) -> Result<PublicKey, String> {
+        let key = self.key.ok_or("an event is held by a key: prove one before attaching")?;
+        if self.shared.options.data_dir.is_none() {
+            return Err("this server keeps nothing between runs, so it cannot hold an event".into());
+        }
+        if !self.shared.is_operator(Some(key)) {
+            return Err("only this server's operator holds an event".into());
+        }
+        Ok(key)
+    }
+
+    /// An operator holds an event: open from now, under a code of its
+    /// own.
+    fn hold_event(&self, mut spec: EventSpec) -> Result<EventInfo, String> {
+        let key = self.operating()?;
+        spec.name = spec.name.trim().chars().take(MAX_LOBBY_NAME).collect();
+        for milestone in &mut spec.milestones {
+            milestone.award.name = milestone.award.name.trim().chars().take(MAX_LOBBY_NAME).collect();
+        }
+        if let Some(problem) = spec.problem() {
+            return Err(problem);
+        }
+        if !self.shared.options.formats.contains(&spec.format) {
+            return Err(format!("this server does not play {:?}", spec.format));
+        }
+        if let Some(rule) = &mut spec.rule {
+            rule.corp.sort_by_key(|faction| faction.name());
+            rule.corp.dedup();
+            rule.runner.sort_by_key(|faction| faction.name());
+            rule.runner.dedup();
+            if rule.is_open() {
+                spec.rule = None;
+            }
+        }
+        let mut registry = self.shared.lock();
+        let code = loop {
+            let code = lobby_code();
+            if !registry.events.0.contains_key(&code) {
+                break code;
+            }
+        };
+        registry.events.0.insert(code.clone(), Event::new(spec, key, unix_now()));
+        self.shared.save_event(&registry, &code);
+        self.shared.event_info(&registry, &code, self.key).ok_or("the event was not held".into())
+    }
+
+    /// The operator closes an event: no entry and no seek from now, the
+    /// page kept a while, and every attached entrant told.
+    fn close_event(&self, code: &str) -> Result<EventInfo, String> {
+        self.operating()?;
+        let code = code.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let event = registry.events.0.get_mut(&code).ok_or("no such event")?;
+        event.close(unix_now())?;
+        // Nobody waits in a pool that takes no seek.
+        let pool = event_lobby_id(&code);
+        registry.waiting.retain(|waiter| waiter.lobby != pool);
+        self.shared.save_event(&registry, &code);
+        self.shared.push_event(&registry, &code, None, Some(self.link));
+        self.shared.event_info(&registry, &code, self.key).ok_or("no such event".into())
+    }
+
+    /// This key enters event `code`.
+    fn enter_event(&self, code: &str) -> Result<EventInfo, String> {
+        let key = self.key.ok_or("an event is entered by a key: prove one before attaching")?;
+        let code = code.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let event = registry.events.0.get_mut(&code).ok_or("no such event")?;
+        event.enter(&key.rating_id(), &self.player_name, unix_now())?;
+        self.shared.save_event(&registry, &code);
+        self.shared.event_info(&registry, &code, self.key).ok_or("no such event".into())
+    }
+
+    /// This key withdraws from event `code`; a seek of its in the pool
+    /// is withdrawn with it.
+    fn quit_event(&self, code: &str) -> Result<EventInfo, String> {
+        let key = self.key.ok_or("you have not entered this event")?;
+        let code = code.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let event = registry.events.0.get_mut(&code).ok_or("no such event")?;
+        event.quit(&key.rating_id())?;
+        let pool = event_lobby_id(&code);
+        registry.waiting.retain(|waiter| !(waiter.lobby == pool && waiter.link == self.link));
+        self.shared.save_event(&registry, &code);
+        self.shared.event_info(&registry, &code, self.key).ok_or("no such event".into())
+    }
+
+    /// Whether this key may seek in event `code`'s pool — a proved key
+    /// that has entered an open event — and the rule its decks are held
+    /// to.
+    fn event_terms(&self, code: &str) -> Result<Option<FactionRule>, String> {
+        let key = self.key.ok_or("an event is between keys: prove one before attaching")?;
+        let registry = self.shared.lock();
+        let event = registry.events.0.get(code).ok_or("that event has gone")?;
+        if !event.is_open() {
+            return Err("this event is closed".into());
+        }
+        if event.entry(&key.rating_id()).is_none() {
+            return Err("enter the event first".into());
+        }
+        Ok(event.spec.rule.clone())
+    }
+}
+
 fn lobby_id_as_typed(typed: &str) -> String {
     let typed = typed.trim();
     let lower = typed.to_lowercase();
+    if let Some(code) = event_code(&lower) {
+        return event_lobby_id(&code.to_uppercase());
+    }
     let queues = NsgFormat::ALL.iter().flat_map(|&format| [QueueMode::Ranked, QueueMode::Casual].map(|mode| queue_id(mode, format)));
     if queues.into_iter().any(|id| id == lower) { lower } else { typed.to_uppercase() }
 }

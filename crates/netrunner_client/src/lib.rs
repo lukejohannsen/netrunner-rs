@@ -55,6 +55,7 @@ pub mod bug_report;
 pub mod notes;
 pub mod play;
 pub mod decks;
+pub mod event;
 pub mod guide;
 pub mod hosting;
 pub mod identity;

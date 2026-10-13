@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub use netrunner_bots::{Level, Style};
-use netrunner_core::decks::DeckFile;
+use netrunner_core::decks::{DeckFile, FactionRule};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
@@ -232,6 +232,168 @@ pub enum ClientMessage {
     /// starts, when a result is recorded and with the round. Answered
     /// and pushed as `BeginRound` is.
     OfferDraw { tournament: String },
+    /// Every event the server holds, answered with `Events` (Phase 4
+    /// §11).
+    ListEvents,
+    /// Hold an event: open from now, rolling — anyone enters any time and
+    /// finds a match in its pool — in one of the server's formats, with
+    /// a track of wins and what each milestone grants. **Only an
+    /// operator's key** (`--operator`): an event grants titles and
+    /// badges the profile wears everywhere on this server, so a key that
+    /// could define "Champion · 1 win" would make every award worthless;
+    /// a tournament, whose only prize is its own standings, is anyone's
+    /// to hold. Only a daemon with a data directory holds one. Answered
+    /// with `Event`, or `EventRefused`.
+    HoldEvent { event: EventSpec },
+    /// The operator closes an event: it takes no entry and no seek from
+    /// now, and its page stays a while so the last tracks read. Answered
+    /// with `Event` and pushed to every attached entrant, or
+    /// `EventRefused`.
+    CloseEvent { event: String },
+    /// Enter an event: this key's track starts at nothing. Needs a proved
+    /// key, since the track and the awards are the key's. Entering again
+    /// is refused; quitting and entering starts over. Answered with
+    /// `Event` or `EventRefused`.
+    EnterEvent { event: String },
+    /// Withdraw this key's entry: the track goes, and what it earned
+    /// stays earned. A person who only wants to stop looking cancels the
+    /// seek. Answered with `Event` or `EventRefused`.
+    QuitEvent { event: String },
+}
+
+/// What an operator holds an event as (Phase 4 §11): the words a player
+/// reads on its page, and the rules the server applies.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventSpec {
+    pub name: String,
+    pub format: NsgFormat,
+    /// Which factions an identity may be from, beyond the format; `None`
+    /// admits every deck the format does. The first and only variant
+    /// rule this stage; the next kind is a second check beside it.
+    pub rule: Option<FactionRule>,
+    /// Wins, in any order with any number of losses between, to clear the
+    /// track. At least one.
+    pub wins_to_clear: u32,
+    /// What a win grants, by the win it is reached at — at most one
+    /// milestone per win, each within `wins_to_clear`.
+    pub milestones: Vec<Milestone>,
+}
+
+/// A title or a badge granted at the `wins`th win.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Milestone {
+    pub wins: u32,
+    pub award: AwardSpec,
+}
+
+/// A title or a badge by name: what an event grants and a profile wears.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AwardSpec {
+    pub kind: AwardKind,
+    pub name: String,
+}
+
+/// The two kinds of award (`Profile::titles`, `Profile::badges`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AwardKind {
+    Title,
+    Badge,
+}
+
+impl AwardKind {
+    /// The word the store files it under.
+    pub fn key(self) -> &'static str {
+        match self {
+            AwardKind::Title => "title",
+            AwardKind::Badge => "badge",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AwardKind::Title => "Title",
+            AwardKind::Badge => "Badge",
+        }
+    }
+}
+
+impl EventSpec {
+    /// Why the server would not hold this: a blank name, no win to clear,
+    /// a milestone past the track or two at one win, a blank award.
+    pub fn problem(&self) -> Option<String> {
+        if self.name.trim().is_empty() {
+            return Some("an event needs a name".into());
+        }
+        if self.wins_to_clear == 0 {
+            return Some("an event takes at least one win to clear".into());
+        }
+        let mut seen = Vec::new();
+        for milestone in &self.milestones {
+            if milestone.wins == 0 || milestone.wins > self.wins_to_clear {
+                return Some(format!("a milestone at win {} is off a track of {}", milestone.wins, self.wins_to_clear));
+            }
+            if seen.contains(&milestone.wins) {
+                return Some(format!("two milestones at win {}", milestone.wins));
+            }
+            if milestone.award.name.trim().is_empty() {
+                return Some(format!("the milestone at win {} names no {}", milestone.wins, milestone.award.kind.name().to_lowercase()));
+            }
+            seen.push(milestone.wins);
+        }
+        None
+    }
+}
+
+/// An event as the server reports it to one connection (Phase 4 §11):
+/// what it is, how it stands, and this key's own track in it. The
+/// roster is not listed — a pool is joined, not watched — only counted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventInfo {
+    /// A short code, as a tournament has.
+    pub id: String,
+    pub name: String,
+    pub format: NsgFormat,
+    pub rule: Option<FactionRule>,
+    pub wins_to_clear: u32,
+    /// By the win each is reached at.
+    pub milestones: Vec<Milestone>,
+    /// Taking entries and seeks; a closed event keeps its page a while.
+    pub open: bool,
+    pub created_at: u64,
+    /// How many keys have entered.
+    pub entered: usize,
+    /// How many of them are looking for a match in its pool right now.
+    pub looking: usize,
+    /// This key's track, when it has entered.
+    pub mine: Option<EventEntry>,
+}
+
+/// One key's track in an event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventEntry {
+    pub wins: u32,
+    pub losses: u32,
+    pub entered_at: u64,
+    /// When the last win landed, once it has.
+    pub cleared_at: Option<u64>,
+}
+
+impl EventInfo {
+    /// The milestone at `wins`, if any.
+    pub fn milestone_at(&self, wins: u32) -> Option<&Milestone> {
+        self.milestones.iter().find(|milestone| milestone.wins == wins)
+    }
+}
+
+/// The id of the lobby an event's pool is: a seek there is paired within
+/// the event alone (`event:<code>`).
+pub fn event_lobby_id(code: &str) -> String {
+    format!("event:{code}")
+}
+
+/// The event's code off its lobby's id, for a lobby that is one.
+pub fn event_code(lobby_id: &str) -> Option<&str> {
+    lobby_id.strip_prefix("event:")
 }
 
 /// Which chair a player looks for a game in, and the deck it needs: one
@@ -272,6 +434,10 @@ pub enum QueueMode {
     /// A player's own lobby (`ClientMessage::CreateLobby`): casual, never
     /// listed, joined by its code.
     Friends,
+    /// An event's pool (Phase 4 §11, `event_lobby_id`): unrated, never a
+    /// bot, never listed among the queues — the events page is the way
+    /// in — and only an entrant seeks there.
+    Event,
 }
 
 impl QueueMode {
@@ -281,6 +447,7 @@ impl QueueMode {
             QueueMode::Ranked => "Ranked",
             QueueMode::Casual => "Casual",
             QueueMode::Friends => "Friends",
+            QueueMode::Event => "Event",
         }
     }
 }
@@ -326,7 +493,7 @@ impl Profile {
 }
 
 /// A title or a badge a key has earned at a server: its name, when, and
-/// what granted it — an event's id (§11) or an operator's key (§12). A
+/// what granted it — `event:<code>` (§11) or an operator's key (§12). A
 /// badge's picture is an asset slot named by its name (AGENTS.md §5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Award {
@@ -612,6 +779,20 @@ pub enum ServerMessage {
     /// hold, a deck the format refuses, not the organizer, a round still
     /// open.
     TournamentRefused { reason: String },
+    /// The reply to `ListEvents`: every event the server holds, open ones
+    /// first, and whether this connection's key may hold one (an
+    /// operator's).
+    Events { events: Vec<EventInfo>, operator: bool },
+    /// An event as it now stands for this connection: the answer to
+    /// `HoldEvent`, `EnterEvent`, `QuitEvent` and `CloseEvent`, and
+    /// **pushed unasked** to an attached entrant when a game of theirs
+    /// in it ends — their track moved, a milestone perhaps granted — and
+    /// to every attached entrant when it closes.
+    Event { event: EventInfo },
+    /// One of those refused, with the reason: no key proved, not an
+    /// operator, a server that keeps nothing, no such event, an event
+    /// closed, entered already or not entered.
+    EventRefused { reason: String },
 }
 
 /// A tournament as the server reports it (Phase 4 §7 stage 6). The

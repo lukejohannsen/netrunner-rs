@@ -170,7 +170,7 @@ Under the daemon's `--data-dir` (Phase 4 §10, 11 October 2026):
 | Path | What |
 |---|---|
 | `identity.key` | The server's keypair. |
-| `store.sqlite` | The store (`netrunner_store`), made on first start, or elsewhere by `--database`: the players (key, name, first and last seen, the title and badge worn), a rating per key, format and role, the results with their receipts, the awards, which chairs two keys last took against each other, and the tournaments. |
+| `store.sqlite` | The store (`netrunner_store`), made on first start, or elsewhere by `--database`: the players (key, name, first and last seen, the title and badge worn), a rating per key, format and role, the results with their receipts, the awards (what an event's milestone granted, when), which chairs two keys last took against each other, the tournaments and the events. |
 | `matches/<yyyy-mm>/<match_id>.jsonl` | Full records: header, history, footer; the receipt beside each. |
 | `results.jsonl` | Append-only receipts, one line per rated game, in order. |
 
@@ -180,8 +180,8 @@ Under the daemon's `--data-dir` (Phase 4 §10, 11 October 2026):
   receipt names the format its ladder is — so nothing else is needed. A
   corrupted store, a change to `Glicko2::tau`, or voiding a cheater's games
   is a *rebuild* (`serve --rebuild`), not surgery on a number nobody can
-  re-derive. The players, the awards, the pairing memory and the
-  tournaments are not the log's and a rebuild keeps them.
+  re-derive. The players, the awards, the pairing memory, the
+  tournaments and the events are not the log's and a rebuild keeps them.
 - **One writer, in order.** The book is folded under the registry's lock
   with the log append, and the rows that record it are queued to one task
   that lands them in that order (`serve::store::Writer`); the book stays in

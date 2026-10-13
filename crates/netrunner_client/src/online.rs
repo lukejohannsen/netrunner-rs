@@ -113,8 +113,28 @@ pub fn lobby_title(lobby: &LobbyInfo) -> String {
     let format = crate::settings::format_label(lobby.format);
     match lobby.mode {
         QueueMode::Ranked | QueueMode::Casual => format!("{} · {format}", lobby.mode.name()),
-        QueueMode::Friends => format!("{} · {format}", lobby.name),
+        // An event's pool is named by the event (Phase 4 §11).
+        QueueMode::Friends | QueueMode::Event => format!("{} · {format}", lobby.name),
     }
+}
+
+/// Why an event cannot be looked for a match in with these decks, or
+/// `None` when both pass: the format first (`queue_problem`), then the
+/// event's faction rule, read off each deck's identity. The event page's
+/// greyed Find event match says this, and the server says the same at
+/// the seek.
+pub fn event_problem(event: &netrunner_protocol::EventInfo, corp: Option<&ActiveDeck>, runner: Option<&ActiveDeck>) -> Option<String> {
+    if let Some(problem) = queue_problem(event.format, corp, runner) {
+        return Some(problem);
+    }
+    let rule = event.rule.as_ref()?;
+    for (side, deck) in [(Side::Corp, corp), (Side::Runner, runner)] {
+        let (Some(deck), Some(faction)) = (deck, deck.and_then(|deck| deck.faction)) else { continue };
+        if let Some(problem) = rule.problem_with(side, faction, &deck.identity) {
+            return Some(format!("{side:?} deck: {problem}"));
+        }
+    }
+    None
 }
 
 /// Whom a seek is against, in a pill's words: a person, or a bot at a

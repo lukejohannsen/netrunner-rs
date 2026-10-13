@@ -301,7 +301,10 @@ impl App {
                 | ServerMessage::BackInLobby { .. }
                 | ServerMessage::Tournaments { .. }
                 | ServerMessage::Tournament { .. }
-                | ServerMessage::TournamentRefused { .. } => {}
+                | ServerMessage::TournamentRefused { .. }
+                | ServerMessage::Events { .. }
+                | ServerMessage::Event { .. }
+                | ServerMessage::EventRefused { .. } => {}
             }
         }
     }
