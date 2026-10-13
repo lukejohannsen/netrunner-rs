@@ -34154,3 +34154,151 @@ mod kitara_stage_5a {
         assert!(play(&programs_only, &registry, "threat_assessment").is_err(), "no installed card");
     }
 }
+
+/// Kitara Stage 6a: six Runner events and Wari, composed.
+mod kitara_stage_6a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn corp_install(card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, ..Default::default() }
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, RulesError> {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id(card) }).map(|(state, _)| state)
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, side: Side, nth: &[usize]) -> GameState {
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        let mut state = state.clone();
+        for &n in nth {
+            state = apply_action(&state, registry, toggles[n].clone()).expect("toggle").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn reach_the_server(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("success");
+        pass_until_settled(state, registry).0
+    }
+
+    fn resolve(state: &GameState, registry: &CardRegistry, option_index: usize) -> GameState {
+        apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("resolve").0
+    }
+
+    #[test]
+    fn credit_kiting_needs_a_successful_central_run_and_installs_8_cheaper_for_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        assert!(play(&state, &registry, "credit_kiting").is_err(), "no successful run");
+        let mut remote = state.clone();
+        crate::rules::turn_log::record(&mut remote, &registry, &crate::rules::GameEvent::RunSucceeded { server: ServerId::Remote(0) });
+        assert!(play(&remote, &registry, "credit_kiting").is_err(), "a remote is not a central server");
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state);
+        state.runner.grip = vec![id("corroder")];
+        let asked = play(&state, &registry, "credit_kiting").expect("play");
+        let installed = choose(&asked, &registry, Side::Runner, &[0]);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits.0, 10, "Corroder's 2[credit] lowered to nothing");
+        assert_eq!(installed.runner.tags, 1);
+    }
+
+    #[test]
+    fn diversion_of_funds_spends_a_click_and_siphons_without_tags() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund")];
+        let played = play(&state, &registry, "diversion_of_funds").expect("play");
+        assert_eq!(played.runner.resources.clicks.0, 2, "[click] to play and [click] more; the run is the event's");
+        let offered = reach_the_server(played, &registry);
+        let siphon = resolve(&offered, &registry, 0);
+        let (done, _) = apply_action(&siphon, &registry, PlayerAction::ChooseNumber { amount: 5 }).expect("5");
+        assert_eq!(done.corp.resources.credits.0, 5);
+        assert_eq!(done.runner.resources.credits.0, 10 - 1 + 5);
+        assert_eq!(done.runner.tags, 0);
+    }
+
+    #[test]
+    fn by_any_means_is_a_first_click_and_trashes_what_it_accesses_for_a_meat_damage() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (later, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click first");
+        assert!(play(&later, &registry, "by_any_means").is_err(), "play only as your first [click]");
+        let played = play(&state, &registry, "by_any_means").expect("play");
+        let (running, _) = apply_action(&played, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (done, _) = pass_until_settled(reach_the_server(running, &registry), &registry);
+        assert!(done.corp.archives.iter().any(|card| card.card == id("hedge_fund")), "trashed as it was accessed");
+        assert_eq!(done.runner.grip.len(), 2, "1 meat damage");
+    }
+
+    #[test]
+    fn falsified_credentials_pays_5_when_the_named_type_is_exposed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![corp_install("pad_campaign", ServerId::Remote(0), InstallSlot::Root)];
+        let asked = play(&state, &registry, "falsified_credentials").expect("play");
+        let asset = choose(&resolve(&asked, &registry, 1), &registry, Side::Runner, &[0]);
+        assert_eq!(asset.runner.resources.credits.0, 10 - 1 + 5);
+        let agenda = choose(&resolve(&asked, &registry, 0), &registry, Side::Runner, &[0]);
+        assert_eq!(agenda.runner.resources.credits.0, 9, "an asset is no agenda");
+
+        let mut central = state.clone();
+        central.corp.installed = vec![corp_install("ice_wall", ServerId::Hq, InstallSlot::Ice)];
+        let asked = play(&central, &registry, "falsified_credentials").expect("play");
+        let none = resolve(&asked, &registry, 2);
+        assert!(!crate::rules::legal_actions_for(&none, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })), "a remote server only");
+    }
+
+    #[test]
+    fn glut_cipher_moves_exactly_five_from_archives_and_trashes_five_at_random() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund")); 6];
+        state.corp.hq = vec![id("ice_wall")];
+        let played = play(&state, &registry, "glut_cipher").expect("play");
+        let asked = reach_the_server(played, &registry);
+        let done = choose(&asked, &registry, Side::Corp, &[0, 1, 2, 3, 4]);
+        assert_eq!(done.corp.hq.len(), 1, "6 in HQ, 5 trashed at random");
+        assert_eq!(done.corp.archives.len(), 6);
+
+        state.corp.archives.truncate(4);
+        let played = play(&state, &registry, "glut_cipher").expect("play");
+        let done = reach_the_server(played, &registry);
+        assert_eq!(done.corp.hq, vec![id("ice_wall")], "unable: nothing");
+        assert_eq!(done.corp.archives.len(), 4);
+    }
+
+    #[test]
+    fn wari_trashes_itself_to_send_exposed_ice_of_the_named_subtype_to_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("wari"), install_id: InstallId(2001), ..Default::default() }];
+        state.corp.installed = vec![corp_install("ice_wall", ServerId::RnD, InstallSlot::Ice)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let offered = reach_the_server(running, &registry);
+        let (named, _) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash Wari");
+        assert!(named.runner.rig.is_empty(), "Wari is trashed");
+        let wrong = choose(&resolve(&named, &registry, 0), &registry, Side::Runner, &[0]);
+        assert_eq!(wrong.corp.installed.len(), 1, "Ice Wall is no sentry");
+        let barrier = choose(&resolve(&named, &registry, 2), &registry, Side::Runner, &[0]);
+        assert!(barrier.corp.installed.is_empty());
+        assert!(barrier.corp.hq.contains(&id("ice_wall")));
+    }
+}

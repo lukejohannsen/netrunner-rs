@@ -86,7 +86,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.
 pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("by_any_means", "By Any Means"),
     ("yusuf", "Yusuf"),
     ("zamba", "Zamba"),
     ("puffer", "Puffer"),
@@ -101,8 +100,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("acacia", "Acacia"),
     ("plague", "Plague"),
-    ("credit_kiting", "Credit Kiting"),
-    ("wari", "Wari"),
     ("kabonesa_wu_netspace_thrillseeker", "Kabonesa Wu: Netspace Thrillseeker"),
     ("takobi", "Takobi"),
     ("kongamato", "Kongamato"),
@@ -134,10 +131,8 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
 pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("glut_cipher", "Glut Cipher"),
     ("knobkierie", "Knobkierie"),
     ("419_amoral_scammer", "419: Amoral Scammer"),
-    ("falsified_credentials", "Falsified Credentials"),
     ("rogue_trading", "Rogue Trading"),
     ("because_i_can", "Because I Can"),
     ("nyashia", "Nyashia"),
@@ -170,7 +165,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("musaazi", "Musaazi"),
     ("hippo", "Hippo"),
     ("amina", "Amina"),
-    ("diversion_of_funds", "Diversion of Funds"),
     ("pad_tap", "PAD Tap"),
     ("reclaim", "Reclaim"),
     ("engolo", "Engolo"),

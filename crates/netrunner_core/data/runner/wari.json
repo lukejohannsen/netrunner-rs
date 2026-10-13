@@ -1,0 +1,140 @@
+{
+  "id": "wari",
+  "title": "Wari",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          "Unrezzed"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "Sequence": [
+                          "Expose",
+                          {
+                            "EffectIf": {
+                              "condition": {
+                                "ActingCardMatches": {
+                                  "IceOfType": "Sentry"
+                                }
+                              },
+                              "effect": "AddToHand"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          "Unrezzed"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "Sequence": [
+                          "Expose",
+                          {
+                            "EffectIf": {
+                              "condition": {
+                                "ActingCardMatches": {
+                                  "IceOfType": "CodeGate"
+                                }
+                              },
+                              "effect": "AddToHand"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          "Unrezzed"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "Sequence": [
+                          "Expose",
+                          {
+                            "EffectIf": {
+                              "condition": {
+                                "ActingCardMatches": {
+                                  "IceOfType": "Barrier"
+                                }
+                              },
+                              "effect": "AddToHand"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ],
+                "texts": [
+                  "name sentry, code gate or barrier \u2014 sentry",
+                  "name sentry, code gate or barrier \u2014 code gate",
+                  "name sentry, code gate or barrier \u2014 barrier"
+                ]
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash Wari to name sentry, code gate or barrier"
+          }
+        }
+      ],
+      "text": "The first time you make a successful run on HQ each turn, you may trash Wari to name sentry, code gate or barrier. Expose a piece of ice, then add it to HQ if it has the named subtype."
+    }
+  ],
+  "built_from": 21024,
+  "is_playable": true
+}
