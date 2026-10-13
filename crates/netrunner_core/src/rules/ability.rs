@@ -2418,7 +2418,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -2456,6 +2456,9 @@ pub fn evaluate_effect(
             }
             if *central_only {
                 allowed.retain(|server| !matches!(server, crate::rules::run::ServerId::Remote(_)));
+            }
+            if let Some(only) = only_server {
+                allowed.retain(|server| server == only);
             }
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
@@ -5364,6 +5367,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Corp, |card| card.side);
             crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len() as u32
         }
+        Amount::AgendasInScoreArea(side) => match side {
+            Side::Corp => state.corp.scored_agendas.len() as u32,
+            Side::Runner => state.runner.scored_agendas.len() as u32,
+        },
         Amount::CopiesInScoreArea(side) => {
             let Some(card) = ctx.acting_card else { return 0 };
             let area = match side {

@@ -32637,3 +32637,64 @@ mod reign_and_reverie_stage_10 {
         assert!(again.active_run.as_ref().is_some_and(|run| run.passed.contains(&fixture_install_id("formicary"))), "Formicary was passed");
     }
 }
+
+mod reign_and_reverie_stage_11 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let position = state.corp.hq.iter().position(|held| held == &id(card)).expect("in HQ");
+        let state = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card").0;
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection").0
+    }
+
+    fn servers(state: &GameState, registry: &CardRegistry) -> Vec<ServerId> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fast_break_gains_draws_and_installs_up_to_x_cards_all_in_one_remote_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("fast_break"), id("pad_campaign"), id("ice_wall"), id("enigma")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")), crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("fast_break") }).expect("play Fast Break");
+        assert_eq!(played.corp.resources.credits, Credits(10 - 4 + 2), "gain X, X being 2");
+        let drawn = apply_action(&played, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("draw up to 2: 1").0;
+        assert_eq!((drawn.corp.hq.len(), drawn.corp.r_and_d.len()), (4, 2), "1 drawn");
+
+        // The first install goes to any remote server, a new one included.
+        let first = pick(&drawn, &registry, "pad_campaign");
+        let offered = servers(&first, &registry);
+        assert!(offered.contains(&ServerId::Remote(0)) && offered.len() == 2 && offered.iter().all(|server| matches!(server, ServerId::Remote(_))), "a remote server: {offered:?}");
+        let fresh = *offered.iter().find(|server| **server != ServerId::Remote(0)).expect("a new remote");
+        let one = apply_action(&first, &registry, PlayerAction::ChooseServerForPendingDecision { server: fresh }).expect("install").0;
+
+        // The second only in or protecting that same server.
+        let second = pick(&one, &registry, "ice_wall");
+        assert_eq!(servers(&second, &registry), vec![fresh], "a single remote server");
+        let two = apply_action(&second, &registry, PlayerAction::ChooseServerForPendingDecision { server: fresh }).expect("install").0;
+        let wall = two.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("installed");
+        assert_eq!((wall.server, wall.slot), (fresh, InstallSlot::Ice), "protecting it");
+        assert!(two.pending_decision.is_none(), "up to 2, and 2 were installed: {:?}", two.pending_decision);
+        assert!(two.corp.hq.contains(&id("enigma")));
+
+        // With no agendas stolen it does nothing at all.
+        state.runner.scored_agendas.clear();
+        let (nothing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("fast_break") }).expect("play Fast Break");
+        assert!(nothing.pending_decision.is_none(), "nothing asked: {:?}", nothing.pending_decision);
+        assert_eq!((nothing.corp.resources.credits, nothing.corp.hq.len()), (Credits(6), 3));
+    }
+}

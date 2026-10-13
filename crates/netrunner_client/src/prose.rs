@@ -135,6 +135,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
         Amount::InZone { zone, filter } => format!("the cards in {} ({})", describe_zone(zone), humanize(format!("{filter:?}")).to_lowercase()),
+        Amount::AgendasInScoreArea(side) => format!("the number of agendas in the {side:?}'s score area"),
         Amount::CopiesInScoreArea(side) => format!("the copies of this card in the {side:?}'s score area"),
         Amount::CountersOnOwnInstalls(kind) => format!("the {} counters on your installed cards", humanize(format!("{kind:?}")).to_lowercase()),
         Amount::Credits(Side::Corp) => "the Corp's credits".to_string(),
