@@ -377,7 +377,7 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| !(console_installed && is_console(def)))
-        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + chosen_ice_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
+        .map(|def| install_delta(def, held_price(state, registry, def), rig, shown, w, horizon, access_trash_value(state, registry, def, w, horizon) + held_host_derez_value(state, registry, def, w, horizon) + run_replacement_value(state, registry, def, w, horizon) + strength_cut_value(state, registry, def, w, horizon) + chosen_ice_value(state, registry, def, w, horizon) + prevention_value(state, registry, def, w, horizon) + rez_tax_value(state, registry, def, w, horizon) + held_host_rez_value(state, def, w) + redirect_value(state, registry, def, w, horizon)).max(0.0))
         .sum()
 }
 
@@ -719,6 +719,136 @@ pub(super) fn chosen_ice_value(state: &GameState, registry: &CardRegistry, def: 
         })
         .fold(0.0, f64::max);
     saving * f64::from(horizon) * w.future_credit_weight
+}
+
+/// The harm a Corp card can do the Runner that a prevention answers:
+/// damage of a kind, or tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Harm {
+    Damage(Option<netrunner_core::dsl::DamageType>),
+    Tags,
+}
+
+/// Whether the Corp across the table threatens `harm` (Phase 5 §78): by
+/// its faction, as the guide reads it — "Jinteki with its net damage, NBN
+/// with its tags" — or by a rezzed piece whose subroutines do it. Public,
+/// as `corp_punishes_runs` is.
+fn corp_threatens(state: &GameState, registry: &CardRegistry, harm: Harm) -> bool {
+    use netrunner_core::card::Faction;
+    use netrunner_core::dsl::DamageType;
+    use netrunner_core::rules::InstallSlot;
+    let faction = corp_faction(state, registry);
+    let by_faction = match harm {
+        Harm::Tags => faction == Some(Faction::Nbn),
+        Harm::Damage(None | Some(DamageType::Net)) => faction == Some(Faction::Jinteki),
+        Harm::Damage(_) => false,
+    };
+    by_faction
+        || state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Ice && card.rezzed).filter_map(|card| registry.get(&card.card)).any(|def| {
+            let mut does = false;
+            for sub in &def.subroutines {
+                sub.effect.for_each_effect(&mut |effect| {
+                    does |= match (effect, harm) {
+                        (Effect::GiveTags(_), Harm::Tags) => true,
+                        (Effect::DealDamage(kind, _) | Effect::DealDamageAmount(kind, _), Harm::Damage(want)) => want.is_none_or(|want| want == *kind),
+                        _ => false,
+                    };
+                });
+            }
+            does
+        })
+}
+
+/// The preventions `def` prints, each `(harm, amount a use, uses)`: a use
+/// a turn for "the first time each turn" (Net Shield), the card's stock
+/// for a cost in hosted counters (AirbladeX (JSRF Ed.)'s three) or its
+/// trash (Decoy's one), and `None` uses for one bounded only by credits.
+fn preventions(def: &CardDefinition) -> Vec<(Harm, u32, Option<u32>)> {
+    use netrunner_core::dsl::Preventable;
+    let harm = |effect: &Effect| {
+        let mut found = None;
+        effect.for_each_effect(&mut |effect| {
+            if let Effect::Prevent(what) = effect {
+                found = match what {
+                    Preventable::Damage { kind, up_to } => Some((Harm::Damage(*kind), *up_to)),
+                    Preventable::Tags(n) => Some((Harm::Tags, *n)),
+                    _ => found,
+                };
+            }
+        });
+        found
+    };
+    let stock = declared_income(def).printed_stock;
+    let mut found = Vec::new();
+    for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
+        let Some((what, amount)) = harm(&ability.effect) else { continue };
+        let uses = match ability.cost {
+            Some(Cost::TrashSelf) => Some(1),
+            Some(Cost::RemoveCounters(n)) => Some(stock / n.max(1)),
+            _ => None,
+        };
+        found.push((what, amount, uses));
+    }
+    for trigger in def.triggers.iter().filter(|trigger| trigger.first_each_turn) {
+        for effect in &trigger.effects {
+            if let Some((what, amount)) = harm(effect) {
+                found.push((what, amount, None));
+            }
+        }
+    }
+    found
+}
+
+/// What the preventions on `def` are worth against the Corp across the
+/// table (Phase 5 §78), with `stock` its counters on the table: each use
+/// the harm it prevents — a tag at `tag_weight`, a card of damage at
+/// `known_trap_damage_weight` (core damage at `core_damage_weight`) — for
+/// as many uses as the horizon reaches at one a turn, discounted as future
+/// income is (`future_credit_weight` over `own_credit_weight`), and only
+/// where the Corp threatens that harm (`corp_threatens`). **Why:** a
+/// prevention was worth nothing until the harm was parked in its window,
+/// so the planner seldom paid to have one ready — Net Shield 8 and 6
+/// plays on two seeds to random seats' 48, Decoy 7 and 2 to 27, AirbladeX
+/// (JSRF Ed.) 1 and 6 to 17.
+fn prevention_worth(state: &GameState, registry: &CardRegistry, def: &CardDefinition, stock: Option<u32>, w: &Weights, horizon: u32) -> f64 {
+    use netrunner_core::dsl::DamageType;
+    if w.future_credit_weight == 0.0 {
+        return 0.0;
+    }
+    let discount = w.future_credit_weight / w.own_credit_weight.max(f64::EPSILON);
+    preventions(def)
+        .into_iter()
+        .filter(|(harm, _, _)| corp_threatens(state, registry, *harm))
+        .map(|(harm, amount, uses)| {
+            let each = match harm {
+                Harm::Tags => w.tag_weight,
+                Harm::Damage(Some(DamageType::Brain)) => w.core_damage_weight,
+                Harm::Damage(_) => w.known_trap_damage_weight,
+            } * f64::from(amount);
+            let uses = match (uses, stock) {
+                (Some(_), Some(stock)) => horizon.min(stock),
+                (Some(printed), None) => horizon.min(printed),
+                (None, _) => horizon,
+            };
+            each * f64::from(uses) * discount
+        })
+        .sum()
+}
+
+/// `prevention_worth` for a held card (Phase 5 §78).
+pub(super) fn prevention_value(state: &GameState, registry: &CardRegistry, def: &CardDefinition, w: &Weights, horizon: u32) -> f64 {
+    prevention_worth(state, registry, def, None, w, horizon)
+}
+
+/// `prevention_worth` for each card in the rig, at its own counters.
+pub(super) fn rig_prevention_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|card| registry.get(&card.card).map(|def| (card, def)))
+        .map(|(card, def)| prevention_worth(state, registry, def, Some(card.counters), w, horizon))
+        .sum()
 }
 
 /// `chosen_ice_value` for each such card in the rig: the table with its
@@ -1125,6 +1255,9 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // A card that chose a piece of ice on install is the way past it
     // (`chosen_ice_value`, Phase 5 §77).
     *score += rig_chosen_ice_value(state, registry, w, horizon);
+    // A prevention ready against what the Corp threatens is the harm it
+    // will prevent (`prevention_value`, Phase 5 §78).
+    *score += rig_prevention_value(state, registry, w, horizon);
     // A card that raises the rez cost of ice is the Corp's credits it
     // takes (`rez_tax_value`, Phase 5 §71).
     *score += rig_rez_tax_value(state, registry, w, horizon);
@@ -2397,6 +2530,40 @@ mod tests {
     /// A Corp that has shown a tagging or damaging piece of ICE punishes
     /// runs whatever its faction; a rezzed Barrier that only ends the
     /// run does not.
+    /// A prevention ready is the harm it will prevent, against a Corp
+    /// that threatens it (Phase 5 §78): Net Shield a net damage a turn
+    /// against Jinteki and nothing against Weyland; Decoy one tag against
+    /// NBN; AirbladeX (JSRF Ed.) as many as its counters; nothing at the
+    /// default weights.
+    #[test]
+    fn a_prevention_is_the_harm_it_prevents_where_the_corp_threatens_it() {
+        use netrunner_core::card::Faction;
+        use netrunner_core::rules::InstalledRunnerCard;
+        let guide = Weights::default().at_the_guides_rate();
+        let discount = guide.future_credit_weight / guide.own_credit_weight;
+        let worth = |faction: Faction, id: &str, w: &Weights| {
+            let mut pool = CardRegistry::new();
+            netrunner_core::cards::register_playable_cards(&mut pool);
+            let (state, identity) = against(GameState::new(0), faction);
+            pool.insert(identity);
+            let def = pool.get(&CardId(id.to_string())).expect("card").clone();
+            prevention_value(&state, &pool, &def, w, 5)
+        };
+        assert!((worth(Faction::Jinteki, "net_shield", &guide) - 5.0 * guide.known_trap_damage_weight * discount).abs() < 1e-9);
+        assert_eq!(worth(Faction::WeylandConsortium, "net_shield", &guide), 0.0, "no net damage threatened");
+        assert!((worth(Faction::Nbn, "decoy", &guide) - guide.tag_weight * discount).abs() < 1e-9, "one tag, once");
+        assert_eq!(worth(Faction::Jinteki, "decoy", &guide), 0.0);
+        assert!((worth(Faction::Jinteki, "airbladex_jsrf_ed", &guide) - 3.0 * guide.known_trap_damage_weight * discount).abs() < 1e-9, "three counters");
+        assert_eq!(worth(Faction::Jinteki, "net_shield", &Weights::default()), 0.0);
+
+        let mut pool = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut pool);
+        let (mut state, identity) = against(GameState::new(0), Faction::Jinteki);
+        pool.insert(identity);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("airbladex_jsrf_ed".to_string()), counters: 1, ..Default::default() }];
+        assert!((rig_prevention_value(&state, &pool, &guide, 5) - guide.known_trap_damage_weight * discount).abs() < 1e-9, "one counter left");
+    }
+
     #[test]
     fn a_corp_whose_rezzed_ice_tags_punishes_runs_whatever_its_faction() {
         use netrunner_core::card::Faction;
