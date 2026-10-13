@@ -88,7 +88,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("fast_break", "Fast Break"),
     ("daruma", "Daruma"),
     ("eavesdrop", "Eavesdrop"),
-    ("formicary", "Formicary"),
 ];
 
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.

@@ -32569,3 +32569,71 @@ mod reign_and_reverie_stage_9 {
         assert_eq!(crate::rules::continuous::tags(&state, &registry), 0);
     }
 }
+
+mod reign_and_reverie_stage_10 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Steps the run by passes and continues until something is asked of
+    /// a player or the phase is `phase`.
+    fn until(state: &GameState, registry: &CardRegistry, phase: Option<crate::rules::RunPhase>) -> GameState {
+        let mut state = state.clone();
+        for _ in 0..40 {
+            if state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.active_run.as_ref().map(|run| run.phase) == phase {
+                return state;
+            }
+            if state.active_run.is_none() {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        panic!("the run never got there: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    #[test]
+    fn formicary_rezzes_as_the_runner_approaches_a_server_moves_in_and_is_encountered_then_passed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        let formicary = crate::rules::InstalledCard { install_id: fixture_install_id("formicary"), card: id("formicary"), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: false, ..Default::default() };
+        let wall = crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() };
+        state.corp.installed = vec![formicary, wall];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let credits = state.corp.resources.credits;
+        let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let asked = until(&run, &registry, None);
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "you may rez this ice: {:?}", asked.pending_decision);
+        assert_eq!(asked.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::Success), "approaching HQ, past the unrezzed Ice Wall");
+
+        // Declined: the run goes on to its success.
+        let declined = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no").0;
+        assert!(!declined.corp.installed[0].rezzed);
+        assert_eq!(declined.corp.installed[0].server, ServerId::RnD);
+
+        let (moved, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("rez it");
+        assert_eq!(moved.corp.resources.credits, Credits(credits.0 - 2), "its rez cost");
+        let ice: Vec<_> = moved.corp.installed.iter().filter(|card| card.server == ServerId::Hq && card.slot == InstallSlot::Ice).map(|card| card.card.0.as_str()).collect();
+        assert_eq!(ice, vec!["ice_wall", "formicary"], "the innermost position protecting HQ");
+        let run_state = moved.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run_state.phase, run_state.position, run_state.forced_encounter), (crate::rules::RunPhase::EncounterIce, 1, false), "the Runner encounters it");
+
+        // Its subroutine: the Runner suffers 2 net damage, then passes it
+        // and approaches HQ a second time — and a rezzed Formicary asks
+        // nothing.
+        let fired = until(&moved, &registry, None);
+        assert!(fired.pending_paid_choice.is_some(), "end the run unless: {:?}", fired.active_run.as_ref().map(|run| run.phase));
+        let paid = apply_action(&fired, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("suffer 2 net damage").0;
+        let again = until(&paid, &registry, Some(crate::rules::RunPhase::Success));
+        assert_eq!(again.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::Success), "approaching HQ again");
+        assert!(again.pending_decision.is_none(), "nothing asked the second time: {:?}", again.pending_decision);
+        assert_eq!(again.runner.grip.len(), 1, "2 net damage");
+        assert!(again.active_run.as_ref().is_some_and(|run| run.passed.contains(&fixture_install_id("formicary"))), "Formicary was passed");
+    }
+}

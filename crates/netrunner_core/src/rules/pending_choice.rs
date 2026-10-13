@@ -626,6 +626,10 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // trash it", asked of the ice the Runner chose after the Corp's
         // answer (`ActingCardMatches(Unrezzed)`).
         CardFilter::Unrezzed => installed.is_some_and(|c| !c.rezzed),
+        // Formicary's "If you do", asked of the ice its rez was offered to
+        // (`ActingCardMatches(Rezzed)`): a rez that could not be paid left
+        // it facedown.
+        CardFilter::Rezzed => installed.is_some_and(|c| c.rezzed),
         CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
         // ZATO City Grid's "each piece of ice protecting this server" and
         // Tsakhia's "protecting the chosen server", in a `when`: the place

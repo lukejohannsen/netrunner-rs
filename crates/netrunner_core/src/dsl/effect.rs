@@ -1789,6 +1789,18 @@ pub enum Effect {
     /// attacked server. Composition didn't work: nothing moved a run back
     /// to an encounter, and every encounter's end was a pass.
     ForceEncounter,
+    /// Moves the acting ice to the innermost position protecting the
+    /// server the Runner is approaching, and the Runner moves to it and
+    /// encounters it — Formicary's "move this ice to the innermost position
+    /// protecting the approached server. The Runner moves to this ice and
+    /// encounters it" (`run::move_innermost_and_encounter`). Not a forced
+    /// encounter: the Runner passes it after and approaches the server
+    /// again (Null Signal Games' ruling). One effect rather than a move and
+    /// an encounter, because the encounter is of the place the move puts
+    /// it and no other card moves ice inward. Composition didn't work:
+    /// `MoveThisIceToOutermost` is the other end and leaves the run to
+    /// approach it, and `ForceEncounter` returns without a pass.
+    MoveThisIceInnermostAndEncounter,
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
@@ -3365,6 +3377,7 @@ impl Effect {
             | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::MoveThisIceToOutermost
             | Effect::ForceEncounter
+            | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::LoseAbilities { .. }
