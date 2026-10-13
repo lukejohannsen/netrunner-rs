@@ -33,6 +33,12 @@ pub enum CardZoneRef {
     /// identity to your grip". The Runner may look at them, so a selection
     /// over it shows the chooser nothing new; the Corp sees how many.
     OwnSetAsideFacedown,
+    /// The Runner's own cards installed facedown (`RunnerState::
+    /// installed_facedown`, CR 8.1.4) — where Reboot's "install up to 5
+    /// cards from your heap facedown" puts the cards it chose, as a
+    /// selection's `destination`. The Runner may look at them; the Corp sees
+    /// how many.
+    OwnInstalledFacedown,
     /// The other player's cards in the set-aside zone (CR 4.8): the Corp's
     /// (`CorpState::set_aside`) named from the Runner's side — Deep Dive's
     /// "Access 1 of those cards" and "the Corp shuffles the set-aside cards
@@ -120,6 +126,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
+            | CardZoneRef::OwnInstalledFacedown
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
@@ -146,6 +153,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
             | CardZoneRef::OwnSetAsideFacedown
+            | CardZoneRef::OwnInstalledFacedown
             | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource

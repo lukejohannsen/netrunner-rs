@@ -510,6 +510,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             Some(cards) => format!("set aside facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
             None => format!("set aside facedown: {} {}", view.runner.set_aside_facedown_count, if view.runner.set_aside_facedown_count == 1 { "card" } else { "cards" }),
         }))
+        // The Runner's facedown installs (Reboot's): blank and inactive
+        // (CR 8.1.4a), named to the Runner, who may look at them, and
+        // counted for the Corp.
+        .chain((view.runner.installed_facedown_count > 0).then(|| match &view.runner.installed_facedown_cards {
+            Some(cards) => format!("installed facedown: {}", cards.iter().map(&title).collect::<Vec<_>>().join(", ")),
+            None => format!("installed facedown: {} {}", view.runner.installed_facedown_count, if view.runner.installed_facedown_count == 1 { "card" } else { "cards" }),
+        }))
         // An event still resolving (Déjà Vu while the Runner chooses from
         // the heap): faceup in the play area, and in the heap once it has
         // resolved (CR 3.7.1).

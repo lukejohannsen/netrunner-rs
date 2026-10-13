@@ -32935,3 +32935,66 @@ mod reign_and_reverie_stage_14 {
         assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("eavesdrop") }));
     }
 }
+
+/// Reign and Reverie Stage 15: Reboot, the Runner's first facedown installs.
+mod reign_and_reverie_stage_15 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Plays Reboot and runs Archives until the run is over or a decision is parked.
+    fn rebooted(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("reboot")];
+        state.runner.heap = vec![id("sure_gamble"), id("corroder"), id("daily_casts")];
+        let (mut run, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("reboot") }).expect("play Reboot");
+        for _ in 0..16 {
+            if run.pending_decision.is_some() || run.active_run.is_none() {
+                break;
+            }
+            let action = match (&run.paid_ability_window, run.active_run.as_ref().map(|r| r.phase)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(crate::rules::RunPhase::Success)) => PlayerAction::CompleteRun,
+                _ => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        run
+    }
+
+    #[test]
+    fn reboot_installs_up_to_five_heap_cards_facedown_instead_of_breaching_archives() {
+        let registry = registry();
+        let run = rebooted(&registry);
+        assert!(run.pending_decision.is_some(), "instead of breaching Archives, choose cards from the heap");
+        let (one, _) = apply_action(&run, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Sure Gamble");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("choose Corroder");
+        let (mut done, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        for _ in 0..8 {
+            if done.active_run.is_none() {
+                break;
+            }
+            let action = match (&done.paid_ability_window, done.active_run.as_ref().map(|r| r.phase)) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(crate::rules::RunPhase::Success)) => PlayerAction::CompleteRun,
+                _ => PlayerAction::ContinueRun,
+            };
+            done = apply_action(&done, &registry, action).expect("onward").0;
+        }
+        assert_eq!(done.runner.installed_facedown, vec![id("sure_gamble"), id("corroder")], "installed facedown");
+        assert_eq!(done.runner.heap, vec![id("daily_casts")]);
+        assert!(done.runner.rig.is_empty(), "a facedown card is a blank card, not a program in the rig");
+        assert!(done.runner.removed_from_game.contains(&id("reboot")), "remove this event from the game");
+        assert!(!done.runner.heap.contains(&id("reboot")));
+
+        let corp_view = crate::view::build_client_view(&done, &registry, Side::Corp);
+        assert_eq!(corp_view.runner.installed_facedown_count, 2);
+        assert!(corp_view.runner.installed_facedown_cards.is_none(), "facedown: the Corp does not see them");
+        let runner_view = crate::view::build_client_view(&done, &registry, Side::Runner);
+        assert_eq!(runner_view.runner.installed_facedown_cards.as_ref().map(Vec::len), Some(2), "the Runner may look at their own facedown cards");
+    }
+}

@@ -284,6 +284,10 @@ pub struct PublicRunnerState {
     /// Corp sees how many.
     #[serde(default = "MaskedZone::empty")]
     pub set_aside_facedown: MaskedZone,
+    /// `RunnerState::installed_facedown`, masked as the grip is: secret
+    /// information the Runner controls (CR 4.6.3), counted for the Corp.
+    #[serde(default = "MaskedZone::empty")]
+    pub installed_facedown: MaskedZone,
     /// Never masked: faceup (`RunnerState::play_area`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -1596,6 +1600,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         removed_from_game: runner.removed_from_game.clone(),
         set_aside: runner.set_aside.clone(),
         set_aside_facedown: mask_zone(&runner.set_aside_facedown, owner_view),
+        installed_facedown: mask_zone(&runner.installed_facedown, owner_view),
         play_area: runner.play_area.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the

@@ -767,6 +767,16 @@ pub struct RunnerState {
     /// whole and every reader of it would have had to learn to mask.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside_facedown: Vec<CardId>,
+    /// Runner cards installed facedown (CR 8.1.4) — Reboot's "install up
+    /// to 5 cards from your heap facedown". Blank and inactive (8.1.4a),
+    /// with no install cost (8.5.11a), so a list beside the rig keeps every
+    /// reader of the rig from learning to skip them: nothing there can see
+    /// a card with no characteristics. Hidden from the Corp as the grip is
+    /// (`masking`, 4.6.3); the Runner may look at them (1.21.2a). Nothing
+    /// in the pool turns one faceup or targets one, so a card here stays
+    /// until the game ends; Apex is the card that will.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub installed_facedown: Vec<CardId>,
     /// The Runner's events played and not yet fully resolved, because a
     /// choice their text parked is still open: "once those abilities are
     /// fully resolved the event is trashed" (CR 3.7.1). Déjà Vu's "from
