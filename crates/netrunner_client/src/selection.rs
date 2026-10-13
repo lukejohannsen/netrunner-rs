@@ -146,6 +146,7 @@ pub fn purpose(
             Some(CardZoneRef::PlayArea) => format!("Put {what} in the play area"),
             Some(CardZoneRef::OwnSetAside | CardZoneRef::OwnSetAsideFacedown | CardZoneRef::OpponentSetAside) => format!("Set {what} aside"),
             Some(CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled) => format!("Install {what}"),
+            Some(CardZoneRef::OwnInstalledFacedown) => format!("Install {what} facedown"),
         }
     };
     // "You may trash the top card of R&D": a choice of none or one with
@@ -251,6 +252,7 @@ fn zone_name(chooser: Side, zone: &CardZoneRef, source_card: Option<&CardId>, re
         CardZoneRef::OwnHeap => "the heap".to_string(),
         CardZoneRef::OwnSetAside => "the cards set aside".to_string(),
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown".to_string(),
+        CardZoneRef::OwnInstalledFacedown => "your facedown installed cards".to_string(),
         CardZoneRef::OpponentSetAside => format!("{}'s cards set aside", crate::prose::who(opponent)),
         CardZoneRef::HostedOnSource => match source_card {
             Some(card) => format!("hosted on {}", card_title(card, registry)),
@@ -637,6 +639,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OwnHeap => "the heap".to_string(),
         CardZoneRef::OwnSetAside => "the cards set aside".to_string(),
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown".to_string(),
+        CardZoneRef::OwnInstalledFacedown => "your facedown installed cards".to_string(),
         CardZoneRef::OpponentSetAside => format!("the {opponent:?}'s cards set aside"),
         CardZoneRef::HostedOnSource => match source_card {
             Some(card) => format!("hosted on {}", card_title(card, registry)),

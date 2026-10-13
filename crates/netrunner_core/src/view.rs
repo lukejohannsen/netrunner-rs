@@ -139,6 +139,14 @@ pub struct RunnerClientView {
     /// `grip_cards` is: "You may look at those cards at any time."
     #[serde(default)]
     pub set_aside_facedown_cards: Option<Vec<CardId>>,
+    /// How many cards the Runner has installed facedown
+    /// (`RunnerState::installed_facedown`, Reboot's) — public, as the grip's
+    /// count is.
+    #[serde(default)]
+    pub installed_facedown_count: usize,
+    /// Which, to the Runner alone (CR 1.21.2a).
+    #[serde(default)]
+    pub installed_facedown_cards: Option<Vec<CardId>>,
     /// Public — see `RunnerState::play_area`: an event still resolving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
@@ -447,6 +455,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside: public.runner.set_aside,
         set_aside_facedown_count: zone_count(&public.runner.set_aside_facedown),
         set_aside_facedown_cards: zone_cards(&public.runner.set_aside_facedown),
+        installed_facedown_count: zone_count(&public.runner.installed_facedown),
+        installed_facedown_cards: zone_cards(&public.runner.installed_facedown),
         play_area: public.runner.play_area,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,

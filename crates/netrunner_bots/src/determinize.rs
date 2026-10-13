@@ -338,6 +338,9 @@ pub(crate) fn visible_cards(view: &ClientView) -> Vec<CardId> {
     if let Some(cards) = &view.runner.set_aside_facedown_cards {
         ids.extend(cards.iter().cloned());
     }
+    if let Some(cards) = &view.runner.installed_facedown_cards {
+        ids.extend(cards.iter().cloned());
+    }
     ids.extend(view.runner.play_area.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
     for rig_card in &view.runner.rig {
@@ -405,6 +408,7 @@ fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usiz
                 + view.runner.removed_from_game.len()
                 + view.runner.set_aside.len()
                 + view.runner.set_aside_facedown_count
+                + view.runner.installed_facedown_count
                 + view.runner.play_area.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
                 + in_corp_score_area
@@ -1077,6 +1081,9 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // and drawn from the same pool, after the stack so that a game
         // without any draws exactly what it drew before.
         set_aside_facedown: determinize_zone(&view.runner.set_aside_facedown_cards, view.runner.set_aside_facedown_count, &mut pools, Slot::RunnerAny),
+        // Reboot's facedown installs: hidden from the Corp the same way,
+        // drawn after them for the same reason.
+        installed_facedown: determinize_zone(&view.runner.installed_facedown_cards, view.runner.installed_facedown_count, &mut pools, Slot::RunnerAny),
         play_area: view.runner.play_area.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
@@ -1377,6 +1384,9 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     if view.runner.set_aside_facedown_cards.is_none() && !state.runner.set_aside_facedown.is_empty() {
         state.runner.set_aside_facedown = pools.draw_n(Slot::RunnerAny, state.runner.set_aside_facedown.len());
     }
+    if view.runner.installed_facedown_cards.is_none() && !state.runner.installed_facedown.is_empty() {
+        state.runner.installed_facedown = pools.draw_n(Slot::RunnerAny, state.runner.installed_facedown.len());
+    }
     seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
@@ -1486,6 +1496,7 @@ mod tests {
                 removed_from_game: Vec::new(),
                 set_aside: Vec::new(),
                 set_aside_facedown: Vec::new(),
+                installed_facedown: Vec::new(),
                 play_area: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,

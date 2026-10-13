@@ -159,6 +159,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnHeap => "the heap",
         CardZoneRef::OwnSetAside => "the cards set aside",
         CardZoneRef::OwnSetAsideFacedown => "the cards set aside facedown",
+        CardZoneRef::OwnInstalledFacedown => "your facedown installed cards",
         CardZoneRef::OpponentSetAside => "the opponent's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",

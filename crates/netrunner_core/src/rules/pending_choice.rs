@@ -112,6 +112,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OwnSetAsideFacedown => state.runner.set_aside_facedown.clone(),
+        CardZoneRef::OwnInstalledFacedown => state.runner.installed_facedown.clone(),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => state.corp.set_aside.clone(),
             Side::Runner => state.runner.set_aside.clone(),
@@ -660,6 +661,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
         CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
         CardZoneRef::OwnSetAsideFacedown => Some(&mut state.runner.set_aside_facedown),
+        CardZoneRef::OwnInstalledFacedown => Some(&mut state.runner.installed_facedown),
         CardZoneRef::OpponentSetAside => match owner {
             Side::Corp => Some(&mut state.corp.set_aside),
             Side::Runner => Some(&mut state.runner.set_aside),
