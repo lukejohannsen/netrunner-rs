@@ -177,7 +177,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("viral_weaponization", "Viral Weaponization"),
     ("mwanza_city_grid", "Mwanza City Grid"),
     ("standard_procedure", "Standard Procedure"),
-    ("overseer_matrix", "Overseer Matrix"),
 ];
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.

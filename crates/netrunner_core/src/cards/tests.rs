@@ -33672,3 +33672,67 @@ mod kitara_stage_3 {
         assert_eq!(state.runner.grip.len(), 1, "4 meat damage");
     }
 }
+
+mod kitara_stage_3b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn at(card: &str, install: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn accessing(state: GameState, registry: &CardRegistry) -> GameState {
+        run_to_completion(state, registry, ServerId::Remote(0)).0
+    }
+
+    fn trash_on_access(state: &GameState, registry: &CardRegistry, install: u32, card: &str) -> GameState {
+        let mut state = state.clone();
+        let pick = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(InstallId(install)) };
+        if crate::rules::legal_actions_for(&state, registry, Side::Runner).contains(&pick) {
+            state = apply_action(&state, registry, pick).expect("access it").0;
+        }
+        apply_action(&state, registry, PlayerAction::TrashAccessedCard { card_id: id(card) }).expect("trash it").0
+    }
+
+    fn runner_turn(installed: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.corp.installed = installed;
+        state
+    }
+
+    #[test]
+    fn overseer_matrix_may_tag_for_a_runner_trash_from_its_server_its_own_included() {
+        let registry = registry();
+        let state = accessing(runner_turn(vec![at("overseer_matrix", 90, true), at("ngo_front", 91, false)]), &registry);
+
+        let trashed = trash_on_access(&state, &registry, 91, "ngo_front");
+        assert!(trashed.pending_paid_choice.is_some(), "you may pay 1[credit] to give the Runner 1 tag");
+        let (tagged, _) = apply_action(&trashed, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
+        assert_eq!(tagged.runner.tags, 1);
+
+        // Persistent: trashed itself, it still hears its own trash.
+        let itself = trash_on_access(&state, &registry, 90, "overseer_matrix");
+        assert!(itself.pending_paid_choice.is_some(), "this ability still applies for the remainder of this run, and once");
+    }
+
+    #[test]
+    fn overseer_matrix_hears_nothing_unrezzed_or_from_the_corps_own_trash() {
+        let registry = registry();
+        let state = accessing(runner_turn(vec![at("overseer_matrix", 90, false), at("ngo_front", 91, false)]), &registry);
+        assert!(trash_on_access(&state, &registry, 91, "ngo_front").pending_paid_choice.is_none(), "unrezzed");
+
+        let mut corp = base_state();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.clicks = Clicks(3);
+        let mut ngo = at("ngo_front", 91, true);
+        ngo.advancement_tokens = 1;
+        corp.corp.installed = vec![at("overseer_matrix", 90, true), ngo];
+        let (cashed, _) = apply_action(&corp, &registry, PlayerAction::ActivateAbility { target: InstallId(91), ability_index: 0 }).expect("NGO Front trashes itself");
+        assert!(cashed.pending_paid_choice.is_none(), "the Corp's own trash");
+    }
+}
