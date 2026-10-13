@@ -57,6 +57,24 @@ impl Reach {
         }
     }
 
+    /// The reach as a pill reads it, and the line under the pills saying
+    /// what that means (the hub's host page, Phase 7 §15).
+    pub fn title(self) -> &'static str {
+        match self {
+            Reach::ThisMachine => "This machine only",
+            Reach::Network => "Your network",
+            Reach::Internet => "The internet",
+        }
+    }
+
+    pub fn line(self) -> &'static str {
+        match self {
+            Reach::ThisMachine => "For trying it out: a second client on this computer joins by the address the room shows.",
+            Reach::Network => "Anyone on your LAN joins by the address the room shows; nothing leaves the network.",
+            Reach::Internet => "A ticket your opponent pastes in, which works from anywhere, and your router is asked to open the port for a direct address too.",
+        }
+    }
+
     /// The next choice, wrapping; `back` goes the other way.
     pub fn step(self, back: bool) -> Reach {
         let at = Self::ALL.iter().position(|reach| *reach == self).expect("every reach is listed");
@@ -391,10 +409,12 @@ impl Invitation {
     /// The invitation to a server listening on `port`. A ticket is given
     /// out when `relay` is — its relay, or `Relay::Off` for one naming
     /// this machine's own addresses — which a host asks for when hosting
-    /// for the internet; `serve` takes each stream a joiner opens by
-    /// ticket, and is the server's `Acceptor::serve`. Must be called
-    /// inside a tokio runtime when a ticket or a router is asked for.
-    pub fn start<F>(reach: Reach, port: u16, relay: Option<Relay>, serve: F) -> Invitation
+    /// for the internet, on `key` where the host has one (the player's
+    /// identity, so the ticket is the same every time they host: `peer`);
+    /// `serve` takes each stream a joiner opens by ticket, and is the
+    /// server's `Acceptor::serve`. Must be called inside a tokio runtime
+    /// when a ticket or a router is asked for.
+    pub fn start<F>(reach: Reach, port: u16, relay: Option<Relay>, key: Option<[u8; 32]>, serve: F) -> Invitation
     where
         F: Fn(Stream, String) + Send + Sync + 'static,
     {
@@ -403,7 +423,7 @@ impl Invitation {
             shares: share_addresses(reach, port),
             mapping: map_port(reach, port),
             mapped: Mapping::Asking,
-            peer: relay.map(|relay| PeerHost::start(relay, serve)),
+            peer: relay.map(|relay| PeerHost::start(relay, key, serve)),
         }
     }
 
@@ -423,11 +443,11 @@ impl Invitation {
             ways.push(match peer.poll() {
                 Offer::Starting => Way::Note("preparing a ticket…".to_string()),
                 Offer::Ready { ticket, relayed: true } => {
-                    Way::Give { what: ticket.to_string(), who: "from anywhere; your opponent pastes it into Join".to_string(), ticket: true }
+                    Way::Give { what: ticket.to_string(), who: "from anywhere; your opponent pastes it into Join, and a saved one works every time you host".to_string(), ticket: true }
                 }
                 Offer::Ready { ticket, relayed: false } => Way::Give {
                     what: ticket.to_string(),
-                    who: "no relay answered, so it works only where a direct connection can be made (your network, or IPv6)".to_string(),
+                    who: "no relay answered, so it works only where a direct connection can be made (your network, or IPv6), and a saved one only there".to_string(),
                     ticket: true,
                 },
                 Offer::Failed(error) => Way::Note(format!("No ticket: {error}")),

@@ -62,7 +62,8 @@ use netrunner_client::identity::ProfileHere;
 use netrunner_client::card_face::Face;
 use netrunner_client::deck_builder::CardBook;
 use netrunner_client::deck_picker;
-use netrunner_client::online::{self, opponent_label, preference_label, rung_label, searching_line, ActiveDeck};
+use netrunner_client::online::{self, opponent_label, preference_label, rung_label, searching_line, ActiveDeck, Target};
+use netrunner_client::peers::PeerBook;
 use netrunner_client::tournament;
 use netrunner_client::servers::{self, ServerBook};
 use netrunner_core::decks::DeckFile;
@@ -80,7 +81,7 @@ use netrunner_server::MatchSummary;
 use crate::audio::{ButtonSound, Sfx};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, TokioRuntime};
-use crate::models::online::{lobby_title, reach_pill, AwardKind, Field, Intent, OnlineForm, Outcome, Page, RowProfile, Searching, ServerState};
+use crate::models::online::{lobby_title, AwardKind, Field, Intent, OnlineForm, Outcome, Page, RowProfile, Searching, ServerState};
 use crate::widgets::badge::{self, BadgeGlyphs};
 use crate::widgets::card_face::{spawn_face, FaceSize};
 use crate::widgets::reader::Readable;
@@ -100,7 +101,7 @@ impl Plugin for OnlinePlugin {
             .add_systems(OnEnter(AppScreen::Online), spawn)
             .add_systems(OnExit(AppScreen::Online), leave)
             .add_systems(Update, escape.in_set(Captures).after(crate::widgets::text_field::edit_text_fields).run_if(in_state(AppScreen::Online)))
-            .add_systems(Update, (dev_page, opening, controls, chooser_wash, fields, net, round_clock_ticks, search_clock_ticks, refresh, turn_pulse).chain().run_if(in_state(AppScreen::Online)));
+            .add_systems(Update, (dev_page, dev_guest, opening, controls, chooser_wash, fields, net, round_clock_ticks, search_clock_ticks, room_ticks, refresh, turn_pulse).chain().run_if(in_state(AppScreen::Online)));
     }
 }
 
@@ -118,6 +119,11 @@ const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 /// its rows — and never again until the screen is opened afresh.
 #[derive(Resource)]
 struct Opening;
+
+/// Set by the main menu's Local / P2P Play: the screen opens on the hub
+/// (Phase 7 §15) rather than connecting to the Default. Taken on entry.
+#[derive(Resource)]
+pub struct OpenHub;
 
 /// The server this person is hosting, and what it gives out. Dropping it
 /// stops the server — a match on it ends — releases the router's port and
@@ -217,6 +223,9 @@ struct Net {
     shown: Vec<Way>,
     /// The servers' answers for their rows, as they come.
     profiles: Option<Mutex<mpsc::Receiver<(String, Result<Option<netrunner_server::protocol::Profile>, String>)>>>,
+    /// The `room-guest` dev hook's other player, attached to the hook's
+    /// own server so the room has someone in it to look at.
+    extra: Option<Attached>,
 }
 
 #[derive(Resource, Default)]
@@ -277,6 +286,15 @@ pub enum Control {
     DefaultRow(usize),
     EditRow(Option<usize>),
     RemoveRow(usize),
+    /// The hub's (Phase 7 §15): a saved peer joined, renamed, removed;
+    /// the rename form's Save.
+    QuickConnect(usize),
+    RenamePeer(usize),
+    RemovePeer(usize),
+    SavePeer,
+    /// The room's: ready to play, or not after all.
+    Ready,
+    Unready,
     /// The profile page's: a pop-up of the titles or the badges earned,
     /// a pick from it, and its Cancel.
     Choose(AwardKind),
@@ -331,17 +349,24 @@ struct Overlay;
 const FORM_WIDTH: f32 = 940.0;
 const DASHBOARD_WIDTH: f32 = 1080.0;
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>, connected: Option<Res<Connected>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>, connected: Option<Res<Connected>>, hub: Option<Res<OpenHub>>) {
     commands.init_resource::<Dirty>();
     commands.insert_resource(Net::default());
     // The active decks are read on every visit: the deck builder may have
-    // changed one since.
+    // changed one since; so are the saved peers.
     let active = active_decks(&core);
+    let open_hub = hub.is_some();
+    commands.remove_resource::<OpenHub>();
+    let peers = core.peer_book();
     match model {
         Some(mut model) => {
             model.0.reopen(connected.is_some());
             model.0.apply(Intent::ActiveDecks(Box::new(active)));
-            if connected.is_none() {
+            model.0.apply(Intent::Peers(peers));
+            model.0.player = core.player_name();
+            if open_hub && connected.is_none() {
+                model.0.apply(Intent::Open(Page::Hub));
+            } else if connected.is_none() {
                 commands.insert_resource(Opening);
             }
         }
@@ -351,22 +376,25 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
             // connected to last — both from the list both clients keep
             // (Phase 7 §14).
             let address = core.server_book().start_address().map_or_else(|| hosting::normalize_address("127.0.0.1"), str::to_string);
-            let mut form = OnlineForm::new(address, format).with_active(active);
-            if connected.is_none() {
+            let mut form = OnlineForm::new(address, format).with_active(active).with_player(core.player_name());
+            if open_hub {
+                form.apply(Intent::Open(Page::Hub));
+            } else if connected.is_none() {
                 commands.insert_resource(Opening);
             }
             form.apply(Intent::Servers(core.server_book()));
             form.apply(Intent::Local(local_lines(&core)));
+            form.apply(Intent::Peers(peers));
             commands.insert_resource(Model(form));
         }
     }
-    let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
+    let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), flex_shrink: 1.0, min_height: px(0), ..default() })).id();
     let panel = commands.spawn((PanelRoot, widgets::roomy_panel(&theme, px(FORM_WIDTH)))).add_child(form).id();
     let column = commands
-        .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), ..default() })
+        .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), max_height: percent(100), ..default() })
         .with_children(|parent| {
             parent.spawn(widgets::title(&theme, AppScreen::Online.title()));
-            parent.spawn(widgets::dim(&theme, format!("As {}. Ranked is rated, Casual is not, and a friend lobby is joined by its code.", core.player_name())));
+            parent.spawn(widgets::dim(&theme, format!("As {}. Ranked is rated, Casual is not, a friend lobby is joined by its code, and a friend is played directly from the hub.", core.player_name())));
         })
         .add_child(panel)
         .id();
@@ -410,6 +438,7 @@ fn local_lines(core: &ClientCore) -> Vec<String> {
 fn opening(
     mut commands: Commands,
     pending: Option<Res<Opening>>,
+    dev: Option<Res<crate::dev::Dev>>,
     mut model: ResMut<Model>,
     mut net: ResMut<Net>,
     mut dirty: ResMut<Dirty>,
@@ -421,6 +450,13 @@ fn opening(
         return;
     }
     commands.remove_resource::<Opening>();
+    // A dev hook that opened a page of its own this frame (`dev_page`,
+    // before this) is left on it; the hooks that need the Default — the
+    // dashboard, its forms, the profile — are what this connects for.
+    let needs_default = |page: &str| page == "dashboard" || page.starts_with("profile") || matches!(page, "queue" | "queue-ranked" | "searching" | "make-lobby" | "friend-lobby");
+    if dev.as_ref().and_then(|dev| dev.online.as_deref()).is_some_and(|page| !needs_default(page)) {
+        return;
+    }
     let mut outcome = model.0.apply(Intent::ConnectDefault);
     if outcome == Outcome::Nothing {
         outcome = model.0.apply(Intent::Open(Page::Servers));
@@ -568,6 +604,12 @@ fn controls(
             Control::DefaultRow(index) => Intent::ToggleDefault(index),
             Control::EditRow(index) => Intent::EditRow(index),
             Control::RemoveRow(index) => Intent::RemoveRow(index),
+            Control::QuickConnect(index) => Intent::QuickConnect(index),
+            Control::RenamePeer(index) => Intent::RenamePeer(index),
+            Control::RemovePeer(index) => Intent::RemovePeer(index),
+            Control::SavePeer => Intent::SavePeer,
+            Control::Ready => Intent::Ready,
+            Control::Unready => Intent::Unready,
             Control::Choose(kind) => Intent::Choose(kind),
             Control::Pick(index) => Intent::Pick(index),
             Control::CloseChooser => Intent::CloseChooser,
@@ -701,6 +743,16 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
                 }
                 form.apply(Intent::Servers(core.server_book()));
             }
+            Outcome::EditPeers(edit) => {
+                let written = match core.peers_path() {
+                    Some(path) => PeerBook::update(&path, |book| edit.apply(book)),
+                    None => Err("No data directory, so the saved peers cannot be kept".to_string()),
+                };
+                if let Err(reason) = written {
+                    form.notice = Some(reason);
+                }
+                form.apply(Intent::Peers(core.peer_book()));
+            }
             // No runtime to ask on: each row says so rather than waiting.
             Outcome::FetchProfiles(addresses) => {
                 for address in addresses {
@@ -732,7 +784,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             host(form, net, commands, core, runtime, port, reach, format, relay);
         }
         Outcome::Connect { url } => {
-            remember_server(core, &url);
+            // A friend's room joined from the hub is a peer, never a row of
+            // the servers (`peers`); a server by its address is.
+            if !matches!(form.page, Page::Hub | Page::Join) {
+                remember_server(core, &url);
+            }
             let credentials = match core.credentials() {
                 Ok(credentials) => credentials,
                 Err(error) => {
@@ -822,7 +878,11 @@ fn ask(world: &mut World, outcome: Outcome) {
 /// game on their own machine is never rated.
 #[allow(clippy::too_many_arguments)]
 fn host(form: &mut OnlineForm, net: &mut Net, commands: &mut Commands, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>) {
-    match start_hosting(port, reach, format, relay, runtime.handle()) {
+    // The ticket on the person's own key, so it is the same every time
+    // they host and a friend can save it (Phase 7 §15). A key that
+    // cannot be made hosts on a throwaway one, as the dev hooks do.
+    let key = core.credentials().ok().flatten().map(|credentials| credentials.identity.secret_bytes());
+    match start_hosting(port, reach, format, relay, key, runtime.handle()) {
         Ok((hosting, url)) => {
             let who = Who { player_name: core.player_name(), credentials: None };
             commands.insert_resource(Connected { attached: remote::spawn(url, Goal::Attach(who)), hosting: Some(hosting) });
@@ -927,19 +987,39 @@ fn dev_page(
         }
         return;
     }
+    // The guest's room is shot once its opponent is ready, which the room
+    // learns by its own poll.
+    if page == "room-guest" && *done {
+        if let Some(dev) = dev.as_mut()
+            && dev.held
+            && form.room_people().1.is_some_and(|presence| presence.seeking)
+        {
+            dev.held = false;
+            dirty.0 = true;
+        }
+        return;
+    }
     if std::mem::replace(&mut *done, true) {
         return;
     }
     dirty.0 = true;
     match page.as_str() {
+        "hub" => form.apply(Intent::Open(Page::Hub)),
         "host" => form.apply(Intent::Open(Page::Host)),
-        "join" | "servers" => {
+        "join" => {
+            form.apply(Intent::Open(Page::Join));
+            form.apply(Intent::Typed(Field::Address, "192.168.1.50:8080".to_string()))
+        }
+        "servers" => {
             let outcome = form.apply(Intent::Open(Page::Servers));
             carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
             Outcome::Nothing
         }
         "watch" => form.apply(Intent::Open(Page::Watch)),
-        "hosting" | "ticket" => {
+        // `room` is the host's room (as `hosting` was); `ticket` the same
+        // with a ticket naming this machine's own addresses, on a
+        // throwaway key, so looking at the page touches nothing outside it.
+        "hosting" | "room" | "ticket" => {
             let Some(runtime) = runtime else { return };
             let _guard = runtime.0.enter();
             form.apply(Intent::Open(Page::Host));
@@ -948,12 +1028,36 @@ fn dev_page(
             host(form, &mut net, &mut commands, &core, &runtime, 0, Reach::Network, format, relay);
             Outcome::Nothing
         }
+        // The guest's room: a server of the hook's own on this machine,
+        // joined through the Join page, with a second player in it who
+        // is ready and prefers the Runner.
+        "room-guest" => {
+            let Some(runtime) = runtime else { return };
+            let _guard = runtime.0.enter();
+            match start_hosting(0, Reach::ThisMachine, form.format, None, None, runtime.handle()) {
+                Ok((hosting, url)) => {
+                    net.hosting = Some(hosting);
+                    let who = Who { player_name: "Sam".to_string(), credentials: None };
+                    net.extra = Some(remote::spawn(url.clone(), Goal::Attach(who)));
+                    if let Some(dev) = dev.as_mut() {
+                        dev.held = true;
+                    }
+                    form.apply(Intent::Open(Page::Hub));
+                    form.apply(Intent::Open(Page::Join));
+                    form.apply(Intent::Typed(Field::Address, url));
+                    let outcome = form.apply(Intent::Go);
+                    carry_out(outcome, form, &mut net, &mut commands, &mut core, Some(&runtime), &mut navigate);
+                    Outcome::Nothing
+                }
+                Err(error) => form.apply(Intent::Failed(format!("Could not host: {error}"))),
+            }
+        }
         "spectate" | "spectate-corp" => {
             let Some(runtime) = runtime else { return };
             let _guard = runtime.0.enter();
             form.apply(Intent::Open(Page::Watch));
             form.apply(Intent::SetWatchFrom(if page == "spectate" { Side::Runner } else { Side::Corp }));
-            match start_hosting(0, Reach::ThisMachine, form.format, None, runtime.handle()) {
+            match start_hosting(0, Reach::ThisMachine, form.format, None, None, runtime.handle()) {
                 Ok((hosting, url)) => {
                     // The server rides with the spectator's match.
                     net.hosting = Some(hosting);
@@ -1038,13 +1142,13 @@ fn shortened(address: &str) -> String {
 /// and the loopback address the host attaches by — the terminal's
 /// `start_hosting`, whose server is named here because `netrunner_client`
 /// may not name it. Port 0 takes any free port.
-fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>, runtime: tokio::runtime::Handle) -> Result<(HostedServer, String), String> {
+fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>, key: Option<[u8; 32]>, runtime: tokio::runtime::Handle) -> Result<(HostedServer, String), String> {
     let options = ServeOptions { bots: Vec::new(), formats: vec![format], ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
     let acceptor = server.acceptor();
-    let invitation = Invitation::start(reach, port, relay, move |stream, who| {
+    let invitation = Invitation::start(reach, port, relay, key, move |stream, who| {
         let acceptor = acceptor.clone();
         tokio::spawn(async move { acceptor.serve(stream, &who).await });
     });
@@ -1240,6 +1344,7 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::TournamentName => &form.make_tournament.name,
         Field::ServerName => &form.edit.name,
         Field::ServerAddress => &form.edit.address,
+        Field::PeerName => &form.edit_peer.name,
     }
 }
 
@@ -1275,6 +1380,52 @@ fn search_clock_ticks(time: Res<Time>, mut since: Local<f32>, model: Res<Model>,
     }
 }
 
+/// The room is asked for its lobby every second, so the other side's
+/// arrival, Ready and preference are seen without a press — the server
+/// pushes nothing about a lobby's people.
+fn room_ticks(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut since: Local<f32>,
+    mut model: ResMut<Model>,
+    mut net: ResMut<Net>,
+    mut core: ResMut<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
+    mut navigate: MessageWriter<Navigate>,
+) {
+    if model.0.page != Page::Room || model.0.server.is_none() {
+        *since = 0.0;
+        return;
+    }
+    *since += time.delta_secs();
+    if *since >= 1.0 {
+        *since = 0.0;
+        let outcome = model.0.apply(Intent::Refresh);
+        carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+    }
+}
+
+/// The `room-guest` dev hook's other player: attached to the hook's own
+/// server, into its queue, and ready with a preference, so the guest's
+/// room shows an opponent who is.
+fn dev_guest(mut net: ResMut<Net>) {
+    let Some(extra) = net.extra.as_mut() else { return };
+    while let Some(event) = extra.poll() {
+        match event {
+            AttachedEvent::Attached(lobbies) => {
+                if let Some(lobby) = lobbies.first() {
+                    extra.join_lobby(lobby.id.clone(), None);
+                }
+            }
+            AttachedEvent::LobbyJoined(_) => {
+                let deck = |id: &str| Box::new(netrunner_core::decks::by_id(id).expect("a built-in deck"));
+                extra.seek(netrunner_server::protocol::Chair::Either { corp: deck("brick_stack"), runner: deck("stolen_goods"), prefer: Some(Side::Runner) }, Opponent::Person);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The pulse turns with the clock, so a redraw does not set it back.
 fn turn_pulse(time: Res<Time>, mut pulses: Query<&mut UiTransform, With<Pulse>>) {
     let angle = (time.elapsed_secs() * 2.4) % std::f32::consts::TAU;
@@ -1304,7 +1455,11 @@ fn refresh(
     }
     let Ok(root) = root.single() else { return };
     if let Ok(mut node) = panel.single_mut() {
-        node.width = px(if model.0.page == Page::Dashboard { DASHBOARD_WIDTH } else { FORM_WIDTH });
+        node.width = px(if matches!(model.0.page, Page::Dashboard | Page::Hub | Page::Room) { DASHBOARD_WIDTH } else { FORM_WIDTH });
+        // The hub's peers list scrolls inside the panel rather than
+        // pushing Back off the window: the panel may shrink below its
+        // content there, and its column is capped by the window.
+        node.min_height = if model.0.page == Page::Hub { px(0) } else { Val::Auto };
     }
     // Every badge the page may draw, looked up once a name.
     let basic = core.settings.desktop.basic_graphics;
@@ -1338,7 +1493,14 @@ fn refresh(
 
 fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, net: &Net, pictures: &HashMap<String, Option<Handle<Image>>>, core: &ClientCore, images: &CardImages) {
     match form.page {
-        Page::Host => spawn_host(parent, theme, form),
+        Page::Hub => spawn_hub(parent, theme, form),
+        Page::Host => spawn_host(parent, theme, form, core, images),
+        Page::Join => spawn_join(parent, theme, form, core, images),
+        Page::EditPeer => spawn_edit_peer(parent, theme, form),
+        Page::Room => match &form.server {
+            Some(server) => spawn_room(parent, theme, form, server, net),
+            None => spawn_waiting(parent, theme, form),
+        },
         Page::Servers => spawn_servers(parent, theme, form),
         Page::EditServer => spawn_edit_server(parent, theme, form),
         Page::Watch => spawn_watch(parent, theme, form, net.listing.is_some()),
@@ -1401,31 +1563,10 @@ fn spawn_dashboard(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onli
     if let Some(line) = &server.link {
         parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    // A host's addresses are the room's (Phase 7 §15); a host is never on
+    // the dashboard, but the block is kept for a server that is both.
     if server.hosting {
-        parent.spawn((widgets::dim(theme, "Give your opponent one of these. They connect, press Casual and find a match, as you do below."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-        for (index, way) in net.shown.iter().enumerate() {
-            match way {
-                Way::Give { what, who, ticket } => {
-                    parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|give| {
-                        give.spawn(widgets::overline(theme, if *ticket { format!("Ticket · {who}") } else { capitalised(who) }));
-                        give.spawn(widgets::row(12.0)).with_children(|row| {
-                            row.spawn((
-                                Text::new(what.clone()),
-                                theme.font(if *ticket { size::SMALL } else { size::BODY }),
-                                TextColor(theme.text),
-                                // A ticket has no spaces to break at.
-                                TextLayout::new(Justify::Left, LineBreak::AnyCharacter),
-                                Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() },
-                            ));
-                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy", Control::Copy(index)));
-                        });
-                    });
-                }
-                Way::Note(note) => {
-                    parent.spawn((widgets::dim(theme, note.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                }
-            }
-        }
+        spawn_ways(parent, theme, net);
     }
     parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(28), align_items: AlignItems::FlexStart, ..default() }).with_children(|columns| {
         columns.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(10), flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }).with_children(|left| {
@@ -1442,7 +1583,7 @@ fn spawn_dashboard(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onli
             }
             ways.push(("Watch a game", Control::Open(Page::Watch)));
             if !server.hosting {
-                ways.push(("Host a game", Control::Open(Page::Host)));
+                ways.push(("Local / P2P play", Control::Open(Page::Hub)));
             }
             for (label, control) in ways {
                 right.spawn(widgets::styled_button(theme, ButtonKind::Secondary, label, percent(100), control));
@@ -1475,6 +1616,12 @@ const ACTIVE_FACE: u16 = 64;
 /// opens the picker (`Purpose::Active`). A side with no deck says so.
 fn spawn_active_deck(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, side: Side, server: &ServerState, core: &ClientCore, images: &CardImages) {
     let format = server.queue.map(|queue| queue.format).or_else(|| server.lobby.as_ref().map(|lobby| lobby.format)).unwrap_or(form.format);
+    spawn_active_deck_in(parent, theme, form, side, format, core, images);
+}
+
+/// The tile, with the format the picker opens on: the hub's host and
+/// join pages have no server to read one off.
+fn spawn_active_deck_in(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, side: Side, format: NsgFormat, core: &ClientCore, images: &CardImages) {
     let active = form.active(side);
     let faction = theme.faction(active.and_then(|deck| deck.faction));
     let node = Node {
@@ -1546,7 +1693,7 @@ fn spawn_queue_form(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onl
                 panel.spawn(widgets::heading(theme, title));
                 panel.spawn((widgets::dim(theme, blurb), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 if let Some(lobby) = server.queue(queue.mode, queue.format) {
-                    panel.spawn((widgets::dim(theme, format!("{} · {} looking now", server.rating_line(lobby), lobby.seeking)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn((widgets::dim(theme, format!("{} · {} looking now", server.rating_line(lobby), lobby.seeking())), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
                 section(panel, theme, "Format — checked against your active decks", |section| {
                     let choices = form.queue_choices();
@@ -1669,7 +1816,7 @@ fn spawn_friend_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &O
         row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy code", Control::CopyCode));
     });
     let password = if lobby.password { ", with its password" } else { "" };
-    parent.spawn((widgets::dim(theme, format!("{} · {} here, {} looking · {}", netrunner_client::settings::format_label(lobby.format), lobby.players, lobby.seeking, server.rating_line(lobby))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn((widgets::dim(theme, format!("{} · {} here, {} looking · {}", netrunner_client::settings::format_label(lobby.format), lobby.players(), lobby.seeking(), server.rating_line(lobby))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     parent.spawn((widgets::dim(theme, format!("Your group joins by the code{password}, under Casual on their dashboard. Whoever is looking here plays whoever else is.")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     section(parent, theme, "Role soft filter — you bring both decks", |section| {
         section.spawn(widgets::row(10.0)).with_children(|row| {
@@ -1703,22 +1850,315 @@ fn spawn_friend_lobby(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &O
     });
 }
 
-fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
-    parent.spawn(widgets::heading(theme, "Host a game"));
-    section(parent, theme, "Who can join", |section| {
+/// What a host gives out (Phase 7 §15, the room; before it, the
+/// dashboard): the ticket on a line of its own with Copy, the addresses,
+/// and what the router or the relay said.
+fn spawn_ways(parent: &mut ChildSpawnerCommands, theme: &Theme, net: &Net) {
+    section(parent, theme, "Give your opponent one of these", |section| {
+        if net.shown.is_empty() {
+            section.spawn(widgets::dim(theme, "Preparing…"));
+        }
+        for (index, way) in net.shown.iter().enumerate() {
+            match way {
+                Way::Give { what, who, ticket } => {
+                    section.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|give| {
+                        give.spawn((widgets::dim(theme, if *ticket { format!("Ticket · {who}") } else { capitalised(who) }), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        give.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn((
+                                Text::new(what.clone()),
+                                theme.font(if *ticket { size::SMALL } else { size::BODY }),
+                                TextColor(theme.text),
+                                // A ticket has no spaces to break at.
+                                TextLayout::new(Justify::Left, LineBreak::AnyCharacter),
+                                Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() },
+                            ));
+                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, if *ticket { "Copy ticket" } else { "Copy" }, Control::Copy(index)));
+                        });
+                    });
+                }
+                Way::Note(note) => {
+                    section.spawn((widgets::dim(theme, note.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+            }
+        }
+    });
+}
+
+/// The Local / P2P hub (Phase 7 §15): two tiles, Host a session and Join
+/// a session, and the saved peers under them, each a Quick connect.
+fn spawn_hub(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Local / P2P play"));
+    parent.spawn((widgets::dim(theme, "A game between two people with no server in between: one hosts it on their machine, the other joins by the address or the ticket the room shows."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(20), align_items: AlignItems::Stretch, ..default() }).with_children(|row| {
+        let tile = Node {
+            flex_grow: 1.0,
+            flex_basis: px(0),
+            min_width: px(0),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(10),
+            padding: UiRect::all(px(18)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(16)),
+            ..default()
+        };
+        row.spawn((tile.clone(), BackgroundColor(theme.glass_strong), BorderColor::all(theme.glass_border))).with_children(|card| {
+            card.spawn(widgets::overline(theme, "Host a session"));
+            card.spawn((widgets::dim(theme, "Run the game on this machine and invite one person by your network, a port, or a ticket."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            card.spawn(Node { flex_grow: 1.0, ..default() });
+            card.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Host a new game", percent(100), Control::Open(Page::Host)));
+        });
+        row.spawn((tile, BackgroundColor(theme.glass_strong), BorderColor::all(theme.glass_border))).with_children(|card| {
+            card.spawn(widgets::overline(theme, "Join a session"));
+            card.spawn((widgets::dim(theme, "Connect straight to a friend by the address or the ticket they gave you."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            card.spawn(Node { flex_grow: 1.0, ..default() });
+            card.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Join a game", percent(100), Control::Open(Page::Join)));
+        });
+    });
+    // The list scrolls past the window — by the wheel and its bar, as the
+    // award chooser's does — so a year of friends is a panel's height.
+    parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(10), flex_shrink: 1.0, min_height: px(0), ..default() }).with_children(|section| {
+        section.spawn(widgets::overline(theme, "Saved peers & recent connections"));
+        if form.peers.peers.is_empty() {
+            section.spawn((widgets::dim(theme, "Nobody yet — a game you join is remembered here, by the host's name, and a saved ticket works every time they host."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+        let now = servers::now();
+        let list = section
+            .spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(10), overflow: Overflow::scroll_y(), ..default() })
+            .with_children(|list| {
+        for (index, peer) in form.peers.peers.iter().enumerate() {
+            list.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), flex_shrink: 0.0, ..default() }).with_children(|row| {
+                row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(2), flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|words| {
+                    words.spawn(widgets::label(theme, peer.name.clone()));
+                    // `shortened` says "(a ticket)" of a ticket itself.
+                    words.spawn((widgets::dim(theme, format!("{} · last played {}", shortened(&peer.target), ago(now.saturating_sub(peer.last_connected)))), TextLayout::new(Justify::Left, LineBreak::AnyCharacter)));
+                });
+                row.spawn(widgets::small_button(theme, ButtonKind::Primary, "Quick connect", Control::QuickConnect(index)));
+                row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Rename…", Control::RenamePeer(index)));
+                row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Remove", Control::RemovePeer(index)));
+            });
+        }
+            })
+            .id();
+        section.spawn(Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() }).add_child(list).with_children(|row| {
+            row.spawn(widgets::scrollbar(theme, list));
+        });
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+    });
+}
+
+/// How long ago, to the unit a person reads: what the hub says under a
+/// saved peer.
+fn ago(seconds: u64) -> String {
+    let unit = |n: u64, one: &str, many: &str| format!("{n} {} ago", if n == 1 { one } else { many });
+    match seconds {
+        0..=59 => "just now".to_string(),
+        60..=3599 => unit(seconds / 60, "minute", "minutes"),
+        3600..=86_399 => unit(seconds / 3600, "hour", "hours"),
+        _ => unit(seconds / 86_400, "day", "days"),
+    }
+}
+
+/// The two active decks side by side, as the host and join pages show
+/// them: the same tiles the dashboard draws, the picker opening on the
+/// page's format.
+fn spawn_deck_pair(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, format: NsgFormat, core: &ClientCore, images: &CardImages) {
+    parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(14), ..default() }).with_children(|row| {
+        for side in [Side::Corp, Side::Runner] {
+            row.spawn(Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() }).with_children(|slot| spawn_active_deck_in(slot, theme, form, side, format, core, images));
+        }
+    });
+}
+
+/// Hosting a session (Phase 7 §15): the active decks, the format as
+/// pills greyed by them, the reach and the port, and Open the room.
+fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, core: &ClientCore, images: &CardImages) {
+    parent.spawn(widgets::heading(theme, "Host a session"));
+    section(parent, theme, "1. Active decks", |section| spawn_deck_pair(section, theme, form, form.format, core, images));
+    section(parent, theme, "2. Format — checked against your active decks", |section| {
+        let choices = form.host_choices();
+        section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
+            for (format, problem) in &choices {
+                let label = netrunner_client::settings::format_label(*format);
+                match problem {
+                    None => {
+                        let kind = if *format == form.format { ButtonKind::Primary } else { ButtonKind::Secondary };
+                        row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Format(*format)));
+                    }
+                    Some(_) => {
+                        row.spawn(widgets::disabled_button(theme, label, Val::Auto, Control::Format(*format)));
+                    }
+                }
+            }
+        });
+        for (format, problem) in &choices {
+            if let Some(problem) = problem {
+                section.spawn((Text::new(format!("{}: {problem}", netrunner_client::settings::format_label(*format))), theme.font(size::SMALL), TextColor(theme.caution), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+        }
+    });
+    section(parent, theme, "3. Who can reach it", |section| {
         section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
             for reach in Reach::ALL {
                 let kind = if reach == form.reach { ButtonKind::Primary } else { ButtonKind::Secondary };
-                row.spawn(widgets::styled_button(theme, kind, reach_pill(reach), Val::Auto, Control::Reach(reach)));
+                row.spawn(widgets::styled_button(theme, kind, reach.title(), Val::Auto, Control::Reach(reach)));
             }
         });
-        section.spawn(widgets::dim(theme, capitalised(form.reach.label())));
+        section.spawn((widgets::dim(theme, form.reach.line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        section.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
+            row.spawn(widgets::label(theme, "Port"));
+            row.spawn(Node { width: px(140), ..default() }).with_children(|slot| field_box(slot, theme, Field::Port, &form.port, "", false));
+            if form.reach == Reach::Internet {
+                let relay = match core.settings.relay.as_deref().map(str::trim) {
+                    None | Some("") => "n0's public relays".to_string(),
+                    Some("off") => "no relay: the ticket works only where a direct connection can be made".to_string(),
+                    Some(relay) => relay.to_string(),
+                };
+                row.spawn((widgets::dim(theme, format!("Relay: {relay} (Settings)")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+        });
     });
-    section(parent, theme, "Port", |section| field_box(section, theme, Field::Port, &form.port, "", false));
-    format_section(parent, theme, form.format, "The format this game is played in: your server has one lobby, and your opponent brings a deck legal in it. You choose your own deck when you look for the game.");
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
-        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Start hosting", px(220), Control::Go));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Open the room", px(220), Control::Go));
+    });
+}
+
+/// Joining a session (Phase 7 §15): the active decks, one field for the
+/// ticket or the address with what it holds said under it, and Connect.
+fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, core: &ClientCore, images: &CardImages) {
+    parent.spawn(widgets::heading(theme, "Join a session"));
+    section(parent, theme, "1. Active decks", |section| spawn_deck_pair(section, theme, form, form.format, core, images));
+    section(parent, theme, "2. Where", |section| {
+        section.spawn(widgets::dim(theme, "Paste the ticket, or type the address, your opponent gave you."));
+        field_box(section, theme, Field::Address, &form.address, "a ticket, or an address such as 192.168.1.50:8080", true);
+        let target = form.target();
+        let colour = if target == Target::Neither { theme.caution } else { theme.text_dim };
+        section.spawn((Text::new(target.line()), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        section.spawn((widgets::dim(theme, "The format is the host's; a deck not legal in it is said in the room."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Connect", px(220), Control::Go));
+    });
+}
+
+/// The room (Phase 7 §15), as host or guest: what to give out, the two
+/// participants — each their decks, a chair preference and a Ready — and
+/// the way out. Both Ready and the host's server seats them: there is no
+/// Start after that. Polled every second (`room_ticks`) so the other
+/// side's arrival and Ready are seen.
+fn spawn_room(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState, net: &Net) {
+    let (me, opponent) = form.room_people();
+    let lobby = server.room_lobby();
+    parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(14), ..default() }).with_children(|row| {
+        let title = if server.hosting {
+            format!("Room · hosting for {}", form.reach.title().to_lowercase())
+        } else {
+            match opponent {
+                Some(host) => format!("Room · {}'s game", host.name),
+                None => format!("Room · {}", shortened(&server.address)),
+            }
+        };
+        row.spawn((widgets::heading(theme, title), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+        let status = if server.link.is_some() {
+            "Reconnecting".to_string()
+        } else if server.hosting && opponent.is_none() {
+            "Listening for a peer…".to_string()
+        } else if server.hosting {
+            format!("{} is here", opponent.map_or("Someone", |presence| presence.name.as_str()))
+        } else {
+            "Connected".to_string()
+        };
+        row.spawn(widgets::dim(theme, status));
+    });
+    if let Some(line) = &server.link {
+        parent.spawn((widgets::notice(theme, line.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+    if server.hosting {
+        spawn_ways(parent, theme, net);
+    }
+    let format = lobby.map_or_else(|| "its format".to_string(), |lobby| netrunner_client::settings::format_label(lobby.format).to_string());
+    section(parent, theme, format!("Participants · {format}"), |section| {
+        let ready = server.seeking();
+        let problem = form.ready_problem();
+        // This person's row.
+        section.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(8), padding: UiRect::all(px(10)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(12)), ..default() }).insert((BackgroundColor(theme.glass_strong), BorderColor::all(theme.glass_border))).with_children(|card| {
+            card.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
+                row.spawn(widgets::label(theme, if server.hosting { format!("{} (host, you)", form.player) } else { format!("{} (you)", form.player) }));
+                let decks = [Side::Corp, Side::Runner].map(|side| form.active(side).map_or("no deck".to_string(), |deck| deck.deck.name.clone()));
+                row.spawn((widgets::dim(theme, format!("{} / {}", decks[0], decks[1])), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+                row.spawn(widgets::dim(theme, if ready { "Ready" } else if me.is_some() { "Not ready" } else { "Joining…" }));
+            });
+            card.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(8), ..default() }).with_children(|row| {
+                row.spawn(widgets::dim(theme, "Play as"));
+                for prefer in [Some(Side::Corp), None, Some(Side::Runner)] {
+                    let kind = if prefer == server.prefer { ButtonKind::Primary } else { ButtonKind::Secondary };
+                    let label = if prefer.is_none() { "Either" } else { preference_label(prefer) };
+                    if ready {
+                        row.spawn(widgets::disabled_button(theme, label, Val::Auto, Control::Prefer(prefer)));
+                    } else {
+                        row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Prefer(prefer)));
+                    }
+                }
+                row.spawn(Node { flex_grow: 1.0, ..default() });
+                if ready {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Not ready after all", px(220), (Control::Unready, ButtonSound(Sfx::Back))));
+                } else if problem.is_some() {
+                    row.spawn(widgets::disabled_button(theme, "Ready", px(220), Control::Ready));
+                } else {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Ready", px(220), Control::Ready));
+                }
+            });
+            if let Some(problem) = &problem {
+                card.spawn((Text::new(problem.clone()), theme.font(size::SMALL), TextColor(theme.caution), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+        });
+        // The opponent's row.
+        section.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), padding: UiRect::all(px(10)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(12)), ..default() }).insert((BackgroundColor(theme.glass), BorderColor::all(theme.glass_border))).with_children(|row| {
+            match opponent {
+                Some(presence) => {
+                    row.spawn(widgets::label(theme, if server.hosting { presence.name.clone() } else { format!("{} (host)", presence.name) }));
+                    let state = match (presence.seeking, presence.prefers) {
+                        (true, Some(side)) => format!("prefers the {side:?} · ready"),
+                        (true, None) => "either chair · ready".to_string(),
+                        (false, _) => "not ready yet".to_string(),
+                    };
+                    row.spawn((widgets::dim(theme, state), Node { flex_grow: 1.0, ..default() }));
+                }
+                None => {
+                    row.spawn(widgets::label(theme, "Opponent"));
+                    row.spawn((widgets::dim(theme, if server.hosting { "waiting for a connection…" } else { "the host is not in the room yet…" }), Node { flex_grow: 1.0, ..default() }));
+                }
+            }
+        });
+        let line = match (ready, opponent.is_some_and(|presence| presence.seeking)) {
+            (true, true) => Some("Both ready: the game is starting…".to_string()),
+            (false, true) => Some(format!("{} is ready. Press Ready and the game starts.", opponent.map_or("Your opponent", |presence| presence.name.as_str()))),
+            (true, false) => Some("Ready. The game starts when your opponent is too.".to_string()),
+            (false, false) => None,
+        };
+        if let Some(line) = line {
+            section.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+    });
+    if let Some(notice) = &form.notice {
+        parent.spawn((widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, if server.hosting { "Stop hosting" } else { "Leave" }, Val::Auto, (Control::Disconnect, ButtonSound(Sfx::Back))));
+    });
+}
+
+/// Renaming a saved peer.
+fn spawn_edit_peer(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
+    parent.spawn(widgets::heading(theme, "Rename peer"));
+    parent.spawn((widgets::dim(theme, shortened(&form.edit_peer.target)), TextLayout::new(Justify::Left, LineBreak::AnyCharacter)));
+    section(parent, theme, "Name", |section| field_box(section, theme, Field::PeerName, &form.edit_peer.name, "what you call them", false));
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Save", px(220), Control::SavePeer));
     });
 }
 
@@ -1774,7 +2214,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     }
     parent.spawn(widgets::row(12.0)).with_children(|row| {
         row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Add a server…", Control::EditRow(None)));
-        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Host a game…", Control::Open(Page::Host)));
+        row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Local / P2P play…", Control::Open(Page::Hub)));
         row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Watch a game…", Control::Open(Page::Watch)));
     });
     if !form.local.is_empty() {
@@ -1786,7 +2226,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     }
     section(parent, theme, "Connect once", |section| {
         field_box(section, theme, Field::Address, &form.address, "a server's address, or paste a host's ticket", true);
-        section.spawn(widgets::dim(theme, "A server connected to by its address is listed above; a host's ticket is one game's and is not kept."));
+        section.spawn(widgets::dim(theme, "A server connected to by its address is listed above; a host's ticket opens their room, and the hub remembers it."));
     });
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));

@@ -60,6 +60,7 @@ pub mod hosting;
 pub mod identity;
 pub mod online;
 pub mod peer;
+pub mod peers;
 pub mod learn;
 pub mod llm;
 pub mod prose;

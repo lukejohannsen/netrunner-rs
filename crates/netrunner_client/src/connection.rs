@@ -871,7 +871,7 @@ mod tests {
     }
 
     fn lobby() -> LobbyInfo {
-        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, mode: netrunner_protocol::QueueMode::Casual, password: false, rated: false, bots: Vec::new(), players: 1, seeking: 0 }
+        LobbyInfo { id: "startup".into(), name: "Startup".into(), format: NsgFormat::Startup, mode: netrunner_protocol::QueueMode::Casual, password: false, rated: false, bots: Vec::new(), people: vec![netrunner_protocol::Presence { name: "me".into(), seeking: false, prefers: None }] }
     }
 
     fn joined(token: Uuid) -> ServerMessage {

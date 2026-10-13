@@ -338,7 +338,7 @@ impl Attached {
         let token = Uuid::new_v4();
         match opponent {
             Opponent::Person => {
-                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, prefer, since: unix_now(), tx: out_tx, slot };
+                let newcomer = PendingHuman { token, link: self.link, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, prefer, since: unix_now(), tx: out_tx, slot };
                 enqueue_or_pair(&self.shared, newcomer);
             }
             // A bot sits opposite whatever chair was chosen: for either,
@@ -421,15 +421,15 @@ impl Attached {
     }
 
     fn enter(&mut self, id: String) {
-        *self.shared.lock().members.entry(id.clone()).or_insert(0) += 1;
+        self.shared.lock().members.entry(id.clone()).or_default().push(super::Member { link: self.link, name: self.player_name.clone() });
         self.lobby = Some(id);
     }
 
     fn leave_lobby(&mut self) {
         let Some(id) = self.lobby.take() else { return };
         let mut registry = self.shared.lock();
-        if let Some(count) = registry.members.get_mut(&id) {
-            *count = count.saturating_sub(1);
+        if let Some(members) = registry.members.get_mut(&id) {
+            members.retain(|member| member.link != self.link);
         }
         registry.forget_if_empty(&id);
     }

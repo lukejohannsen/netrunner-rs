@@ -27,6 +27,23 @@
 //! Watch are rows of the dashboard's column rather than a Home of their
 //! own.
 //!
+//! **Local / P2P Play is the hub** (Phase 7 §15, over the person's
+//! wireframes, 12 October 2026): a main-menu entry of its own, because the
+//! dashboard is one server's and a game between two friends has none —
+//! two tiles, Host a session and Join a session, and under them the
+//! saved peers (`peers`) with Quick connect. Hosting is the active decks,
+//! the format as pills greyed by them, the reach and the port, then **the
+//! room** (`Page::Room`): what to give out, and the two participants,
+//! each with a chair preference and a **Ready** — a seek in the hosted
+//! server's one queue — so the game starts the moment both are ready and
+//! there is no Start to press after that (decided against the wireframe's
+//! locked Start, which would only have delayed the game). Joining is the
+//! decks and one field, the protocol detected under it (`online::Target`),
+//! and the same room as the guest. Back from the board is the room again,
+//! Ready cleared, so a rematch is two presses. A connection that came
+//! through the hub, or by a ticket from anywhere, is a room; one to a
+//! server by its address is the dashboard.
+//!
 //! **A game online is played in a format, and the format is the queue.**
 //! A server pairs a player only with a player in the same lobby. There is
 //! no list of waiting players to pick an opponent from (declined, 26
@@ -63,14 +80,15 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use netrunner_client::identity::{ProfileHere, PublicKey};
+use netrunner_client::peers::{PeerBook, PeerEdit};
 use netrunner_client::servers::{ServerBook, ServerEdit};
-use netrunner_client::online::{queue_problem, ActiveDeck};
+use netrunner_client::online::{queue_problem, ActiveDeck, Target};
 use netrunner_client::tournament;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{queue_id, Chair, LadderRow, Level, LobbyInfo, Opponent, Profile, QueueMode, TournamentInfo, TournamentState};
+use netrunner_server::protocol::{queue_id, Chair, LadderRow, Level, LobbyInfo, Opponent, Presence, Profile, QueueMode, TournamentInfo, TournamentState};
 use netrunner_server::MatchSummary;
 
 /// The page up.
@@ -80,7 +98,18 @@ pub enum Page {
     /// and the ways elsewhere; the queue form and the search are overlays
     /// on it (`ServerState::queue`, `ServerState::searching`).
     Dashboard,
+    /// The Local / P2P hub (Phase 7 §15): Host, Join, and the saved peers.
+    Hub,
+    /// Hosting a session: the active decks, the format, the reach and the
+    /// port, then the room.
     Host,
+    /// Joining one: the active decks and the target, then the room.
+    Join,
+    /// A hosted game's room, as host or guest: what to give out, who is
+    /// here, each one's chair preference and Ready.
+    Room,
+    /// Renaming a saved peer.
+    EditPeer,
     /// The person's servers (Phase 7 §14): each by name, the Default, a
     /// Connect or Disconnect, what it holds of the person; and an address
     /// or a ticket to connect to once.
@@ -126,6 +155,8 @@ pub enum Field {
     /// Add or edit a server's.
     ServerName,
     ServerAddress,
+    /// Rename a peer's.
+    PeerName,
 }
 
 impl Field {
@@ -139,6 +170,7 @@ impl Field {
             Field::Port => 5,
             Field::LobbyName | Field::TournamentName => 40,
             Field::ServerName => netrunner_client::servers::MAX_NAME,
+            Field::PeerName => netrunner_client::peers::MAX_NAME,
         }
     }
 }
@@ -250,6 +282,19 @@ pub enum Intent {
     SaveServer,
     /// On opening the screen with a Default and nothing attached.
     ConnectDefault,
+    /// The saved peers as the file now has them (Phase 7 §15): on opening
+    /// the hub and after every change.
+    Peers(PeerBook),
+    /// The hub's: a saved peer joined with the active decks, renamed on
+    /// its form, removed.
+    QuickConnect(usize),
+    RenamePeer(usize),
+    SavePeer,
+    RemovePeer(usize),
+    /// The room's: this person is ready to play — a seek with both active
+    /// decks in the hosted server's queue — or not after all.
+    Ready,
+    Unready,
     /// The active decks, read afresh by the screen (on entry, and after
     /// the picker chose one).
     ActiveDecks(Box<[Option<ActiveDeck>; 2]>),
@@ -284,6 +329,13 @@ pub struct EditServer {
     pub original: Option<String>,
     pub name: String,
     pub address: String,
+}
+
+/// The peer being renamed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EditPeer {
+    pub target: String,
+    pub name: String,
 }
 
 /// What a press asks of the screen.
@@ -328,6 +380,9 @@ pub enum Outcome {
     /// Change the person's servers; the screen writes the file and hands
     /// the list back as `Intent::Servers`.
     EditServers(ServerEdit),
+    /// Change the saved peers; the screen writes the file and hands the
+    /// list back as `Intent::Peers`.
+    EditPeers(PeerEdit),
     /// Ask these servers what they keep of the person, each on its own
     /// socket, the answers coming back as `Intent::RowProfile`.
     FetchProfiles(Vec<String>),
@@ -343,6 +398,9 @@ pub struct ServerState {
     pub address: String,
     /// This person's own server, whose addresses the page gives out.
     pub hosting: bool,
+    /// A hosted game's room rather than a server's dashboard (Phase 7
+    /// §15): hosting, or joined through the hub or by a ticket.
+    pub room: bool,
     pub lobbies: Vec<LobbyInfo>,
     /// The lobby this connection is in: a queue while a game is looked
     /// for there, or a friend lobby.
@@ -387,10 +445,11 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    fn new(address: String, hosting: bool, lobbies: Vec<LobbyInfo>) -> Self {
+    fn new(address: String, hosting: bool, room: bool, lobbies: Vec<LobbyInfo>) -> Self {
         ServerState {
             address,
             hosting,
+            room,
             lobbies,
             lobby: None,
             queue: None,
@@ -554,6 +613,15 @@ impl ServerState {
         self.searching.is_some()
     }
 
+    /// The room's lobby: the one joined, else the hosted server's one
+    /// queue, whose format the game is in.
+    pub fn room_lobby(&self) -> Option<&LobbyInfo> {
+        if !self.room {
+            return None;
+        }
+        self.lobby.as_ref().or(self.lobbies.first())
+    }
+
     /// The friend lobby this connection is in, if it is in one.
     pub fn friend_lobby(&self) -> Option<&LobbyInfo> {
         self.lobby.as_ref().filter(|lobby| !lobby.permanent())
@@ -656,6 +724,12 @@ pub struct OnlineForm {
     /// What this machine knows of the person, for the servers page.
     pub local: Vec<String>,
     pub edit: EditServer,
+    /// The saved peers, as the file last had them (Phase 7 §15).
+    pub peers: PeerBook,
+    pub edit_peer: EditPeer,
+    /// This person's name, which is how the room tells their own row from
+    /// the opponent's among the lobby's people.
+    pub player: String,
 }
 
 impl OnlineForm {
@@ -686,7 +760,16 @@ impl OnlineForm {
             row_profiles: BTreeMap::new(),
             local: Vec::new(),
             edit: EditServer::default(),
+            peers: PeerBook::default(),
+            edit_peer: EditPeer::default(),
+            player: String::new(),
         }
+    }
+
+    /// This person's name, for the room's rows.
+    pub fn with_player(mut self, player: String) -> Self {
+        self.player = player;
+        self
     }
 
     /// What the person calls the server at `address`: its name in their
@@ -707,6 +790,12 @@ impl OnlineForm {
     pub fn reopen(&mut self, attached: bool) {
         self.notice = None;
         if attached && self.server.is_some() {
+            // Back from a game in a room, the room: Ready cleared, so a
+            // rematch is two presses.
+            if self.server.as_ref().is_some_and(|server| server.room) {
+                self.page = Page::Room;
+                return;
+            }
             // Back from a tournament game, its page: the result is there
             // and the next round will be. Back from a friend lobby's game,
             // the lobby.
@@ -759,6 +848,75 @@ impl OnlineForm {
         let deck = |side: Side| Box::new(self.active(side).expect("checked above").deck.clone());
         let prefer = self.server.as_ref().and_then(|server| server.prefer);
         Ok(Chair::Either { corp: deck(Side::Corp), runner: deck(Side::Runner), prefer })
+    }
+
+    /// The format pills of the host page: every format, with why it
+    /// cannot be chosen when an active deck is not legal there — the
+    /// queue form's rule, so the two read the same.
+    pub fn host_choices(&self) -> Vec<(NsgFormat, Option<String>)> {
+        netrunner_client::settings::FORMATS.into_iter().map(|format| (format, queue_problem(format, self.active(Side::Corp), self.active(Side::Runner)))).collect()
+    }
+
+    /// The format the host page opens on: the one chosen last if both
+    /// active decks are legal there, else the first they are, else the
+    /// one chosen last.
+    fn starting_host_format(&self) -> NsgFormat {
+        let legal = |format: NsgFormat| queue_problem(format, self.active(Side::Corp), self.active(Side::Runner)).is_none();
+        if legal(self.format) {
+            return self.format;
+        }
+        netrunner_client::settings::FORMATS.into_iter().find(|format| legal(*format)).unwrap_or(self.format)
+    }
+
+    /// What the Join field holds, as the line under it says.
+    pub fn target(&self) -> Target {
+        Target::detect(&self.address)
+    }
+
+    /// The room's people: this person's own row, and the opponent's if
+    /// someone else is here. Told apart by name — the first with this
+    /// person's name is theirs — since the lobby lists names alone.
+    pub fn room_people(&self) -> (Option<&Presence>, Option<&Presence>) {
+        let Some(lobby) = self.server.as_ref().and_then(ServerState::room_lobby) else { return (None, None) };
+        let me = lobby.people.iter().position(|presence| presence.name == self.player);
+        let opponent = lobby.people.iter().enumerate().find(|(index, _)| Some(*index) != me).map(|(_, presence)| presence);
+        (me.map(|index| &lobby.people[index]), opponent)
+    }
+
+    /// Why Ready cannot be pressed: an active deck missing or not legal
+    /// in the room's format, or the opponent ready and wanting the same
+    /// chair this person insists on — the server would seat them by a
+    /// coin, which nobody asked for, so the person is told to give way or
+    /// choose Either instead.
+    pub fn ready_problem(&self) -> Option<String> {
+        let server = self.server.as_ref()?;
+        let lobby = server.room_lobby()?;
+        if let Some(problem) = queue_problem(lobby.format, self.active(Side::Corp), self.active(Side::Runner)) {
+            return Some(format!("{problem} — change it on the hub's host or join page"));
+        }
+        let (_, opponent) = self.room_people();
+        if let (Some(mine), Some(opponent)) = (server.prefer, opponent)
+            && opponent.seeking
+            && opponent.prefers == Some(mine)
+        {
+            return Some(format!("{} wants the {mine:?} too: choose Either, or the {:?}", opponent.name, mine.other()));
+        }
+        None
+    }
+
+    /// The row to remember a room's host by, as a guest: the opponent's
+    /// name once the room lists one, else the target itself.
+    fn peer_edit(&self) -> Option<Outcome> {
+        let server = self.server.as_ref().filter(|server| server.room && !server.hosting)?;
+        let target = server.address.clone();
+        let (_, opponent) = self.room_people();
+        match (opponent, self.peers.find(&target)) {
+            // Not listed yet: remembered now, by whatever name there is.
+            (opponent, None) => Some(Outcome::EditPeers(PeerEdit::Remember { name: opponent.map_or_else(|| target.clone(), |presence| presence.name.clone()), target })),
+            // Listed by its target alone, and the host has a name now.
+            (Some(opponent), Some(peer)) if peer.name == peer.target && opponent.name != peer.name => Some(Outcome::EditPeers(PeerEdit::Rename { target, name: opponent.name.clone() })),
+            _ => None,
+        }
     }
 
     /// The decks legal in the open tournament's format, read afresh: each
@@ -842,6 +1000,23 @@ impl OnlineForm {
                 server.ladder = None;
                 Outcome::Ladder(server.ladder_format)
             }
+            // The host page opens on a format both active decks are legal
+            // in; hosting from the dashboard's column lets the server go
+            // once the room is up (`go`), so the form is what it was.
+            Intent::Open(Page::Host) => {
+                self.notice = None;
+                self.format = self.starting_host_format();
+                self.page = Page::Host;
+                Outcome::Redraw
+            }
+            Intent::Open(Page::Room) => {
+                if !self.server.as_ref().is_some_and(|server| server.room) {
+                    return Outcome::Nothing;
+                }
+                self.notice = None;
+                self.page = Page::Room;
+                Outcome::Redraw
+            }
             Intent::Open(page) => {
                 self.notice = None;
                 self.page = page;
@@ -911,10 +1086,37 @@ impl OnlineForm {
                     self.notice = None;
                     Outcome::Redraw
                 }
-                Page::Host | Page::Watch => {
+                Page::Watch => {
                     self.page = if self.server.is_some() { Page::Dashboard } else { Page::Servers };
                     self.notice = None;
                     Outcome::Redraw
+                }
+                Page::Host | Page::Join | Page::EditPeer => {
+                    self.page = Page::Hub;
+                    self.notice = None;
+                    Outcome::Redraw
+                }
+                // Reached from the dashboard's column it leads back there;
+                // from the menu it is the way off.
+                Page::Hub => {
+                    if self.server.as_ref().is_some_and(|server| !server.room) {
+                        self.page = Page::Dashboard;
+                        self.notice = None;
+                        return Outcome::Redraw;
+                    }
+                    Outcome::Leave
+                }
+                // Not ready after all first; then out of the room, which
+                // stops hosting or leaves the host's game, to the hub.
+                Page::Room => {
+                    let Some(server) = &self.server else {
+                        self.page = Page::Hub;
+                        return Outcome::Redraw;
+                    };
+                    if server.seeking() {
+                        return Outcome::CancelSeek;
+                    }
+                    self.disconnect()
                 }
             },
             Intent::Typed(field, text) => {
@@ -937,6 +1139,7 @@ impl OnlineForm {
                     Field::TournamentName => self.make_tournament.name = text,
                     Field::ServerName => self.edit.name = text,
                     Field::ServerAddress => self.edit.address = text,
+                    Field::PeerName => self.edit_peer.name = text,
                 }
                 Outcome::Redraw
             }
@@ -948,6 +1151,18 @@ impl OnlineForm {
                 match self.page {
                     Page::MakeLobby => self.make.format = format,
                     Page::MakeTournament => self.make_tournament.format = format,
+                    // A greyed pill, pressed, says why rather than changing
+                    // anything, as the queue form's does.
+                    Page::Host => match queue_problem(format, self.active(Side::Corp), self.active(Side::Runner)) {
+                        Some(problem) => {
+                            self.notice = Some(problem);
+                            return Outcome::Redraw;
+                        }
+                        None => {
+                            self.notice = None;
+                            self.format = format;
+                        }
+                    },
                     _ => self.format = format,
                 }
                 Outcome::Redraw
@@ -1236,7 +1451,7 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Intent::Failed(reason) => {
-                if matches!(self.page, Page::Waiting | Page::Dashboard | Page::MakeLobby | Page::FriendLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Profile) {
+                if matches!(self.page, Page::Waiting | Page::Dashboard | Page::Room | Page::MakeLobby | Page::FriendLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Profile) {
                     self.page = self.came_from;
                 }
                 self.server = None;
@@ -1251,22 +1466,41 @@ impl OnlineForm {
             }
             Intent::Attached { lobbies, hosting } => {
                 let address = if hosting { "this machine".to_string() } else { normalize_address(&self.address) };
+                // A room: hosting, or a join through the hub, or a ticket
+                // from anywhere — a ticket is always a hosted game's.
+                let room = hosting || matches!(self.came_from, Page::Hub | Page::Join) || netrunner_client::peer::Ticket::parse(&self.address).is_some();
                 match &mut self.server {
                     // A reattach: the list is fresh, the rest stands.
                     Some(server) => server.lobbies = lobbies,
-                    None => self.server = Some(ServerState::new(address, hosting, lobbies)),
+                    None => self.server = Some(ServerState::new(address, hosting, room, lobbies)),
+                }
+                let server = self.server.as_ref().expect("set above");
+                self.notice = None;
+                if server.room {
+                    self.page = Page::Room;
+                    // Into the room's queue at once, so the other side sees
+                    // this person here; Ready is the seek, later.
+                    return match (server.lobby.as_ref(), server.lobbies.first()) {
+                        (None, Some(lobby)) => Outcome::JoinLobby { id: lobby.id.clone(), password: None },
+                        _ => Outcome::Redraw,
+                    };
                 }
                 if self.page == Page::Waiting {
                     self.page = Page::Dashboard;
                 }
-                self.notice = None;
                 Outcome::Redraw
             }
             Intent::Lobbies(lobbies) => {
                 if let Some(server) = &mut self.server {
+                    // The lobby this person is in, brought level: a room
+                    // reads who is here and who is ready off it.
+                    if let Some(fresh) = server.lobby.as_ref().and_then(|current| lobbies.iter().find(|lobby| lobby.id == current.id)) {
+                        server.lobby = Some(fresh.clone());
+                    }
                     server.lobbies = lobbies;
                 }
-                Outcome::Redraw
+                // A guest's host, named now that the room lists them.
+                self.peer_edit().unwrap_or(Outcome::Redraw)
             }
             Intent::LobbyJoined(lobby) => {
                 let prefer = self.server.as_ref().and_then(|server| server.prefer);
@@ -1284,6 +1518,13 @@ impl OnlineForm {
                     server.bot = None;
                 }
                 self.notice = None;
+                // The room's queue: the page stays the room, and a guest
+                // remembers the host.
+                if server.room {
+                    server.lobby = Some(lobby);
+                    self.page = Page::Room;
+                    return self.peer_edit().unwrap_or(Outcome::Redraw);
+                }
                 // Find match's queue, joined: the seek goes now.
                 if server.pending.take().is_some_and(|queue| queue_id(queue.mode, queue.format) == lobby.id) {
                     server.lobby = Some(lobby.clone());
@@ -1325,6 +1566,11 @@ impl OnlineForm {
             Intent::Refused(reason) => {
                 self.notice = Some(reason);
                 if let Some(server) = &mut self.server {
+                    // A room's Ready refused: not ready, and the reason.
+                    if server.room {
+                        server.searching = None;
+                        return Outcome::Redraw;
+                    }
                     if let Some(queue) = server.pending.take() {
                         server.queue = Some(queue);
                     } else if let Some(searching) = server.searching.take_if(|searching| searching.position.is_none())
@@ -1348,6 +1594,10 @@ impl OnlineForm {
             // the server's own is left; a friend lobby is stayed in.
             Intent::SeekCancelled => {
                 let Some(server) = &mut self.server else { return Outcome::Nothing };
+                if server.room {
+                    server.searching = None;
+                    return Outcome::Redraw;
+                }
                 let in_a_queue = server.searching.take().is_some_and(|searching| searching.in_a_queue()) || server.lobby.as_ref().is_some_and(LobbyInfo::permanent);
                 if in_a_queue { Outcome::LeaveLobby } else { Outcome::Redraw }
             }
@@ -1360,7 +1610,7 @@ impl OnlineForm {
                     }
                     server.lobby = Some(lobby);
                 }
-                if server.lobby.as_ref().is_some_and(LobbyInfo::permanent) { Outcome::LeaveLobby } else { Outcome::Redraw }
+                if !server.room && server.lobby.as_ref().is_some_and(LobbyInfo::permanent) { Outcome::LeaveLobby } else { Outcome::Redraw }
             }
             Intent::Link(line) => {
                 if let Some(server) = &mut self.server {
@@ -1469,6 +1719,60 @@ impl OnlineForm {
                 self.active = *active;
                 Outcome::Redraw
             }
+            Intent::Peers(book) => {
+                self.peers = book;
+                Outcome::Redraw
+            }
+            // A saved peer, joined with the active decks and no form:
+            // whatever was attached is let go for it, as a row's Connect
+            // does.
+            Intent::QuickConnect(index) => {
+                let Some(peer) = self.peers.peers.get(index) else { return Outcome::Nothing };
+                self.address = peer.target.clone();
+                self.server = None;
+                self.came_from = Page::Hub;
+                self.notice = None;
+                Outcome::Connect { url: normalize_address(&self.address) }
+            }
+            Intent::RenamePeer(index) => {
+                let Some(peer) = self.peers.peers.get(index) else { return Outcome::Nothing };
+                self.edit_peer = EditPeer { target: peer.target.clone(), name: peer.name.clone() };
+                self.notice = None;
+                self.page = Page::EditPeer;
+                Outcome::Redraw
+            }
+            Intent::SavePeer => {
+                if self.page != Page::EditPeer {
+                    return Outcome::Nothing;
+                }
+                self.notice = None;
+                self.page = Page::Hub;
+                Outcome::EditPeers(PeerEdit::Rename { target: self.edit_peer.target.clone(), name: self.edit_peer.name.clone() })
+            }
+            Intent::RemovePeer(index) => {
+                let Some(peer) = self.peers.peers.get(index) else { return Outcome::Nothing };
+                self.notice = None;
+                Outcome::EditPeers(PeerEdit::Remove(peer.target.clone()))
+            }
+            // Ready: both active decks, checked against the room's format,
+            // and the side preferred — the seek in the hosted server's one
+            // queue, which pairs the two the moment both are in.
+            Intent::Ready => {
+                let Some(lobby) = self.server.as_ref().filter(|server| self.page == Page::Room && !server.seeking()).and_then(ServerState::room_lobby).cloned() else { return Outcome::Nothing };
+                if let Some(problem) = self.ready_problem() {
+                    self.notice = Some(problem);
+                    return Outcome::Redraw;
+                }
+                let chair = self.chair(lobby.format).expect("ready_problem checked the decks");
+                let server = self.server.as_mut().expect("checked above");
+                server.searching = Some(Searching::new(Some(lobby), server.prefer, Opponent::Person));
+                self.notice = None;
+                Outcome::Seek(chair, Opponent::Person)
+            }
+            Intent::Unready => match &self.server {
+                Some(server) if self.page == Page::Room && server.seeking() => Outcome::CancelSeek,
+                _ => Outcome::Nothing,
+            },
             // Nothing earned is nothing to choose from.
             Intent::Choose(kind) => {
                 let Some(server) = self.server.as_mut().filter(|_| self.page == Page::Profile) else { return Outcome::Nothing };
@@ -1552,7 +1856,9 @@ impl OnlineForm {
         // From the servers page the person stays on it, the row's
         // Disconnect a Connect again; from the dashboard it is the page
         // the connection was made from, the servers.
-        if self.page != Page::Servers {
+        if self.page == Page::Room || matches!(self.came_from, Page::Hub | Page::Join) {
+            self.page = Page::Hub;
+        } else if self.page != Page::Servers {
             self.page = if self.came_from == Page::Host { Page::Servers } else { self.came_from };
         }
         self.notice = None;
@@ -1562,12 +1868,34 @@ impl OnlineForm {
     fn go(&mut self) -> Outcome {
         match self.page {
             Page::Host => match self.port.parse::<u16>() {
-                Ok(port) => Outcome::Host { port, reach: self.reach, format: self.format },
+                Ok(port) => {
+                    // A greyed format is never hosted in, as it is never
+                    // sent from the queue form.
+                    if let Some(problem) = queue_problem(self.format, self.active(Side::Corp), self.active(Side::Runner)) {
+                        self.notice = Some(problem);
+                        return Outcome::Redraw;
+                    }
+                    self.notice = None;
+                    // The host's own server replaces whatever was attached.
+                    self.server = None;
+                    Outcome::Host { port, reach: self.reach, format: self.format }
+                }
                 Err(_) => {
                     self.notice = Some(format!("{:?} is not a port number", self.port));
                     Outcome::Redraw
                 }
             },
+            Page::Join => {
+                let target = self.target();
+                if !target.is_usable() {
+                    self.notice = Some(target.line());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                self.server = None;
+                Outcome::Connect { url: normalize_address(&self.address) }
+            }
+            Page::EditPeer => self.apply(Intent::SavePeer),
             Page::Servers if self.address.is_empty() => {
                 self.notice = Some("Type the server's address, or paste a host's ticket".to_string());
                 Outcome::Redraw
@@ -1597,7 +1925,7 @@ impl OnlineForm {
                 Outcome::CreateTournament { name: self.make_tournament.name.clone(), format: self.make_tournament.format }
             }
             Page::EditServer => self.apply(Intent::SaveServer),
-            Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Profile => Outcome::Nothing,
+            Page::Hub | Page::Room | Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Profile => Outcome::Nothing,
         }
     }
 }
@@ -1606,16 +1934,6 @@ impl OnlineForm {
 /// "Ranked · Startup", or a friend queue's name and format.
 pub fn lobby_title(lobby: &LobbyInfo) -> String {
     netrunner_client::online::lobby_title(lobby)
-}
-
-/// Who a hosted game is for, in a pill's few words; the whole sentence
-/// (`Reach::label`) goes under the pills.
-pub fn reach_pill(reach: Reach) -> &'static str {
-    match reach {
-        Reach::ThisMachine => "This machine",
-        Reach::Network => "My network",
-        Reach::Internet => "The internet",
-    }
 }
 
 #[cfg(test)]
@@ -1646,7 +1964,12 @@ mod tests {
         } else {
             QueueMode::Friends
         };
-        LobbyInfo { id: id.into(), name: id.into(), format, mode, password: false, rated: mode == QueueMode::Ranked, bots: Vec::new(), players: 0, seeking: 0 }
+        LobbyInfo { id: id.into(), name: id.into(), format, mode, password: false, rated: mode == QueueMode::Ranked, bots: Vec::new(), people: Vec::new() }
+    }
+
+    /// `n` people in a lobby, none looking.
+    fn people(n: usize) -> Vec<Presence> {
+        (0..n).map(|i| Presence { name: format!("p{i}"), seeking: false, prefers: None }).collect()
     }
 
     /// The server's queues: Ranked and Casual in Startup and Standard.
@@ -1729,7 +2052,8 @@ mod tests {
         form.apply(Intent::Open(Page::Host));
         assert_eq!(form.apply(Intent::ConnectDefault), Outcome::Nothing, "only from the servers page, on opening");
         form.apply(Intent::Back);
-        assert_eq!(form.page, Page::Servers, "with nothing attached, Host leads back to the servers");
+        assert_eq!(form.page, Page::Hub, "Host leads back to the hub");
+        form.apply(Intent::Open(Page::Servers));
         assert_eq!(form.apply(Intent::ConnectDefault), Outcome::Connect { url: "ws://club.example.net:8080".to_string() });
         form.apply(Intent::Waiting("Connecting…".to_string()));
         form.apply(Intent::Failed("refused".to_string()));
@@ -1807,8 +2131,8 @@ mod tests {
         assert_eq!(form.page, Page::Servers);
         form.apply(Intent::Open(Page::Host));
         assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
-        assert_eq!(form.page, Page::Servers);
-        assert_eq!(form.apply(Intent::Back), Outcome::Leave);
+        assert_eq!(form.page, Page::Hub, "Host is the hub's page");
+        assert_eq!(form.apply(Intent::Back), Outcome::Leave, "and the hub is the way off with nothing attached");
 
         let mut form = attached();
         form.apply(Intent::OpenQueue(QueueMode::Casual));
@@ -1909,11 +2233,11 @@ mod tests {
         assert_eq!(form.apply(Intent::FindMatch), Outcome::JoinLobby { id: "ranked-startup".into(), password: None });
         let server = form.server.as_ref().unwrap();
         assert!(server.queue.is_none() && server.pending.is_some() && !server.seeking(), "the seek waits for the join");
-        let Outcome::Seek(Chair::Either { corp, runner, prefer }, Opponent::Person) = form.apply(Intent::LobbyJoined(LobbyInfo { players: 1, ..lobby("ranked-startup", NsgFormat::Startup) })) else { panic!("either chair, both decks") };
+        let Outcome::Seek(Chair::Either { corp, runner, prefer }, Opponent::Person) = form.apply(Intent::LobbyJoined(LobbyInfo { people: people(1), ..lobby("ranked-startup", NsgFormat::Startup) })) else { panic!("either chair, both decks") };
         assert_eq!((corp.id.as_str(), runner.id.as_str(), prefer), ("brick_stack", "stolen_goods", Some(Side::Runner)));
         let server = form.server.as_ref().unwrap();
         assert!(server.seeking() && server.pending.is_none() && form.page == Page::Dashboard);
-        assert_eq!(server.lobbies[0].players, 1, "the row counts the person who just joined");
+        assert_eq!(server.lobbies[0].players(), 1, "the row counts the person who just joined");
         assert_eq!(form.apply(Intent::OpenQueue(QueueMode::Casual)), Outcome::Nothing, "one search at a time");
         assert_eq!(form.apply(Intent::LeaveLobby), Outcome::Nothing, "and the queue is kept while looking");
         form.apply(Intent::Queued(2));
@@ -2004,7 +2328,7 @@ mod tests {
         assert_eq!(form.apply(Intent::JoinById), Outcome::JoinLobby { id: "k7m2qx".into(), password: Some("swordfish".into()) });
         form.apply(Intent::Refused("that is not lobby K7M2QX's password".to_string()));
         assert!(form.server.as_ref().unwrap().lobby.is_none() && form.notice.is_some() && form.server.as_ref().unwrap().queue.is_some(), "a refusal changes nothing");
-        let friday = LobbyInfo { mode: QueueMode::Friends, name: "Friday".into(), password: true, rated: false, players: 2, ..lobby("K7M2QX", NsgFormat::Startup) };
+        let friday = LobbyInfo { mode: QueueMode::Friends, name: "Friday".into(), password: true, rated: false, people: people(2), ..lobby("K7M2QX", NsgFormat::Startup) };
         assert_eq!(form.apply(Intent::LobbyJoined(friday.clone())), Outcome::Redraw);
         let server = form.server.as_ref().unwrap();
         assert_eq!((form.page, server.friend_lobby(), server.queue), (Page::FriendLobby, Some(&friday), None));
@@ -2076,37 +2400,169 @@ mod tests {
         assert_eq!(form.page, Page::Dashboard);
     }
 
-    /// The host's own server lands the host on the dashboard, its one
-    /// Casual queue the door open; a disconnect from the servers page
-    /// lets the connection go and stays there; a connection down for
-    /// good reopens the page the person came from with the reason.
+    fn presence(name: &str, seeking: bool, prefers: Option<Side>) -> Presence {
+        Presence { name: name.into(), seeking, prefers }
+    }
+
+    /// A hosted game's one queue, with these people in it.
+    fn hosted(people: Vec<Presence>) -> LobbyInfo {
+        LobbyInfo { rated: false, people, ..lobby("casual-startup", NsgFormat::Startup) }
+    }
+
+    /// The host's own server lands the host in the room (Phase 7 §15),
+    /// in its one queue at once; Ready is the seek, taken back by Not
+    /// ready, greyed while the opponent is ready and wants the same chair;
+    /// the room is where a game leads back to; and Stop hosting is the
+    /// hub. A connection down for good reopens the page the person came
+    /// from with the reason.
     #[test]
-    fn a_host_lands_on_the_dashboard_and_a_disconnect_reopens_the_page() {
-        let mut form = form();
+    fn a_host_lands_in_the_room_and_stops_hosting_to_the_hub() {
+        let mut form = form().with_player("luke".to_string());
+        form.apply(Intent::Open(Page::Hub));
         form.apply(Intent::Open(Page::Host));
         form.apply(Intent::Typed(Field::Port, "0".to_string()));
         assert!(matches!(form.apply(Intent::Go), Outcome::Host { .. }));
         form.apply(Intent::Waiting("Hosting…".to_string()));
-        let hosted = || LobbyInfo { rated: false, ..lobby("casual-startup", NsgFormat::Startup) };
-        assert_eq!(form.apply(Intent::Attached { lobbies: vec![hosted()], hosting: true }), Outcome::Redraw);
-        assert!(form.server.as_ref().is_some_and(|server| server.hosting && server.address == "this machine" && server.lobby.is_none()));
-        assert_eq!(form.page, Page::Dashboard);
-        assert_eq!(form.apply(Intent::OpenQueue(QueueMode::Casual)), Outcome::ListLobbies);
-        assert_eq!(form.apply(Intent::FindMatch), Outcome::JoinLobby { id: "casual-startup".into(), password: None });
-        assert!(matches!(form.apply(Intent::LobbyJoined(hosted())), Outcome::Seek(..)));
-        assert_eq!(form.apply(Intent::Attached { lobbies: vec![hosted()], hosting: true }), Outcome::Redraw, "a reattach lists afresh and joins nothing: the machine rejoins by itself");
+        assert_eq!(form.apply(Intent::Attached { lobbies: vec![hosted(Vec::new())], hosting: true }), Outcome::JoinLobby { id: "casual-startup".into(), password: None }, "into the room's queue at once");
+        assert!(form.server.as_ref().is_some_and(|server| server.hosting && server.room && server.address == "this machine"));
+        assert_eq!(form.page, Page::Room);
+        assert_eq!(form.apply(Intent::LobbyJoined(hosted(vec![presence("luke", false, None)]))), Outcome::Redraw);
+        assert_eq!(form.page, Page::Room, "the room, not a friend lobby's page");
+        assert_eq!(form.room_people().1, None, "nobody else yet");
+        assert_eq!(form.ready_problem(), None);
+
+        // Ready: the seek with both decks; the opponent arrives, ready.
+        assert!(matches!(form.apply(Intent::Ready), Outcome::Seek(Chair::Either { prefer: None, .. }, Opponent::Person)));
+        assert!(form.server.as_ref().unwrap().seeking());
+        assert_eq!(form.apply(Intent::Ready), Outcome::Nothing, "once");
+        form.apply(Intent::Queued(1));
+        assert_eq!(form.apply(Intent::Lobbies(vec![hosted(vec![presence("luke", true, None), presence("sam", true, Some(Side::Runner))])])), Outcome::Redraw);
+        assert_eq!(form.room_people().1.map(|presence| presence.name.as_str()), Some("sam"));
+        assert_eq!(form.apply(Intent::Attached { lobbies: vec![hosted(Vec::new())], hosting: true }), Outcome::Redraw, "a reattach lists afresh and joins nothing: the machine rejoins by itself");
+        assert_eq!(form.page, Page::Room);
+        assert_eq!(form.apply(Intent::Unready), Outcome::CancelSeek);
+        assert_eq!(form.apply(Intent::SeekCancelled), Outcome::Redraw, "not ready: still in the room's queue");
+        assert!(form.server.as_ref().unwrap().lobby.is_some() && !form.server.as_ref().unwrap().seeking());
+
+        // The opponent is ready and wants the Corp: so does this person,
+        // and Ready says so rather than letting a coin decide.
+        form.apply(Intent::SetPrefer(Some(Side::Corp)));
+        form.apply(Intent::Lobbies(vec![hosted(vec![presence("luke", false, None), presence("sam", true, Some(Side::Corp))])]));
+        assert!(form.ready_problem().as_deref().is_some_and(|problem| problem.starts_with("sam wants the Corp too")), "{:?}", form.ready_problem());
+        assert_eq!(form.apply(Intent::Ready), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("Either")));
+        form.apply(Intent::SetPrefer(None));
+        assert!(matches!(form.apply(Intent::Ready), Outcome::Seek(..)));
+
+        // Back from the board: the room, Ready cleared.
+        form.apply(Intent::BackInLobby(Some(hosted(vec![presence("luke", false, None), presence("sam", false, None)]))));
+        assert!(!form.server.as_ref().unwrap().seeking());
+        form.reopen(true);
+        assert_eq!(form.page, Page::Room);
         form.apply(Intent::Link(Some("Connection lost".to_string())));
         assert!(form.server.as_ref().unwrap().link.is_some());
         form.apply(Intent::Link(None));
-        assert!(form.server.as_ref().unwrap().link.is_none());
+
+        // Escape: not ready first, then out, which stops hosting.
+        assert!(matches!(form.apply(Intent::Ready), Outcome::Seek(..)));
+        assert_eq!(form.apply(Intent::Back), Outcome::CancelSeek);
         form.apply(Intent::SeekCancelled);
-        form.apply(Intent::Open(Page::Servers));
-        assert_eq!(form.apply(Intent::Disconnect), Outcome::Disconnect);
-        assert_eq!((form.page, form.server.is_none()), (Page::Servers, true));
+        assert_eq!(form.apply(Intent::Back), Outcome::Disconnect);
+        assert_eq!((form.page, form.server.is_none()), (Page::Hub, true));
+        assert_eq!(form.apply(Intent::Back), Outcome::Leave);
 
         let mut form = attached();
         form.apply(Intent::Failed("could not reconnect within 60s".to_string()));
         assert_eq!((form.page, form.server.is_none(), form.notice.is_some()), (Page::Servers, true, true));
+    }
+
+    /// A guest joins through the hub: the field says what it holds, the
+    /// room opens on the host's server, the host is remembered as a peer
+    /// by name — or by the target until the room names them — and the
+    /// hub's rows Quick connect, rename and remove.
+    #[test]
+    fn a_guest_joins_through_the_hub_and_remembers_the_host() {
+        let mut form = form().with_player("guest".to_string());
+        form.apply(Intent::Open(Page::Hub));
+        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Typed(Field::Address, String::new()));
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.starts_with("Nothing yet")));
+        form.apply(Intent::Typed(Field::Address, "not an address!".to_string()));
+        assert_eq!(form.target(), Target::Neither);
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        form.apply(Intent::Typed(Field::Address, "192.168.1.50".to_string()));
+        assert_eq!(form.target(), Target::Address { host: "192.168.1.50".into(), port: 8080 });
+        assert_eq!(form.apply(Intent::Go), Outcome::Connect { url: "ws://192.168.1.50:8080".to_string() });
+        form.apply(Intent::Waiting("Connecting…".to_string()));
+        assert_eq!(form.apply(Intent::Attached { lobbies: vec![hosted(vec![presence("luke", false, None)])], hosting: false }), Outcome::JoinLobby { id: "casual-startup".into(), password: None });
+        assert!(form.server.as_ref().is_some_and(|server| server.room && !server.hosting));
+        assert_eq!(form.page, Page::Room);
+        // The host is in the room: remembered by name.
+        assert_eq!(
+            form.apply(Intent::LobbyJoined(hosted(vec![presence("luke", false, None), presence("guest", false, None)]))),
+            Outcome::EditPeers(PeerEdit::Remember { name: "luke".into(), target: "ws://192.168.1.50:8080".into() })
+        );
+        let mut book = PeerBook::default();
+        book.remember("luke", "ws://192.168.1.50:8080", 1);
+        form.apply(Intent::Peers(book));
+        assert_eq!(form.apply(Intent::Lobbies(vec![hosted(vec![presence("luke", true, Some(Side::Corp)), presence("guest", false, None)])])), Outcome::Redraw, "listed and named: nothing to change");
+        assert_eq!(form.room_people().1.map(|presence| (presence.name.as_str(), presence.seeking)), Some(("luke", true)));
+        assert!(matches!(form.apply(Intent::Ready), Outcome::Seek(..)));
+
+        // Out: the hub, where the row Quick connects, is renamed, removed.
+        form.apply(Intent::SeekCancelled);
+        assert_eq!(form.apply(Intent::Disconnect), Outcome::Disconnect);
+        assert_eq!(form.page, Page::Hub);
+        assert_eq!(form.apply(Intent::QuickConnect(0)), Outcome::Connect { url: "ws://192.168.1.50:8080".to_string() });
+        assert_eq!(form.came_from, Page::Hub);
+        form.apply(Intent::RenamePeer(0));
+        assert_eq!(form.page, Page::EditPeer);
+        form.apply(Intent::Typed(Field::PeerName, "Lucas".to_string()));
+        assert_eq!(form.apply(Intent::SavePeer), Outcome::EditPeers(PeerEdit::Rename { target: "ws://192.168.1.50:8080".into(), name: "Lucas".into() }));
+        assert_eq!(form.page, Page::Hub);
+        assert_eq!(form.apply(Intent::RemovePeer(0)), Outcome::EditPeers(PeerEdit::Remove("ws://192.168.1.50:8080".into())));
+        assert_eq!(form.apply(Intent::RemovePeer(7)), Outcome::Nothing);
+
+        // A host not yet in the room is remembered by the target, and
+        // named once the room lists them.
+        let mut form = self::form().with_player("guest".to_string());
+        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::Typed(Field::Address, "10.0.0.2".to_string()));
+        form.apply(Intent::Go);
+        form.apply(Intent::Waiting("Connecting…".to_string()));
+        form.apply(Intent::Attached { lobbies: vec![hosted(Vec::new())], hosting: false });
+        assert_eq!(form.apply(Intent::LobbyJoined(hosted(vec![presence("guest", false, None)]))), Outcome::EditPeers(PeerEdit::Remember { name: "ws://10.0.0.2:8080".into(), target: "ws://10.0.0.2:8080".into() }));
+        let mut book = PeerBook::default();
+        book.remember("", "ws://10.0.0.2:8080", 1);
+        form.apply(Intent::Peers(book));
+        assert_eq!(form.apply(Intent::Lobbies(vec![hosted(vec![presence("guest", false, None), presence("luke", false, None)])])), Outcome::EditPeers(PeerEdit::Rename { target: "ws://10.0.0.2:8080".into(), name: "luke".into() }));
+    }
+
+    /// The host page opens on a format both active decks are legal in,
+    /// greys the rest with the reason, and never hosts in a greyed one;
+    /// a missing deck greys them all.
+    #[test]
+    fn the_host_page_greys_a_format_the_decks_are_not_legal_in() {
+        let mut form = OnlineForm::new("ws://127.0.0.1:8080".to_string(), NsgFormat::Snapshot).with_active([Some(active("brick_stack", &[(NsgFormat::Snapshot, "card X is not in Snapshot's card pool")])), Some(active("stolen_goods", &[]))]);
+        form.apply(Intent::Open(Page::Host));
+        assert_eq!(form.format, NsgFormat::Startup, "the first format both decks are legal in (`FORMATS` order)");
+        let greyed: Vec<NsgFormat> = form.host_choices().into_iter().filter(|(_, problem)| problem.is_some()).map(|(format, _)| format).collect();
+        assert_eq!(greyed, [NsgFormat::Snapshot]);
+        assert_eq!(form.apply(Intent::SetFormat(NsgFormat::Snapshot)), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("not in Snapshot")));
+        assert_eq!(form.format, NsgFormat::Startup, "a greyed pill changes nothing");
+        form.apply(Intent::SetFormat(NsgFormat::Eternal));
+        assert_eq!(form.format, NsgFormat::Eternal);
+        form.format = NsgFormat::Snapshot;
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw, "never hosted in");
+        assert!(form.notice.is_some());
+
+        let mut form = form.with_active([None, Some(active("stolen_goods", &[]))]);
+        form.apply(Intent::Open(Page::Host));
+        assert!(form.host_choices().iter().all(|(_, problem)| problem.is_some()));
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw);
+        assert_eq!(form.notice.as_deref(), Some("No Corp deck is chosen"));
     }
 
     /// The line under the queue form's title says what the queue offers

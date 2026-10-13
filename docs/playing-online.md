@@ -1,25 +1,38 @@
 # Playing a friend across the internet
 
-**Play Online → Host a game** runs a game on your machine that you join
-yourself. Under **Who can join** pick:
+**Local / P2P Play** on the main menu is the hub: **Host a session** and
+**Join a session**, and under them the people you have played, each a
+**Quick connect**.
 
-- **this machine only**: for trying it out;
-- **anyone on your network**: someone on your wifi joins by the first
-  address shown (`ws://192.168.…`);
-- **anyone on the internet**: as above, and the page shows a **ticket**:
-  a long line starting `endpoint`. Give your friend that. It works from
-  anywhere, whatever your router is like. The client also asks your router
-  to forward the port (UPnP, NAT-PMP or PCP), and if the router agrees, an
-  address that works from anywhere is listed too.
+**Hosting** shows your two active decks (Change… opens the deck picker),
+the format as pills — greyed, with the reason, where one of your decks is
+not legal — and who can reach the game:
 
-Start hosting and you are on your server's dashboard: your two active
-decks at the top, and **Casual** the one door open, since a game hosted
-from your machine is never rated. Press it, choose the format, and **Find
-match**. Your friend chooses **Join a server**, pastes the ticket or types
-the address, and is on the same dashboard: they press Casual and Find
-match too, and the game starts when you are both looking. When it ends you
-are both back on the dashboard, still connected, and the next game is two
-presses away.
+- **This machine only**: for trying it out;
+- **Your network**: someone on your wifi joins by the address the room
+  shows (`ws://192.168.…`);
+- **The internet**: the room shows a **ticket**, a long line starting
+  `endpoint`. Give your friend that. It works from anywhere, whatever your
+  router is like. The client also asks your router to forward the port
+  (UPnP, NAT-PMP or PCP), and if the router agrees, an address that works
+  from anywhere is listed too.
+
+**Open the room** and you are in it: what to give out, with **Copy** beside
+each, and the two participants. Your friend chooses **Join a session**,
+pastes the ticket or types the address — the line under the field says
+which it is — and is in the same room, named. Each of you picks a chair
+preference, **Prefer Corp**, **Either** or **Prefer Runner**, and presses
+**Ready**: the game starts the moment you both have. There is no Start
+after that. If your friend is ready and insists on the chair you insist on,
+Ready says so instead of letting a coin decide. When the game ends you are
+both back in the room, not ready, and a rematch is two presses.
+
+**Your ticket is yours for good.** It is made on your own key, so it is the
+same every time you host: a friend saves it once (the hub remembers the
+people you join, by name) and Quick connects whenever you have a room open.
+It reaches a room, not a mailbox — Quick connect while nobody is hosting
+fails and keeps the row. With the relay set to off (Settings), a saved
+ticket works only where your direct addresses still do.
 
 **The dashboard is the Server page** (Phase 7 §14, 12 October 2026). Play
 Online connects to your Default server and shows it: your active Corp and

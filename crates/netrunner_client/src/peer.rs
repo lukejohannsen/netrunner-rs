@@ -32,11 +32,17 @@
 //! would let a ticket be the bare key — a second service to depend on, to
 //! shorten a string that is pasted rather than typed.
 //!
-//! **A fresh key per hosted game.** The ticket is good for as long as the
-//! host is hosting and no longer. A key that lasts is Phase 4 §5's
-//! player identity (`docs/identity-and-rating.md`), which is an Ed25519
-//! key as iroh's is; when that key file exists, a host that wants a
-//! ticket that survives a restart can be given it.
+//! **The host's ticket is the host's key** (Phase 7 §15, decided 12
+//! October 2026). A ticket names the key the joiner dials, and the relay
+//! finds that key wherever the host's machine is now, so a ticket made on
+//! a key that lasts is good every time its owner hosts: a friend saves it
+//! once (`peers`) and Quick connects whenever a room is open. The key is
+//! Phase 4 §5's player identity, an Ed25519 key as iroh's is, handed in
+//! as its 32 bytes (`PeerHost::start`'s `key`); without one — a test, a
+//! dev hook, a machine with no data directory — the endpoint makes a key
+//! of its own and the ticket is one game's, as every ticket was before.
+//! Rejected: keeping the throwaway key and saving tickets anyway, which
+//! would have made a saved peer a row that never connects twice.
 
 use std::io;
 use std::pin::Pin;
@@ -81,6 +87,12 @@ impl Ticket {
     /// how an address field tells a ticket from an address.
     pub fn parse(input: &str) -> Option<Ticket> {
         EndpointTicket::from_str(input.trim()).ok().map(Ticket)
+    }
+
+    /// The host's key, as the ticket names it: what stays the same from
+    /// one hosted game to the next when the host hosts on their own key.
+    pub fn host_id(&self) -> String {
+        self.addr().id.to_string()
     }
 
     /// The relay the host was reached through, if it had one.
@@ -222,10 +234,13 @@ impl AsyncWrite for Stream {
     }
 }
 
-async fn bind(relay: &Relay, accept: bool) -> Result<Endpoint, String> {
+async fn bind(relay: &Relay, accept: bool, key: Option<[u8; 32]>) -> Result<Endpoint, String> {
     let mut builder = Endpoint::builder(presets::Minimal).relay_mode(relay.mode());
     if accept {
         builder = builder.alpns(vec![ALPN.to_vec()]);
+    }
+    if let Some(key) = key {
+        builder = builder.secret_key(iroh::SecretKey::from_bytes(&key));
     }
     builder.bind().await.map_err(|error| format!("starting the peer-to-peer endpoint: {error}"))
 }
@@ -255,14 +270,16 @@ pub struct PeerHost {
 }
 
 impl PeerHost {
-    /// Starts the endpoint. Must be called inside a tokio runtime.
-    pub fn start<F>(relay: Relay, serve: F) -> PeerHost
+    /// Starts the endpoint, on `key` where the host has one that lasts
+    /// (the module doc), else on a key of its own. Must be called inside
+    /// a tokio runtime.
+    pub fn start<F>(relay: Relay, key: Option<[u8; 32]>, serve: F) -> PeerHost
     where
         F: Fn(Stream, String) + Send + Sync + 'static,
     {
         let (offer_tx, offer) = watch::channel(Offer::Starting);
         let (stop, stopped) = oneshot::channel();
-        tokio::spawn(host(relay, serve, offer_tx, stopped));
+        tokio::spawn(host(relay, key, serve, offer_tx, stopped));
         PeerHost { offer, stop: Some(stop) }
     }
 
@@ -285,11 +302,11 @@ impl Drop for PeerHost {
     }
 }
 
-async fn host<F>(relay: Relay, serve: F, offer: watch::Sender<Offer>, mut stop: oneshot::Receiver<()>)
+async fn host<F>(relay: Relay, key: Option<[u8; 32]>, serve: F, offer: watch::Sender<Offer>, mut stop: oneshot::Receiver<()>)
 where
     F: Fn(Stream, String) + Send + Sync + 'static,
 {
-    let endpoint = match bind(&relay, true).await {
+    let endpoint = match bind(&relay, true, key).await {
         Ok(endpoint) => endpoint,
         Err(error) => {
             offer.send_replace(Offer::Failed(error));
@@ -340,7 +357,7 @@ impl Dialer {
         let ticket = ticket.clone();
         async move {
             let relay = ticket.relay().cloned().map_or(Relay::Off, Relay::Own);
-            let endpoint = cell.get_or_try_init(|| bind(&relay, false)).await?;
+            let endpoint = cell.get_or_try_init(|| bind(&relay, false, None)).await?;
             let connection = endpoint.connect(ticket.addr().clone(), ALPN).await.map_err(|error| format!("reaching the host: {error}"))?;
             let (send, recv) = connection.open_bi().await.map_err(|error| format!("opening a stream to the host: {error}"))?;
             Ok(Stream::new(connection, send, recv))
