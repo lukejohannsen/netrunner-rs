@@ -3,7 +3,7 @@
   "name": "Go Big",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Sportsmetal: Go Big or Go Home, Reign and Reverie's Haas-Bioroid identity, which gains 2[credit] or draws 2 cards whenever an agenda is scored or stolen. Retirement Package's frame, with two Hyperloop Extension for its two Élivágar Bifurcation, point for point, and two Giordano Memorial Field for its two Experiential Data, an upgrade for an upgrade. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5. FFG F2 Stage 8: two Gatekeeper for its two Magnet, ice for ice. Fast Break replaces NAPD Cordon (Reign and Reverie Stage 11).",
+  "description": "Not a published list: built so the sweeps reach Sportsmetal: Go Big or Go Home, Reign and Reverie's Haas-Bioroid identity, which gains 2[credit] or draws 2 cards whenever an agenda is scored or stolen. Retirement Package's frame, with two Hyperloop Extension for its two Élivágar Bifurcation, point for point, and two Giordano Memorial Field for its two Experiential Data, an upgrade for an upgrade. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5. FFG F2 Stage 8: two Gatekeeper for its two Magnet, ice for ice. Fast Break replaces NAPD Cordon (Reign and Reverie Stage 11). Kitara Stage 2 took two NEXT Diamond, two NEXT Sapphire and two Tempus for its Drafters, Bloops and Aggressive Secretaries.",
   "style": [
     "glacier"
   ],
@@ -23,10 +23,6 @@
     },
     {
       "card": "vulnerability_audit",
-      "count": 2
-    },
-    {
-      "card": "bloop",
       "count": 2
     },
     {
@@ -51,10 +47,6 @@
     },
     {
       "card": "bass_ch1r180g4",
-      "count": 2
-    },
-    {
-      "card": "drafter",
       "count": 2
     },
     {
@@ -90,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "aggressive_secretary",
-      "count": 2
-    },
-    {
       "card": "accelerated_beta_test",
       "count": 2
     },
@@ -103,6 +91,18 @@
     },
     {
       "card": "fast_break",
+      "count": 2
+    },
+    {
+      "card": "next_diamond",
+      "count": 2
+    },
+    {
+      "card": "next_sapphire",
+      "count": 2
+    },
+    {
+      "card": "tempus",
       "count": 2
     }
   ]

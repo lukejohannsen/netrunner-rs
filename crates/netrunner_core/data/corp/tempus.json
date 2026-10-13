@@ -1,0 +1,59 @@
+{
+  "id": "tempus",
+  "title": "Tempus",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AccessingIn": "Archives"
+        }
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "LoseClicks": 2
+                  },
+                  {
+                    "DealDamage": [
+                      "Brain",
+                      1
+                    ]
+                  }
+                ],
+                "texts": [
+                  "the Runner must lose [click][click]",
+                  "suffer 1 core damage"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade anywhere except in Archives, Trace[3]. If successful, the Runner must lose [click][click] or suffer 1 core damage."
+    }
+  ],
+  "built_from": 21071,
+  "is_playable": true
+}
