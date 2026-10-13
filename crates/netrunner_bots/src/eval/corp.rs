@@ -652,6 +652,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     *score += identity_counters(state, registry, w);
     *score += held_for_a_later_score(state, registry, w);
     *score += lockdown_tax(state, registry, w);
+    *score += lockdown_break_tax(state, registry, w);
     *score += breach_denial(state, registry, w);
     *score -= f64::from(archived_agenda_points(state, registry)) * w.archived_agenda_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
@@ -776,6 +777,41 @@ fn lockdown_tax(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 
         + f64::from(pays.tags) * tag
 }
 
+/// What the lockdowns in play add to the break credits of the Runner's
+/// next run (Phase 5 §79): NEXT Activation Command's "each piece of ice
+/// gets +2 strength" is no trigger `lockdown_tax` hears, so it read as
+/// nothing and was played in 3 and 6 of the games random play found it
+/// in 33. The run is read on the server the Runner most wants
+/// (`server_stakes`, as `breach_denial` reads it): its break credits with
+/// the lockdowns over those without, at the rate the Corp reads the
+/// Runner's credits, and a server the lockdowns make unbreakable as the
+/// run's stakes denied. Not the cheapest server's: Archives with no ice
+/// is nearly always the cheapest, and nobody runs it for nothing.
+fn lockdown_break_tax(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    use netrunner_core::rules::ServerId;
+    if state.corp.play_area.iter().all(|played| registry.get(&played.card).is_none_or(|def| def.continuous.is_empty())) {
+        return 0.0;
+    }
+    let mut servers = vec![ServerId::Archives, ServerId::RnD, ServerId::Hq];
+    for card in &state.corp.installed {
+        if matches!(card.server, ServerId::Remote(_)) && !servers.contains(&card.server) {
+            servers.push(card.server);
+        }
+    }
+    let Some((target, stakes)) = servers.into_iter().map(|server| (server, server_stakes(state, server, registry))).fold(None, |best: Option<(ServerId, f64)>, (server, stakes)| match best {
+        Some((_, most)) if most >= stakes => best,
+        _ => Some((server, stakes)),
+    }) else {
+        return 0.0;
+    };
+    let without = GameState { corp: netrunner_core::rules::CorpState { play_area: Vec::new(), ..state.corp.clone() }, ..state.clone() };
+    match (server_break_cost(state, target, registry), server_break_cost(&without, target, registry)) {
+        (Some(with), Some(without)) => f64::from(with.saturating_sub(without)) * w.opponent_credit_weight,
+        (None, Some(_)) => stakes * w.run_stakes_weight,
+        _ => 0.0,
+    }
+}
+
 /// What a lockdown that denies a breach is worth to the Corp (Phase 5
 /// §61): the agenda points the Runner's best next run would reach
 /// (`read::server_stakes`, at `run_stakes_weight`), less the most it can
@@ -888,6 +924,31 @@ mod tests {
         }
         state.runner.rig[0] = InstalledRunnerCard { card: CardId("gordian_blade".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() };
         assert_eq!(tax(&state), read::AdvancementTax::Credits(0), "a code gate breaker does not break it bare");
+    }
+
+    /// A lockdown that raises the ice's strength taxes the Runner's next
+    /// run (Phase 5 §79): NEXT Activation Command's +2 on R&D's Ice Wall
+    /// is Corroder's pump to 3, on the server the Runner most wants; with
+    /// no lockdown in play, or nothing rezzed on that server, it is
+    /// nothing.
+    #[test]
+    fn a_lockdown_that_raises_strength_is_the_break_credits_it_adds() {
+        use netrunner_core::rules::{Credits, InstallSlot, InstalledCard, InstalledRunnerCard, PlayedOperation, ServerId};
+        let pool = crate::eval::test_support::pool();
+        let w = Weights::default().at_the_guides_rate();
+        let mut state = GameState::new(0);
+        state.corp.r_and_d = vec![CardId("hostile_takeover".to_string()); 10];
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(10), base_strength: 2, ..Default::default() }];
+        state.corp.installed.push(InstalledCard { card: CardId("ice_wall".to_string()), install_id: InstallId(1), server: ServerId::RnD, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        assert_eq!(lockdown_break_tax(&state, &pool, &w), 0.0, "no lockdown in play");
+        let bare = server_break_cost(&state, ServerId::RnD, &pool).expect("Corroder breaks Ice Wall");
+        state.corp.play_area = vec![PlayedOperation { card: CardId("next_activation_command".to_string()), handle: InstallId(90) }];
+        let taxed = server_break_cost(&state, ServerId::RnD, &pool).expect("and a stronger one");
+        assert!(taxed > bare, "{bare} -> {taxed}");
+        assert!((lockdown_break_tax(&state, &pool, &w) - f64::from(taxed - bare) * w.opponent_credit_weight).abs() < 1e-9);
+        state.corp.installed[0].server = ServerId::Hq;
+        assert_eq!(lockdown_break_tax(&state, &pool, &w), 0.0, "R&D, where the agendas are, has no ice");
     }
 
     /// A trojan on the Corp's ice costs it the host's rez for every turn

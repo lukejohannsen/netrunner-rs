@@ -529,10 +529,26 @@ pub(super) fn run_replacement_value(state: &GameState, registry: &CardRegistry, 
             _ => {}
         });
         if let (true, Some(instead)) = (runs, instead) {
-            best = best.max(instead_worth(state, registry, w, instead) - w.active_run_weight);
+            best = best.max(instead_worth(state, registry, w, instead) - w.active_run_weight - beyond_a_run(ability.cost.as_ref(), w));
         }
     }
     best * f64::from(horizon) * w.future_credit_weight
+}
+
+/// What a run ability costs beyond the click a run takes (Phase 5 §79):
+/// Beatriz Friere Gonzalez's second [click], Eru Ayase-Pessoa's tag —
+/// the replacement is worth what it adds over a breach, and a run that
+/// costs more than a run is charged the rest.
+fn beyond_a_run(cost: Option<&Cost>, w: &Weights) -> f64 {
+    match cost {
+        Some(Cost::Clicks(n)) => f64::from(n.saturating_sub(1)) * w.click_weight,
+        Some(Cost::TakeTags(n)) => f64::from(*n) * w.tag_weight,
+        Some(Cost::AllOf(parts)) => {
+            let clicks: u32 = parts.iter().map(|part| if let Cost::Clicks(n) = part { *n } else { 0 }).sum();
+            f64::from(clicks.saturating_sub(1)) * w.click_weight + parts.iter().filter(|part| !matches!(part, Cost::Clicks(_))).map(|part| beyond_a_run(Some(part), w)).sum::<f64>()
+        }
+        _ => 0.0,
+    }
 }
 
 /// `run_replacement_value` summed over the rig (Phase 5 §66).
@@ -1576,6 +1592,14 @@ mod tests {
         assert!((stargate - (looks - guide.active_run_weight) * 5.0 * guide.future_credit_weight).abs() < 1e-9);
         assert_eq!(run_replacement_value(&state, &pool, card("stargate"), &Weights::default(), 5), 0.0);
         assert_eq!(run_replacement_value(&state, &pool, card("corroder"), &guide, 5), 0.0);
+        // Beatriz Friere Gonzalez (Phase 5 §79): R&D's breach and one card
+        // more instead of HQ's, less the second click; Eru Ayase-Pessoa's
+        // R&D breach for a tag is worth less than the tag.
+        let beatriz = run_replacement_value(&state, &pool, card("beatriz_friere_gonzalez"), &guide, 5);
+        let two = looks_worth(&state, &pool, &guide, 2);
+        assert!((beatriz - (two - guide.active_run_weight - guide.click_weight).max(0.0) * 5.0 * guide.future_credit_weight).abs() < 1e-9);
+        assert!(beatriz > 0.0, "two looks are worth a breach and a click");
+        assert_eq!(run_replacement_value(&state, &pool, card("eru_ayase_pessoa"), &guide, 5), 0.0, "a tag costs more than a look");
     }
 
     /// The Corp's bad publicity is a credit a run to the Runner (Phase 5
