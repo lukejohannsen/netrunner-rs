@@ -33127,3 +33127,179 @@ mod reign_and_reverie_stage_16 {
         assert!(!crate::rules::legal_actions_for(&broken, &registry, Side::Runner).contains(&quetzal), "once per turn");
     }
 }
+
+/// FFG F3 (Kitara) Stage 1: ice that composes.
+mod kitara_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with `ice` rezzed alone on HQ, run up to the moment
+    /// its subroutines resolve: both players have passed in the encounter.
+    fn at_the_subroutines(registry: &CardRegistry, ice: &str, setup: impl FnOnce(&mut GameState)) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id(ice),
+            card: id(ice),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        setup(&mut state);
+        let (mut run, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..16 {
+            let encountering = run.active_run.as_ref().is_some_and(|r| r.phase == crate::rules::RunPhase::EncounterIce);
+            let past = run.active_run.as_ref().is_none_or(|r| r.phase == crate::rules::RunPhase::Success);
+            if (encountering && run.paid_ability_window.is_none()) || past {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+            if run.pending_paid_choice.is_some() || run.pending_decision.is_some() {
+                break;
+            }
+        }
+        run
+    }
+
+    #[test]
+    fn mlinzi_does_net_damage_unless_the_runner_trashes_the_top_of_the_stack() {
+        let registry = registry();
+        let run = at_the_subroutines(&registry, "mlinzi", |state| {
+            state.runner.stack = ["sure_gamble", "corroder", "daily_casts", "easy_mark", "sure_gamble", "corroder", "daily_casts"].into_iter().map(id).collect();
+            state.runner.grip = vec![id("sure_gamble"); 5];
+        });
+        assert!(run.pending_paid_choice.is_some(), "Do 1 net damage unless the Runner trashes the top 2 cards of the stack");
+        let (paid, _) = apply_action(&run, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash the top 2");
+        assert_eq!(paid.runner.heap.len(), 2, "the top two");
+        assert_eq!(paid.runner.stack.len(), 5);
+        assert_eq!(paid.runner.grip.len(), 5, "no damage");
+        let (declined, _) = apply_action(&paid, &registry, PlayerAction::DeclinePendingPaidChoice).expect("take the damage instead");
+        assert_eq!(declined.runner.grip.len(), 3, "2 net damage");
+    }
+
+    #[test]
+    fn kamali_does_core_damage_unless_the_runner_trashes_an_installed_card_of_the_type() {
+        let registry = registry();
+        let run = at_the_subroutines(&registry, "kamali_1_0", |state| {
+            state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(900), ..Default::default() }];
+            state.runner.grip = vec![id("sure_gamble"); 3];
+        });
+        assert!(run.pending_paid_choice.is_some(), "unless the Runner trashes 1 installed resource");
+        let (paid, _) = apply_action(&run, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash Daily Casts");
+        assert!(paid.runner.rig.is_empty() && paid.runner.heap.contains(&id("daily_casts")));
+        assert_eq!(paid.runner.brain_damage, 0);
+        // No hardware to trash: only the damage is left.
+        let declined = if paid.pending_paid_choice.is_some() {
+            apply_action(&paid, &registry, PlayerAction::DeclinePendingPaidChoice).expect("no hardware").0
+        } else {
+            paid
+        };
+        assert_eq!(declined.runner.brain_damage, 1, "1 core damage");
+    }
+
+    #[test]
+    fn najja_and_kamali_are_broken_by_losing_a_click() {
+        let registry = registry();
+        for ice in ["najja_1_0", "kamali_1_0"] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.installed = vec![crate::rules::InstalledCard {
+                install_id: fixture_install_id(ice),
+                card: id(ice),
+                server: ServerId::Hq,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            }];
+            let (mut run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+            let lose = PlayerAction::ActivateAbility { target: fixture_install_id(ice), ability_index: 0 };
+            for _ in 0..12 {
+                if crate::rules::legal_actions_for(&run, &registry, Side::Runner).contains(&lose) {
+                    break;
+                }
+                let action = match &run.paid_ability_window {
+                    Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                    None => PlayerAction::ContinueRun,
+                };
+                run = apply_action(&run, &registry, action).expect("onward").0;
+            }
+            let clicks = run.runner.resources.clicks;
+            let (broken, _) = apply_action(&run, &registry, lose).expect("Lose [click]: Break 1 subroutine on this ice");
+            assert_eq!(broken.runner.resources.clicks.0, clicks.0 - 1, "{ice}");
+        }
+    }
+
+    #[test]
+    fn nightdancer_takes_a_runner_click_and_gives_the_corp_one_next_turn() {
+        let registry = registry();
+        let run = at_the_subroutines(&registry, "nightdancer", |_| {});
+        let mut done = run.clone();
+        for _ in 0..8 {
+            if done.active_run.as_ref().is_none_or(|r| r.phase != crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &done.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            done = apply_action(&done, &registry, action).expect("onward").0;
+        }
+        assert_eq!(done.runner.resources.clicks.0, 1, "4 clicks, one spent on the run and two lost");
+        assert!(!done.lingering.is_empty(), "an additional [click] for the Corp's next turn");
+    }
+
+    #[test]
+    fn sadaka_may_shuffle_r_and_d_and_trashes_itself_after_its_second_subroutine() {
+        let registry = registry();
+        let run = at_the_subroutines(&registry, "sadaka", |state| {
+            state.corp.r_and_d = ["ice_wall", "hedge_fund", "enigma", "hedge_fund", "ice_wall", "enigma"].into_iter().map(id).collect();
+        });
+        let shuffle = run
+            .pending_decision
+            .as_ref()
+            .expect("arrange them in any order or shuffle R&D")
+            .clone();
+        let _ = shuffle;
+        let before: std::collections::BTreeMap<_, usize> = run.corp.r_and_d.iter().fold(Default::default(), |mut tally, card| {
+            *tally.entry(card.clone()).or_default() += 1;
+            tally
+        });
+        let (shuffled, _) = apply_action(&run, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("shuffle R&D");
+        let after: std::collections::BTreeMap<_, usize> = shuffled.corp.r_and_d.iter().fold(Default::default(), |mut tally, card| {
+            *tally.entry(card.clone()).or_default() += 1;
+            tally
+        });
+        assert_eq!(before, after, "the same cards, shuffled");
+        assert_eq!(shuffled.rng_step, run.rng_step + 5, "a shuffle of 6 cards rolls 5 times");
+        // You may draw 1 card.
+        let (drew, _) = apply_action(&shuffled, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw 1");
+        assert_eq!(drew.corp.hq.len(), run.corp.hq.len() + 1, "drawn before the second subroutine began");
+        // You may trash 1 card in HQ — declined — then Trash Sadaka.
+        let (done, _) = apply_action(&drew, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(done.corp.installed.is_empty(), "Trash Sadaka");
+        assert!(done.corp.archives.iter().any(|card| card.card == id("sadaka")));
+    }
+
+    #[test]
+    fn anansi_does_net_damage_when_an_encounter_ends_with_it_not_fully_broken() {
+        let registry = registry();
+        let run = at_the_subroutines(&registry, "anansi", |state| {
+            state.runner.grip = vec![id("sure_gamble"); 5];
+            state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        });
+        // Arrange: leave them as they are.
+        let mut state = apply_action(&run, &registry, PlayerAction::ConfirmCardSelection).expect("arrange").0;
+        // You may draw 1 card; the Runner may pay 2 to draw 1.
+        state = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the Corp does not draw").0;
+        state = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("nor the Runner").0;
+        assert_eq!(state.runner.grip.len(), 1, "1 net damage, then 3 more as the encounter ends unbroken");
+    }
+}

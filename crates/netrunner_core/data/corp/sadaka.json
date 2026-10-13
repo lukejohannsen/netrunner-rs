@@ -1,0 +1,122 @@
+{
+  "id": "sadaka",
+  "title": "Sadaka",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Look at the top 3 cards of R&D and either arrange them in any order or shuffle R&D. You may draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnRAndD",
+                    "filter": {
+                      "TopOfZone": 3
+                    },
+                    "min": 0,
+                    "max": 3,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnRAndD"
+                  }
+                },
+                {
+                  "ShuffleIntoDeck": [
+                    "OwnRAndD"
+                  ]
+                }
+              ],
+              "texts": [
+                "arrange them in any order",
+                "shuffle R&D"
+              ]
+            }
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "You may trash 1 card in HQ. If you do, trash 1 resource. Trash Sadaka.",
+      "effect": {
+        "Sequence": [
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnHq",
+                    "filter": "Any",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnArchives",
+                    "then": {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OpponentInstalled",
+                        "filter": {
+                          "CardType": "Resource"
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "destination": "OpponentDiscard"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may trash 1 card in HQ. If you do, trash 1 resource",
+                ""
+              ]
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 21073,
+  "is_playable": true
+}

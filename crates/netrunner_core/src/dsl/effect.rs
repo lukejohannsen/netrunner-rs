@@ -1291,6 +1291,8 @@ pub enum Effect {
     /// Share's alone, and took the zones when Ashen Epilogue needed two
     /// more. With no zones it shuffles the stack alone — Bring Them Home's
     /// "the Runner shuffles it into the stack", after an `AddToDeck`.
+    /// `OwnRAndD` alone is the Corp's "shuffle R&D" (Sadaka), the one Corp
+    /// zone it names: nothing goes in, so no faceup card is turned down.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Places credits on the run's event, spendable during the run as its
     /// others are (`RunState::bonus_run_credits`, Overclock's pool) —

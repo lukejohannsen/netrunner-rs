@@ -1,0 +1,33 @@
+{
+  "id": "aimor",
+  "title": "Aimor",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 0,
+  "strength": 1,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trash the top 3 cards of the stack. Trash Aimor.",
+      "effect": {
+        "Sequence": [
+          {
+            "Mill": {
+              "deck": "Runner",
+              "amount": {
+                "Fixed": 3
+              }
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 21032,
+  "is_playable": true
+}

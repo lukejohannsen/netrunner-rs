@@ -543,6 +543,8 @@ go in a Sweep deck by influence. Their identities arrive with F6.
 - Assimilator: facedown rig cards have no characteristics (CR 8.1.4a),
   which touches masking, the view and every scan of the rig.
 
+**Stage 1 closed** (13 October 2026): ten pieces of ice (21 of 116 `Effect` variants single-use, none unused, over 903 card files; no `Effect` added): Aimor, Envelope, Endless EULA, Mlinzi, Najja 1.0, Kamali 1.0, Sandman, Nightdancer, Anansi, Sadaka. Mlinzi's and Kamali 1.0's "unless the Runner trashes …" are printed costs (`Cost::Trash`, from the top of the stack and from the rig), so a Runner with too few cards is never offered the trash. Sadaka's "or shuffle R&D" is `ShuffleIntoDeck([OwnRAndD])`, R&D named alone, rather than a new effect. **One engine fix, found by Sadaka:** a subroutine whose first effect parked a choice had the rest of its sentence queued behind the ice's *next* subroutine, because `paid_ability::resolve_encounter_ice` resumed the subroutines before `apply_action` drained the queue — so Sadaka's "You may draw 1 card" came after its second subroutine had trashed it. The rest of the parked subroutine now fires first (`dispatcher::drain_continuations_of`, the encountered ice's continuations), and a subroutine is one sentence, finished before the next begins. Decks: A Thousand Cuts takes the five Jinteki ice, Broadcast Hour the two NBN, Retirement Package the three Haas-Bioroid; every card they give up is in another deck.
+
 ### F4. Red Sand — 120 cards (C 63 / V 48 / M 9)
 
 **Decks:** four new identities — AgInfusion: New Miracles for a New World

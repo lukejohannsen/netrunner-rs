@@ -13,6 +13,7 @@ use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::prevention;
+use crate::rules::dispatcher;
 use crate::rules::state::{GamePhase, GameState, InstallId, PaidAbilityWindow, Side, WindowCheckpoint};
 use crate::rules::turn;
 
@@ -432,7 +433,14 @@ pub(crate) fn resolve_encounter_ice(
         events.extend(open_window_if_at_checkpoint(state, registry));
         return Ok(events);
     }
-    let mut events = ability::resolve_unbroken_subroutines(state, registry)?;
+    // The rest of the subroutine that parked first: a subroutine is one
+    // sentence, finished before the next begins.
+    let mut events = Vec::new();
+    if let Some(install) = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id) {
+        events.extend(dispatcher::drain_continuations_of(state, registry, install)?);
+        crate::rules::pending_choice::mark_parked_resume_subroutines(state);
+    }
+    events.extend(ability::resolve_unbroken_subroutines(state, registry)?);
     // A subroutine's effect can itself park a *further* pending decision
     // (e.g. Ballista's subroutine offers a choice whose "trash a program"
     // branch is itself an `Effect::PromptChooseCards`) — `resolve_choice`/
