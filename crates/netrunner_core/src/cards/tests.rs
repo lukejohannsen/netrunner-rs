@@ -34302,3 +34302,55 @@ mod kitara_stage_6a {
         assert!(barrier.corp.hq.contains(&id("ice_wall")));
     }
 }
+
+/// Kitara Stage 6b: 419: Amoral Scammer and Embezzle.
+mod kitara_stage_6b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn amoral_scammer_exposes_the_corps_first_install_each_turn_unless_it_pays() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.identity = Some(id("419_amoral_scammer"));
+        state.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
+        let install = |remote| PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(remote), slot: InstallSlot::Root, trash_first: false };
+        let (asked, _) = apply_action(&state, &registry, install(0)).expect("install");
+        let (asked, _) = close_all_windows(asked, &registry);
+        assert!(asked.pending_decision.is_some(), "the Runner may try: {:?}", crate::rules::legal_actions(&asked, &registry));
+        let (offered, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("try it");
+        let (paid, _) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+        assert_eq!(paid.corp.resources.credits.0, 9);
+        assert!(!paid.corp.installed[0].seen_by_runner, "paid: not exposed");
+        let (exposed, _) = apply_action(&offered, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert!(exposed.corp.installed[0].seen_by_runner, "exposed");
+
+        let (exposed, _) = close_all_windows(exposed, &registry);
+        let (second, _) = apply_action(&exposed, &registry, install(1)).expect("second install");
+        let (second, _) = close_all_windows(second, &registry);
+        assert!(second.pending_decision.is_none(), "the first time each turn only");
+    }
+
+    #[test]
+    fn embezzle_trashes_each_revealed_card_of_the_named_type_for_4_each() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund")];
+        state.runner.grip = vec![id("embezzle")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("embezzle") }).expect("play");
+        let (played, _) = crate::rules::test_support::through_movement(&played, &registry).expect("no ice");
+        let (played, _) = apply_action(&played, &registry, PlayerAction::CompleteRun).expect("success");
+        let (asked, _) = pass_until_settled(played, &registry);
+        let (named, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).expect("operation");
+        assert!(named.corp.hq.is_empty(), "both trashed");
+        assert_eq!(named.corp.archives.len(), 2);
+        assert_eq!(named.runner.resources.credits.0, 10 - 1 + 8);
+        let (wrong, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("asset");
+        assert_eq!(wrong.corp.hq.len(), 2);
+        assert_eq!(wrong.runner.resources.credits.0, 9);
+    }
+}

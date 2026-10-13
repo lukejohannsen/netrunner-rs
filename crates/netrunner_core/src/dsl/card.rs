@@ -1781,11 +1781,25 @@ impl CardDefinition {
             .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects))
             .chain(self.before_starting_hand.iter());
         // A random reveal resolves its `then` once per card with nothing to
-        // wait on, so a `then` must be one that never parks.
+        // wait on, so a `then` must be one that never parks: a move into a
+        // deck, or Embezzle's "trash each revealed card that has the named
+        // type, then gain 4[credit] for each" — an `EffectIf` on the card,
+        // a trash of it out of a hand (never an install, so nothing is
+        // asked whether to prevent it) and a gain.
         let mut revealed_cards_wait = false;
         let never_parks = |effect: &Effect| {
             let mut plain = true;
-            effect.for_each_effect(&mut |e| plain &= matches!(e, Effect::Sequence(_) | Effect::AddToDeck(_) | Effect::ShuffleIntoDeck(_)));
+            effect.for_each_effect(&mut |e| {
+                plain &= matches!(
+                    e,
+                    Effect::Sequence(_)
+                        | Effect::AddToDeck(_)
+                        | Effect::ShuffleIntoDeck(_)
+                        | Effect::EffectIf { .. }
+                        | Effect::TrashCard(crate::dsl::CardTarget::ThisCard)
+                        | Effect::GainCredits(..)
+                )
+            });
             plain
         };
         // An ability that prints an X names it as the chosen number, which

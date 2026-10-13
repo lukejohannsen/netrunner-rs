@@ -3,7 +3,7 @@
   "name": "Legislator",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Liza Talking Thunder: Prominent Legislator, Reign and Reverie's Criminal identity, who draws 2 and takes a tag on the first successful central run each turn. Hit List's fifty cards of HQ pressure, which her 50-card minimum takes whole, with two Miss Bones for its two Networking: 12 credits for trashing installed cards. No influence spent. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2. Kitara Stage 6a: two Falsified Credentials and two Wari for two WAKE Implant v2A-JRJ and two Poison Vial.",
+  "description": "Not a published list: built so the sweeps reach Liza Talking Thunder: Prominent Legislator, Reign and Reverie's Criminal identity, who draws 2 and takes a tag on the first successful central run each turn. Hit List's fifty cards of HQ pressure, which her 50-card minimum takes whole, with two Miss Bones for its two Networking: 12 credits for trashing installed cards. No influence spent. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2. Kitara Stage 6a: two Falsified Credentials and two Wari for two WAKE Implant v2A-JRJ and two Poison Vial. Kitara Stage 6b: two Embezzle for two Inside Job.",
   "style": [
     "pressure"
   ],
@@ -27,10 +27,6 @@
     },
     {
       "card": "saci",
-      "count": 2
-    },
-    {
-      "card": "inside_job",
       "count": 2
     },
     {
@@ -119,6 +115,10 @@
     },
     {
       "card": "wari",
+      "count": 2
+    },
+    {
+      "card": "embezzle",
       "count": 2
     }
   ]

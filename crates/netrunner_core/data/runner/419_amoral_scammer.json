@@ -1,0 +1,52 @@
+{
+  "id": "419_amoral_scammer",
+  "title": "419: Amoral Scammer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "OfferPaidChoice": {
+                  "side": "Corp",
+                  "cost": {
+                    "Credits": 1
+                  },
+                  "if_paid": {
+                    "Sequence": []
+                  },
+                  "if_declined": "Expose",
+                  "text": "unless the Corp pays 1[credit]"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may expose that card unless the Corp pays 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Corp installs a card each turn, you may expose that card unless the Corp pays 1[credit]."
+    }
+  ],
+  "built_from": 21063,
+  "is_playable": true
+}
