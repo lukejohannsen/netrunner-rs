@@ -3,7 +3,7 @@
   "name": "Free Spirit",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Ice Carver for two Crash Space, which lowers the strength of the ice being encountered and no other. Pay As You Go keeps Crash Space. Tranche 8 Stage 11u: two En Passant for its two Running Hot, an event for an event; Rez Tax and Burn Rate keep Running Hot.",
+  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Ice Carver for two Crash Space, which lowers the strength of the ice being encountered and no other. Pay As You Go keeps Crash Space. Tranche 8 Stage 11u: two En Passant for its two Running Hot, an event for an event; Rez Tax and Burn Rate keep Running Hot. Reign and Reverie Stage 13: two Patchwork for two The Tungsten Tailor; four other decks keep the Tailor.",
   "style": [
     "rig",
     "dismantle"
@@ -40,10 +40,6 @@
     },
     {
       "card": "stargate",
-      "count": 2
-    },
-    {
-      "card": "the_tungsten_tailor",
       "count": 2
     },
     {
@@ -108,6 +104,10 @@
     },
     {
       "card": "en_passant",
+      "count": 2
+    },
+    {
+      "card": "patchwork",
       "count": 2
     }
   ]

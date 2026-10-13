@@ -164,6 +164,21 @@ pub enum ContinuousKind {
     /// (`CardDefinition::additional_play_cost`), which is the only click
     /// a card in the pool lowers; the action's own click is never lowered.
     PlayClicks(Number),
+    /// An interrupt on paying for a play or an install, once per turn for
+    /// each copy (CR 9.9.1a, CR 9.9.3d) — Patchwork's "[interrupt], once
+    /// per turn → When you would play or install a card, you may trash 1
+    /// card from your grip. If you do, instead play or install that card
+    /// paying 2[credit] less". The payer may pay `cost`; if they do, the
+    /// price is `less` lower. Asked inside the payment, by the replay that
+    /// asks every other payment question (`payment::interrupt`), never as
+    /// a window: the play or install is under way when it is asked, and a
+    /// window would open after it. One entry for the plays
+    /// (`Scope::Playing`) and one for the installs (`Scope::Installing`),
+    /// sharing the card's one use a turn. Composition didn't work:
+    /// `InstallCost` and `PlayCost` are numbers the table sets, never a
+    /// payer's choice, and a printed "Once per turn →" is a use limit only
+    /// an ability spends.
+    Interrupt { cost: crate::dsl::Cost, less: u32 },
     /// What the Runner pays, as an additional cost, to steal an agenda —
     /// Magistrate Revontulet's "as an additional cost to steal an agenda,
     /// the Runner must pay 3[c]", Daniela Jorge Inácio's "…the Runner must

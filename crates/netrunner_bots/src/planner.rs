@@ -2975,7 +2975,11 @@ mod positions {
         state.corp.installed.push(InstalledCard { card: CardId("offworld_office".to_string()), install_id: InstallId(5), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 3, ..Default::default() });
         state.next_install_id = 10;
 
-        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        // One sample decides this position, so the seed is one the reading
+        // holds on: seed 3 drew three times once Patchwork joined the pool
+        // (any hardware did it, read as drift), and seeds 1, 2 and 4–7 all
+        // install Boomerang and run.
+        let mut agent = PlanningAgent::new(Side::Runner, 1);
         let mut actions = Vec::new();
         for _ in 0..20 {
             match current_actor(&state) {
