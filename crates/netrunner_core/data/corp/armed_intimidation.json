@@ -1,0 +1,42 @@
+{
+  "id": "armed_intimidation",
+  "title": "Armed Intimidation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DealDamage": [
+                  "Meat",
+                  5
+                ]
+              },
+              {
+                "GiveTags": {
+                  "Fixed": 2
+                }
+              }
+            ],
+            "texts": [
+              "suffer 5 meat damage",
+              "take 2 tags"
+            ]
+          }
+        }
+      ],
+      "text": "When you score Armed Intimidation, the Runner must either suffer 5 meat damage or take 2 tags."
+    }
+  ],
+  "built_from": 21057,
+  "is_playable": true
+}
