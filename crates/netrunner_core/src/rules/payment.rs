@@ -191,6 +191,13 @@ pub enum Ask {
     /// 0 to `max`, `max` already the most the payer could spend. Answered
     /// by `PlayerAction::ChooseNumber`.
     X { max: u32 },
+    /// Whether to use an interrupt on paying for this play or install
+    /// (`ContinuousKind::Interrupt`) — Patchwork's "you may trash 1 card
+    /// from your grip. If you do, instead … paying 2[credit] less", printed
+    /// on `card`. 0 uses it and 1 does not, answered by
+    /// `PlayerAction::ResolvePendingChoice`; what its cost takes is asked
+    /// next, as any cost's cards are (`Card`).
+    Interrupt { card: crate::dsl::CardId, less: u32 },
 }
 
 impl Ask {
@@ -202,6 +209,7 @@ impl Ask {
             Ask::Card(question) => question.eligible.clone(),
             Ask::Alternative { offered, .. } => offered.clone(),
             Ask::X { max } => (0..=*max).collect(),
+            Ask::Interrupt { .. } => vec![INTERRUPT_USED, INTERRUPT_DECLINED],
             Ask::Install(question) => {
                 let stop = question.may_stop.then_some(crate::rules::install_trash::STOP);
                 stop.into_iter().chain(question.eligible.iter().map(|candidate| candidate.position)).collect()
@@ -215,12 +223,16 @@ impl Ask {
         match self {
             Ask::Pools(_) | Ask::X { .. } => PlayerAction::ChooseNumber { amount: answer },
             Ask::Card(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
-            Ask::Alternative { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
+            Ask::Alternative { .. } | Ask::Interrupt { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
             Ask::Install(_) if answer == crate::rules::install_trash::STOP => PlayerAction::ConfirmCardSelection,
             Ask::Install(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
         }
     }
 }
+
+/// `Ask::Interrupt`'s two answers: the interrupt used, and not.
+pub const INTERRUPT_USED: u32 = 0;
+pub const INTERRUPT_DECLINED: u32 = 1;
 
 /// Which card a cost takes next: one of `eligible`, positions in `zone` as
 /// the payer sees it before anything is paid (`pending_choice::
@@ -631,6 +643,7 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
         || pays_a_cost_that_may_ask(state, registry, action)
         || crate::rules::install_trash::could_ask(state, registry, action)
         || a_text_rez_could_ask(state, registry, action)
+        || an_interrupt_could_ask(state, registry)
 }
 
 /// A card's text that rezzes a card and pays for it meets the card's own
@@ -853,6 +866,104 @@ pub(crate) fn pay(
     purpose: Purpose<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     pay_from(state, registry, side, amount, purpose, None)
+}
+
+/// The price of a play or an install, once the payer has answered any
+/// interrupt on paying it (`ContinuousKind::Interrupt`, Patchwork): what is
+/// left to pay, and the events of the interrupt's own cost. Asked by the
+/// one place a price is paid (`ability::pay_cost_ctx`'s `Cost::Credits`
+/// with a `Play` or `Install` purpose), before the credits are taken, and
+/// only when it would change something — a price above 0, a use left this
+/// turn, a cost the payer could pay. Declined, the next interrupt is
+/// asked; used, it is spent for the turn and no other is asked, because
+/// the price was already the one instruction it modified.
+pub(crate) fn interrupt(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    side: Side,
+    amount: u32,
+    purpose: Purpose<'_>,
+) -> Result<(u32, Vec<GameEvent>), RulesError> {
+    let card = match purpose {
+        Purpose::Play(card) | Purpose::Install(card) => card,
+        _ => return Ok((amount, Vec::new())),
+    };
+    if amount == 0 {
+        return Ok((amount, Vec::new()));
+    }
+    for (cost, less, source, install) in crate::rules::continuous::interrupts(state, registry, card) {
+        let key = crate::rules::state::OncePerTurnKey { card: Some(source.clone()), install, ability: None };
+        let used = match side {
+            Side::Corp => &state.corp.once_per_turn_used,
+            Side::Runner => &state.runner.once_per_turn_used,
+        };
+        let ctx = ResolutionContext::for_parked(install, Some(&source));
+        if used.contains(&key) || !ability::cost_is_affordable(state, registry, side, &cost, Purpose::Other, &ctx) {
+            continue;
+        }
+        if state.payment_answers.is_empty() {
+            return Err(RulesError::PaymentChoiceNeeded { side, amount, question: Ask::Interrupt { card: source.clone(), less } });
+        }
+        match state.payment_answers.remove(0) {
+            INTERRUPT_DECLINED => continue,
+            INTERRUPT_USED => {}
+            other => return Err(RulesError::InvalidChoiceIndex(other as usize)),
+        }
+        match side {
+            Side::Corp => state.corp.once_per_turn_used.insert(key),
+            Side::Runner => state.runner.once_per_turn_used.insert(key),
+        };
+        let events = ability::pay_cost_ctx(state, registry, side, &cost, Purpose::Other, &ctx)?;
+        return Ok((amount.saturating_sub(less), events));
+    }
+    Ok((amount, Vec::new()))
+}
+
+/// Whether an interrupt on paying could be asked about at all
+/// (`interrupt`): a card that prints one is active and its use this turn
+/// is unspent. A necessary condition for `could_ask`, read off the
+/// tables, because a play or install by a card's text is the continuation
+/// of almost any action.
+fn an_interrupt_could_ask(state: &GameState, registry: &CardRegistry) -> bool {
+    let prints = |card: &crate::dsl::CardId| {
+        registry.get(card).is_some_and(|def| def.continuous.iter().any(|effect| matches!(effect.kind, crate::dsl::ContinuousKind::Interrupt { .. })))
+    };
+    let unspent = |used: &std::collections::BTreeSet<crate::rules::state::OncePerTurnKey>, card: &crate::dsl::CardId, install: InstallId| {
+        !used.contains(&crate::rules::state::OncePerTurnKey { card: Some(card.clone()), install: Some(install), ability: None })
+    };
+    state.runner.rig.iter().any(|installed| prints(&installed.card) && unspent(&state.runner.once_per_turn_used, &installed.card, installed.install_id))
+        || state.corp.installed.iter().any(|installed| installed.rezzed && prints(&installed.card) && unspent(&state.corp.once_per_turn_used, &installed.card, installed.install_id))
+}
+
+/// How much less `card` could cost to install out of the grip or to play
+/// right now, if the payer used every interrupt that could be used on it
+/// (`interrupt`): what an offer asked ahead of the payment adds to the
+/// credits it counts, as `engine::can_install_runner_card_from_zone` does.
+/// `leaving` is the card itself when it is still in the zone a cost would
+/// take from, since it will have left by the time the cost is paid.
+pub(crate) fn interrupt_could_lower(state: &GameState, registry: &CardRegistry, side: Side, card: &CardDefinition, leaving: Option<&crate::dsl::CardId>) -> u32 {
+    if !an_interrupt_could_ask(state, registry) {
+        return 0;
+    }
+    let mut without = state.clone();
+    if let Some(leaving) = leaving
+        && let Some(position) = without.runner.grip.iter().position(|held| held == leaving)
+    {
+        without.runner.grip.remove(position);
+    }
+    crate::rules::continuous::interrupts(state, registry, card)
+        .into_iter()
+        .filter(|(cost, _, source, install)| {
+            let key = crate::rules::state::OncePerTurnKey { card: Some(source.clone()), install: *install, ability: None };
+            let used = match side {
+                Side::Corp => &state.corp.once_per_turn_used,
+                Side::Runner => &state.runner.once_per_turn_used,
+            };
+            !used.contains(&key) && ability::cost_is_affordable(&without, registry, side, cost, Purpose::Other, &ResolutionContext::for_parked(*install, Some(source)))
+        })
+        .map(|(_, less, ..)| less)
+        .max()
+        .unwrap_or(0)
 }
 
 /// `pay`, limited to the credits on cards `from` matches

@@ -941,6 +941,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
+        ContinuousKind::Interrupt { less, .. } => format!("once per turn, may pay a cost to pay {less} [credit] less"),
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
         ContinuousKind::RunCost(cost) => format!("costs the Runner \"{}\" to make, as the server is announced", describe_cost(cost)),
@@ -1083,6 +1084,25 @@ pub fn rez_alternative_label(card: &netrunner_core::dsl::CardId, index: usize, r
     words
 }
 
+/// The two buttons of an interrupt on paying (`PaymentAsk::Interrupt`,
+/// Patchwork): what using it costs and takes off the price, or not using
+/// it. Read off the card's own interrupt, so the cost is the one it prints.
+pub fn interrupt_label(card: &netrunner_core::dsl::CardId, less: u32, index: usize, registry: &CardRegistry) -> String {
+    if index as u32 != netrunner_core::rules::INTERRUPT_USED {
+        return format!("Do not use {}", title(card, registry));
+    }
+    let cost = registry.get(card).and_then(|def| {
+        def.continuous.iter().find_map(|effect| match &effect.kind {
+            netrunner_core::dsl::ContinuousKind::Interrupt { cost, .. } => Some(describe_cost(cost)),
+            _ => None,
+        })
+    });
+    match cost {
+        Some(cost) => format!("Use {}: {cost}, {} off", title(card, registry), plural(less, "credit", "credits")),
+        None => format!("Use {}: {} off", title(card, registry), plural(less, "credit", "credits")),
+    }
+}
+
 /// The line under an install's question (CR 8.5.6): why a card has to go,
 /// or that the rest is up to the installer.
 pub fn install_trash_detail(question: &netrunner_core::rules::InstallQuestion) -> String {
@@ -1113,6 +1133,9 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             ),
             netrunner_core::rules::PaymentAsk::Alternative { card, .. } => format!("Rez {} — how will you pay?", title(card, registry)),
             netrunner_core::rules::PaymentAsk::X { max } => format!("Choose X, from 0 to {max} — you pay X credits"),
+            netrunner_core::rules::PaymentAsk::Interrupt { card, less } => {
+                format!("Use {} to pay {} less?", title(card, registry), plural(*less, "credit", "credits"))
+            }
             netrunner_core::rules::PaymentAsk::Install(question) => {
                 format!("Install {} — trash which first? {}", title(&question.card, registry), install_trash_detail(question))
             }

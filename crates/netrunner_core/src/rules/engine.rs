@@ -105,7 +105,10 @@ pub fn apply_action(
             if !question.eligible.contains(&position) {
                 return Err(RulesError::CardNotEligibleForSelection(position as usize));
             }
-            position
+            match left_the_hand(state, &pending.action, pending.side, &question.zone) {
+                Some(taken) if position > taken => position - 1,
+                _ => position,
+            }
         }
         (crate::rules::payment::Ask::Install(question), PlayerAction::ToggleCardSelection { position }) => {
             let position = u32::try_from(position).map_err(|_| RulesError::CardNotEligibleForSelection(position))?;
@@ -116,6 +119,13 @@ pub fn apply_action(
         }
         (crate::rules::payment::Ask::Install(question), PlayerAction::ConfirmCardSelection) if question.may_stop => {
             crate::rules::install_trash::STOP
+        }
+        (crate::rules::payment::Ask::Interrupt { .. }, PlayerAction::ResolvePendingChoice { option_index }) => {
+            let index = u32::try_from(option_index).map_err(|_| RulesError::InvalidChoiceIndex(option_index))?;
+            if index != crate::rules::payment::INTERRUPT_USED && index != crate::rules::payment::INTERRUPT_DECLINED {
+                return Err(RulesError::InvalidChoiceIndex(option_index));
+            }
+            index
         }
         (crate::rules::payment::Ask::Alternative { offered, .. }, PlayerAction::ResolvePendingChoice { option_index }) => {
             let index = u32::try_from(option_index).map_err(|_| RulesError::InvalidChoiceIndex(option_index))?;
@@ -211,14 +221,51 @@ fn replay_with(
     apply_action_once(&replayed, registry, action.clone())
 }
 
+/// Where in its hand the card an action plays or installs sat before the
+/// action took it, when a payment's question is about that hand: the
+/// question was asked mid-action, with the card gone, and is shown on the
+/// state the action was applied to, with the card still there. Positions
+/// cross that boundary through this (`park_payment` out, the answer in),
+/// so a position always means the card at it in the hand a seat is shown.
+/// Moshing never met it, because its three Sure Gambles were one answer;
+/// Patchwork's trash from the grip, paid for an event played out of the
+/// same grip, offered the card after the one it named.
+fn left_the_hand(state: &GameState, action: &PlayerAction, side: Side, zone: &crate::dsl::CardZoneRef) -> Option<u32> {
+    let card_id = match action {
+        PlayerAction::PlayEvent { card_id }
+        | PlayerAction::PlayOperation { card_id }
+        | PlayerAction::InstallCard { card_id, .. }
+        | PlayerAction::InstallHardware { card_id, .. }
+        | PlayerAction::InstallProgram { card_id, .. }
+        | PlayerAction::InstallResource { card_id, .. }
+        | PlayerAction::InstallProgramOnIce { card_id, .. } => card_id,
+        _ => return None,
+    };
+    let hand = match (side, zone) {
+        (Side::Runner, crate::dsl::CardZoneRef::OwnGrip) => &state.runner.grip,
+        (Side::Corp, crate::dsl::CardZoneRef::OwnHq) => &state.corp.hq,
+        _ => return None,
+    };
+    hand.iter().position(|held| held == card_id).and_then(|position| u32::try_from(position).ok())
+}
+
 fn park_payment(
     state: &GameState,
     action: PlayerAction,
     side: Side,
     answers: Vec<u32>,
     amount: u32,
-    question: crate::rules::payment::Ask,
+    mut question: crate::rules::payment::Ask,
 ) -> (GameState, Vec<GameEvent>) {
+    if let crate::rules::payment::Ask::Card(card_question) = &mut question
+        && let Some(taken) = left_the_hand(state, &action, side, &card_question.zone)
+    {
+        for position in &mut card_question.eligible {
+            if *position >= taken {
+                *position += 1;
+            }
+        }
+    }
     let mut parked = state.clone();
     parked.pending_payment = Some(crate::rules::state::PendingPayment { side, action, answers, amount, question });
     (parked, vec![GameEvent::PaymentChoiceOffered { side }])
@@ -1981,7 +2028,9 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
         CardType::Hardware | CardType::Resource => {}
         _ => return false,
     }
-    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= discounted(preview_runner_install_cost(state, registry, card_def), discount)
+    let leaving = (source == RunnerCardSource::Grip).then_some(card_id);
+    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) + payment::interrupt_could_lower(state, registry, Side::Runner, card_def, leaving)
+        >= discounted(preview_runner_install_cost(state, registry, card_def), discount)
 }
 
 /// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
@@ -2091,7 +2140,9 @@ pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistr
     card_def.card_type == CardType::Program
         && card_def.installs_on_ice == onto_ice
         && crate::rules::install_trash::program_could_fit(state, registry, card_def.memory_cost.unwrap_or(0))
-        && payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def)
+        && payment::available(state, registry, Side::Runner, Purpose::Install(card_def))
+            + payment::interrupt_could_lower(state, registry, Side::Runner, card_def, (source == RunnerCardSource::Grip).then_some(card_id))
+            >= preview_runner_install_cost(state, registry, card_def)
 }
 
 /// Installs the program `card_id` out of `source` onto `host`, paying its

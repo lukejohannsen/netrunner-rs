@@ -32792,3 +32792,74 @@ mod reign_and_reverie_stage_12 {
         assert!(swapped.pending_paid_choice.is_some(), "the Runner may jack out");
     }
 }
+
+mod reign_and_reverie_stage_13 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn with_patchwork(grip: &[&str], credits: u32) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.grip = grip.iter().map(|card| id(card)).collect();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("patchwork"), card: id("patchwork"), ..Default::default() }];
+        state
+    }
+
+    fn asked(state: &GameState) -> bool {
+        matches!(state.pending_payment.as_ref().map(|parked| &parked.question), Some(crate::rules::payment::Ask::Interrupt { less: 2, .. }))
+    }
+
+    #[test]
+    fn patchwork_takes_2_off_a_play_for_a_card_trashed_from_the_grip_once_per_turn() {
+        let registry = registry();
+        let state = with_patchwork(&["sure_gamble", "sure_gamble", "diesel"], 5);
+
+        let (parked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("play Sure Gamble");
+        assert!(asked(&parked), "asked whether to use Patchwork: {:?}", parked.pending_payment);
+        let mut used = apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: crate::rules::INTERRUPT_USED as usize }).expect("use it").0;
+        // Which card goes is the Runner's when the grip holds two kinds.
+        for _ in 0..4 {
+            if used.pending_payment.is_none() {
+                break;
+            }
+            let position = used.runner.grip.iter().position(|held| held == &id("diesel")).expect("Diesel in the grip");
+            used = apply_action(&used, &registry, PlayerAction::ToggleCardSelection { position }).expect("trash Diesel").0;
+        }
+        assert!(used.pending_payment.is_none(), "{:?}", used.pending_payment);
+        assert_eq!(used.runner.resources.credits, Credits(5 - 3 + 9), "Sure Gamble for 3");
+        assert_eq!(used.runner.grip, vec![id("sure_gamble")]);
+        assert!(used.runner.heap.contains(&id("diesel")));
+
+        // Once per turn: the second Sure Gamble is not asked about.
+        let (again, _) = apply_action(&used, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("play the second");
+        assert!(again.pending_payment.is_none(), "{:?}", again.pending_payment);
+        assert_eq!(again.runner.resources.credits, Credits(11 - 5 + 9));
+    }
+
+    #[test]
+    fn patchwork_may_be_declined_and_makes_an_install_affordable() {
+        let registry = registry();
+        let state = with_patchwork(&["dyson_mem_chip", "diesel"], 3);
+        let (parked, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }).expect("install");
+        assert!(asked(&parked), "{:?}", parked.pending_payment);
+        let declined = apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: crate::rules::INTERRUPT_DECLINED as usize }).expect("decline").0;
+        assert_eq!((declined.runner.resources.credits, declined.runner.grip.clone()), (Credits(0), vec![id("diesel")]), "paid in full");
+
+        // With 1 credit, Dyson Mem Chip (3) is offered only because Patchwork can pay 2 of it.
+        let poor = with_patchwork(&["dyson_mem_chip", "diesel"], 1);
+        assert!(crate::rules::legal_actions_for(&poor, &registry, Side::Runner).contains(&PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }));
+        let (parked, _) = apply_action(&poor, &registry, PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }).expect("install");
+        let used = apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: crate::rules::INTERRUPT_USED as usize }).expect("use it").0;
+        assert!(used.runner.rig.iter().any(|card| card.card == id("dyson_mem_chip")));
+        assert_eq!((used.runner.resources.credits, used.runner.grip.len()), (Credits(0), 0));
+
+        // Dyson Mem Chip alone in the grip: no other card to trash, nothing offered.
+        let alone = with_patchwork(&["dyson_mem_chip"], 1);
+        assert!(!crate::rules::legal_actions_for(&alone, &registry, Side::Runner).contains(&PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }));
+    }
+}

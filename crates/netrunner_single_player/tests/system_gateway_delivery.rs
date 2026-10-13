@@ -64,6 +64,19 @@ fn decks_built_from_system_gateway_cards_are_legal_and_set_up() {
 /// single-player app uses.
 #[test]
 fn a_match_of_system_gateway_decks_plays_to_completion() {
+    // On a thread with the sweeps' stack (`netrunner_session::in_parallel`):
+    // a planner probing a parked payment is about 2 MiB deep in a debug
+    // build, a test thread's whole stack, and this match reached it once
+    // Patchwork's card joined the pool the planner samples from.
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(play_a_match_of_system_gateway_decks)
+        .expect("spawn the match")
+        .join()
+        .expect("the match plays to completion");
+}
+
+fn play_a_match_of_system_gateway_decks() {
     let registry = sg_registry();
     let (corp_deck, runner_deck) = sg_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup should succeed");

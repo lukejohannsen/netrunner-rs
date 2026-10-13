@@ -546,6 +546,12 @@ impl Prompt {
                     title: format!("Rez {}", title_of(Some(card), registry)),
                     detail: "It prints more than one way to pay for it. Which?".to_string(),
                 },
+                // An interrupt on paying (Patchwork) asks whether, and then
+                // what its own cost takes, as any cost does.
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Interrupt { card, less }, .. }) => Prompt {
+                    title: format!("Use {}?", title_of(Some(card), registry)),
+                    detail: format!("It can take {} off this price, once per turn.", if *less == 1 { "1 credit".to_string() } else { format!("{less} credits") }),
+                },
                 // An install trashing like cards (CR 8.5.6) asks one card
                 // at a time, so the buttons under this are the cards.
                 Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Install(question), .. }) => Prompt {

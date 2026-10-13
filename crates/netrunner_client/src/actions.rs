@@ -891,6 +891,11 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             {
                 return crate::prose::rez_alternative_label(card, *option_index, registry);
             }
+            if let Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Interrupt { card, less }, .. }) =
+                view.and_then(|v| v.pending_payment.as_ref()?.own.as_ref())
+            {
+                return crate::prose::interrupt_label(card, *less, *option_index, registry);
+            }
             let parked = view.and_then(|v| match &v.pending_decision {
                 Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
                     Some((options.get(*option_index), option_texts.get(*option_index)))

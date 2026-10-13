@@ -4057,7 +4057,13 @@ pub(crate) fn pay_cost_ctx(
         // pools, an identity's and a card's hosted credits are sources
         // beside the credit pool, and which of them this payment may use
         // is read off `purpose`.
-        Cost::Credits(amount) => payment::pay(state, registry, side, *amount, purpose),
+        // A price may be interrupted first (Patchwork): what is left is
+        // paid, and the interrupt's own cost's events go with the payment's.
+        Cost::Credits(amount) => {
+            let (amount, mut events) = payment::interrupt(state, registry, side, *amount, purpose)?;
+            events.extend(payment::pay(state, registry, side, amount, purpose)?);
+            Ok(events)
+        }
         Cost::CreditsFrom { amount, from } => {
             let amount = resolve_amount(amount, ctx, state, registry);
             payment::pay_from(state, registry, side, amount, purpose, Some(from))

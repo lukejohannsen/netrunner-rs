@@ -871,6 +871,20 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
     costs
 }
 
+/// Every interrupt on paying for `card` as it is played or installed
+/// (`ContinuousKind::Interrupt`, Patchwork), each with the card that prints
+/// it and that card's install, as [`score_costs`] has them. Whether its use
+/// this turn is spent is the payer's question (`payment::interrupt`).
+pub(crate) fn interrupts(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Vec<(Cost, u32, CardId, Option<InstallId>)> {
+    let mut found = Vec::new();
+    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::Interrupt { .. }), |effect, source, _| {
+        if let ContinuousKind::Interrupt { cost, less } = &effect.kind {
+            found.push((cost.clone(), *less, source.card.clone(), source.install));
+        }
+    });
+    found
+}
+
 /// Every additional cost to trash the rig install `install` with the basic
 /// action (Sebastião Souza Pessoa, Manuel Lattes de Moura), each with the
 /// card that imposes it and that card's install, as [`score_costs`] has

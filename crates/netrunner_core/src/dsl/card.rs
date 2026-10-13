@@ -1978,6 +1978,10 @@ impl CardDefinition {
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), _) => {
                     return misfit("PlayCost", "a play cost is this card's own or that of a card being `Playing`");
                 }
+                (ContinuousKind::Interrupt { .. }, Scope::Installing(_) | Scope::Playing(_)) => {}
+                (ContinuousKind::Interrupt { .. }, _) => {
+                    return misfit("Interrupt", "an interrupt on paying is about a card its controller is `Installing` or `Playing`");
+                }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
                 (ContinuousKind::RemoteServerLimit(_), _) => return misfit("RemoteServerLimit", "a limit on remote servers is its controller's"),
