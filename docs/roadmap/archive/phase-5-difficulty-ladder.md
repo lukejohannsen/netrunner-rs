@@ -4021,3 +4021,13 @@ Leech's count is mostly counters spent in encounters, which `used` counts with i
 **Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, main (4b56caa) against this branch on seeds 2 / 3: Solidarity Badge 10 → 38 and 5 → 38; Femme Fatale 1 → 14 and 17 → 6, 18 → 20 over both — `main` already installed it on one seed, so the reading is right and its effect is inside the drift; Amanuensis, whose counters are not the Badge's kind, 18 → 14 and 17 → 16; Corp share 0.497 → 0.505 and 0.506 → 0.497 (z 1.04, −1.18).
 
 **Verified.** `a_piece_chosen_on_install_is_the_way_past_it`: Femme Fatale opens HQ's Tollbooth, held and installed alike, at the rate an opened server is read; Boomerang is not read. The income test reads the Badge as one card a turn from a counter a turn.
+
+## 78. A prevention is the harm it prevents, where the Corp threatens it: Net Shield, AirbladeX — DONE (`claude/bot-blindness-batch-8`, 13 October 2026)
+
+**The debt.** An interrupt is worth something only once the harm is parked, so a held or installed card whose text prevents damage or a tag read as its price and memory, and the planner kept it in the grip: Net Shield (random seats 48, the planner 7 and 4), Decoy (27; 4 and 2), AirbladeX (JSRF Ed.) (17; 0 and 4).
+
+**What is read now.** `runner::prevention_value`: each paid ability or first-each-turn trigger that prevents damage or tags (`preventions`) is worth the harm it stops — a tag at `tag_weight`, a point of core damage at `core_damage_weight`, any other at `known_trap_damage_weight` — times the amount, times its uses (one for a card that trashes itself, the counters it hosts over what a use removes, a use a turn over the horizon otherwise), at `future_credit_weight` over `own_credit_weight`, a promise discounted as income is. **Only where the Corp threatens it** (`corp_threatens`): an NBN identity for tags, a Jinteki one for net damage, or a rezzed subroutine that gives tags or does damage of that kind — so Net Shield against a Haas-Bioroid glacier with no damage is its price, as it should be.
+
+**Measured.** `diag precepts --deck-styles --sweep-decks --games 630`, the planner on both chairs, §77's code against this branch on seeds 2 / 3: Net Shield 9 → 60 and 6 → 59; AirbladeX (JSRF Ed.) 2 → 17 and 0 → 11; Decoy 1 → 0 and 2 → 2, read but not played (not traced); Sacrificial Construct 108 → 123 and 111 → 113, Lucky Charm and Fall Guy unmoved; Corp share 0.505 → 0.505 and 0.497 → 0.497 (z 0.00 on both).
+
+**Verified.** `a_prevention_is_the_harm_it_prevents_where_the_corp_threatens_it`: each card's worth against a Corp that threatens its harm, and nothing against one that does not.
