@@ -28485,6 +28485,38 @@ mod reprints {
         assert!(corp_toggles(&fired, &registry).is_empty());
     }
 
+    /// Null Signal Games' ruling: with only Ravanas rezzed, the loop runs
+    /// as many times as the Corp likes and "the subroutine does not have
+    /// any effect". A Ravana another Ravana resolved does not go back down
+    /// the chain, so two of them end rather than choose each other forever
+    /// (a livelock the 256-seed sweep found at seed 254).
+    #[test]
+    fn a_ravana_resolved_by_another_ravana_does_not_choose_back_down_the_chain() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let other = crate::rules::InstalledCard { install_id: InstallId(777_001), ..ice_at("ravana_1_0", ServerId::RnD, true) };
+        state.corp.installed = vec![ice_at_hq("ravana_1_0"), other, ice_at("eli_1_0", ServerId::Archives, false)];
+        let through_the_other = |state: &GameState| {
+            let fired = fire(state, &registry);
+            assert!(corp_toggles(&fired, &registry).contains(&1), "the other Ravana");
+            let (picked, _) = apply_action(&fired, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the other Ravana");
+            let (mut resolved, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("resolve one of its subroutines");
+            if let Some(crate::rules::PendingDecision::ChooseEffect { .. }) = resolved.pending_decision {
+                resolved = apply_action(&resolved, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("its first").0;
+            }
+            resolved
+        };
+        let ended = through_the_other(&state);
+        assert!(corp_toggles(&ended, &registry).iter().all(|position| ended.corp.installed.get(*position).is_none_or(|card| card.install_id != fixture_install_id("ravana_1_0"))), "not back to the first Ravana");
+        assert_eq!(ended.active_run.as_ref().map(|run| run.this_encounter.relayed.clone()), Some(vec![fixture_install_id("ravana_1_0"), InstallId(777_001)]));
+
+        // A bioroid further on is still reached through the chain.
+        state.corp.installed[2].rezzed = true;
+        let onward = through_the_other(&state);
+        let offered = corp_toggles(&onward, &registry);
+        assert_eq!(offered.iter().map(|position| onward.corp.installed[*position].card.0.as_str()).collect::<Vec<_>>(), vec!["eli_1_0"]);
+    }
+
     #[test]
     fn architects_of_tomorrow_rezzes_a_bioroid_four_cheaper_the_first_time_a_rezzed_bioroid_is_passed() {
         let registry = registry();
@@ -32491,5 +32523,49 @@ mod reign_and_reverie_stage_8 {
         let mut next = installed;
         next.turn += 2;
         assert!(crate::rules::legal_actions_for(&next, &registry, Side::Corp).contains(&score), "the Corp's next turn has begun");
+    }
+}
+
+mod reign_and_reverie_stage_9 {
+    use super::*;
+
+    fn ice(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: CardId(card.to_string()), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    #[test]
+    fn acme_consulting_tags_the_runner_once_while_they_encounter_the_outermost_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("acme_consulting_the_truth_you_need".to_string()));
+        state.phase = GamePhase::Action(Side::Runner);
+        // Outermost first: Palisade, then Ice Wall.
+        state.corp.installed = vec![ice("palisade", true), ice("ice_wall", true)];
+        assert_eq!(crate::rules::continuous::tags(&state, &registry), 0, "no run, no tag");
+        for action in [
+            PlayerAction::InitiateRun { server: ServerId::Hq },
+            PlayerAction::PassPriority { side: Side::Runner },
+            PlayerAction::PassPriority { side: Side::Corp },
+        ] {
+            state = apply_action(&state, &registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::ApproachIce));
+        assert_eq!(crate::rules::continuous::tags(&state, &registry), 0, "approaching is not encountering");
+        for action in [PlayerAction::PassPriority { side: Side::Runner }, PlayerAction::PassPriority { side: Side::Corp }] {
+            state = apply_action(&state, &registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| (run.phase, run.position)), Some((crate::rules::RunPhase::EncounterIce, 0)));
+        assert_eq!((state.runner.tags, crate::rules::continuous::tags(&state, &registry)), (0, 1), "considered to have 1 additional tag (even if they have 0)");
+        let mut tagged = state.clone();
+        tagged.runner.tags = 2;
+        assert_eq!(crate::rules::continuous::tags(&tagged, &registry), 3, "additional");
+
+        // The inner piece is not the outermost.
+        let mut inner = state.clone();
+        inner.active_run.as_mut().expect("run").position = 1;
+        assert_eq!(crate::rules::continuous::tags(&inner, &registry), 0);
+        // Without Acme, nothing.
+        state.corp.identity = None;
+        assert_eq!(crate::rules::continuous::tags(&state, &registry), 0);
     }
 }

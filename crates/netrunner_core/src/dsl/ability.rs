@@ -450,6 +450,13 @@ pub enum EffectRequirement {
     /// window too, and `SubroutineResolvedThisRun` is about any ice this
     /// run.
     ResolvingThisIcesSubroutines,
+    /// The run is encountering the outermost piece of ice protecting the
+    /// server it is against — Acme Consulting's "during encounters with
+    /// the outermost piece of ice protecting any server", a fact about the
+    /// table rather than the acting card. Composition didn't work: every
+    /// other encounter word names the ice by its relation to the acting
+    /// card, or by its type.
+    EncounteringOutermostIce,
     /// The active run is encountering a piece of ICE right now
     /// (`RunPhase::EncounterIce`) — any ICE, unlike
     /// `EncounteringHostIce`'s "the one my host is."

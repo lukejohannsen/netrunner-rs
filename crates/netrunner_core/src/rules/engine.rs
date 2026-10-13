@@ -3026,7 +3026,7 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
-    if !state.runner.is_tagged() {
+    if continuous::tags(state, registry) == 0 {
         return Err(RulesError::RunnerNotTagged);
     }
 

@@ -504,6 +504,15 @@ fn instance_matches_filter(
         CardFilter::NotSourceCard => {
             zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != source || source.is_none()
         }
+        // Ravana's "another" when another Ravana resolved it: nothing
+        // already in the chain (`EncounterTally::relayed`). The chain's
+        // first card is the one that began it, which asks with nothing
+        // excluded but itself.
+        CardFilter::NotRelaying => {
+            let chain = state.active_run.as_ref().map(|run| run.this_encounter.relayed.as_slice()).unwrap_or_default();
+            let relayed = source.is_some_and(|source| chain.iter().skip(1).any(|install| *install == source));
+            !relayed || zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_none_or(|install| !chain.contains(&install))
+        }
         // Hush's "another installed piece of ice": not the one the parking
         // Trojan is hosted on.
         CardFilter::NotThisCardsHost => {

@@ -2704,6 +2704,16 @@ pub fn evaluate_effect(
 
         Effect::ResolveSubroutineOfSelectedIce => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            // The chain `CardFilter::NotRelaying` reads: a card already in
+            // it continues from where it stands, any other begins it anew.
+            if let (Some(run), Some(chosen)) = (state.active_run.as_mut(), ctx.acting_install) {
+                let chain = &mut run.this_encounter.relayed;
+                match ctx.prompting_install.and_then(|by| chain.iter().position(|install| *install == by)) {
+                    Some(at) => chain.truncate(at + 1),
+                    None => *chain = ctx.prompting_install.into_iter().collect(),
+                }
+                chain.push(chosen);
+            }
             let Some(card_def) = registry.get(card_id) else { return Ok(Vec::new()) };
             let options: Vec<Effect> = card_def.subroutines.iter().map(|sub| sub.effect.clone()).collect();
             // Each option is the ice's own printed subroutine (the Linked
@@ -4605,7 +4615,7 @@ pub fn check_requirement(
 ) -> Result<(), RulesError> {
     match requirement {
         EffectRequirement::IsTagged => {
-            if !state.runner.is_tagged() {
+            if crate::rules::continuous::tags(state, registry) == 0 {
                 return Err(RulesError::RunnerNotTagged);
             }
             Ok(())
@@ -4839,6 +4849,15 @@ pub fn check_requirement(
             };
             let matches = state.active_run.as_ref().is_some_and(|run| {
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
+            });
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::EncounteringOutermostIce => {
+            let matches = state.active_run.as_ref().is_some_and(|run| {
+                run.phase == RunPhase::EncounterIce
+                    && run.ice.get(run.position).is_some_and(|encountered| {
+                        state.corp.installed.iter().find(|card| card.server == run.server && card.slot == crate::rules::state::InstallSlot::Ice).is_some_and(|outermost| outermost.install_id == encountered.install_id)
+                    })
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -5408,7 +5427,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // through the registry, the same way `win::check_for_winner` does,
         // rather than a running counter that a forfeit would have to
         // decrement.
-        Amount::RunnerTags => state.runner.tags,
+        Amount::RunnerTags => crate::rules::continuous::tags(state, registry),
         Amount::BadPublicity => state.corp.bad_publicity,
         Amount::CoreDamageTaken => state.runner.brain_damage as u32,
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
@@ -5601,6 +5620,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
+        | EffectRequirement::EncounteringOutermostIce
         | EffectRequirement::EncounteringChosenIce
         | EffectRequirement::EncounteringChosenIceType
         | EffectRequirement::ResolvingThisIcesSubroutines

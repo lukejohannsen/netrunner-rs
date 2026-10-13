@@ -40,7 +40,8 @@
               {
                 "HasSubtype": "Bioroid"
               },
-              "NotSourceCard"
+              "NotSourceCard",
+              "NotRelaying"
             ]
           },
           "min": 1,
@@ -64,7 +65,8 @@
               {
                 "HasSubtype": "Bioroid"
               },
-              "NotSourceCard"
+              "NotSourceCard",
+              "NotRelaying"
             ]
           },
           "min": 1,

@@ -134,6 +134,17 @@ pub enum ContinuousKind {
     /// at setup, so there was nowhere for a console's link to be said at
     /// all. `continuous::link` is asked by the trace.
     Link(Number),
+    /// Tags the Runner is considered to have and was never given (CR
+    /// 1.9.4) — Acme Consulting's "The Runner is considered to have 1
+    /// additional tag (even if they have 0) during encounters with the
+    /// outermost piece of ice", said of the Runner by a Corp card
+    /// (`Scope::Player`), its "during" the effect's `while`. A considered
+    /// tag counts wherever the tags are counted or the Runner is asked
+    /// whether they are tagged (`continuous::tags`), and is never removed
+    /// or paid, so `RunnerState::tags` stays the tags the Runner has.
+    /// Composition didn't work: a tag placed for the encounter would be a
+    /// tag the Runner could remove and the Corp could spend.
+    Tags(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),
     /// Credits to rez a card.
