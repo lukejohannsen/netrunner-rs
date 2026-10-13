@@ -1,0 +1,87 @@
+{
+  "id": "technoco",
+  "title": "TechnoCo",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "OpponentInstalling": {
+          "AnyOf": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "CardType": "Hardware"
+            },
+            {
+              "All": [
+                {
+                  "CardType": "Resource"
+                },
+                {
+                  "HasSubtype": "Virtual"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "text": "The install cost of each program, piece of hardware, and virtual resource is increased by 1."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Card": {
+              "AnyOf": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "CardType": "Hardware"
+                },
+                {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    {
+                      "HasSubtype": "Virtual"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner installs a program, piece of hardware, or virtual resource, you may gain 1[credit]."
+    }
+  ],
+  "built_from": 21060,
+  "is_playable": true
+}

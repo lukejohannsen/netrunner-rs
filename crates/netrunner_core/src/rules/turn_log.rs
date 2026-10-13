@@ -151,10 +151,18 @@ pub enum Kind {
     /// companion, so a card has one column.
     JobResource,
     ConnectionResource,
+    /// An **icebreaker** program, the eighth subtype given a column, for
+    /// Better Citizen Program's "the first time the Runner … installs an
+    /// icebreaker program each turn" — installed faceup, as public as any
+    /// program. A virus icebreaker (Darwin, Crypsis) is counted apart from
+    /// both, as a double run event is, so a card has one column and each
+    /// of "a virus program" and "an icebreaker" still reads it.
+    Icebreaker,
+    VirusIcebreaker,
 }
 
 impl Kind {
-    const COUNT: usize = 20;
+    const COUNT: usize = 22;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -176,11 +184,13 @@ impl Kind {
         Kind::DoubleRunEvent,
         Kind::JobResource,
         Kind::ConnectionResource,
+        Kind::Icebreaker,
+        Kind::VirusIcebreaker,
     ];
 
     /// The column a card is counted in: its type, or its type's double,
-    /// mandate, virus, companion, job, connection or run (and a double run
-    /// event's own).
+    /// mandate, virus, companion, job, connection, icebreaker or run (and a
+    /// virus icebreaker's and a double run event's own).
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
         let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
@@ -189,12 +199,15 @@ impl Kind {
         let run = definition.subtypes.contains(&CardSubtype::Run);
         let job = definition.subtypes.contains(&CardSubtype::Job);
         let connection = definition.subtypes.contains(&CardSubtype::Connection);
+        let icebreaker = definition.subtypes.contains(&CardSubtype::Icebreaker);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
             Kind::Event if double && run => Kind::DoubleRunEvent,
             Kind::Event if double => Kind::DoubleEvent,
             Kind::Event if run => Kind::RunEvent,
+            Kind::Program if virus && icebreaker => Kind::VirusIcebreaker,
+            Kind::Program if icebreaker => Kind::Icebreaker,
             Kind::Program if virus => Kind::VirusProgram,
             Kind::Resource if companion => Kind::CompanionResource,
             Kind::Resource if job => Kind::JobResource,
@@ -208,7 +221,7 @@ impl Kind {
         match Kind::of(card_type) {
             Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent, Kind::RunEvent, Kind::DoubleRunEvent],
-            Kind::Program => vec![Kind::Program, Kind::VirusProgram],
+            Kind::Program => vec![Kind::Program, Kind::VirusProgram, Kind::Icebreaker, Kind::VirusIcebreaker],
             Kind::Resource => vec![Kind::Resource, Kind::CompanionResource, Kind::JobResource, Kind::ConnectionResource],
             kind => vec![kind],
         }
@@ -217,7 +230,7 @@ impl Kind {
     /// A Runner card's type: every Runner card trashed goes faceup to the
     /// heap, from wherever it was, so both players see what it was.
     fn is_runners(self) -> bool {
-        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::JobResource | Kind::ConnectionResource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent | Kind::RunEvent | Kind::DoubleRunEvent)
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::CompanionResource | Kind::JobResource | Kind::ConnectionResource | Kind::Program | Kind::VirusProgram | Kind::Icebreaker | Kind::VirusIcebreaker | Kind::Event | Kind::DoubleEvent | Kind::RunEvent | Kind::DoubleRunEvent)
     }
 
     fn of(card_type: &CardType) -> Kind {
@@ -652,7 +665,8 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
             Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent, Kind::DoubleRunEvent]),
             Some((CardType::Event, CardSubtype::Run)) => return Ok(vec![Kind::RunEvent, Kind::DoubleRunEvent]),
             Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
-            Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram]),
+            Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram, Kind::VirusIcebreaker]),
+            Some((CardType::Program, CardSubtype::Icebreaker)) => return Ok(vec![Kind::Icebreaker, Kind::VirusIcebreaker]),
             Some((CardType::Resource, CardSubtype::Companion)) => return Ok(vec![Kind::CompanionResource]),
             Some((CardType::Resource, CardSubtype::Job)) => return Ok(vec![Kind::JobResource]),
             Some((CardType::Resource, CardSubtype::Connection)) => return Ok(vec![Kind::ConnectionResource]),

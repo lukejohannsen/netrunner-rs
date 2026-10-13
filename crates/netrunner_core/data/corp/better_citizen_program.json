@@ -1,0 +1,105 @@
+{
+  "id": "better_citizen_program",
+  "title": "Better Citizen Program",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Card": {
+              "All": [
+                {
+                  "CardType": "Event"
+                },
+                {
+                  "HasSubtype": "Run"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may give the Runner 1 tag",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Runner plays a run event or installs an icebreaker program each turn, you may give the Runner 1 tag."
+    },
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Card": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "Icebreaker"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may give the Runner 1 tag",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Runner plays a run event or installs an icebreaker program each turn, you may give the Runner 1 tag."
+    }
+  ],
+  "built_from": 21116,
+  "is_playable": true
+}
