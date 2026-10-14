@@ -34819,3 +34819,73 @@ mod kitara_stage_10b {
         assert_eq!(shuffled.corp.r_and_d.len(), 3);
     }
 }
+
+mod kitara_stage_10c {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Snare! about to tag a Runner with No One Home installed and two
+    /// credits for a bid.
+    fn snared() -> (GameState, CardRegistry) {
+        let (mut state, registry) = run_into_snare(5);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("no_one_home"), install_id: InstallId(2001), ..Default::default() }];
+        state.runner.resources.credits = Credits(2);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("corp pays");
+        assert_eq!(state.pending_prevention.as_ref().map(|p| p.what.clone()), Some(crate::rules::WouldHappen::Tags { amount: 1 }));
+        (state, registry)
+    }
+
+    fn use_it(state: &GameState, registry: &CardRegistry, ability_index: usize) -> GameState {
+        let (traced, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index }).expect("No One Home");
+        assert!(traced.active_trace.is_some(), "the Corp traces");
+        assert!(traced.runner.heap.contains(&id("no_one_home")), "trashed to pay for it");
+        assert_eq!(traced.runner.tags, 0, "the tag waits on the trace");
+        traced
+    }
+
+    #[test]
+    fn an_unsuccessful_trace_prevents_all_the_tags_and_only_the_tags_ability_is_offered() {
+        let (state, registry) = snared();
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(offered.contains(&PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }));
+        assert!(!offered.contains(&PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 1 }), "a tag, not net damage: {offered:?}");
+        let traced = use_it(&state, &registry, 0);
+        let (bid, _) = apply_action(&traced, &registry, PlayerAction::SubmitCorpTraceBid { amount: 1 }).expect("corp bid");
+        let (avoided, events) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 1 }).expect("runner bid");
+        assert!(events.contains(&crate::rules::GameEvent::Prevented { what: crate::rules::WouldHappen::Tags { amount: 1 }, amount: 1 }));
+        assert_eq!(avoided.runner.tags, 0);
+        assert!(avoided.pending_prevention.as_ref().is_none_or(|p| !matches!(p.what, crate::rules::WouldHappen::Tags { .. })), "the window over the tag is closed");
+    }
+
+    #[test]
+    fn a_successful_trace_prevents_nothing() {
+        let (mut state, registry) = snared();
+        state.corp.resources.credits = Credits(2);
+        let traced = use_it(&state, &registry, 0);
+        let (bid, _) = apply_action(&traced, &registry, PlayerAction::SubmitCorpTraceBid { amount: 2 }).expect("corp bid");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("runner bid");
+        assert_eq!(traced.runner.tags, 1, "the tag lands once the trace is over");
+    }
+
+    /// The sweep's stall: used in the window at the end of the Runner's
+    /// turn with nothing about to happen, the trace started, and its lost
+    /// trace had nothing to prevent, so no bid could be made.
+    #[test]
+    fn not_usable_with_nothing_about_to_happen() {
+        let (mut state, registry) = run_into_snare(5);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("no_one_home"), install_id: InstallId(2001), ..Default::default() }];
+        state.pending_prevention = None;
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).is_err());
+    }
+
+    #[test]
+    fn only_the_first_tags_or_net_damage_of_the_turn() {
+        let (mut state, registry) = snared();
+        crate::rules::turn_log::record(&mut state, &registry, &crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 });
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(!offered.iter().any(|action| matches!(action, PlayerAction::ActivateAbility { .. })), "a tag came earlier this turn: {offered:?}");
+    }
+}
