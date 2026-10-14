@@ -1144,6 +1144,8 @@ fn steal(
     // that reaches the threshold has won, and the identity does not get to
     // flatline the winner.
     dispatcher::emit(state, registry, &mut events, stolen_event)?;
+    // The Corp's currents expire, after the steal is heard.
+    crate::rules::current::agenda_moved(state, registry, &mut events, Side::Runner)?;
     // The cost's own moments after what it paid for (`ability::
     // dispatch_cost_events`): Shackleton Grid hears a steal paid for with
     // bad publicity's credits.

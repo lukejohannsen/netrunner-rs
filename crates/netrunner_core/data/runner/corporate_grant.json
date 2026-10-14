@@ -1,0 +1,28 @@
+{
+  "id": "corporate_grant",
+  "title": "Corporate Grant",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Whose": "Runner"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you install a card each turn, the Corp loses 1[credit]."
+    }
+  ],
+  "built_from": 21044,
+  "is_playable": true
+}

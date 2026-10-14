@@ -392,6 +392,8 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // An event whose own choice is still open (CR 3.7.1: trashed
             // once it has fully resolved).
             .chain(&runner.play_area)
+            // A current, in the play area until it is trashed.
+            .chain(runner.in_play.iter().map(|played| &played.card))
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
             .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
@@ -764,6 +766,8 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.runner.set_aside.iter().map(|c| c.0.as_str()));
     // An event still resolving, faceup in the play area.
     visible.extend(view.runner.play_area.iter().map(|c| c.0.as_str()));
+    // A current, faceup in the play area until it is trashed.
+    visible.extend(view.runner.in_play.iter().map(|played| played.card.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
     // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
     // as public as the rig, whichever side's card it is.

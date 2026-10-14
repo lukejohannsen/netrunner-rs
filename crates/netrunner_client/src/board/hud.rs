@@ -308,6 +308,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     use netrunner_core::dsl::{EndRunPrevention, Prohibition};
     use netrunner_core::rules::lingering::{Lingering, On, Until};
     let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.replace('_', " "), |card| card.title.clone());
+    let is_current = |id: &CardId| registry.get(id).is_some_and(|card| card.subtypes.contains(&netrunner_core::dsl::CardSubtype::Current));
     let who = |on: &On, fallback: Side| match on {
         On::Player(side) => *side,
         _ => fallback,
@@ -530,7 +531,16 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // A lockdown in the play area (CR 3.5.1c): faceup, active, and
         // gone when the Corp's next turn begins, which is the line's to say
         // because nothing on the board stands for it.
-        .chain(view.corp.play_area.iter().map(|played| format!("in play until the Corp's next turn: {}", title(&played.card))))
+        // A current (CR 8.6.6c) waits there too, until another current is
+        // played or an agenda is stolen; the Runner's until one is scored.
+        .chain(view.corp.play_area.iter().map(|played| {
+            if is_current(&played.card) {
+                format!("current, until another is played or an agenda is stolen: {}", title(&played.card))
+            } else {
+                format!("in play until the Corp's next turn: {}", title(&played.card))
+            }
+        }))
+        .chain(view.runner.in_play.iter().map(|played| format!("current, until another is played or an agenda is scored: {}", title(&played.card))))
         // A condition counter (Eavesdrop, CR 1.13.6d): faceup and active on
         // its host, named by the host's card when the viewer can see it,
         // since nothing on the board stands for a counter with text.

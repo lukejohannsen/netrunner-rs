@@ -35026,3 +35026,108 @@ mod kitara_stage_11c {
         assert!(apply_action(&accessing, &registry, FREEDOM).is_err(), "1 counter for a rez cost of 2");
     }
 }
+
+mod kitara_stage_12a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(5);
+        state
+    }
+
+    fn agenda_in_remote(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), advancement_tokens: 4, ..Default::default() }
+    }
+
+    fn play_grant(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id("corporate_grant"));
+        let (played, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("corporate_grant") }).expect("play Corporate Grant");
+        close_all_windows(played, registry).0
+    }
+
+    fn install_program(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        let (installed, _) = apply_action(&state, registry, PlayerAction::InstallProgram { card_id: id(card), trash_first: false, host: None }).expect("install");
+        close_all_windows(installed, registry).0
+    }
+
+    #[test]
+    fn corporate_grant_stays_in_play_and_costs_the_corp_a_credit_on_the_first_install_each_turn() {
+        let registry = registry();
+        let played = play_grant(&runner_turn(), &registry);
+        assert_eq!(played.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("corporate_grant")], "not trashed");
+        assert!(!played.runner.heap.contains(&id("corporate_grant")));
+        let first = install_program(&played, &registry, "corroder");
+        assert_eq!(first.corp.resources.credits, Credits(4), "the first install");
+        let second = install_program(&first, &registry, "gordian_blade");
+        assert_eq!(second.corp.resources.credits, Credits(4), "not the second");
+    }
+
+    #[test]
+    fn corporate_grant_is_trashed_when_the_corp_scores_an_agenda() {
+        let registry = registry();
+        let mut state = play_grant(&runner_turn(), &registry);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.installed = vec![agenda_in_remote("hostile_takeover")];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") }).expect("score");
+        assert!(scored.runner.in_play.is_empty());
+        assert!(scored.runner.heap.contains(&id("corporate_grant")));
+    }
+
+    #[test]
+    fn death_and_taxes_pays_the_corp_for_runner_installs_and_outlasts_the_corps_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq.push(id("death_and_taxes"));
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("death_and_taxes") }).expect("play Death and Taxes");
+        let played = close_all_windows(played, &registry).0;
+        assert_eq!(played.corp.play_area.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("death_and_taxes")]);
+        assert_eq!(played.corp.resources.credits, Credits(3));
+
+        let mut runner = played.clone();
+        runner.phase = GamePhase::Action(Side::Runner);
+        runner.runner.resources.clicks = Clicks(4);
+        runner.runner.resources.credits = Credits(5);
+        runner.runner.grip.push(id("corroder"));
+        let (asked, _) = apply_action(&runner, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None }).expect("install");
+        let (gained, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain 1[credit]");
+        assert_eq!(gained.corp.resources.credits, Credits(4));
+
+        // A lockdown would be trashed as the Corp's next turn begins; a
+        // current is not.
+        let mut corp_turn = played;
+        corp_turn.corp.play_area.push(crate::rules::PlayedOperation { card: id("sync_rerouting"), handle: InstallId(4242) });
+        crate::rules::test_support::enter_start_of_turn(&mut corp_turn, &registry, Side::Corp);
+        let next = close_all_windows(corp_turn, &registry).0;
+        assert_eq!(next.corp.play_area.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("death_and_taxes")]);
+    }
+
+    #[test]
+    fn a_current_trashes_the_current_in_play_and_a_steal_trashes_the_corps() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.play_area.push(crate::rules::PlayedOperation { card: id("death_and_taxes"), handle: InstallId(4242) });
+        let replaced = play_grant(&state, &registry);
+        assert!(replaced.corp.play_area.is_empty(), "another current was played");
+        assert!(replaced.corp.archives.iter().any(|card| card.card == id("death_and_taxes")));
+
+        state.corp.installed = vec![agenda_in_remote("hostile_takeover")];
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        assert!(stolen.corp.play_area.is_empty(), "an agenda was stolen");
+    }
+}

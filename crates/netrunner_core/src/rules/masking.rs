@@ -300,6 +300,10 @@ pub struct PublicRunnerState {
     /// Never masked: faceup (`RunnerState::play_area`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
+    /// Never masked: a current, faceup in the play area
+    /// (`RunnerState::in_play`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub in_play: Vec<crate::rules::PlayedOperation>,
     /// Never masked — stolen Agendas sit in a fully public score area.
     pub scored_agendas: Vec<ScoredAgenda>,
     /// Never masked — static link strength, like `tags`, is plain public
@@ -1622,6 +1626,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         other_identities: runner.other_identities.clone(),
         hosted_identities: runner.hosted_identities.clone(),
         play_area: runner.play_area.clone(),
+        in_play: runner.in_play.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the
         // rig adds. It was a stored field that only the identity ever wrote.

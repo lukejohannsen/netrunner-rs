@@ -431,7 +431,11 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
     // own moment is heard, and still in play through the window before it
     // (5.6.1b), when the turn has not yet begun.
     if side == Side::Corp {
-        for played in std::mem::take(&mut state.corp.play_area) {
+        // A current stays (`rules::current`): only a lockdown is trashed.
+        let (currents, lockdowns): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut state.corp.play_area).into_iter().partition(|played| registry.get(&played.card).is_some_and(crate::rules::current::is_current));
+        state.corp.play_area = currents;
+        for played in lockdowns {
             crate::rules::turn_log::file_in_archives(state, crate::rules::ArchivedCard::faceup(played.card.clone()));
             let trashed = GameEvent::CardTrashed { side: Side::Corp, card: played.card, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None };
             dispatcher::emit(state, registry, &mut events, trashed)?;

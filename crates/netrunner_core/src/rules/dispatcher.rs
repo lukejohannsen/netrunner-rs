@@ -563,6 +563,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
                 // Project Vacheron, heard from the Runner's score area.
                 || state.runner.scored_agendas.iter().any(|scored| scored.install_id == install)
                 || state.corp.play_area.iter().any(|played| played.handle == install)
+                || state.runner.in_play.iter().any(|played| played.handle == install)
                 || state.corp.conditions.iter().any(|condition| condition.handle == install)
         }
         _ => true,

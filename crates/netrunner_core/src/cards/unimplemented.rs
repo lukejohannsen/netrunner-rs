@@ -104,13 +104,11 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
 pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("corporate_grant", "Corporate \"Grant\""),
     ("marathon", "Marathon"),
     ("gbahali", "Gbahali"),
     ("code_replicator", "Code Replicator"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
     ("degree_mill", "Degree Mill"),
-    ("death_and_taxes", "Death and Taxes"),
 ];
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
