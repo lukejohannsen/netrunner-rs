@@ -194,6 +194,14 @@ pub enum Cost {
     /// this many are available; otherwise removes them via the same
     /// counter-mutation path `Effect::RemoveCounters` uses.
     RemoveCounters(u32),
+    /// Remove `u32` virus counters from among the payer's installed cards,
+    /// whichever hold them — Musaazi's "Any virus counter: Break sentry
+    /// subroutine". Which card each counter comes from is the payer's, and
+    /// is asked one counter at a time inside the payment, by replay
+    /// (`payment::Ask::Card`), only where the answer changes what they are
+    /// left with (`pending_choice::pick_virus_counters`). Composition
+    /// didn't work: `RemoveCounters` is the acting card's own counters.
+    VirusCounters(u32),
     /// Remove `u32` advancement counters hosted on the acting card —
     /// Sacrifice Zone Expansion's "you may remove 1 hosted advancement
     /// counter to do 1 meat damage". Not `RemoveCounters`: advancement
@@ -347,7 +355,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::VirusCounters(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

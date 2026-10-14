@@ -1979,6 +1979,8 @@ impl CardDefinition {
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::MemoryCost(_), Scope::This) if self.card_type == CardType::Program => {}
+                (ContinuousKind::MemoryOnlyFor { .. }, Scope::Controller) if self.side == Side::Runner => {}
+                (ContinuousKind::MemoryOnlyFor { .. }, _) => return misfit("MemoryOnlyFor", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::MemoryCost(_), _) => return misfit("MemoryCost", "a program says of itself (`This`) what it costs in memory"),
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),

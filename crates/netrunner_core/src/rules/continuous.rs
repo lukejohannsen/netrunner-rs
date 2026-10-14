@@ -468,6 +468,19 @@ pub fn link(state: &GameState, registry: &CardRegistry) -> u32 {
 /// plus the boosts paid for) and what the table adds. **The one number** —
 /// the break contest, the view and the bots' pricing all read this, where
 /// the view used to show the stored half alone.
+/// The memory the Runner may use only for some programs
+/// (`ContinuousKind::MemoryOnlyFor`, Knobkierie): each grant with the
+/// programs it is for.
+pub(crate) fn memory_only_for(state: &GameState, registry: &CardRegistry) -> Vec<(crate::dsl::CardFilter, i32)> {
+    let mut found = Vec::new();
+    for_each_applying(state, registry, Target::Player(Side::Runner), |kind| matches!(kind, ContinuousKind::MemoryOnlyFor { .. }), |effect, _, ctx| {
+        if let ContinuousKind::MemoryOnlyFor { amount, only } = &effect.kind {
+            found.push((only.clone(), amount.per * ability::resolve_amount(&amount.of, ctx, state, registry) as i32));
+        }
+    });
+    found
+}
+
 /// What an installed card costs in memory: its printed cost and what the
 /// table adds (`ContinuousKind::MemoryCost`, Puffer's counters). Read by
 /// `memory::memory_balance`, the one ledger.

@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -34947,5 +34947,33 @@ mod kitara_stage_11a {
         let (removed, _) = apply_action(&placed, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 3 }).expect("remove");
         assert_eq!(removed.runner.rig[0].counters, 0);
         assert!(apply_action(&removed, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 3 }).is_err(), "nothing to remove");
+    }
+}
+
+mod kitara_stage_11b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), counters, ..Default::default() }
+    }
+
+    #[test]
+    fn knobkierie_memory_is_only_for_virus_programs() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("knobkierie", 2001, 0)];
+        let base = crate::rules::memory::memory_balance(&state, &registry);
+        let virus = registry.get(&id("medium")).unwrap();
+        let other = registry.get(&id("corroder")).unwrap();
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(virus)), base, "Medium's MU is Knobkierie's");
+        assert_eq!(
+            crate::rules::memory::memory_balance_with(&state, &registry, Some(other)),
+            base - other.memory_cost.unwrap_or(0) as i32,
+            "Corroder's is not"
+        );
     }
 }

@@ -2019,7 +2019,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
         // would not be enough; a second console trashes the first (CR
         // 3.8.5b). Both were refusals until Rules Conformance B.
         CardType::Program => {
-            if card_def.installs_on_ice || !crate::rules::install_trash::program_could_fit(state, registry, card_def.memory_cost.unwrap_or(0)) {
+            if card_def.installs_on_ice || !crate::rules::install_trash::program_could_fit(state, registry, card_def) {
                 return false;
             }
         }
@@ -2141,7 +2141,7 @@ pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistr
     let Some(card_def) = registry.get(card_id) else { return false };
     card_def.card_type == CardType::Program
         && card_def.installs_on_ice == onto_ice
-        && crate::rules::install_trash::program_could_fit(state, registry, card_def.memory_cost.unwrap_or(0))
+        && crate::rules::install_trash::program_could_fit(state, registry, card_def)
         && payment::available(state, registry, Side::Runner, Purpose::Install(card_def))
             + payment::interrupt_could_lower(state, registry, Side::Runner, card_def, (source == RunnerCardSource::Grip).then_some(card_id))
             >= preview_runner_install_cost(state, registry, card_def)

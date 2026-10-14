@@ -1,0 +1,75 @@
+{
+  "id": "knobkierie",
+  "title": "Knobkierie",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryOnlyFor": {
+          "amount": {
+            "per": 3
+          },
+          "only": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "HasSubtype": "Virus"
+              }
+            ]
+          }
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+3[mu] Use the MU on Knobkierie only for virus programs."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "Virus"
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time you make a successful run each turn, you may place 1 virus counter on an installed virus program."
+    }
+  ],
+  "built_from": 21062,
+  "is_playable": true
+}
