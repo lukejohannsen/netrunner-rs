@@ -495,6 +495,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::StealAccessedCard => "steal it, ignoring all costs".to_string(),
         Effect::EndActionPhase => "your action phase ends".to_string(),
+        Effect::TurnFaceup => "turn it faceup; an event is trashed".to_string(),
         Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
         Effect::BreachAfter(servers) => format!("after this breach, breach {}", servers.iter().map(|server| describe_server(*server)).collect::<Vec<_>>().join(", then ")),

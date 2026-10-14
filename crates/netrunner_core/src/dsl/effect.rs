@@ -2064,6 +2064,21 @@ pub enum Effect {
     /// `then` is the card selected (the convention every `then` follows),
     /// and the operation has no install for a `CardTarget` to name.
     AsThisCard(Box<Effect>),
+    /// The card this resolves as, one of the Runner's facedown installed
+    /// cards (`RunnerState::installed_facedown`), is turned faceup —
+    /// Assimilator's "Turn one of your facedown installed cards faceup. If
+    /// that card is an event, trash it", inside the `then` of a selection
+    /// over `CardZoneRef::OwnInstalledFacedown`. It regains its printed
+    /// characteristics and becomes active (CR 8.1.4e): into the rig, with
+    /// its recurring credits (1.10.5b), and no "when installed" ability
+    /// hears it, since nothing was installed. A card that may not stand
+    /// in the rig — an event, or a Trojan, which is hosted on no ice — is
+    /// trashed (10.3.1e), which is the sentence's own "trash it" for the
+    /// event. Composition didn't work: the only way into the rig is an
+    /// install (`engine::install_into_rig`), which asks "install only if"
+    /// and is heard as an install, and a selection's `destination` moves
+    /// cards between zones the rig is not one of.
+    TurnFaceup,
 }
 
 /// What `Effect::Remember` keeps. Only what a card in the pool chooses
@@ -3516,6 +3531,7 @@ impl Effect {
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
             | Effect::EndActionPhase
+            | Effect::TurnFaceup
             | Effect::Score
             | Effect::StealAccessedCard
             | Effect::Breach(_)

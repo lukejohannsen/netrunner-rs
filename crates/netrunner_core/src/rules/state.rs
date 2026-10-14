@@ -781,9 +781,10 @@ pub struct RunnerState {
     /// with no install cost (8.5.11a), so a list beside the rig keeps every
     /// reader of the rig from learning to skip them: nothing there can see
     /// a card with no characteristics. Hidden from the Corp as the grip is
-    /// (`masking`, 4.6.3); the Runner may look at them (1.21.2a). Nothing
-    /// in the pool turns one faceup or targets one, so a card here stays
-    /// until the game ends; Apex is the card that will.
+    /// (`masking`, 4.6.3); the Runner may look at them (1.21.2a).
+    /// Assimilator turns one faceup (`engine::turn_runner_card_faceup`),
+    /// which takes it out of this list and into the rig, or the heap; until
+    /// then a card here stays until the game ends.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub installed_facedown: Vec<CardId>,
     /// The pile of other Runner identities brought with the deck (CR

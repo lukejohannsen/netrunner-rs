@@ -961,6 +961,10 @@ pub fn evaluate_effect(
             ctx.unpreventable = was;
             resolved
         }
+        Effect::TurnFaceup => {
+            let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            crate::rules::engine::turn_runner_card_faceup(state, registry, &card)
+        }
         // The card whose text this is: the selection's prompter, which the
         // `then` it sits in carries beside the card chosen.
         Effect::AsThisCard(effect) => {

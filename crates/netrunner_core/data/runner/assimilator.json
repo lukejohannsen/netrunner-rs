@@ -1,0 +1,37 @@
+{
+  "id": "assimilator",
+  "title": "Assimilator",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click],[click]: Turn one of your facedown installed cards faceup. If that card is an event, trash it.",
+      "cost": {
+        "Clicks": 2
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalledFacedown",
+          "count": 1
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalledFacedown",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "TurnFaceup"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 21008,
+  "is_playable": true
+}

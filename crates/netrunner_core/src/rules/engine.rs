@@ -1904,6 +1904,32 @@ fn install_into_rig(
     payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
 }
 
+/// Turns one copy of `card_id` among the Runner's facedown installed
+/// cards faceup (`Effect::TurnFaceup`, Assimilator's): it regains its
+/// characteristics and becomes active where it is (CR 8.1.4e), so into the
+/// rig with its recurring credits (1.10.5b) and without `install_into_rig`,
+/// which is an install — "install only if" is not asked, and no "when
+/// installed" ability hears it. An event, or a Trojan, which is hosted on
+/// no ice, may not stand in the rig and is trashed (10.3.1e). The memory
+/// limit, the console rule and uniqueness are the checkpoint's, as for
+/// any card that becomes active. Nothing when no such copy is there now.
+pub(crate) fn turn_runner_card_faceup(state: &mut GameState, registry: &CardRegistry, card_id: &CardId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(position) = state.runner.installed_facedown.iter().position(|card| card == card_id) else { return Ok(Vec::new()) };
+    let card_def = registry.get(card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    state.runner.installed_facedown.remove(position);
+    if matches!(card_def.card_type, CardType::Event) || card_def.installs_on_ice {
+        state.runner.heap.push(card_id.clone());
+        let mut events = Vec::new();
+        let trashed = GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
+        dispatcher::emit(state, registry, &mut events, trashed)?;
+        return Ok(events);
+    }
+    let rig_card = seed_rig_card(state, registry, card_id.clone())?;
+    let install = rig_card.install_id;
+    state.runner.rig.push(rig_card);
+    payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
+}
+
 /// Whether `card_id`'s "Install only if…" holds now
 /// (`CardDefinition::install_requirement`), asked as the card. The door
 /// (`install_into_rig`) and every gate that offers a text install ask it,
