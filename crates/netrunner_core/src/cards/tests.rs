@@ -34771,3 +34771,51 @@ mod kitara_stage_10a {
         assert_eq!(traced.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Hostile Takeover needs 2");
     }
 }
+
+mod kitara_stage_10b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner plays `card`, and the Corp's trace is answered: the Corp
+    /// bids nothing and the Runner meets its base.
+    fn played_and_avoided(mut state: GameState, registry: &CardRegistry, card: &str, base: u32) -> GameState {
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id(card)];
+        let (traced, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id(card) }).expect("play it");
+        assert!(traced.active_trace.is_some(), "the Corp must trace");
+        let (bid, _) = apply_action(&traced, registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("corp bid");
+        let link = crate::rules::continuous::link(&bid, registry);
+        apply_action(&bid, registry, PlayerAction::SubmitRunnerTraceBid { amount: base.saturating_sub(link) }).expect("runner bid").0
+    }
+
+    #[test]
+    fn black_hat_unsuccessful_leaves_two_more_accesses_on_every_hq_or_rnd_breach() {
+        let registry = registry();
+        let avoided = played_and_avoided(base_state(), &registry, "black_hat", 4);
+        assert_eq!(avoided.delayed.len(), 1, "for the remainder of the turn");
+    }
+
+    #[test]
+    fn white_hat_unsuccessful_shuffles_up_to_two_hq_cards_into_rnd() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.corp.r_and_d = vec![id("hostile_takeover")];
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("white_hat")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("white_hat") }).is_err(), "no successful central run this turn");
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state);
+        let mut asked = played_and_avoided(state, &registry, "white_hat", 3);
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 3, "every card in HQ, revealed");
+        for toggle in toggles.into_iter().take(2) {
+            asked = apply_action(&asked, &registry, toggle).expect("toggle").0;
+        }
+        let (shuffled, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(shuffled.corp.hq.len(), 1);
+        assert_eq!(shuffled.corp.r_and_d.len(), 3);
+    }
+}

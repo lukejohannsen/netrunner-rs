@@ -1,0 +1,58 @@
+{
+  "id": "white_hat",
+  "title": "White Hat",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "ServerKind": "Central"
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "Sequence": [
+                {
+                  "RevealHand": "Corp"
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentHand",
+                    "filter": "Revealed",
+                    "min": 0,
+                    "max": 2,
+                    "reveal": false,
+                    "shuffle_after": true,
+                    "destination": "OpponentDeck"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Force the Corp to \"Trace[3]. If unsuccessful, reveal all cards in HQ. The Runner may choose up to 2 of the revealed cards. Shuffle those cards into R&D.\""
+    }
+  ],
+  "built_from": 21048,
+  "is_playable": true
+}

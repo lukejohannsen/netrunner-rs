@@ -1,0 +1,68 @@
+{
+  "id": "black_hat",
+  "title": "Black Hat",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "LaterThisTurn": {
+                "when": "OnBreach",
+                "filter": {
+                  "Server": [
+                    "RnD",
+                    "Hq"
+                  ]
+                },
+                "every_time": true,
+                "effect": {
+                  "Sequence": [
+                    {
+                      "EffectIf": {
+                        "condition": {
+                          "Breaching": "Hq"
+                        },
+                        "effect": {
+                          "AddAdditionalAccess": {
+                            "server": "Hq",
+                            "count": 2
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "EffectIf": {
+                        "condition": {
+                          "Breaching": "RnD"
+                        },
+                        "effect": {
+                          "AddAdditionalAccess": {
+                            "server": "RnD",
+                            "count": 2
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The Corp must trace[4]. If unsuccessful, for the remainder of the turn, access 2 additional cards whenever you breach HQ or R&D."
+    }
+  ],
+  "built_from": 21110,
+  "is_playable": true
+}

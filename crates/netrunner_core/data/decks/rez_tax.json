@@ -3,7 +3,7 @@
   "name": "Rez Tax",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n. Tranche 8 Stage 11r: two Stimhack for its two Katorga Breakout, a run event for a run event, run on nine hosted credits and ended in core damage nobody can prevent; Side Quest, Free Spirit and Pay as You Go keep Katorga Breakout. FFG F1 Stage 1 (Revised Core Set): two Force of Nature, decoder for decoder, for its two Utae; and two Morning Star, which breaks every barrier subroutine for a credit, for its two Stargate. Each card given up is still in another deck. FFG F1 Stage 2: two Singularity for its two Take a Dive, an event for an event, a remote run that trashes the server's root instead of breaching it. Another deck keeps Take a Dive. FFG F1 Stage 5: two Spinal Modem, a console for a console, for its The Toolbox and one of its two Cyberfeeder, suffering core damage whenever a trace succeeds during a run; both are still in other decks, and the deck now spends no influence. Kitara Stage 6a: two By Any Means for two Finality.",
+  "description": "Not a published list: built so the sweeps reach Reina Roja: Freedom Fighter, System Update 2021's Anarch identity, whose first piece of ice the Corp rezzes each turn costs 1[credit] more. On Free Spirit's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 11n. Tranche 8 Stage 11r: two Stimhack for its two Katorga Breakout, a run event for a run event, run on nine hosted credits and ended in core damage nobody can prevent; Side Quest, Free Spirit and Pay as You Go keep Katorga Breakout. FFG F1 Stage 1 (Revised Core Set): two Force of Nature, decoder for decoder, for its two Utae; and two Morning Star, which breaks every barrier subroutine for a credit, for its two Stargate. Each card given up is still in another deck. FFG F1 Stage 2: two Singularity for its two Take a Dive, an event for an event, a remote run that trashes the server's root instead of breaching it. Another deck keeps Take a Dive. FFG F1 Stage 5: two Spinal Modem, a console for a console, for its The Toolbox and one of its two Cyberfeeder, suffering core damage whenever a trace succeeds during a run; both are still in other decks, and the deck now spends no influence. Kitara Stage 6a: two By Any Means for two Finality. Two Black Hat and White Hat for two Xanadu and a Marrow (FFG F3 Stage 10b).",
   "style": [
     "rig",
     "dismantle"
@@ -72,7 +72,7 @@
     },
     {
       "card": "marrow",
-      "count": 2
+      "count": 1
     },
     {
       "card": "force_of_nature",
@@ -95,10 +95,6 @@
       "count": 2
     },
     {
-      "card": "xanadu",
-      "count": 2
-    },
-    {
       "card": "stimhack",
       "count": 2
     },
@@ -109,6 +105,14 @@
     {
       "card": "by_any_means",
       "count": 2
+    },
+    {
+      "card": "black_hat",
+      "count": 2
+    },
+    {
+      "card": "white_hat",
+      "count": 1
     }
   ]
 }
