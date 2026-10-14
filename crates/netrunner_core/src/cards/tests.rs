@@ -35260,3 +35260,68 @@ mod kitara_stage_12c {
         assert!(subroutines(&enigma).iter().all(|(_, gained)| !gained), "Enigma is no bioroid");
     }
 }
+
+mod kitara_stage_12d {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn with_facedown(facedown: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("assimilator"), install_id: fixture_install_id("assimilator"), ..Default::default() }];
+        state.runner.installed_facedown = facedown.iter().map(|card| id(card)).collect();
+        state
+    }
+
+    fn turn_faceup(state: &GameState, card: &str, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let assimilator = PlayerAction::ActivateAbility { target: install_of(state, "assimilator"), ability_index: 0 };
+        let (asked, _) = apply_action(state, registry, assimilator).expect("[click],[click]");
+        let position = state.runner.installed_facedown.iter().position(|facedown| *facedown == id(card)).expect("facedown");
+        let (chosen, _) = apply_action(&asked, registry, PlayerAction::ToggleCardSelection { position }).expect("choose it");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("turn it faceup")
+    }
+
+    #[test]
+    fn assimilator_turns_a_facedown_card_faceup_into_the_rig_with_its_credits_and_no_install() {
+        let registry = registry();
+        let state = with_facedown(&["sure_gamble", "cyberfeeder"]);
+        let (faceup, events) = turn_faceup(&state, "cyberfeeder", &registry);
+        assert_eq!(faceup.runner.installed_facedown, vec![id("sure_gamble")]);
+        let cyberfeeder = faceup.runner.rig.iter().find(|card| card.card == id("cyberfeeder")).expect("in the rig");
+        assert_eq!(cyberfeeder.counters, 1, "its recurring credit is placed as it becomes active");
+        assert_eq!(faceup.runner.resources.clicks, Clicks(2));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::HardwareInstalled { .. })), "turned faceup, not installed: {events:?}");
+    }
+
+    #[test]
+    fn assimilator_trashes_an_event_it_turns_faceup() {
+        let registry = registry();
+        let state = with_facedown(&["sure_gamble"]);
+        let (faceup, _) = turn_faceup(&state, "sure_gamble", &registry);
+        assert!(faceup.runner.installed_facedown.is_empty());
+        assert_eq!(faceup.runner.heap, vec![id("sure_gamble")]);
+        assert_eq!(faceup.runner.rig.len(), 1, "Assimilator alone");
+    }
+
+    #[test]
+    fn a_trojan_turned_faceup_is_hosted_on_no_ice_and_is_trashed() {
+        let registry = registry();
+        let state = with_facedown(&["kyuban"]);
+        let (faceup, _) = turn_faceup(&state, "kyuban", &registry);
+        assert_eq!(faceup.runner.heap, vec![id("kyuban")], "CR 10.3.1e: installed in an illegal location");
+        assert_eq!(faceup.runner.rig.len(), 1);
+    }
+
+    #[test]
+    fn assimilator_is_not_offered_with_nothing_facedown() {
+        let registry = registry();
+        let state = with_facedown(&[]);
+        let assimilator = PlayerAction::ActivateAbility { target: install_of(&state, "assimilator"), ability_index: 0 };
+        assert!(apply_action(&state, &registry, assimilator).is_err());
+    }
+}
