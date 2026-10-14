@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "cordyceps", "crypsis", "darwin", "datasucker", "fermenter", "hantu", "hemorrhage", "imp", "leech", "medium", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -34490,5 +34490,95 @@ mod kitara_stage_7a {
             placed = apply_action(&placed, &registry, first).expect("answer").0;
         }
         assert_eq!(placed.runner.rig.iter().find(|card| card.card == id("takobi")).map(|card| card.counters), Some(1));
+    }
+}
+
+mod kitara_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn rig(card: &str, install: u32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), counters, ..Default::default() }
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, install: u32) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index: 0 }).map(|(next, _)| next)
+    }
+
+    fn counters(state: &GameState, card: &str) -> Option<u32> {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).map(|installed| installed.counters)
+    }
+
+    #[test]
+    fn consume_gains_2_per_virus_counter_and_empties_itself() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("consume", 2001, 3)];
+        let used = act(&state, &registry, 2001).expect("use it");
+        assert_eq!(used.runner.resources.credits.0, 16);
+        assert_eq!(counters(&used, "consume"), Some(0), "remove all virus counters");
+    }
+
+    #[test]
+    fn crypt_spends_three_counters_and_itself_to_install_a_virus_program_from_the_stack() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.stack = vec![id("sure_gamble"), id("medium")];
+        state.runner.rig = vec![rig("crypt", 2001, 2)];
+        assert!(act(&state, &registry, 2001).is_err(), "3 hosted virus counters");
+        state.runner.rig = vec![rig("crypt", 2001, 3)];
+        let asked = act(&state, &registry, 2001).expect("use it");
+        assert!(asked.runner.heap.contains(&id("crypt")));
+        let toggle = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).expect("Medium, the one virus program");
+        let (asked, _) = apply_action(&asked, &registry, toggle).expect("toggle");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("medium")));
+        assert_eq!(installed.runner.resources.credits.0, 7, "paying its install cost");
+        assert_eq!(installed.runner.stack, vec![id("sure_gamble")]);
+    }
+
+    #[test]
+    fn exer_is_trashed_when_the_corp_purges() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner.rig = vec![rig("exer", 2001, 0)];
+        let (purged, _) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        let purged = pass_until_settled(purged, &registry).0;
+        assert!(purged.runner.heap.contains(&id("exer")), "trash this program");
+    }
+
+    #[test]
+    fn upya_spends_three_power_counters_once_a_turn_for_two_clicks() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("upya", 2001, 6)];
+        let used = act(&state, &registry, 2001).expect("use it");
+        assert_eq!(used.runner.resources.clicks.0, 4 - 1 + 2);
+        assert_eq!(counters(&used, "upya"), Some(3));
+        assert!(act(&used, &registry, 2001).is_err(), "once per turn");
+    }
+
+    #[test]
+    fn zer0_takes_a_net_damage_once_a_turn_for_a_credit_and_two_cards() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble")];
+        state.runner.stack = vec![id("diesel"), id("corroder")];
+        state.runner.rig = vec![rig("zer0", 2001, 0)];
+        let used = pass_until_settled(act(&state, &registry, 2001).expect("use it"), &registry).0;
+        assert_eq!(used.runner.resources.credits.0, 11);
+        assert_eq!(used.runner.grip.len(), 2, "the grip's card to the damage, then two drawn");
+        assert!(used.runner.heap.contains(&id("sure_gamble")));
+        assert!(act(&used, &registry, 2001).is_err(), "once per turn");
     }
 }

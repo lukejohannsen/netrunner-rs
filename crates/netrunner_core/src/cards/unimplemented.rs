@@ -90,7 +90,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zamba", "Zamba"),
     ("puffer", "Puffer"),
     ("lewi_guilherme", "Lewi Guilherme"),
-    ("upya", "Upya"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
 ];
@@ -109,9 +108,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
 pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("exer", "eXer"),
-    ("friday_chip", "Friday Chip"),
-    ("crypt", "Crypt"),
     ("corporate_grant", "Corporate \"Grant\""),
     ("no_one_home", "No One Home"),
     ("marathon", "Marathon"),
@@ -131,8 +127,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knobkierie", "Knobkierie"),
     ("rogue_trading", "Rogue Trading"),
     ("because_i_can", "Because I Can"),
-    ("nyashia", "Nyashia"),
-    ("consume", "Consume"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
     ("amani_senai", "Amani Senai"),
@@ -154,7 +148,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.
 pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("zer0", "Zer0"),
     ("musaazi", "Musaazi"),
     ("hippo", "Hippo"),
     ("pad_tap", "PAD Tap"),

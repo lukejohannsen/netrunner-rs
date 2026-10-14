@@ -1,0 +1,39 @@
+{
+  "id": "exer",
+  "title": "eXer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you breach R&D, access 1 additional card."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, trash this program."
+    }
+  ],
+  "built_from": 21041,
+  "is_playable": true
+}
