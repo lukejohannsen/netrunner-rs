@@ -111,7 +111,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("no_one_home", "No One Home"),
     ("marathon", "Marathon"),
     ("gbahali", "Gbahali"),
-    ("white_hat", "White Hat"),
     ("code_replicator", "Code Replicator"),
     ("reverse_infection", "Reverse Infection"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
@@ -146,7 +145,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("musaazi", "Musaazi"),
     ("hippo", "Hippo"),
     ("flame_out", "Flame-out"),
-    ("black_hat", "Black Hat"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
 ];
 
