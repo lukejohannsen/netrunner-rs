@@ -1110,8 +1110,9 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // Every virus host today is a public rig card; this is the strip
         // the variant's doc comment promised for the day a Corp card holds
         // virus counters.
-        GameEvent::VirusCountersPurged { cards } if cards.iter().any(concealed) => Some(GameEvent::VirusCountersPurged {
+        GameEvent::VirusCountersPurged { cards, removed } if cards.iter().any(concealed) => Some(GameEvent::VirusCountersPurged {
             cards: cards.iter().filter(|card| !concealed(card)).cloned().collect(),
+            removed: *removed,
         }),
         GameEvent::VirusCountersPurged { .. } => visible(),
         // Ice derezzed by the action that encountered it — Knowledge
@@ -2753,10 +2754,10 @@ mod tests {
         );
         assert_eq!(mask_event_for_player(&offered, &state, Side::Corp), Some(offered.clone()));
 
-        let purge = GameEvent::VirusCountersPurged { cards: vec![id("botulus"), id("ice_wall")] };
+        let purge = GameEvent::VirusCountersPurged { cards: vec![id("botulus"), id("ice_wall")], removed: 3 };
         assert_eq!(
             mask_event_for_player(&purge, &state, Side::Runner),
-            Some(GameEvent::VirusCountersPurged { cards: vec![id("botulus")] })
+            Some(GameEvent::VirusCountersPurged { cards: vec![id("botulus")], removed: 3 })
         );
     }
 

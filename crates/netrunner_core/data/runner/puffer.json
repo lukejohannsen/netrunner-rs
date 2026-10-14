@@ -1,0 +1,94 @@
+{
+  "id": "puffer",
+  "title": "Puffer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength and costs +1[mu] for each hosted power counter. — strength"
+    },
+    {
+      "kind": {
+        "MemoryCost": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength and costs +1[mu] for each hosted power counter. — memory"
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "[click]: Place 1 power counter on this program or remove 1 hosted power counter. — place",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 1
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[click]: Place 1 power counter on this program or remove 1 hosted power counter. — remove",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": []
+      }
+    }
+  ],
+  "built_from": 21004,
+  "is_playable": true
+}

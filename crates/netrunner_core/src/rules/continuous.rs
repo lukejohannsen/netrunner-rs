@@ -468,6 +468,19 @@ pub fn link(state: &GameState, registry: &CardRegistry) -> u32 {
 /// plus the boosts paid for) and what the table adds. **The one number** —
 /// the break contest, the view and the bots' pricing all read this, where
 /// the view used to show the stored half alone.
+/// What an installed card costs in memory: its printed cost and what the
+/// table adds (`ContinuousKind::MemoryCost`, Puffer's counters). Read by
+/// `memory::memory_balance`, the one ledger.
+pub fn memory_cost(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> i32 {
+    let Some(definition) = registry.get(&card.card) else { return 0 };
+    let printed = definition.memory_cost.unwrap_or(0) as i32;
+    printed
+        + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, |kind| match kind {
+            ContinuousKind::MemoryCost(number) => Some(number),
+            _ => None,
+        })
+}
+
 pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> i32 {
     let stored = lingering::rig_strength(state, card);
     let Some(definition) = registry.get(&card.card) else { return stored };

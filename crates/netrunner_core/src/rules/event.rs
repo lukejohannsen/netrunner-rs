@@ -633,7 +633,16 @@ pub enum GameEvent {
     /// a public Runner rig card; should a Corp card ever hold them,
     /// `masking::mask_event_for_player` already strips an unrezzed one
     /// from the Runner's copy of this list.
-    VirusCountersPurged { cards: Vec<CardId> },
+    ///
+    /// `removed` is how many counters the purge took off, all of them
+    /// together: "gain 1[credit] for each virus counter removed" (Acacia)
+    /// and "for every 3 virus counters removed" (Reverse Infection) are
+    /// read off it (`Amount::VirusCountersPurged`).
+    VirusCountersPurged {
+        cards: Vec<CardId>,
+        #[serde(default)]
+        removed: u32,
+    },
     /// A payment found pools its payer has to choose between, and the
     /// action that owes it is parked until they have (`PendingPayment`).
     /// The whole record of that step: nothing else has happened yet. What

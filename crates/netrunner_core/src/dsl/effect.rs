@@ -2261,6 +2261,12 @@ pub enum Amount {
     /// `GainCreditsAmount`s of this — composition instead of a multiplier
     /// field no second card needs.
     CreditsLostThisResolution,
+    /// Virus counters a purge removed: the purge a trigger heard (Acacia's
+    /// "gain 1[credit] for each virus counter removed"), else the one this
+    /// resolution made (Reverse Infection's "for every 3 virus counters
+    /// removed", under `Every`). 0 with neither. Composition didn't work:
+    /// the counters are gone by the time anything could count them.
+    VirusCountersPurged,
     /// Clicks the side whose action phase it is still has — Ritual's "Draw
     /// 1 card for each click you have remaining", counted *after* the click
     /// that played it was spent. Resolves to 0 outside an action phase.

@@ -75,6 +75,12 @@ pub struct ResolutionContext<'a> {
     /// accumulated, mirroring `damage_discarded`'s contract. Backs
     /// `Amount::CreditsLostThisResolution` (*Account Siphon*).
     pub credits_lost: u32,
+    /// Virus counters the most recent `Effect::PurgeVirusCounters` in this
+    /// same resolution removed — Reverse Infection's "trash 1 card from the
+    /// top of the stack for every 3 virus counters removed", after its own
+    /// purge. Backs `Amount::VirusCountersPurged` where no purge is the
+    /// triggering event.
+    pub virus_counters_purged: u32,
     /// How many cards the `PromptChooseCards` this `then` belongs to
     /// selected — `Amount::RemainingAfterSelection` (a sabotage's R&D
     /// half). 0 outside a selection's `then`.
@@ -1978,6 +1984,9 @@ pub fn evaluate_effect(
         // "when the Corp purges virus counters" hears Flyswatter too.
         Effect::PurgeVirusCounters => {
             let purged = crate::rules::engine::purge_all_virus_counters(state, registry);
+            if let GameEvent::VirusCountersPurged { removed, .. } = &purged {
+                ctx.virus_counters_purged = *removed;
+            }
             let mut events = Vec::new();
             dispatcher::emit(state, registry, &mut events, purged)?;
             Ok(events)
@@ -2138,6 +2147,12 @@ pub fn evaluate_effect(
                         // piece of ice", X its own: inside the chosen
                         // card's `then` the acting card is the one chosen.
                         | Amount::HostedAdvancementTokens => Some(resolve_amount(amount, ctx, state, registry)),
+                        // The purge a trigger heard (Acacia's); one the
+                        // option makes itself (Reverse Infection's) is
+                        // counted when it is made.
+                        Amount::VirusCountersPurged if matches!(ctx.triggering_event, Some(GameEvent::VirusCountersPurged { .. })) => {
+                            Some(resolve_amount(amount, ctx, state, registry))
+                        }
                         _ => None,
                     };
                     options.iter().map(|option| option.clone().filled(&fill)).collect()
@@ -5496,6 +5511,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             types.len() as u32
         }
         Amount::CreditsLostThisResolution => ctx.credits_lost,
+        Amount::VirusCountersPurged => match ctx.triggering_event {
+            Some(GameEvent::VirusCountersPurged { removed, .. }) => *removed,
+            _ => ctx.virus_counters_purged,
+        },
         // The greater of the two scores, in agenda points — Null Signal
         // Games' *Elevation* threat-level rule. Read off the score areas
         // through the registry, the same way `win::check_for_winner` does,

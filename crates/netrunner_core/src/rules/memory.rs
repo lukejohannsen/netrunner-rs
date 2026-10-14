@@ -70,8 +70,7 @@ pub fn memory_balance(state: &GameState, registry: &CardRegistry) -> i32 {
         .rig
         .iter()
         .filter(|installed| installed.hosted_on_rig_card.is_none_or(|host| continuous::hosts_memory(state, registry, host).is_none()))
-        .filter_map(|installed| registry.get(&installed.card))
-        .map(|card| card.memory_cost.unwrap_or(0) as i32)
+        .map(|installed| continuous::memory_cost(state, registry, installed))
         .sum();
     RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) - spent
 }
