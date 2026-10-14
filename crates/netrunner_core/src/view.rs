@@ -159,6 +159,10 @@ pub struct RunnerClientView {
     /// Public — see `RunnerState::play_area`: an event still resolving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
+    /// The Runner's currents, faceup and active in the play area
+    /// (`RunnerState::in_play`, CR 8.6.6c).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub in_play: Vec<crate::rules::PlayedOperation>,
     pub rig: Vec<PublicInstalledRunnerCard>,
     pub link_strength: u32,
     pub scored_agendas: Vec<ScoredAgenda>,
@@ -469,6 +473,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         other_identities: public.runner.other_identities,
         hosted_identities: public.runner.hosted_identities,
         play_area: public.runner.play_area,
+        in_play: public.runner.in_play,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
         points_to_win: crate::rules::continuous::points_to_win(state, registry, Side::Runner),

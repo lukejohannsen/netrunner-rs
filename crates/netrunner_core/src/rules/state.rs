@@ -814,6 +814,15 @@ pub struct RunnerState {
     /// is announced (`dispatcher::event_trashed`). Faceup, so public.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub play_area: Vec<CardId>,
+    /// The Runner's events that stay in the play area after they resolve
+    /// (CR 8.6.6c): a **current**, "not trashed until another current is
+    /// played or an agenda is scored" (`rules::current`). Active there
+    /// (CR 1.8.3a), so `rules::active` lists each with its handle, as a
+    /// lockdown in `CorpState::play_area` is. Not `play_area`, which is an
+    /// event still resolving. Faceup, so public, and carried whole by the
+    /// view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub in_play: Vec<PlayedOperation>,
     /// Agendas the Runner has stolen, in steal order, and cards added "as
     /// an agenda" (Jeitinho). Fully public — never masked. See
     /// `CorpState::scored_agendas`'s doc comment. The same entry as the

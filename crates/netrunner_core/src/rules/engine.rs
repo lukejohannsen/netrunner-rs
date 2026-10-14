@@ -1664,6 +1664,12 @@ fn play_event(
             _ => None,
         })
         .collect();
+    // A current is filed as it is played, as `play_operation_card` files
+    // one, so it is in play while its play is heard (`rules::current`).
+    let current = crate::rules::current::is_current(card_def) && !card_def.removed_after_play;
+    if current {
+        crate::rules::current::file(&mut next, registry, &mut events, side, card_id.clone())?;
+    }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone(), paid_with };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
     // As `play_operation_card` does: the cost's events after.
@@ -1679,8 +1685,8 @@ fn play_event(
     // left the play as it resolved, and is trashed by nothing.
     let scored_as_it_resolved = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count()
         > state.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count();
-    if scored_as_it_resolved {
-        // Nothing to file.
+    if scored_as_it_resolved || current {
+        // Nothing to file: it is where it will stay.
     } else if card_def.removed_after_play {
         next.runner.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id });
@@ -1805,6 +1811,10 @@ pub(crate) fn play_operation_card(
     if from_archives || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
+    } else if crate::rules::current::is_current(card_def) {
+        // A current stays in the play area, active, until another is
+        // played or an agenda is stolen (`rules::current`).
+        crate::rules::current::file(next, registry, &mut events, side, card_id.clone())?;
     } else if card_def.not_trashed_until_your_next_turn || card_def.subtypes.contains(&crate::dsl::CardSubtype::Condition) {
         // A lockdown stays in the play area, active, and is heard there:
         // its own `OnPlay` resolves as the copy with this handle
@@ -3078,6 +3088,8 @@ pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, targe
     // The win is the checkpoint's, and it comes first: `dispatch_event`
     // checks the score areas before it plans a trigger.
     events.extend(dispatcher::dispatch_event(next, registry, &scored_event)?);
+    // The Runner's currents expire, after the score is heard.
+    crate::rules::current::agenda_moved(next, registry, &mut events, Side::Corp)?;
     // The additional cost's own events, after, as every payer dispatches
     // them (`ability::dispatch_cost_events`).
     events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);

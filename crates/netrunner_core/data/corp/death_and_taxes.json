@@ -1,0 +1,110 @@
+{
+  "id": "death_and_taxes",
+  "title": "Death and Taxes",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner installs a card or trashes an installed card, you may gain 1[credit]."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "TrashedFrom": [
+              "Installed"
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner installs a card or trashes an installed card, you may gain 1[credit]."
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": {
+        "InstalledCard": "Any"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner installs a card or trashes an installed card, you may gain 1[credit]."
+    }
+  ],
+  "built_from": 21058,
+  "is_playable": true
+}

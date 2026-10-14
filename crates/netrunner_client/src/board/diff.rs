@@ -101,6 +101,11 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
             GameEvent::EventPlayed { card, .. }
                 if after.runner.play_area.iter().filter(|c| *c == card).count()
                     > before.runner.play_area.iter().filter(|c| *c == card).count() => {}
+            // A current stays in the play area until another is played or
+            // an agenda is scored, and its `CardTrashed` then is the move.
+            GameEvent::EventPlayed { card, .. }
+                if after.runner.in_play.iter().filter(|played| played.card == *card).count()
+                    > before.runner.in_play.iter().filter(|played| played.card == *card).count() => {}
             GameEvent::EventPlayed { card, .. } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Runner), to: Zone::Discard(Side::Runner) });
             }
@@ -329,6 +334,7 @@ mod tests {
             .chain(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter().cloned()))
             .chain(view.runner.heap.iter().cloned())
             .chain(view.runner.play_area.iter().cloned())
+            .chain(view.runner.in_play.iter().map(|played| played.card.clone()))
             .chain(view.corp.play_area.iter().map(|played| played.card.clone()))
             .chain(view.runner.removed_from_game.iter().cloned())
             .chain(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))

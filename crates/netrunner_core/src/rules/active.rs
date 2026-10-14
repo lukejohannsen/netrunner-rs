@@ -136,7 +136,15 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         server: None,
         place: Place::PlayArea,
     });
-    identity.chain(rig).chain(hosted_identities).chain(run_event)
+    // A current in the play area (CR 1.8.3a, `RunnerState::in_play`).
+    let in_play = state.runner.in_play.iter().map(|played| ActiveCard {
+        side: Side::Runner,
+        card: &played.card,
+        install: Some(played.handle),
+        server: None,
+        place: Place::PlayArea,
+    });
+    identity.chain(rig).chain(hosted_identities).chain(run_event).chain(in_play)
 }
 
 /// Whether the install `install` has lost all its abilities (CR 9.1.9a):
