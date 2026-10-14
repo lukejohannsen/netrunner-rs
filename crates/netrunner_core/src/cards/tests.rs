@@ -35399,3 +35399,71 @@ mod kitara_stage_12e {
         assert!(ended.runner.removed_from_game.is_empty());
     }
 }
+
+mod kitara_stage_12f {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Compile played on HQ, protected by a rezzed Enigma, up to the
+    /// choice its first encounter offers.
+    fn at_the_first_encounter(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("compile")];
+        state.runner.stack = vec![id("sure_gamble"), id("corroder"), id("sure_gamble")];
+        state.runner.heap = vec![id("gordian_blade")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("enigma"),
+            card: id("enigma"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("compile") }).expect("play Compile");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn install(state: &GameState, option: usize, zone: &[CardId], card: &str, registry: &CardRegistry) -> GameState {
+        let (asked, _) = apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("search");
+        let position = zone.iter().position(|zoned| *zoned == id(card)).expect("there");
+        let (chosen, _) = apply_action(&asked, registry, PlayerAction::ToggleCardSelection { position }).expect("choose it");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("install it").0
+    }
+
+    #[test]
+    fn compile_installs_a_program_from_the_stack_for_nothing_and_the_run_s_end_puts_it_at_the_bottom() {
+        let registry = registry();
+        let state = at_the_first_encounter(&registry);
+        assert!(state.pending_decision.is_some(), "the first encounter offers the search");
+        let stack = state.runner.stack.clone();
+        let installed = install(&state, 0, &stack, "corroder", &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(3), "Compile's 2[credit] and nothing for Corroder");
+        let (state, _) = apply_action(&installed, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes the encounter");
+        let (ended, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("Enigma's subroutines end the run");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.active_run.is_none(), "the run ended");
+        assert!(!ended.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(ended.runner.stack.first(), Some(&id("corroder")), "at the bottom of the stack");
+    }
+
+    #[test]
+    fn compile_may_install_from_the_heap_instead() {
+        let registry = registry();
+        let state = at_the_first_encounter(&registry);
+        let heap = state.runner.heap.clone();
+        let installed = install(&state, 1, &heap, "gordian_blade", &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("gordian_blade")));
+        assert!(installed.runner.heap.iter().all(|card| *card != id("gordian_blade")));
+    }
+}

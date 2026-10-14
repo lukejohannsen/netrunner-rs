@@ -1,0 +1,132 @@
+{
+  "id": "compile",
+  "title": "Compile",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnEncounter",
+                "this_run": true,
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnStack",
+                          "filter": {
+                            "All": [
+                              {
+                                "CardType": "Program"
+                              },
+                              {
+                                "Not": {
+                                  "HasSubtype": "Trojan"
+                                }
+                              }
+                            ]
+                          },
+                          "min": 0,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": true,
+                          "then": {
+                            "EffectIf": {
+                              "condition": {
+                                "AmountAtLeast": [
+                                  "CardsSelected",
+                                  1
+                                ]
+                              },
+                              "effect": {
+                                "InstallRunnerCardFromZone": {
+                                  "from": "OwnStack",
+                                  "discount": "AllCosts",
+                                  "if_installed": {
+                                    "SetRunEndedEffect": {
+                                      "AddToDeck": "Bottom"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnHeap",
+                          "filter": {
+                            "All": [
+                              {
+                                "CardType": "Program"
+                              },
+                              {
+                                "Not": {
+                                  "HasSubtype": "Trojan"
+                                }
+                              }
+                            ]
+                          },
+                          "min": 0,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "EffectIf": {
+                              "condition": {
+                                "AmountAtLeast": [
+                                  "CardsSelected",
+                                  1
+                                ]
+                              },
+                              "effect": {
+                                "InstallRunnerCardFromZone": {
+                                  "from": "OwnHeap",
+                                  "discount": "AllCosts",
+                                  "if_installed": {
+                                    "SetRunEndedEffect": {
+                                      "AddToDeck": "Bottom"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "Sequence": []
+                      }
+                    ],
+                    "texts": [
+                      "you may search your stack or heap for a program and install it, ignoring all costs — from the stack",
+                      "you may search your stack or heap for a program and install it, ignoring all costs — from the heap",
+                      ""
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. The first time you encounter a piece of ice during this run, you may search your stack or heap for a program and install it, ignoring all costs. When the run ends, add that program to the bottom of your stack if it is still installed."
+    }
+  ],
+  "built_from": 21088,
+  "is_playable": true
+}
