@@ -106,6 +106,13 @@ pub enum ContinuousKind {
     /// didn't work: `Memory` with a negative `per` lowers the limit, which
     /// is the same until the program is hosted outside it (Djinn).
     MemoryCost(Number),
+    /// Memory units the Runner may use only for the programs `only` admits
+    /// — Knobkierie's "+3[mu]. Use the MU on Knobkierie only for virus
+    /// programs" (`Scope::Controller`). `memory::memory_balance` counts as
+    /// much of it as those programs cost, and none of it otherwise, so an
+    /// install of any other program is priced against the rest. Composition
+    /// didn't work: `Memory` is the Runner's to use for anything.
+    MemoryOnlyFor { amount: Number, only: crate::dsl::CardFilter },
     /// Maximum hand size of the player — "you get +1 maximum hand size".
     /// It was the one standing number still *stored*: folded into the state
     /// at install, at a score and at setup, and never taken back out, so a

@@ -1,0 +1,70 @@
+{
+  "id": "musaazi",
+  "title": "Musaazi",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 1,
+  "memory_cost": 2,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 virus counter on this program",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run, you may place 1 virus counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Any virus counter: Break sentry subroutine.",
+      "cost": {
+        "VirusCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Any virus counter: +1 strength.",
+      "cost": {
+        "VirusCounters": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 21102,
+  "is_playable": true
+}

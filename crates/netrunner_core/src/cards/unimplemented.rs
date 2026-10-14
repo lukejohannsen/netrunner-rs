@@ -86,7 +86,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.
 pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("yusuf", "Yusuf"),
     ("zamba", "Zamba"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
@@ -116,7 +115,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
 pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("knobkierie", "Knobkierie"),
     ("because_i_can", "Because I Can"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
@@ -138,7 +136,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.
 pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("musaazi", "Musaazi"),
     ("hippo", "Hippo"),
     ("flame_out", "Flame-out"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),

@@ -150,21 +150,22 @@ pub(crate) fn before_program_install(
     memory_cost: u32,
     trash_first: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(incoming) = registry.get(card) else { return Ok(Vec::new()) };
     let programs: Vec<InstallId> = installed_programs(state, registry);
-    if short_after(state, registry, memory_cost, &[]) == 0 && !trash_first {
+    if short_after(state, registry, incoming, &[]) == 0 && !trash_first {
         return Ok(Vec::new());
     }
-    if short_after(state, registry, memory_cost, &programs) > 0 {
+    if short_after(state, registry, incoming, &programs) > 0 {
         return Err(RulesError::InsufficientMemory { available: memory::available_memory(state, registry), requested: memory_cost });
     }
     // Optional only when the rules force nothing: when they do, the plain
     // install already asks which, and the two entries would be one move.
-    if trash_first && (programs.is_empty() || short_after(state, registry, memory_cost, &[]) > 0) {
+    if trash_first && (programs.is_empty() || short_after(state, registry, incoming, &[]) > 0) {
         return Err(RulesError::NothingToTrashFirst { card: card.clone() });
     }
     let mut picked: Vec<InstallId> = Vec::new();
     loop {
-        let short = short_after(state, registry, memory_cost, &picked);
+        let short = short_after(state, registry, incoming, &picked);
         let owed = short > 0 || (trash_first && picked.is_empty());
         if !owed && !trash_first {
             break;
@@ -182,12 +183,12 @@ pub(crate) fn before_program_install(
     trash(state, registry, Side::Runner, &picked)
 }
 
-/// Whether a program of `memory_cost` could be installed at all: it fits
+/// Whether `program` could be installed at all: it fits
 /// once every installed program is gone. The gate an install by a card's
 /// text is offered by (`engine::can_install_runner_card_from_zone`), so a
 /// selection never names a program its install would refuse.
-pub(crate) fn program_could_fit(state: &GameState, registry: &CardRegistry, memory_cost: u32) -> bool {
-    short_after(state, registry, memory_cost, &[]) == 0 || short_after(state, registry, memory_cost, &installed_programs(state, registry)) == 0
+pub(crate) fn program_could_fit(state: &GameState, registry: &CardRegistry, program: &crate::dsl::CardDefinition) -> bool {
+    short_after(state, registry, program, &[]) == 0 || short_after(state, registry, program, &installed_programs(state, registry)) == 0
 }
 
 fn installed_programs(state: &GameState, registry: &CardRegistry) -> Vec<InstallId> {
@@ -200,23 +201,24 @@ fn installed_programs(state: &GameState, registry: &CardRegistry) -> Vec<Install
         .collect()
 }
 
-/// How much memory a program of `memory_cost` would still be short with
-/// `picked` gone, and what they hosted with them — worked out on a copy
-/// rather than by subtracting costs, because a host program can change what
-/// its hosted programs cost and a program can grant memory.
-fn short_after(state: &GameState, registry: &CardRegistry, memory_cost: u32, picked: &[InstallId]) -> u32 {
-    let balance = if picked.is_empty() { memory::memory_balance(state, registry) } else { balance_without(state, registry, picked) };
-    (memory_cost as i32 - balance).max(0) as u32
+/// How much memory `incoming` would still be short with `picked` gone,
+/// and what they hosted with them — worked out on a copy rather than by
+/// subtracting costs, because a host program can change what its hosted
+/// programs cost, a program can grant memory, and memory granted for some
+/// programs only (Knobkierie's) fits one program and not another.
+fn short_after(state: &GameState, registry: &CardRegistry, incoming: &crate::dsl::CardDefinition, picked: &[InstallId]) -> u32 {
+    let balance = if picked.is_empty() { memory::memory_balance_with(state, registry, Some(incoming)) } else { balance_without(state, registry, incoming, picked) };
+    (-balance).max(0) as u32
 }
 
-fn balance_without(state: &GameState, registry: &CardRegistry, picked: &[InstallId]) -> i32 {
+fn balance_without(state: &GameState, registry: &CardRegistry, incoming: &crate::dsl::CardDefinition, picked: &[InstallId]) -> i32 {
     let mut without = state.clone();
     for install in picked {
         // A rig card announces nothing on its way out, so there is nothing
         // to fail.
         let _ = pending_choice::remove_installed_card(&mut without, registry, Side::Runner, &CardZoneRef::OwnInstalled, *install);
     }
-    memory::memory_balance(&without, registry)
+    memory::memory_balance_with(&without, registry, Some(incoming))
 }
 
 /// Takes the next answer, or asks: `Some(install)` for a card, `None` for

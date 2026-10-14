@@ -62,17 +62,34 @@ pub const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
 /// that stops being true. The grant was a `memory_bonus` field summed the
 /// same way, and is the scan the continuous-effect layer was modelled on.
 pub fn memory_balance(state: &GameState, registry: &CardRegistry) -> i32 {
+    memory_balance_with(state, registry, None)
+}
+
+/// [`memory_balance`] with `incoming`, a program not yet installed, counted
+/// at its printed cost — what an install asks (CR 3.9.3b). A grant for
+/// some programs only (Knobkierie's, `continuous::memory_only_for`) counts
+/// as much as the programs it is for spend, so whether a program fits
+/// depends on which program it is, not only on what it costs.
+pub(crate) fn memory_balance_with(state: &GameState, registry: &CardRegistry, incoming: Option<&crate::dsl::CardDefinition>) -> i32 {
     // A program a card hosts outside the limit (Djinn's "the memory costs
     // of hosted programs do not count against your memory limit",
     // `continuous::hosts_memory`) spends none of it.
-    let spent: i32 = state
+    let installed = state
         .runner
         .rig
         .iter()
         .filter(|installed| installed.hosted_on_rig_card.is_none_or(|host| continuous::hosts_memory(state, registry, host).is_none()))
-        .map(|installed| continuous::memory_cost(state, registry, installed))
+        .filter_map(|installed| registry.get(&installed.card).map(|card| (card, continuous::memory_cost(state, registry, installed))));
+    let spending: Vec<(&crate::dsl::CardDefinition, i32)> = installed.chain(incoming.map(|card| (card, card.memory_cost.unwrap_or(0) as i32))).collect();
+    let spent: i32 = spending.iter().map(|(_, cost)| cost).sum();
+    let set_aside: i32 = continuous::memory_only_for(state, registry)
+        .into_iter()
+        .map(|(only, amount)| {
+            let for_these: i32 = spending.iter().filter(|(card, _)| crate::dsl::card_matches_filter(card, &only)).map(|(_, cost)| cost).sum();
+            amount.min(for_these)
+        })
         .sum();
-    RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) - spent
+    RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) + set_aside - spent
 }
 
 /// Memory units the Runner has free — [`memory_balance`] clamped at zero,

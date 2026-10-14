@@ -770,6 +770,67 @@ pub(crate) struct RemovedInstall {
     pub trashed: Option<crate::rules::event::TrashedInstall>,
 }
 
+/// The rig cards holding virus counters, by position in the rig (the
+/// positions of `CardZoneRef::OwnInstalled`), with how many each holds:
+/// a card whose counters are virus counters (`CounterKind::Virus`), as
+/// the purge reads them.
+pub(crate) fn virus_counters(state: &GameState, registry: &CardRegistry) -> Vec<(usize, u32)> {
+    state
+        .runner
+        .rig
+        .iter()
+        .enumerate()
+        .filter(|(_, installed)| installed.counters > 0 && registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus))
+        .map(|(position, installed)| (position, installed.counters))
+        .collect()
+}
+
+/// Which cards `Cost::VirusCounters` takes its `count` counters from, as
+/// `(rig position, how many)`. Asked one counter at a time, as
+/// `pick_for_cost` asks one card at a time, and only where the answer
+/// changes what the Runner is left with: never when every counter left is
+/// taken, or when one card holds them all.
+pub(crate) fn pick_virus_counters(state: &mut GameState, registry: &CardRegistry, count: u32) -> Result<Vec<(usize, u32)>, RulesError> {
+    let held = virus_counters(state, registry);
+    let mut taken: Vec<(usize, u32)> = held.iter().map(|&(position, _)| (position, 0)).collect();
+    let mut needed = count;
+    while needed > 0 {
+        let left: Vec<(usize, u32)> = held.iter().zip(&taken).map(|(&(position, has), &(_, took))| (position, has - took)).filter(|&(_, n)| n > 0).collect();
+        let total: u32 = left.iter().map(|(_, n)| n).sum();
+        if total < needed {
+            return Err(RulesError::InsufficientCounters { card: CardId(String::new()), required: count, available: total + (count - needed) });
+        }
+        if total == needed || left.len() == 1 {
+            for (position, n) in left {
+                let take = n.min(needed);
+                if let Some(slot) = taken.iter_mut().find(|(p, _)| *p == position) {
+                    slot.1 += take;
+                }
+                needed -= take;
+                if needed == 0 {
+                    break;
+                }
+            }
+            break;
+        }
+        if state.payment_answers.is_empty() {
+            let question = crate::rules::payment::CardQuestion {
+                zone: CardZoneRef::OwnInstalled,
+                eligible: left.iter().map(|&(position, _)| position as u32).collect(),
+                remaining: needed,
+            };
+            return Err(RulesError::PaymentChoiceNeeded { side: Side::Runner, amount: count, question: crate::rules::payment::Ask::Card(question) });
+        }
+        let answer = state.payment_answers.remove(0) as usize;
+        let Some(slot) = taken.iter_mut().find(|(position, _)| *position == answer).filter(|_| left.iter().any(|&(position, _)| position == answer)) else {
+            return Err(RulesError::CardNotEligibleForSelection(answer));
+        };
+        slot.1 += 1;
+        needed -= 1;
+    }
+    Ok(taken.into_iter().filter(|&(_, n)| n > 0).collect())
+}
+
 /// The positions in `zone` a `Cost::Trash` takes, asking the payer only
 /// where the answer changes what they are left with — the Payment Rule's
 /// test, applied to cards. Nothing is asked when every card left is taken,
