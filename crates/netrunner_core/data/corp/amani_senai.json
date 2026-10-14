@@ -1,0 +1,89 @@
+{
+  "id": "amani_senai",
+  "title": "Amani Senai",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "unique": true,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Trace": {
+                  "base": "TriggeringAgendaAdvancementRequirement",
+                  "on_success": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": "Any",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": true,
+                      "shuffle_after": false,
+                      "destination": "OpponentHand"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "trace[X]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may trace[X]. If successful, add an installed Runner card to the grip. X is the advancement requirement of the scored or stolen agenda."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Trace": {
+                  "base": "TriggeringAgendaAdvancementRequirement",
+                  "on_success": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": "Any",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": true,
+                      "shuffle_after": false,
+                      "destination": "OpponentHand"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "trace[X]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may trace[X]. If successful, add an installed Runner card to the grip. X is the advancement requirement of the scored or stolen agenda."
+    }
+  ],
+  "built_from": 21076,
+  "is_playable": true
+}

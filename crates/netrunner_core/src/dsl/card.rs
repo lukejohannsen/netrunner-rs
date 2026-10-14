@@ -1231,6 +1231,8 @@ pub enum CardValidationError {
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("card {0:?} reads `Amount::ChosenNumber` outside the `then` of an `Effect::ChooseNumber`, where no number has been chosen and it is 0")]
     ChosenNumberNobodyChose(CardId),
+    #[error("card {0:?} reads `Amount::TraceMargin` outside the `on_success` of an `Effect::Trace`, where no trace succeeded and it is 0")]
+    TraceMarginWithoutATrace(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
     #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost or an operation's additional cost to play; X is chosen before anything is paid (CR 1.16.2c)")]
@@ -1755,6 +1757,8 @@ impl CardDefinition {
         // nothing. The substitution stops at a `then`, so a root it
         // changes names the placeholder where no number was chosen.
         let mut chosen_number_nobody_chose = false;
+        // `Amount::TraceMargin` anywhere but a trace's `on_success` reads 0.
+        let mut trace_margin_without_a_trace = false;
         // `restrict_to: Some(Other)` parses and breaks exactly the ice a
         // breaker with no restriction breaks, which is not what a card
         // restricted to a type means.
@@ -1848,9 +1852,15 @@ impl CardDefinition {
             if !x_effects.iter().any(|x| std::ptr::eq(*x, root)) {
                 chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
             }
+            // The walk stops at a trace, so a root it changes names the
+            // margin where no trace succeeded.
+            trace_margin_without_a_trace |= root.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin).then_some(1)) != *root;
         }
         if chosen_number_nobody_chose {
             return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));
+        }
+        if trace_margin_without_a_trace {
+            return Err(CardValidationError::TraceMarginWithoutATrace(self.id.clone()));
         }
         if revealed_cards_wait {
             return Err(CardValidationError::RevealedCardsCannotWait(self.id.clone()));
@@ -2928,6 +2938,14 @@ mod tests {
             secret: false,
         };
         assert_eq!(event(bounded_by_itself).validate(), Err(CardValidationError::ChosenNumberNobodyChose(CardId("baz".to_string()))));
+        // Trojan Horse's margin is a number only inside the trace's
+        // success, where it is written in.
+        let margin = || Effect::GiveTags(Amount::TraceMargin);
+        let traced = Effect::Trace { base: Amount::Fixed(4), on_success: Box::new(margin()), on_failure: None };
+        assert_eq!(event(traced).validate(), Ok(()));
+        assert_eq!(event(margin()).validate(), Err(CardValidationError::TraceMarginWithoutATrace(CardId("baz".to_string()))));
+        let in_the_base = Effect::Trace { base: Amount::TraceMargin, on_success: Box::new(Effect::Sequence(Vec::new())), on_failure: None };
+        assert_eq!(event(in_the_base).validate(), Err(CardValidationError::TraceMarginWithoutATrace(CardId("baz".to_string()))));
     }
 
     #[test]

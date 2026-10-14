@@ -112,13 +112,11 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("marathon", "Marathon"),
     ("gbahali", "Gbahali"),
     ("white_hat", "White Hat"),
-    ("kuwinda_k4h1u3", "Kuwinda K4H1U3"),
     ("code_replicator", "Code Replicator"),
     ("reverse_infection", "Reverse Infection"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
     ("degree_mill", "Degree Mill"),
     ("death_and_taxes", "Death and Taxes"),
-    ("trojan_horse", "Trojan Horse"),
 ];
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
@@ -127,7 +125,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("because_i_can", "Because I Can"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
-    ("amani_senai", "Amani Senai"),
     ("sso_industries_fueling_innovation", "SSO Industries: Fueling Innovation"),
 ];
 
@@ -151,7 +148,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("flame_out", "Flame-out"),
     ("black_hat", "Black Hat"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
-    ("surveyor", "Surveyor"),
 ];
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.

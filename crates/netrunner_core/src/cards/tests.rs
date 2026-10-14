@@ -34681,3 +34681,93 @@ mod kitara_stage_9a {
         assert!(trashed.runner.heap.contains(&id("pad_tap")));
     }
 }
+
+mod kitara_stage_10a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state
+    }
+
+    fn bids(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: corp }).expect("corp bid");
+        apply_action(&state, registry, PlayerAction::SubmitRunnerTraceBid { amount: runner }).expect("runner bid").0
+    }
+
+    #[test]
+    fn trojan_horse_trashes_a_program_costing_no_more_than_the_margin() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.hq = vec![id("trojan_horse")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("trojan_horse") }).is_err(), "the Runner accessed nothing last turn");
+        crate::rules::turn_log::record(&mut state, &registry, &crate::rules::GameEvent::CardAccessed { card: id("hedge_fund"), server: ServerId::Hq, install: None });
+        crate::rules::turn_log::rotate(&mut state);
+        // Corroder costs 2, Datasucker 1: a margin of 1 reaches only the
+        // second.
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: InstallId(2001), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("datasucker"), install_id: InstallId(2002), ..Default::default() },
+        ];
+        let (traced, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("trojan_horse") }).expect("Trojan Horse");
+        let link = crate::rules::continuous::link(&traced, &registry);
+        let asked = bids(&traced, &registry, 0, 3 - link);
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 1, "4 against 3: only a program costing 1 or less");
+        let (asked, _) = apply_action(&asked, &registry, toggles[0].clone()).expect("toggle");
+        let (trashed, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(trashed.runner.heap.contains(&id("datasucker")));
+    }
+
+    #[test]
+    fn surveyor_traces_at_twice_the_ice_protecting_its_server() {
+        let registry = registry();
+        let mut state = base_state();
+        for (i, card) in ["surveyor", "ice_wall"].iter().enumerate() {
+            state.corp.installed.push(crate::rules::InstalledCard { install_id: InstallId(3001 + i as u32), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        }
+        let surveyor = state.corp.installed[0].clone();
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &surveyor.card, surveyor.install_id), 4);
+        let mut ctx = crate::rules::ResolutionContext::for_parked(Some(InstallId(3001)), Some(&surveyor.card));
+        let effect = registry.get(&id("surveyor")).unwrap().subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(&mut state, &effect, &mut ctx, &registry).expect("trace");
+        assert_eq!(state.active_trace.as_ref().map(|trace| trace.base_strength), Some(4));
+    }
+
+    #[test]
+    fn kuwinda_traces_at_its_counters_and_banks_one_when_it_fails() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(3001), card: id("kuwinda_k4h1u3"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: true, counters: 2, ..Default::default() }];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let mut asked = state;
+        while asked.active_trace.is_none() {
+            let first = crate::rules::legal_actions(&asked, &registry).into_iter().next().expect("pass, then you may trace");
+            asked = apply_action(&asked, &registry, first).expect("trace").0;
+        }
+        assert_eq!(asked.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "X is the hosted power counters");
+        let link = crate::rules::continuous::link(&asked, &registry);
+        let failed = bids(&asked, &registry, 0, 2u32.saturating_sub(link));
+        assert_eq!(failed.corp.installed[0].counters, 3, "unsuccessful: place 1 power counter");
+    }
+
+    #[test]
+    fn amani_senai_traces_at_the_scored_agendas_advancement_requirement() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(3001), card: id("amani_senai"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        let mut ctx = crate::rules::ResolutionContext::for_parked(Some(InstallId(3001)), None);
+        let event = crate::rules::GameEvent::AgendaStolen { card: id("hostile_takeover"), agenda_points: 1 };
+        ctx.triggering_event = Some(&event);
+        let effect = registry.get(&id("amani_senai")).unwrap().triggers[1].effects[0].clone();
+        crate::rules::evaluate_effect(&mut state, &effect, &mut ctx, &registry).expect("may");
+        let first = crate::rules::legal_actions(&state, &registry).into_iter().next().expect("trace[X]");
+        let (traced, _) = apply_action(&state, &registry, first).expect("trace");
+        assert_eq!(traced.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Hostile Takeover needs 2");
+    }
+}

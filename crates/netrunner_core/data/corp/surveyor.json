@@ -1,0 +1,59 @@
+{
+  "id": "surveyor",
+  "title": "Surveyor",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 5,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 2,
+          "of": "IceProtectingThisServer"
+        }
+      },
+      "applies_to": "This",
+      "text": "X is twice the number of ice protecting this server."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[X]. If successful, give the Runner 2 tags.",
+      "effect": {
+        "Trace": {
+          "base": {
+            "Times": {
+              "amount": "IceProtectingThisServer",
+              "times": 2
+            }
+          },
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[X]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": {
+            "Times": {
+              "amount": "IceProtectingThisServer",
+              "times": 2
+            }
+          },
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 21118,
+  "is_playable": true
+}

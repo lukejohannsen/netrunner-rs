@@ -121,6 +121,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::AccessedCardAdvancementCounters => "the advancement counters on the card being accessed".to_string(),
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
+        Amount::TraceMargin => "the amount the trace succeeded by".to_string(),
+        Amount::TriggeringAgendaAdvancementRequirement => "that agenda's advancement requirement".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
         Amount::InScoreAreaWithSubtype(subtype) => format!("the number of {} agendas in your score area", subtype.printed().to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
@@ -343,9 +345,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             SubroutineBreakCount::All => "break all subroutines".to_string(),
             SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
         },
-        Effect::Trace { base, on_success, on_failure } => match on_failure {
-            None => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
-            Some(on_failure) => format!(
+        Effect::Trace { base, on_success, on_failure } => match (describe_amount(base), on_failure) {
+            (base, None) => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
+            (base, Some(on_failure)) => format!(
                 "trace {base}: if successful, {}; if unsuccessful, {}",
                 describe_effect(on_success, registry),
                 describe_effect(on_failure, registry)
