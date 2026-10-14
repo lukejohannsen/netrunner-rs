@@ -449,7 +449,16 @@ pub(crate) fn prevent(state: &mut GameState, registry: &CardRegistry, word: &Pre
 /// After an interrupt resolved: with all of it prevented, or nobody able
 /// to prevent any more of it, there is nothing left to ask, and the window
 /// closes without waiting for two passes.
+///
+/// **Not while the interrupt is still resolving.** No One Home's
+/// prevention waits behind a trace the Corp and the Runner bid on, which
+/// is answered by actions of their own (`engine::apply_action` lets the
+/// bids through while something is parked); the trace calls this again
+/// once it is over (`trace::submit_runner_bid`).
 pub(crate) fn after_interrupt(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_trace.is_some() {
+        return Ok(Vec::new());
+    }
     let Some(pending) = state.pending_prevention.as_ref().filter(|_| asking(state)) else { return Ok(Vec::new()) };
     if pending.prevented >= pending.what.amount() || !could_prevent(state, registry, &pending.what) {
         return finish(state, registry);

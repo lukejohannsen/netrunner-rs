@@ -3,7 +3,7 @@
   "name": "Advance Fee",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a).",
+  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a). No One Home (Kitara Stage 10c) in for Cat's Cradle: the trace an interrupt starts.",
   "style": [
     "pressure"
   ],
@@ -62,10 +62,6 @@
       "count": 2
     },
     {
-      "card": "cats_cradle",
-      "count": 2
-    },
-    {
       "card": "penumbral_toolkit",
       "count": 2
     },
@@ -116,6 +112,10 @@
     {
       "card": "kasi_string",
       "count": 1
+    },
+    {
+      "card": "no_one_home",
+      "count": 2
     }
   ]
 }

@@ -2672,11 +2672,20 @@ fn activate_ability(
     if ability.is_action() {
         paid_ability::require_no_window(state)?;
     }
-    // An interrupt window admits interrupts only. Whether this one is about
-    // what is parked is `Effect::Prevent`'s own refusal, below.
+    // An interrupt window admits interrupts only, and an interrupt is used
+    // only about what is parked. That used to be `Effect::Prevent`'s own
+    // refusal alone, which is enough when the prevention is the effect;
+    // No One Home's waits behind a trace, which would start anywhere — in
+    // the window at the end of the Runner's turn, in the sweep — and only
+    // fail to prevent anything once the trace was lost.
     let interrupting = state.pending_prevention.is_some();
-    if interrupting && ability.effect.prevents().is_none() {
-        return Err(RulesError::ActionBlockedByPrevention);
+    let about_what_is_parked = |word: &crate::dsl::Preventable| {
+        state.pending_prevention.as_ref().is_some_and(|pending| prevention::matches(word, &pending.what, state, registry))
+    };
+    match ability.effect.prevents() {
+        Some(word) if !about_what_is_parked(&word) => return Err(RulesError::NothingToPrevent),
+        None if interrupting => return Err(RulesError::ActionBlockedByPrevention),
+        _ => {}
     }
     // A mid-access ability is the Runner's, at step 7.2.2 of an access and
     // nowhere else (CR 9.3.6b); and a breach opens no paid ability window

@@ -971,9 +971,13 @@ fn preventions(def: &CardDefinition) -> Vec<(Harm, u32, Option<u32>)> {
         let mut found = None;
         effect.for_each_effect(&mut |effect| {
             if let Effect::Prevent(what) = effect {
+                // "All" (No One Home) is priced as three, the most a card
+                // prevents by number (Crash Space), not as the number
+                // that stands for it, which would swamp the sum.
+                let counted = |n: u32| if n == Preventable::ALL { 3 } else { n };
                 found = match what {
-                    Preventable::Damage { kind, up_to } => Some((Harm::Damage(*kind), *up_to)),
-                    Preventable::Tags(n) => Some((Harm::Tags, *n)),
+                    Preventable::Damage { kind, up_to } => Some((Harm::Damage(*kind), counted(*up_to))),
+                    Preventable::Tags(n) => Some((Harm::Tags, counted(*n))),
                     _ => found,
                 };
             }

@@ -2765,6 +2765,15 @@ pub enum Preventable {
     Expose,
 }
 
+impl Preventable {
+    /// "Prevent **all** tags or all net damage" (No One Home): the amount
+    /// of a `Damage` or `Tags` word that prevents whatever is left of it.
+    /// A number rather than a word of its own, because prevention already
+    /// counts each use against what is left (`prevention::prevent`), and
+    /// "all" is simply more than anything parked.
+    pub const ALL: u32 = u32::MAX;
+}
+
 /// Which ice an `Effect::ModifyStrength` changes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StrengthOf {

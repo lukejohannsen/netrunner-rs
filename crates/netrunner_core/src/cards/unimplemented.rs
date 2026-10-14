@@ -108,7 +108,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
 pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("corporate_grant", "Corporate \"Grant\""),
-    ("no_one_home", "No One Home"),
     ("marathon", "Marathon"),
     ("gbahali", "Gbahali"),
     ("code_replicator", "Code Replicator"),

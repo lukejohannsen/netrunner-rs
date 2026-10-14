@@ -1,0 +1,137 @@
+{
+  "id": "no_one_home",
+  "title": "No One Home",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → The first time each turn you would take tags or suffer net damage, you may trash this resource to have the Corp trace[0]. If unsuccessful, prevent all tags or all net damage. — tags",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "AmountAtLeast": [
+                {
+                  "TimesThisTurn": "OnTagsGiven"
+                },
+                1
+              ]
+            }
+          },
+          {
+            "And": [
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    {
+                      "TimesThisTurn": "OnTagsAvoided"
+                    },
+                    1
+                  ]
+                }
+              },
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    {
+                      "TimesThisTurnWhen": {
+                        "trigger": "OnDamageAboutToResolve",
+                        "when": {
+                          "Damage": "Net"
+                        }
+                      }
+                    },
+                    1
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effect": {
+        "Trace": {
+          "base": 0,
+          "on_success": {
+            "Sequence": []
+          },
+          "on_failure": {
+            "Prevent": {
+              "Tags": 4294967295
+            }
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → The first time each turn you would take tags or suffer net damage, you may trash this resource to have the Corp trace[0]. If unsuccessful, prevent all tags or all net damage. — net damage",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "AmountAtLeast": [
+                {
+                  "TimesThisTurn": "OnTagsGiven"
+                },
+                1
+              ]
+            }
+          },
+          {
+            "And": [
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    {
+                      "TimesThisTurn": "OnTagsAvoided"
+                    },
+                    1
+                  ]
+                }
+              },
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    {
+                      "TimesThisTurnWhen": {
+                        "trigger": "OnDamageAboutToResolve",
+                        "when": {
+                          "Damage": "Net"
+                        }
+                      }
+                    },
+                    2
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effect": {
+        "Trace": {
+          "base": 0,
+          "on_success": {
+            "Sequence": []
+          },
+          "on_failure": {
+            "Prevent": {
+              "Damage": {
+                "kind": "Net",
+                "up_to": 4294967295
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 21045,
+  "is_playable": true
+}

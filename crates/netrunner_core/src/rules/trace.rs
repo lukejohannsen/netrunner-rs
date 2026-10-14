@@ -101,6 +101,10 @@ pub(crate) fn submit_runner_bid(
     // credit pool, heard after the trace it paid for resolved
     // (`ability::dispatch_cost_events`).
     events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
+    // A trace an interrupt began (No One Home's) was what the window was
+    // waiting on: with it over, the window closes if nothing is left to
+    // ask about.
+    events.extend(crate::rules::prevention::after_interrupt(state, registry)?);
 
     if trace.resume == TraceResume::ResumeSubroutines {
         // What the success did may have parked a choice of its own —
