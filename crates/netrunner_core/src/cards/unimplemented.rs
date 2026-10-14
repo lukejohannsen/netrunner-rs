@@ -87,7 +87,6 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Sovereign Sight* (`sovereign_sight`): tranche F3 of the FFG plan.
 pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zamba", "Zamba"),
-    ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
 ];
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.

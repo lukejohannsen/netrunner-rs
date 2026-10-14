@@ -3114,6 +3114,19 @@ impl Effect {
         named
     }
 
+    /// Whether an install in this effect is narrowed to one server
+    /// (`PromptInstallCorpCard::only_server`), so a trigger heard on an
+    /// install writes that install's server in only where it is read.
+    pub fn names_only_server(&self) -> bool {
+        let mut named = false;
+        self.for_each_effect(&mut |effect| {
+            if let Effect::PromptInstallCorpCard { only_server: Some(_), .. } = effect {
+                named = true;
+            }
+        });
+        named
+    }
+
     /// `CardTarget::Install(PLACEHOLDER)` written over as `install`, the card
     /// an `Effect::ForEach` is resolving for, through the shapes Game
     /// Over's is written in; any other effect is returned as it is.
