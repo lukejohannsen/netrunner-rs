@@ -1,0 +1,113 @@
+{
+  "id": "wu_netspace",
+  "name": "Netspace Thrill",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Kabonesa Wu: Netspace Thrillseeker, Kitara's Shaper identity, whose click searches the stack for a non-virus program and installs it 1[credit] cheaper, removing it from the game if it is still installed when the turn ends. On Level Pegging's list, its identity swapped; named to sort after every other deck, so the sweep schedule of those before it does not move.",
+  "style": [
+    "rig"
+  ],
+  "identity": "kabonesa_wu_netspace_thrillseeker",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 1
+    },
+    {
+      "card": "blueberry_diesel",
+      "count": 2
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "the_artist",
+      "count": 2
+    },
+    {
+      "card": "living_mural",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "atman",
+      "count": 2
+    },
+    {
+      "card": "euler",
+      "count": 2
+    },
+    {
+      "card": "simulchip",
+      "count": 2
+    },
+    {
+      "card": "cordyceps",
+      "count": 2
+    },
+    {
+      "card": "aniccam",
+      "count": 1
+    },
+    {
+      "card": "harmony_ar_therapy",
+      "count": 1
+    },
+    {
+      "card": "in_the_groove",
+      "count": 2
+    },
+    {
+      "card": "rejig",
+      "count": 2
+    },
+    {
+      "card": "access_to_globalsec",
+      "count": 2
+    },
+    {
+      "card": "armitage_codebusting",
+      "count": 2
+    },
+    {
+      "card": "battering_ram",
+      "count": 2
+    },
+    {
+      "card": "tinkering",
+      "count": 2
+    },
+    {
+      "card": "laamb",
+      "count": 2
+    },
+    {
+      "card": "engolo",
+      "count": 2
+    }
+  ]
+}

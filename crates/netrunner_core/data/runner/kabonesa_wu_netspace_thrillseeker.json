@@ -1,0 +1,74 @@
+{
+  "id": "kabonesa_wu_netspace_thrillseeker",
+  "title": "Kabonesa Wu: Netspace Thrillseeker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "Not": {
+                  "HasSubtype": "Virus"
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": true,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnStack",
+                  "discount": {
+                    "Credits": 1
+                  },
+                  "if_installed": {
+                    "LaterThisTurn": {
+                      "when": "OnDiscardPhaseEnd",
+                      "effect": {
+                        "EffectIf": {
+                          "condition": "ThisCardIsInstalled",
+                          "effect": {
+                            "RemoveFromGame": "ThisCard"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "[click]: Search your stack for a non-virus program and install it, lowering its install cost by 1[credit], then shuffle your stack. If that program is still installed when your turn ends, remove it from the game."
+    }
+  ],
+  "built_from": 21025,
+  "is_playable": true
+}

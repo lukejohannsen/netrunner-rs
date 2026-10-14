@@ -1004,7 +1004,20 @@ pub enum Effect {
     /// Café's "Install 1 hosted card"), which was `InstallRunnerCardFromHost`
     /// until the Café's discount wanted the zone install's; anything else is
     /// `RulesError::UnresolvedCardTarget`.
-    InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef, discount: Discount },
+    ///
+    /// `if_installed` resolves as the card the install put in the rig, if
+    /// it did — Kabonesa Wu's "If that program is still installed when
+    /// your turn ends, remove it from the game", a `LaterThisTurn` made as
+    /// the program, so the ability it leaves remembers that install and no
+    /// other copy. A field rather than a step after the install in a
+    /// `Sequence`: the step after it acts as the card the search found,
+    /// which has no install until this one makes it.
+    InstallRunnerCardFromZone {
+        from: crate::dsl::CardZoneRef,
+        discount: Discount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        if_installed: Option<Box<Effect>>,
+    },
     /// Sets cards aside faceup from the top of the Runner's stack, one at a
     /// time, until `count` of them match `filter` or the stack is empty —
     /// The Wizard's Chest's "Set aside cards from the top of your stack
@@ -3425,6 +3438,7 @@ impl Effect {
                 on_differ.for_each_effect(f);
             }
             Effect::PromptChooseCards { then: Some(effect), .. }
+            | Effect::InstallRunnerCardFromZone { if_installed: Some(effect), .. }
             | Effect::Access { then: Some(effect), .. }
             | Effect::IncreaseAboutToResolve { then: Some(effect), .. } => effect.for_each_effect(f),
             Effect::Access { then: None, .. } => {}
@@ -3472,7 +3486,7 @@ impl Effect {
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip
-            | Effect::InstallRunnerCardFromZone { .. }
+            | Effect::InstallRunnerCardFromZone { if_installed: None, .. }
             | Effect::SetAsideFromTopUntil { .. }
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
             | Effect::RedirectRunOnApproach(..)

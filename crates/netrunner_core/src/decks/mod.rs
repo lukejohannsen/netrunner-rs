@@ -584,6 +584,9 @@ mod tests {
             // Kitara Stage 11c: Freedom Khumalo's deck, on Pay As You Go's
             // frame; Kitara is in neither pool.
             ("pure_anarchy", &neither),
+            // Kitara Stage 12e: Kabonesa Wu's deck, on Level Pegging's list;
+            // Kitara is in neither pool.
+            ("wu_netspace", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

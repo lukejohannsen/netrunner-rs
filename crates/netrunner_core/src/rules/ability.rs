@@ -870,7 +870,7 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::DrawCards(*side, resolved), ctx, registry)
         }
 
-        Effect::InstallRunnerCardFromZone { from, discount } => {
+        Effect::InstallRunnerCardFromZone { from, discount, if_installed } => {
             use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
             let source = match from {
                 crate::dsl::CardZoneRef::OwnHeap => RunnerCardSource::Heap,
@@ -890,7 +890,15 @@ pub fn evaluate_effect(
             if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, source, discount) {
                 return Ok(Vec::new());
             }
-            install_runner_card_from_zone_with_discount(state, registry, card_id, source, discount)
+            let before: Vec<InstallId> = state.runner.rig.iter().map(|card| card.install_id).collect();
+            let mut events = install_runner_card_from_zone_with_discount(state, registry, card_id.clone(), source, discount)?;
+            if let Some(rider) = if_installed {
+                let installed = state.runner.rig.iter().find(|card| card.card == card_id && !before.contains(&card.install_id)).map(|card| card.install_id);
+                if let Some(install) = installed {
+                    events.extend(evaluate_effect(state, rider, &mut ResolutionContext::for_parked(Some(install), Some(&card_id)), registry)?);
+                }
+            }
+            Ok(events)
         }
 
         // Read down the stack from its top (the end of the `Vec`) until

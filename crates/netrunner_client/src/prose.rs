@@ -459,13 +459,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PromptInstallCorpCard { not_in_root_of: Some(_), .. } => "install a card, not in the root of this server".to_string(),
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
-        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
-        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n) } => format!("install a card from {}, paying {n} less", describe_zone(from)),
-        Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
-        Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(amount) } => {
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0), .. } => format!("install a card from {}", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n), .. } => format!("install a card from {}, paying {n} less", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts, .. } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(amount), .. } => {
             format!("install a card from {}, paying 1 less for each of {}", describe_zone(from), describe_amount(amount))
         }
-        Effect::InstallRunnerCardFromZone { from, discount: Discount::Surcharge(n) } => format!("install a card from {}, paying {n} more", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Surcharge(n), .. } => format!("install a card from {}, paying {n} more", describe_zone(from)),
         Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp, .. } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
         Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Runner, facedown: true } => format!("set aside the top {count} cards of the stack facedown"),
         Effect::SetAsideFromTopUntil { filter, count, deck, .. } => {

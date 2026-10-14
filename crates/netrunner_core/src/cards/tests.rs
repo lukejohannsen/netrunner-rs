@@ -35325,3 +35325,77 @@ mod kitara_stage_12d {
         assert!(apply_action(&state, &registry, assimilator).is_err());
     }
 }
+
+mod kitara_stage_12e {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const KABONESA: PlayerAction = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("kabonesa_wu_netspace_thrillseeker"));
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.stack = vec![id("datasucker"), id("corroder"), id("sure_gamble")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state
+    }
+
+    fn search(state: &GameState, card: &str, registry: &CardRegistry) -> GameState {
+        let (asked, _) = apply_action(state, registry, KABONESA).expect("[click]: search the stack");
+        let position = state.runner.stack.iter().position(|stacked| *stacked == id(card)).expect("in the stack");
+        let (chosen, _) = apply_action(&asked, registry, PlayerAction::ToggleCardSelection { position }).expect("choose it");
+        apply_action(&chosen, registry, PlayerAction::ConfirmCardSelection).expect("install it").0
+    }
+
+    #[test]
+    fn kabonesa_wu_installs_a_non_virus_program_from_the_stack_a_credit_cheaper() {
+        let registry = registry();
+        let installed = search(&runner_turn(), "corroder", &registry);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert!(!installed.runner.stack.contains(&id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(4), "Corroder's 2[credit], lowered by 1");
+        assert_eq!(installed.runner.resources.clicks, Clicks(3));
+    }
+
+    #[test]
+    fn kabonesa_wu_never_offers_a_virus() {
+        let registry = registry();
+        let state = runner_turn();
+        let (asked, _) = apply_action(&state, &registry, KABONESA).expect("search");
+        for refused in ["datasucker", "sure_gamble"] {
+            let position = state.runner.stack.iter().position(|stacked| *stacked == id(refused)).expect("in the stack");
+            assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position }).is_err(), "{refused} is not a non-virus program");
+        }
+    }
+
+    #[test]
+    fn the_program_still_installed_when_the_turn_ends_is_removed_from_the_game() {
+        let registry = registry();
+        let installed = search(&runner_turn(), "corroder", &registry);
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&installed), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(!ended.runner.rig.iter().any(|card| card.card == id("corroder")), "gone from the rig");
+        assert_eq!(ended.runner.removed_from_game, vec![id("corroder")]);
+    }
+
+    #[test]
+    fn a_program_that_left_before_the_turn_ended_is_not_chased() {
+        let registry = registry();
+        let mut installed = search(&runner_turn(), "corroder", &registry);
+        // Trashed before the turn ends; a second Corroder installed since
+        // is another object, which the delayed ability does not name.
+        installed.runner.rig.retain(|card| card.card != id("corroder"));
+        installed.runner.heap.push(id("corroder"));
+        installed.runner.rig.push(crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: fixture_install_id("corroder_again"), ..Default::default() });
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&installed), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.runner.rig.iter().any(|card| card.card == id("corroder")), "the other Corroder stays");
+        assert!(ended.runner.removed_from_game.is_empty());
+    }
+}
