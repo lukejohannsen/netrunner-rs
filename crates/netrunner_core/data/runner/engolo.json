@@ -1,0 +1,71 @@
+{
+  "id": "engolo",
+  "title": "Engolo",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "GainIceSubtype": {
+                "subtype": "CodeGate",
+                "ice": "Encountered"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit]"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, you may pay 2[credit]. If you do, it gains code gate for the remainder of that encounter."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +4 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 4,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 21108,
+  "is_playable": true
+}

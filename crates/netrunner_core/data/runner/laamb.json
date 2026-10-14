@@ -1,0 +1,69 @@
+{
+  "id": "laamb",
+  "title": "Laamb",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "GainIceSubtype": {
+                "subtype": "Barrier",
+                "ice": "Encountered"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit]"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, you may pay 2[credit]. If you do, it gains barrier for the remainder of that encounter."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break any number of barrier subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "3[credit]: +6 strength.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 6,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 21086,
+  "is_playable": true
+}

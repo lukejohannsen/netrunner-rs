@@ -110,6 +110,12 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
             // from the game. Named here as a second move back into Archives,
             // it claimed a place the card was not in.
             GameEvent::OperationPlayed { from_archives: true, .. } => {}
+            // A lockdown stays in the Corp's play area until their next turn
+            // begins (NAPD Cordon), and its `CardTrashed` then is the move to
+            // Archives. Named here, it claimed Archives a turn early.
+            GameEvent::OperationPlayed { card, .. }
+                if after.corp.play_area.iter().filter(|played| played.card == *card).count()
+                    > before.corp.play_area.iter().filter(|played| played.card == *card).count() => {}
             GameEvent::OperationPlayed { card, .. } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Corp), to: Zone::Discard(Side::Corp) });
             }
@@ -323,6 +329,7 @@ mod tests {
             .chain(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter().cloned()))
             .chain(view.runner.heap.iter().cloned())
             .chain(view.runner.play_area.iter().cloned())
+            .chain(view.corp.play_area.iter().map(|played| played.card.clone()))
             .chain(view.runner.removed_from_game.iter().cloned())
             .chain(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))
             .chain(view.corp.identity.iter().cloned())

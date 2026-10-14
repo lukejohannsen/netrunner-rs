@@ -1,0 +1,36 @@
+{
+  "id": "cyberdelia",
+  "title": "Cyberdelia",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you fully break a piece of ice, gain 1[credit]."
+    }
+  ],
+  "built_from": 21006,
+  "is_playable": true
+}
