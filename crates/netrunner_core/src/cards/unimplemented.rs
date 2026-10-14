@@ -92,7 +92,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("kabonesa_wu_netspace_thrillseeker", "Kabonesa Wu: Netspace Thrillseeker"),
     ("emergent_creativity", "Emergent Creativity"),
     ("rng_key", "RNG Key"),
     ("jinja_city_grid", "Jinja City Grid"),
