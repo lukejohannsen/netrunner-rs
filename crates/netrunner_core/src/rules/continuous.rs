@@ -579,6 +579,18 @@ pub(crate) struct OwnSubroutines {
     /// copy is the same subroutine, so the order among them is nothing a
     /// player can see.
     pub after: Vec<crate::dsl::SubroutineDef>,
+    /// Granted by another card's static ability, said to come before the
+    /// ice's other subroutines (CR 9.8.3a) — Warden Fatuma's "Each rezzed
+    /// piece of bioroid ice gains “[subroutine] The Runner loses [click].”
+    /// before its other subroutines". Ahead of `before`, and behind what
+    /// the run granted (`RunState::gained_for_the_run`), which began to
+    /// apply later and 9.8.3a puts first. Empty for ice that cannot gain
+    /// abilities now (Hush on it), as a grant for the run is.
+    pub granted_before: Vec<crate::dsl::SubroutineDef>,
+    /// Granted by another card's static ability with no order said
+    /// (9.8.3e): behind `after`, and ahead of the run's grants, which are
+    /// newer.
+    pub granted_after: Vec<crate::dsl::SubroutineDef>,
     /// A printed subroutine lost, and how many of its printed copies are
     /// left — Hive's "loses 1 of its printed “[subroutine] End the run.”
     /// subroutines for each agenda point in your score area", a negative
@@ -588,15 +600,25 @@ pub(crate) struct OwnSubroutines {
     pub keep: Vec<(crate::dsl::SubroutineDef, usize)>,
 }
 
-/// The subroutines the ice `install` gains, or loses, by its own static
-/// ability (`ContinuousKind::Subroutines`: Echo's, Envelopment's, Hive's).
+/// The subroutines the ice `install` gains, or loses, by a static ability
+/// (`ContinuousKind::Subroutines`): its own (Echo's, Envelopment's,
+/// Hive's) and another card's (Warden Fatuma's, `Scope::Ice`), which it
+/// gains only while it may gain abilities (`active::may_have_granted`).
 pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, install: InstallId) -> OwnSubroutines {
     let mut own = OwnSubroutines::default();
     let Some(target) = Target::corp_install(state, registry, install) else { return own };
     let printed = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)).map(|card| card.subroutines.clone()).unwrap_or_default();
-    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::Subroutines { .. }), |effect, _, ctx| {
+    let may_gain = active::may_have_granted(state, registry, install);
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::Subroutines { .. }), |effect, source, ctx| {
         if let ContinuousKind::Subroutines { subroutine, count, before: first } = &effect.kind {
             let count = count.per * ability::resolve_amount(&count.of, ctx, state, registry) as i32;
+            if !source.own_text_only {
+                if may_gain && count > 0 {
+                    let into = if *first { &mut own.granted_before } else { &mut own.granted_after };
+                    into.extend(std::iter::repeat_n((**subroutine).clone(), count as usize));
+                }
+                return;
+            }
             if count < 0 {
                 let copies = printed.iter().filter(|printed| **printed == **subroutine).count();
                 own.keep.push(((**subroutine).clone(), copies.saturating_sub(count.unsigned_abs() as usize)));

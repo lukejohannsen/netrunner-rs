@@ -354,10 +354,16 @@ fn add_gained_for_the_run(run: &mut RunState, position: usize, may_gain: bool) {
 /// Adds to the ice at `position`, as an encounter with it begins, the
 /// subroutines it gains by its own static ability
 /// (`continuous::own_subroutines`: Echo's and Envelopment's): `before`
-/// ahead of its printed ones (CR 9.8.3b) and `after` behind them (9.8.3d).
-/// Called ahead of `add_gained_for_the_run`, which then puts another
-/// card's grants outside both (9.8.3a first, 9.8.3e last), so the list
-/// stands in CR 9.8.2's order. Marked `gained`, so they go with the
+/// ahead of its printed ones (CR 9.8.3b) and `after` behind them (9.8.3d),
+/// and outside both what another card's static ability grants it (Warden
+/// Fatuma's, 9.8.3a and 9.8.3e). Called ahead of `add_gained_for_the_run`,
+/// which then puts the run's grants outermost (9.8.3a's newest first,
+/// 9.8.3e's oldest first, and they began to apply after any static grant
+/// standing as the encounter begins), so the list stands in CR 9.8.2's
+/// order. Read as the encounter begins: the encounter's window is (P)
+/// only (CR 6.9.3b), so no Warden Fatuma is rezzed in it by the Corp's
+/// own hand. **Not modelled:** one rezzed mid-encounter by a card's text,
+/// or trashed there, changes the next encounter and not this one. Marked `gained`, so they go with the
 /// encounter and the next one counts again: read as each encounter begins,
 /// because nothing in the pool moves the count during one (Echo's on a
 /// rez, Envelopment's as a turn begins). A printed subroutine the ice
@@ -367,8 +373,8 @@ fn add_gained_for_the_run(run: &mut RunState, position: usize, may_gain: bool) {
 /// the second nothing back.
 fn add_own_subroutines(run: &mut RunState, position: usize, own: continuous::OwnSubroutines) {
     let Some(ice) = run.ice.get_mut(position) else { return };
-    let continuous::OwnSubroutines { before, after, keep } = own;
-    if before.is_empty() && after.is_empty() && keep.is_empty() {
+    let continuous::OwnSubroutines { before, after, keep, granted_before, granted_after } = own;
+    if before.is_empty() && after.is_empty() && keep.is_empty() && granted_before.is_empty() && granted_after.is_empty() {
         return;
     }
     // A printed subroutine lost (Hive's) goes from the back, "beginning
@@ -381,7 +387,13 @@ fn add_own_subroutines(run: &mut RunState, position: usize, own: continuous::Own
     }
     let gained = |definition| EncounteredSubroutine { id: 0, definition, status: SubroutineStatus::Pending, gained: true };
     let printed = std::mem::take(&mut ice.subroutines);
-    ice.subroutines = before.into_iter().map(gained).chain(printed).chain(after.into_iter().map(gained)).collect();
+    ice.subroutines = granted_before
+        .into_iter()
+        .chain(before)
+        .map(gained)
+        .chain(printed)
+        .chain(after.into_iter().chain(granted_after).map(gained))
+        .collect();
     renumber_subroutines(ice);
 }
 
