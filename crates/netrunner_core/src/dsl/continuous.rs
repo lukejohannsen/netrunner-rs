@@ -99,6 +99,13 @@ pub enum ContinuousKind {
     Strength(Number),
     /// Memory units available to the player — a console's "+1[mu]".
     Memory(Number),
+    /// What a program costs in memory, beside its printed cost — Puffer's
+    /// "costs +1[mu] for each hosted power counter" (`Scope::This`). Asked
+    /// by `memory::memory_balance` for every installed card, so a counter
+    /// placed past the limit is the checkpoint's to trash for. Composition
+    /// didn't work: `Memory` with a negative `per` lowers the limit, which
+    /// is the same until the program is hosted outside it (Djinn).
+    MemoryCost(Number),
     /// Maximum hand size of the player — "you get +1 maximum hand size".
     /// It was the one standing number still *stored*: folded into the state
     /// at install, at a score and at setup, and never taken back out, so a

@@ -1,0 +1,50 @@
+{
+  "id": "reverse_infection",
+  "title": "Reverse Infection",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  "PurgeVirusCounters",
+                  {
+                    "Mill": {
+                      "deck": "Runner",
+                      "amount": {
+                        "Every": {
+                          "amount": "VirusCountersPurged",
+                          "every": 3
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              }
+            ],
+            "texts": [
+              "Purge virus counters. Trash 1 card from the top of the stack for every 3 virus counters removed.",
+              "Gain 2[credit]."
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 21053,
+  "is_playable": true
+}

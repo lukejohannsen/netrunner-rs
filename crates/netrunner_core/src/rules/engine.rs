@@ -3151,15 +3151,18 @@ pub(crate) fn purge_all_virus_counters(state: &mut GameState, registry: &CardReg
         |card_id: &CardId| registry.get(card_id).and_then(|c| c.counter_kind) == Some(CounterKind::Virus);
 
     let mut purged = Vec::new();
+    let mut removed = 0;
     for installed in state.corp.installed.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+        removed += installed.counters;
         installed.counters = 0;
         purged.push(installed.card.clone());
     }
     for rigged in state.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+        removed += rigged.counters;
         rigged.counters = 0;
         purged.push(rigged.card.clone());
     }
-    GameEvent::VirusCountersPurged { cards: purged }
+    GameEvent::VirusCountersPurged { cards: purged, removed }
 }
 
 /// Resolves `PlayerAction::TrashResource`, per its doc comment. Corp-only.
@@ -6625,6 +6628,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::VirusCountersPurged {
                     cards: vec![CardId("botulus".to_string()), CardId("leech".to_string())],
+                    removed: 5,
                 },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Purge },
             ]
@@ -6653,7 +6657,7 @@ mod tests {
             apply_action(&state, &registry(), PlayerAction::PurgeVirusCounters).expect("an empty purge is still legal");
 
         assert_eq!(next.corp.resources.clicks, Clicks(0));
-        assert_eq!(events.iter().rev().nth(1), Some(&GameEvent::VirusCountersPurged { cards: Vec::new() }));
+        assert_eq!(events.iter().rev().nth(1), Some(&GameEvent::VirusCountersPurged { cards: Vec::new(), removed: 0 }));
     }
 
     #[test]

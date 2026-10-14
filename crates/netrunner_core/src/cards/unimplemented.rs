@@ -88,14 +88,12 @@ pub(crate) const RAR_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("yusuf", "Yusuf"),
     ("zamba", "Zamba"),
-    ("puffer", "Puffer"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
 ];
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("acacia", "Acacia"),
     ("plague", "Plague"),
     ("kabonesa_wu_netspace_thrillseeker", "Kabonesa Wu: Netspace Thrillseeker"),
     ("emergent_creativity", "Emergent Creativity"),
@@ -111,7 +109,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("marathon", "Marathon"),
     ("gbahali", "Gbahali"),
     ("code_replicator", "Code Replicator"),
-    ("reverse_infection", "Reverse Infection"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
     ("degree_mill", "Degree Mill"),
     ("death_and_taxes", "Death and Taxes"),

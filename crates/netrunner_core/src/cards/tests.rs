@@ -8583,7 +8583,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "flyswatter") }).expect("rez");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::VirusCountersPurged { cards } if cards.len() == 1)));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::VirusCountersPurged { cards, .. } if cards.len() == 1)));
         assert_eq!(state.runner.rig[0].counters, 0);
         // The engine only ever rezzes ice while it is approached, so the
         // "during a run against this server" condition cannot be false for
@@ -34887,5 +34887,65 @@ mod kitara_stage_10c {
         crate::rules::turn_log::record(&mut state, &registry, &crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 });
         let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
         assert!(!offered.iter().any(|action| matches!(action, PlayerAction::ActivateAbility { .. })), "a tag came earlier this turn: {offered:?}");
+    }
+}
+
+mod kitara_stage_11a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), counters, ..Default::default() }
+    }
+
+    #[test]
+    fn acacia_gains_a_credit_for_each_virus_counter_the_corp_purges() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.rig = vec![rig("acacia", 2001, 0), rig("medium", 2002, 3)];
+        let credits = state.runner.resources.credits.0;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        let (asked, _) = close_all_windows(asked, &registry);
+        let (gained, events) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take it");
+        assert_eq!(gained.runner.resources.credits.0, credits + 3, "{events:?} {:?}", asked.pending_decision);
+        assert!(gained.runner.heap.contains(&id("acacia")), "and trash Acacia");
+    }
+
+    #[test]
+    fn reverse_infection_trashes_a_card_from_the_stack_for_every_three_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(1);
+        state.corp.hq = vec![id("reverse_infection")];
+        state.runner.rig = vec![rig("medium", 2002, 7)];
+        state.runner.stack = (0..5).map(|i| id(&format!("stack_{i}"))).collect();
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("reverse_infection") }).expect("play it");
+        let (purged, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("purge");
+        assert_eq!(purged.runner.rig[0].counters, 0);
+        assert_eq!(purged.runner.stack.len(), 3, "7 counters: 2 cards");
+    }
+
+    #[test]
+    fn puffer_grows_in_strength_and_memory_with_its_power_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![rig("puffer", 2001, 0)];
+        let memory = crate::rules::memory::memory_balance(&state, &registry);
+        let (placed, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 2 }).expect("place");
+        assert_eq!(placed.runner.rig[0].counters, 1);
+        let strength = |state: &GameState| crate::rules::continuous::breaker_strength(state, &registry, &state.runner.rig[0]);
+        assert_eq!(strength(&placed), strength(&state) + 1);
+        assert_eq!(crate::rules::memory::memory_balance(&placed, &registry), memory - 1, "+1[mu]");
+        let (removed, _) = apply_action(&placed, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 3 }).expect("remove");
+        assert_eq!(removed.runner.rig[0].counters, 0);
+        assert!(apply_action(&removed, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 3 }).is_err(), "nothing to remove");
     }
 }

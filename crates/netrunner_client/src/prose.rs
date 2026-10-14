@@ -94,6 +94,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CorpCardsAddedToArchivesThisTurn => "the Corp cards added to Archives this turn".to_string(),
         Amount::TimesThisActionThisTurn => "the times you have taken that action this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
+        Amount::VirusCountersPurged => "the virus counters the purge removed".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
         Amount::PrintedAgendaPoints => "its agenda points".to_string(),
@@ -942,6 +943,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
     let what = match &effect.kind {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
+        ContinuousKind::MemoryCost(number) => format!("costs {} memory", signed(number)),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
         ContinuousKind::HostsMemory(number) => format!("hosts up to {} memory of programs, outside the memory limit", signed(number).trim_start_matches('+')),
         ContinuousKind::AgendaPointsToWin(number) => format!("needs {} agenda points to win", signed(number)),
