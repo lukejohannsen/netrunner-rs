@@ -1,0 +1,29 @@
+{
+  "id": "freedom_khumalo_crypto_anarchist",
+  "title": "Freedom Khumalo: Crypto-Anarchist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "VirusCounters": "AccessedCardPrintedCost"
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "CurrentlyAccessingNonAgenda"
+        ]
+      },
+      "effect": "TrashCurrentlyAccessedCard",
+      "text": "Access, once per turn → Any X virus counters: Trash the non-agenda card you are accessing."
+    }
+  ],
+  "built_from": 21081,
+  "is_playable": true
+}

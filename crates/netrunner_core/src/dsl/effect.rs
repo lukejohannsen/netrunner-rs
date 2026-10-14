@@ -307,12 +307,12 @@ pub enum Effect {
     /// hosted power counters, Surveyor's twice the ice protecting its
     /// server, Amani Senai's scored agenda's advancement requirement. It is
     /// resolved once, as the trace is initiated, and a card file may still
-    /// write a number (`trace_base`), as every trace before Kitara does.
+    /// write a number (`number_or_amount`), as every trace before Kitara does.
     /// `on_success` may read the amount by which the Corp's total exceeded
     /// the Runner's (`Amount::TraceMargin`, Trojan Horse), written in when
     /// the trace succeeds.
     Trace {
-        #[serde(deserialize_with = "trace_base", serialize_with = "write_trace_base")]
+        #[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")]
         base: Amount,
         on_success: Box<Effect>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2117,14 +2117,14 @@ impl Amount {
 /// `Effect::Trace::base` written back the way a card file writes it: a
 /// fixed base as its number, so a trace round-trips to the file it came
 /// from.
-fn write_trace_base<S: serde::Serializer>(base: &Amount, serializer: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn write_number_or_amount<S: serde::Serializer>(base: &Amount, serializer: S) -> Result<S::Ok, S::Error> {
     match base {
         Amount::Fixed(number) => serializer.serialize_u32(*number),
         other => other.serialize(serializer),
     }
 }
 
-fn trace_base<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Amount, D::Error> {
+pub(crate) fn number_or_amount<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Amount, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Base {

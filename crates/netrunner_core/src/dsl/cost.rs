@@ -201,7 +201,13 @@ pub enum Cost {
     /// (`payment::Ask::Card`), only where the answer changes what they are
     /// left with (`pending_choice::pick_virus_counters`). Composition
     /// didn't work: `RemoveCounters` is the acting card's own counters.
-    VirusCounters(u32),
+    /// An `Amount` because Freedom Khumalo's "Any X virus counters … X must
+    /// be equal to that card's rez or play cost" is
+    /// `AccessedCardPrintedCost`; a card file writes a fixed count as its
+    /// number, as a trace's base is written.
+    VirusCounters(
+        #[serde(deserialize_with = "super::effect::number_or_amount", serialize_with = "super::effect::write_number_or_amount")] Amount,
+    ),
     /// Remove `u32` advancement counters hosted on the acting card —
     /// Sacrifice Zone Expansion's "you may remove 1 hosted advancement
     /// counter to do 1 meat damage". Not `RemoveCounters`: advancement

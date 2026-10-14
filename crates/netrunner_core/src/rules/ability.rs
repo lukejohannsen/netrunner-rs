@@ -4041,7 +4041,9 @@ pub(crate) fn cost_is_affordable(
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         // The same scan the payment picks from.
         Cost::VirusCounters(amount) => {
-            side == Side::Runner && crate::rules::pending_choice::virus_counters(state, registry).iter().map(|(_, held)| held).sum::<u32>() >= *amount
+            side == Side::Runner
+                && crate::rules::pending_choice::virus_counters(state, registry).iter().map(|(_, held)| held).sum::<u32>()
+                    >= resolve_amount(amount, ctx, state, registry)
         }
         Cost::RemoveAdvancementCounters(amount) => acting_corp_install(state, ctx).is_some_and(|installed| installed.advancement_tokens >= *amount),
         // Word on the Street's card is its own price: payable while it is
@@ -4432,12 +4434,13 @@ pub(crate) fn pay_cost_ctx(
             modify_counters(state, ctx, -i64::from(*amount))
         }
         Cost::VirusCounters(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
             let held: u32 = crate::rules::pending_choice::virus_counters(state, registry).iter().map(|(_, held)| held).sum();
-            if side != Side::Runner || held < *amount {
+            if side != Side::Runner || held < amount {
                 let card = acting_card.cloned().unwrap_or_else(|| CardId(String::new()));
-                return Err(RulesError::InsufficientCounters { card, required: *amount, available: held });
+                return Err(RulesError::InsufficientCounters { card, required: amount, available: held });
             }
-            let taken = crate::rules::pending_choice::pick_virus_counters(state, registry, *amount)?;
+            let taken = crate::rules::pending_choice::pick_virus_counters(state, registry, amount)?;
             let mut events = Vec::new();
             for (position, amount) in taken {
                 let installed = &mut state.runner.rig[position];
@@ -5778,7 +5781,7 @@ mod tests {
         let mut state = GameState::default();
         let rig = |card: &str, install: u32, counters: u32| InstalledRunnerCard { card: CardId(card.to_string()), install_id: InstallId(install), counters, ..Default::default() };
         state.runner.rig = vec![rig("musaazi", 2001, 1), rig("medium", 2002, 2)];
-        let cost = crate::dsl::Cost::VirusCounters(1);
+        let cost = crate::dsl::Cost::VirusCounters(Amount::Fixed(1));
         let ctx = ResolutionContext::for_parked(Some(InstallId(2001)), None);
         assert!(cost_is_affordable(&state, &registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, &ctx));
         let asked = pay_cost(&mut state.clone(), &registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None);
@@ -5786,7 +5789,7 @@ mod tests {
         state.payment_answers = vec![1];
         pay_cost(&mut state, &registry, Side::Runner, &cost, crate::rules::payment::Purpose::Other, None).expect("from Medium");
         assert_eq!((state.runner.rig[0].counters, state.runner.rig[1].counters), (1, 1));
-        let all = crate::dsl::Cost::VirusCounters(2);
+        let all = crate::dsl::Cost::VirusCounters(Amount::Fixed(2));
         pay_cost(&mut state, &registry, Side::Runner, &all, crate::rules::payment::Purpose::Other, None).expect("every counter left, unasked");
         assert_eq!((state.runner.rig[0].counters, state.runner.rig[1].counters), (0, 0));
     }
