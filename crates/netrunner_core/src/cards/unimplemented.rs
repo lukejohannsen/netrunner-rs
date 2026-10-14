@@ -121,7 +121,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("contaminate", "Contaminate"),
     ("slipstream", "Slipstream"),
     ("gebrselassie", "Gebrselassie"),
-    ("compile", "Compile"),
     ("jackpot", "Jackpot!"),
     ("mwanza_city_grid", "Mwanza City Grid"),
 ];

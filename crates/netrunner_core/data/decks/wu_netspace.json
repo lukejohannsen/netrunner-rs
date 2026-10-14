@@ -3,7 +3,7 @@
   "name": "Netspace Thrill",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Kabonesa Wu: Netspace Thrillseeker, Kitara's Shaper identity, whose click searches the stack for a non-virus program and installs it 1[credit] cheaper, removing it from the game if it is still installed when the turn ends. On Level Pegging's list, its identity swapped; named to sort after every other deck, so the sweep schedule of those before it does not move.",
+  "description": "Not a published list: built so the sweeps reach Kabonesa Wu: Netspace Thrillseeker, Kitara's Shaper identity, whose click searches the stack for a non-virus program and installs it 1[credit] cheaper, removing it from the game if it is still installed when the turn ends. On Level Pegging's list, its identity swapped; named to sort after every other deck, so the sweep schedule of those before it does not move. Kitara Stage 12f: two Compile for two Rejig, a run that installs a program from the stack or heap for nothing at its first encounter; Level Pegging keeps Rejig",
   "style": [
     "rig"
   ],
@@ -82,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "rejig",
-      "count": 2
-    },
-    {
       "card": "access_to_globalsec",
       "count": 2
     },
@@ -107,6 +103,10 @@
     },
     {
       "card": "engolo",
+      "count": 2
+    },
+    {
+      "card": "compile",
       "count": 2
     }
   ]
