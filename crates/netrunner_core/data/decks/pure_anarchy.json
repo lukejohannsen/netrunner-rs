@@ -1,0 +1,118 @@
+{
+  "id": "pure_anarchy",
+  "name": "Pure Anarchy",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Freedom Khumalo: Crypto-Anarchist, Kitara's Anarch identity, who trashes the non-agenda card being accessed once per turn for virus counters equal to its rez or play cost, taken from any card. Pay As You Go's list, whose viruses (Hemorrhage, Darwin, Datasucker, Musaazi, Yusuf, Crypt) and Knobkierie hold the counters she spends, with two Imp for its two Reboot: a second way to trash on access paid in virus counters. Eternal-legal only: Kitara is in neither Startup nor Standard. FFG F3 Kitara Stage 11c.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "freedom_khumalo_crypto_anarchist",
+  "cards": [
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "chain_reaction",
+      "count": 1
+    },
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 2
+    },
+    {
+      "card": "darwin",
+      "count": 2
+    },
+    {
+      "card": "finality",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 1
+    },
+    {
+      "card": "hemorrhage",
+      "count": 2
+    },
+    {
+      "card": "xanadu",
+      "count": 2
+    },
+    {
+      "card": "wyldside",
+      "count": 2
+    },
+    {
+      "card": "yog_0",
+      "count": 2
+    },
+    {
+      "card": "datasucker",
+      "count": 2
+    },
+    {
+      "card": "grimoire",
+      "count": 1
+    },
+    {
+      "card": "wyrm",
+      "count": 2
+    },
+    {
+      "card": "demolition_run",
+      "count": 2
+    },
+    {
+      "card": "deja_vu",
+      "count": 2
+    },
+    {
+      "card": "djinn",
+      "count": 2
+    },
+    {
+      "card": "district_99",
+      "count": 2
+    },
+    {
+      "card": "glut_cipher",
+      "count": 2
+    },
+    {
+      "card": "crypt",
+      "count": 2
+    },
+    {
+      "card": "exer",
+      "count": 2
+    },
+    {
+      "card": "musaazi",
+      "count": 2
+    },
+    {
+      "card": "yusuf",
+      "count": 2
+    },
+    {
+      "card": "knobkierie",
+      "count": 1
+    },
+    {
+      "card": "imp",
+      "count": 2
+    }
+  ]
+}

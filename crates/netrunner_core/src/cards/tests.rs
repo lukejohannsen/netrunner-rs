@@ -34977,3 +34977,52 @@ mod kitara_stage_11b {
         );
     }
 }
+
+mod kitara_stage_11c {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn virus(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), counters, ..Default::default() }
+    }
+
+    /// Freedom Khumalo at a PAD Campaign (rez cost 2) in a remote, with the
+    /// given virus counters spread over two programs
+    /// that gain none on a successful run on a remote.
+    fn accessing_pad_campaign(datasucker: u32, imp: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("freedom_khumalo_crypto_anarchist"));
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![virus("datasucker", datasucker), virus("imp", imp)];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        (accessing, registry)
+    }
+
+    const FREEDOM: PlayerAction = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+
+    #[test]
+    fn freedom_khumalo_trashes_the_card_being_accessed_for_its_rez_cost_in_virus_counters_from_any_card() {
+        let (accessing, registry) = accessing_pad_campaign(1, 1);
+        let (trashed, _) = apply_action(&accessing, &registry, FREEDOM).expect("any 2 virus counters: trash PAD Campaign");
+        assert!(trashed.corp.installed.is_empty(), "with no credits for its trash cost");
+        assert!(trashed.runner.rig.iter().all(|card| card.counters == 0), "one counter from each program");
+    }
+
+    #[test]
+    fn freedom_khumalo_needs_as_many_counters_as_the_rez_cost() {
+        let (accessing, registry) = accessing_pad_campaign(1, 0);
+        assert!(apply_action(&accessing, &registry, FREEDOM).is_err(), "1 counter for a rez cost of 2");
+    }
+}

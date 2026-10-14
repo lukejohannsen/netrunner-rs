@@ -581,6 +581,9 @@ mod tests {
             // whose Core Set cards keep them out of Standard.
             ("burn_rate", &neither),
             ("dead_reckoning", &neither),
+            // Kitara Stage 11c: Freedom Khumalo's deck, on Pay As You Go's
+            // frame; Kitara is in neither pool.
+            ("pure_anarchy", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.
