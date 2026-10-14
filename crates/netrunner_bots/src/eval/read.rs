@@ -512,6 +512,9 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                     SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
                     // X is chosen to cover them all (`price_of`).
                     SubroutineBreakCount::All | SubroutineBreakCount::ChosenNumber => 1,
+                    // Clears the ice only when the last is all that is left.
+                    SubroutineBreakCount::Last if pending > 1 => return,
+                    SubroutineBreakCount::Last => 1,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_break, cost);
@@ -521,6 +524,9 @@ pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &Ru
                 let activations = match count {
                     SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
                     SubroutineBreakCount::All | SubroutineBreakCount::ChosenNumber => 1,
+                    // Clears the ice only when the last is all that is left.
+                    SubroutineBreakCount::Last if pending > 1 => return,
+                    SubroutineBreakCount::Last => 1,
                 };
                 if let Some(cost) = spend(activations) {
                     keep_min(&mut cheapest_outright, cost);

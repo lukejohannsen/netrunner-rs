@@ -93,7 +93,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("plague", "Plague"),
     ("kabonesa_wu_netspace_thrillseeker", "Kabonesa Wu: Netspace Thrillseeker"),
     ("emergent_creativity", "Emergent Creativity"),
     ("rng_key", "RNG Key"),
@@ -105,7 +104,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
 pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("marathon", "Marathon"),
-    ("gbahali", "Gbahali"),
     ("code_replicator", "Code Replicator"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
     ("degree_mill", "Degree Mill"),

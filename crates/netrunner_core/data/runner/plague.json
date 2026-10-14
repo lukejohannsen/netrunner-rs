@@ -1,0 +1,48 @@
+{
+  "id": "plague",
+  "title": "Plague",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        }
+      ],
+      "text": "When you install Plague, choose a server."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": "ChosenServer",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 2
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 2 virus counters on Plague",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on the chosen server, you may place 2 virus counters on Plague."
+    }
+  ],
+  "built_from": 21022,
+  "is_playable": true
+}
