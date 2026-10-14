@@ -1,0 +1,61 @@
+{
+  "id": "rogue_trading",
+  "title": "Rogue Trading",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 18
+        }
+      ],
+      "text": "Place 18[credit] from the bank on Rogue Trading when it is installed."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": {
+              "Fixed": 6
+            }
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              6
+            ]
+          },
+          {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click], [click]: Take 6[credit] from Rogue Trading and take 1 tag."
+    }
+  ],
+  "built_from": 21065,
+  "is_playable": true
+}

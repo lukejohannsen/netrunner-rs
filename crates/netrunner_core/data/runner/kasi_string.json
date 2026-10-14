@@ -1,0 +1,70 @@
+{
+  "id": "kasi_string",
+  "title": "Kasi String",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "ServerKind": "Remote"
+          },
+          "Successful"
+        ]
+      },
+      "first_each_turn": true,
+      "requirement": {
+        "And": [
+          "BreachedLastRunsServer",
+          {
+            "Not": "StoleAgendaDuringLastRun"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "AddCounters": 1
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "ThisCardCountersAtLeast": 4
+                      },
+                      "effect": {
+                        "AddToScoreAreaAsAgenda": {
+                          "points": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 power counter on this resource",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn a successful run on a remote server ends, if you breached the server but stole no agendas, you may place 1 power counter on this resource."
+    }
+  ],
+  "built_from": 21111,
+  "is_playable": true
+}

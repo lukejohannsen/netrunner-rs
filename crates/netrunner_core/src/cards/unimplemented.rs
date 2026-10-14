@@ -89,7 +89,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("yusuf", "Yusuf"),
     ("zamba", "Zamba"),
     ("puffer", "Puffer"),
-    ("lewi_guilherme", "Lewi Guilherme"),
     ("assimilator", "Assimilator"),
     ("asa_group_security_through_vigilance", "Asa Group: Security Through Vigilance"),
 ];
@@ -125,7 +124,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
 pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("knobkierie", "Knobkierie"),
-    ("rogue_trading", "Rogue Trading"),
     ("because_i_can", "Because I Can"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
@@ -150,11 +148,8 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("musaazi", "Musaazi"),
     ("hippo", "Hippo"),
-    ("pad_tap", "PAD Tap"),
-    ("reclaim", "Reclaim"),
     ("flame_out", "Flame-out"),
     ("black_hat", "Black Hat"),
-    ("kasi_string", "Kasi String"),
     ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
     ("surveyor", "Surveyor"),
 ];

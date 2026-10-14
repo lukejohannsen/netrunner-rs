@@ -1,0 +1,70 @@
+{
+  "id": "lewi_guilherme",
+  "title": "Lewi Guilherme",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "The Corp's maximum hand size is reduced by 1."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "RunnerCreditsAtMost": 0
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "LoseCredits": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "TrashCard": "ThisCard"
+                  }
+                ],
+                "texts": [
+                  "lose 1[credit]",
+                  "trash Lewi Guilherme"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "RunnerCreditsAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, either lose 1[credit] or trash Lewi Guilherme."
+    }
+  ],
+  "built_from": 21005,
+  "is_playable": true
+}
