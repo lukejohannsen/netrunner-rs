@@ -1,0 +1,55 @@
+{
+  "id": "kuwinda_k4h1u3",
+  "title": "Kuwinda K4H1U3",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "unique": true,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Trace": {
+                  "base": "HostedCounters",
+                  "on_success": {
+                    "Sequence": [
+                      {
+                        "DealDamage": [
+                          "Brain",
+                          1
+                        ]
+                      },
+                      {
+                        "TrashCard": "ThisCard"
+                      }
+                    ]
+                  },
+                  "on_failure": {
+                    "AddCounters": 1
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "trace[X], where X is equal to the number of hosted power counters",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trace[X], where X is equal to the number of hosted power counters. If successful, do 1 core damage and trash this asset. If unsuccessful, place 1 power counter on this asset."
+    }
+  ],
+  "built_from": 21049,
+  "is_playable": true
+}

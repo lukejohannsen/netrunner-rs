@@ -229,11 +229,14 @@ pub(crate) fn encounter_ability(state: &mut GameState, registry: &CardRegistry, 
 pub(crate) fn trace(
     state: &mut GameState,
     registry: &CardRegistry,
+    base: u32,
     trace: &Effect,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Option<Vec<GameEvent>>, RulesError> {
-    let Effect::Trace { base, .. } = trace else { return Ok(None) };
-    let base = *base;
+    let Effect::Trace { on_success, on_failure, .. } = trace else { return Ok(None) };
+    // The trace waits with the number it was initiated at: "trace[X]" is
+    // not asked again once the players have been.
+    let trace = &Effect::Trace { base: crate::dsl::Amount::Fixed(base), on_success: on_success.clone(), on_failure: on_failure.clone() };
     let what = WouldHappen::Trace { base };
     let Some(card) = ctx.acting_card else { return Ok(None) };
     if base == 0 || state.pending_prevention.is_some() || !could_prevent(state, registry, &what) {

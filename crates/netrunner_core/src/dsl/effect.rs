@@ -302,8 +302,18 @@ pub enum Effect {
     /// trash Bernice Mai" (CR 10.8.4). Composition didn't work: an avoided
     /// trace resolved nothing, and no effect after the trace could ask how
     /// it ended, since the trace parks for two bids.
+    ///
+    /// `base` is an `Amount` since Kitara's "trace[X]": Kuwinda K4H1U3's
+    /// hosted power counters, Surveyor's twice the ice protecting its
+    /// server, Amani Senai's scored agenda's advancement requirement. It is
+    /// resolved once, as the trace is initiated, and a card file may still
+    /// write a number (`trace_base`), as every trace before Kitara does.
+    /// `on_success` may read the amount by which the Corp's total exceeded
+    /// the Runner's (`Amount::TraceMargin`, Trojan Horse), written in when
+    /// the trace succeeds.
     Trace {
-        base: u32,
+        #[serde(deserialize_with = "trace_base", serialize_with = "write_trace_base")]
+        base: Amount,
         on_success: Box<Effect>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         on_failure: Option<Box<Effect>>,
@@ -2099,6 +2109,34 @@ impl Amount {
 /// future consolidation. `GainCreditsPerCardAccessedThisRun` was the third,
 /// and went when Amelia Earhart needed its count as a number
 /// (`CardsAccessedLastRun`).
+/// `Effect::Trace::base` as a card file writes it: a number, the printed
+/// "trace[3]" every trace before Kitara has, or an `Amount` for a
+/// "trace[X]". Rejected: rewriting every card file's number as
+/// `{"Fixed": 3}`, which reads worse in the one place a person checks a card
+/// against its printing.
+/// `Effect::Trace::base` written back the way a card file writes it: a
+/// fixed base as its number, so a trace round-trips to the file it came
+/// from.
+fn write_trace_base<S: serde::Serializer>(base: &Amount, serializer: S) -> Result<S::Ok, S::Error> {
+    match base {
+        Amount::Fixed(number) => serializer.serialize_u32(*number),
+        other => other.serialize(serializer),
+    }
+}
+
+fn trace_base<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Amount, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Base {
+        Number(u32),
+        Amount(Amount),
+    }
+    Ok(match Base::deserialize(deserializer)? {
+        Base::Number(number) => Amount::Fixed(number),
+        Base::Amount(amount) => amount,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Amount {
     /// A plain literal — lets an amount-typed effect field be authored with
@@ -2316,6 +2354,24 @@ pub enum Amount {
     /// along with no field anywhere. Resolves to 0 if it is ever read
     /// unsubstituted; `validate` refuses one written outside a `then`.
     ChosenNumber,
+    /// The amount by which the Corp's trace strength exceeded the Runner's
+    /// link strength — Trojan Horse's "an install cost of X or less, where X
+    /// is equal to the amount by which your trace strength exceeded the
+    /// Runner's link strength". **A placeholder like `ChosenNumber`**,
+    /// written over in a successful trace's `on_success` as the trace
+    /// resolves (`rules::trace::submit_runner_bid`), so it rides into a
+    /// selection that parks; `validate` refuses one anywhere else, where it
+    /// would read 0.
+    TraceMargin,
+    /// The printed advancement requirement of the agenda the triggering
+    /// score or steal is about — Amani Senai's "X is the advancement
+    /// requirement of the scored or stolen agenda", read off
+    /// `ResolutionContext::triggering_event`. Printed, because the agenda
+    /// has left the table that changed it (Ontological Dependence's is
+    /// about itself while installed). 0 for any other event. Composition
+    /// didn't work: no amount reads a card the moment is about by its
+    /// definition but the trashed card's costs.
+    TriggeringAgendaAdvancementRequirement,
     /// Cards in the Runner's heap that print the subtype — Rising Tide's
     /// "+1 strength for each fracter in your heap", which was
     /// `StrengthModifier::PerFracterInHeap` until a continuous effect's
@@ -3197,6 +3253,9 @@ impl Effect {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
             Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
+            // A trace's base only: its outcomes are another resolution's,
+            // and `on_success` has its margin written in when it succeeds.
+            Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             other => other,
         }
@@ -3579,10 +3638,15 @@ mod tests {
 
     #[test]
     fn trace_round_trips_through_json() {
-        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None };
+        let trace = Effect::Trace { base: Amount::Fixed(3), on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None };
         let trace_json = serde_json::to_string(&trace).unwrap();
         assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":{"Fixed":1}}}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&trace_json).unwrap(), trace);
+        // "Trace[X]" is its amount.
+        let x = Effect::Trace { base: Amount::HostedCounters, on_success: Box::new(Effect::EndTheRun), on_failure: None };
+        let x_json = serde_json::to_string(&x).unwrap();
+        assert_eq!(x_json, r#"{"Trace":{"base":"HostedCounters","on_success":"EndTheRun"}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&x_json).unwrap(), x);
     }
 
     #[test]
@@ -3652,7 +3716,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![
-                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None },
+                    Effect::Trace { base: Amount::Fixed(2), on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))), on_failure: None },
                     Effect::SetAccessReplacement { server: Some(ServerId::Hq), effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
                 texts: Vec::new(),

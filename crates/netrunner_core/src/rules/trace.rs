@@ -84,9 +84,14 @@ pub(crate) fn submit_runner_bid(
         // Spinal Modem hears it (CR 10.8.6e), beside the trace's own
         // "if successful".
         crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::TraceSuccessful { corp_total, runner_total })?;
+        // "The amount by which your trace strength exceeded the Runner's
+        // link strength" (Trojan Horse) is written in as a number, so it
+        // rides into whatever the success parks.
+        let margin = corp_total - runner_total;
+        let on_success = trace.effect_on_success.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin).then_some(margin));
         events.extend(ability::evaluate_effect(
             state,
-            &trace.effect_on_success,
+            &on_success,
             &mut ability::ResolutionContext::for_parked(trace.initiating_install, trace.initiating_card.as_ref()),
             registry,
         )?);
@@ -270,7 +275,7 @@ mod tests {
                         id: 0,
                         definition: crate::dsl::SubroutineDef {
                             text: "trace".to_string(),
-                            effect: Effect::Trace { base: 2, on_success: Box::new(on_success), on_failure: None },
+                            effect: Effect::Trace { base: crate::dsl::Amount::Fixed(2), on_success: Box::new(on_success), on_failure: None },
                             only_breakable_by: None,
                         },
                         status: SubroutineStatus::Resolved,
