@@ -1,0 +1,65 @@
+{
+  "id": "upya",
+  "title": "Upya",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "place 1 power counter on this program",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, you may place 1 power counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 3
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainClicks": [
+          "Runner",
+          2
+        ]
+      },
+      "text": "Once per turn → [click], 3 hosted power counters: Gain [click][click]."
+    }
+  ],
+  "counter_kind": "Power",
+  "built_from": 21007,
+  "is_playable": true
+}

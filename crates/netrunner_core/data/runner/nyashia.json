@@ -1,0 +1,53 @@
+{
+  "id": "nyashia",
+  "title": "Nyashia",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this program, place 3 power counters on it."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "RnD",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted power counter to access 1 additional card"
+          }
+        }
+      ],
+      "text": "Whenever you breach R&D, you may remove 1 hosted power counter to access 1 additional card."
+    }
+  ],
+  "counter_kind": "Power",
+  "built_from": 21067,
+  "is_playable": true
+}

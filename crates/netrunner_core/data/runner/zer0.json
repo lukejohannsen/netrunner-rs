@@ -1,0 +1,47 @@
+{
+  "id": "zer0",
+  "title": "Zer0",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "SufferDamage": [
+              "Net",
+              1
+            ]
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Runner",
+              1
+            ]
+          },
+          {
+            "DrawCards": [
+              "Runner",
+              2
+            ]
+          }
+        ]
+      },
+      "text": "Once per turn → [click], suffer 1 net damage: Gain 1[credit] and draw 2 cards."
+    }
+  ],
+  "built_from": 21101,
+  "is_playable": true
+}
