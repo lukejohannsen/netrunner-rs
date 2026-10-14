@@ -1,0 +1,105 @@
+{
+  "id": "vigilance",
+  "name": "Vigilance",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Asa Group: Security Through Vigilance, Kitara's Haas-Bioroid identity, which the first time each turn the Corp installs a card may install 1 non-agenda card from HQ in the root of or protecting the same server. On Stronger Together's list, a bioroid deck with ice to stack behind each install. Eternal-legal only. Kitara Stage 13a.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "asa_group_security_through_vigilance",
+  "cards": [
+    {
+      "card": "elivagar_bifurcation",
+      "count": 2
+    },
+    {
+      "card": "megaprix_qualifier",
+      "count": 3
+    },
+    {
+      "card": "project_ares",
+      "count": 3
+    },
+    {
+      "card": "accelerated_beta_test",
+      "count": 2
+    },
+    {
+      "card": "meridian",
+      "count": 2
+    },
+    {
+      "card": "eli_1_0",
+      "count": 2
+    },
+    {
+      "card": "hakarl_1_0",
+      "count": 2
+    },
+    {
+      "card": "hudson_1_0",
+      "count": 2
+    },
+    {
+      "card": "hive",
+      "count": 2
+    },
+    {
+      "card": "caduceus",
+      "count": 2
+    },
+    {
+      "card": "yagura",
+      "count": 2
+    },
+    {
+      "card": "himitsu_bako",
+      "count": 1
+    },
+    {
+      "card": "green_level_clearance",
+      "count": 2
+    },
+    {
+      "card": "bass_ch1r180g4",
+      "count": 2
+    },
+    {
+      "card": "next_activation_command",
+      "count": 2
+    },
+    {
+      "card": "napd_cordon",
+      "count": 2
+    },
+    {
+      "card": "ash_2x3zb9cy",
+      "count": 1
+    },
+    {
+      "card": "strongbox",
+      "count": 1
+    },
+    {
+      "card": "aggressive_secretary",
+      "count": 2
+    },
+    {
+      "card": "marilyn_campaign",
+      "count": 2
+    },
+    {
+      "card": "ikawah_project",
+      "count": 2
+    },
+    {
+      "card": "riot_suppression",
+      "count": 2
+    },
+    {
+      "card": "warden_fatuma",
+      "count": 2
+    }
+  ]
+}

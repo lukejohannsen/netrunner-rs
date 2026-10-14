@@ -3147,6 +3147,18 @@ pub(crate) fn fire_card_triggers(
             }
             None => &triggered.effects,
         };
+        // Asa Group's "install 1 non-agenda card from HQ in the root of or
+        // protecting **the same server**": an install heard as it happened
+        // writes its server over the install's `only_server` placeholder,
+        // as Fast Break's first install writes its own into the next.
+        let same_server: Vec<Effect>;
+        let triggered_effects: &[Effect] = match triggering_event {
+            Some(GameEvent::CardInstalled { side: Side::Corp, server, .. }) if triggered_effects.iter().any(Effect::names_only_server) => {
+                same_server = triggered_effects.iter().cloned().map(|effect| crate::rules::pending_choice::substitute_install_server(effect, *server)).collect();
+                &same_server
+            }
+            _ => triggered_effects,
+        };
         let that_card = triggering_event
             .filter(|_| triggered_effects.iter().any(Effect::names_that_card))
             .and_then(|event| listeners::card_about(state, event, trigger));

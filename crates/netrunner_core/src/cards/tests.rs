@@ -35467,3 +35467,80 @@ mod kitara_stage_12f {
         assert!(installed.runner.heap.iter().all(|card| *card != id("gordian_blade")));
     }
 }
+
+// ---- Kitara Stage 13a: an install heard writes its server into the next ----
+
+mod kitara_stage_13a {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn install(card: &str, server: ServerId, slot: InstallSlot) -> PlayerAction {
+        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false }
+    }
+
+    fn asa_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.identity = Some(id("asa_group_security_through_vigilance"));
+        state
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let position = state.corp.hq.iter().position(|c| *c == id(card)).expect("in HQ");
+        let (toggled, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn allowed(state: &GameState) -> Vec<ServerId> {
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) => servers.clone(),
+            other => panic!("a server is asked: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn asa_group_installs_a_second_card_from_hq_in_the_same_server_the_first_time_each_turn() {
+        let registry = registry();
+        let state = asa_turn(&["pad_campaign", "hostile_takeover", "ice_wall", "enigma"]);
+        let (asked, _) = apply_action(&state, &registry, install("pad_campaign", ServerId::Remote(0), InstallSlot::Root)).expect("install in a new remote");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "you may install 1 card from HQ: {:?}", asked.pending_decision);
+        // A non-agenda card: the agenda cannot be chosen.
+        let agenda = asked.corp.hq.iter().position(|c| *c == id("hostile_takeover")).expect("in HQ");
+        assert!(apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: agenda }).is_err(), "an agenda is not offered");
+
+        let where_to = select(&asked, &registry, "ice_wall");
+        assert_eq!(allowed(&where_to), [ServerId::Remote(0)], "the same server, and no other");
+        let credits = where_to.corp.resources.credits;
+        let (placed, _) = apply_action(&where_to, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("protecting it");
+        assert!(placed.corp.installed.iter().any(|c| c.card == id("ice_wall") && c.server == ServerId::Remote(0) && c.slot == InstallSlot::Ice));
+        assert_eq!(placed.corp.resources.credits, credits, "the first ice on a server costs nothing to install");
+
+        // The first time each turn: a second install asks nothing.
+        let (placed, _) = close_all_windows(placed, &registry);
+        let (again, _) = apply_action(&placed, &registry, install("enigma", ServerId::Hq, InstallSlot::Ice)).expect("protect HQ");
+        assert!(again.pending_decision.is_none(), "not the first time this turn: {:?}", again.pending_decision);
+    }
+
+    #[test]
+    fn asa_group_follows_ice_on_hq_with_more_ice_paying_its_cost_and_may_be_declined() {
+        let registry = registry();
+        let state = asa_turn(&["ice_wall", "enigma"]);
+        let (asked, _) = apply_action(&state, &registry, install("ice_wall", ServerId::Hq, InstallSlot::Ice)).expect("protect HQ");
+        let where_to = select(&asked, &registry, "enigma");
+        assert_eq!(allowed(&where_to), [ServerId::Hq]);
+        let credits = where_to.corp.resources.credits;
+        let (placed, _) = apply_action(&where_to, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protecting HQ");
+        assert_eq!(placed.corp.installed.iter().filter(|c| c.server == ServerId::Hq && c.slot == InstallSlot::Ice).count(), 2);
+        assert_eq!(placed.corp.resources.credits, Credits(credits.0 - 1), "paying its install cost: 1[credit] for the ice already there");
+
+        // Declined: nothing installed, and the turn's first time is spent.
+        let (asked, _) = apply_action(&state, &registry, install("ice_wall", ServerId::Hq, InstallSlot::Ice)).expect("protect HQ");
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("choose none");
+        assert!(declined.pending_decision.is_none());
+        assert_eq!(declined.corp.hq, vec![id("enigma")]);
+    }
+}

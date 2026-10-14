@@ -1299,8 +1299,19 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
         // found by the session sweep's masking invariant at Uprising Stage
         // 4, seed 89. The event a trigger heard names what the queued card
         // reacts to, so it is masked exactly as that event is in the log.
+        //
+        // The card itself too, when it is face down: a Corp card heard
+        // while unrezzed (Formicary's "when the Runner approaches this
+        // server, you may rez this ice") queues under its own name, and
+        // two copies protecting one server parked an order naming both —
+        // found by the session sweep's masking invariant at Kitara Stage
+        // 13a, seed 165. The install handle stays: which installs are
+        // asked is public, as the log's install handles are.
         PendingDecision::ChooseTriggerOrder { pending, .. } => {
             for trigger in pending.iter_mut() {
+                if corp_card_concealed_from(state, &trigger.card, viewer) {
+                    trigger.card = CardId(String::new());
+                }
                 trigger.event = trigger.event.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
                 trigger.announce = trigger.announce.as_ref().and_then(|event| mask_event_for_player(event, state, viewer));
                 trigger.target = conceal(&trigger.target);
@@ -1854,6 +1865,42 @@ mod tests {
         assert_eq!(events(Viewer::Player(Side::Runner)), vec![Some(struck.clone()), Some(struck.clone())]);
         assert_eq!(events(Viewer::Spectator), vec![Some(struck.clone()), Some(struck)]);
         assert_eq!(events(Viewer::Player(Side::Corp)), vec![Some(install.clone()), Some(install)], "the Corp orders its own");
+    }
+
+    /// A face-down card heard while unrezzed queues under its own name:
+    /// two Formicary on one server parked an order naming both to the
+    /// Runner and a spectator (Kitara Stage 13a, seed 165).
+    #[test]
+    fn a_trigger_order_prompt_names_no_face_down_card_it_queues() {
+        let mut state = game_state(corp_state_with_cards());
+        let install = state.corp.installed[0].install_id;
+        let heard = crate::rules::state::DeferredTrigger {
+            card: CardId("ice_wall".to_string()),
+            trigger: crate::dsl::Trigger::OnApproachServer,
+            target: None,
+            install: Some(install),
+            target_install: None,
+            event: Some(GameEvent::ServerApproached { server: ServerId::Hq }),
+            continuation: None,
+            heard: Default::default(),
+            not_the_first_this_turn: false,
+            fired: 0,
+            announce: None,
+        };
+        state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![heard.clone(), heard],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let cards = |viewer: Viewer| match mask_state_for_player(&state, viewer).pending_decision {
+            Some(PendingDecision::ChooseTriggerOrder { pending, .. }) => pending.into_iter().map(|trigger| (trigger.card.0, trigger.install)).collect::<Vec<_>>(),
+            other => panic!("still the order: {other:?}"),
+        };
+        let unnamed = (String::new(), Some(install));
+        assert_eq!(cards(Viewer::Player(Side::Runner)), vec![unnamed.clone(), unnamed.clone()]);
+        assert_eq!(cards(Viewer::Spectator), vec![unnamed.clone(), unnamed]);
+        let named = ("ice_wall".to_string(), Some(install));
+        assert_eq!(cards(Viewer::Player(Side::Corp)), vec![named.clone(), named], "the Corp orders its own");
     }
 
     #[test]

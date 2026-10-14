@@ -1861,7 +1861,7 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
 /// selection's own `then` is resolved as the card it chose and an access
 /// or a run rider inside one was never written for the server an install
 /// chose.
-fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
+pub(crate) fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
     let boxed = |effect: Box<Effect>| Box::new(substitute_install_server(*effect, server));
     match effect {
         Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
