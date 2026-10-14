@@ -4087,7 +4087,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
-        Cost::AddInstalledToHand { filter, count } => {
+        Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } => {
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
             crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
@@ -4398,6 +4398,36 @@ pub(crate) fn pay_cost_ctx(
                 events.push(GameEvent::CardAddedToHand { side, card: Some(removed.card), install, faceup: removed.was_public });
                 events.extend(removed.cascade);
             }
+            Ok(events)
+        }
+
+        // Into the deck, picked as `AddInstalledToHand` picks, and the deck
+        // shuffled once the last is in.
+        Cost::ShuffleInstalledIntoDeck { filter, count } => {
+            let zone = crate::dsl::CardZoneRef::OwnInstalled;
+            let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card);
+            if eligible.len() < *count as usize {
+                return Err(RulesError::CardNotEligibleForSelection(eligible.len()));
+            }
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, ctx.acting_install)?;
+            let installs = crate::rules::pending_choice::zone_install_ids(state, side, &zone).unwrap_or_default();
+            let handles: Vec<InstallId> = picked.iter().filter_map(|position| installs.get(*position).copied()).collect();
+            let mut events = Vec::new();
+            for install in handles {
+                let Some(removed) = crate::rules::pending_choice::remove_installed_card(state, registry, side, &zone, install)? else { continue };
+                events.extend(removed.announced);
+                match side {
+                    Side::Corp => state.corp.r_and_d.push(removed.card.clone()),
+                    Side::Runner => state.runner.stack.push(removed.card.clone()),
+                }
+                events.push(GameEvent::CardAddedToDeck { side, card: removed.card, top: true, revealed: removed.was_public });
+                events.extend(removed.cascade);
+            }
+            let deck = match side {
+                Side::Corp => crate::dsl::CardZoneRef::OwnRAndD,
+                Side::Runner => crate::dsl::CardZoneRef::OwnStack,
+            };
+            crate::rules::pending_choice::shuffle_decks(state, side, &deck, None);
             Ok(events)
         }
 

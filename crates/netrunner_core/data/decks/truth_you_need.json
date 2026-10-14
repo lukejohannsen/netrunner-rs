@@ -3,7 +3,7 @@
   "name": "The Truth You Need",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment.",
+  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment. Kitara Stage 13b: two Degree Mill for its two Bellona, the same three points each, stolen only by shuffling two installed Runner cards into the stack.",
   "style": [
     "fast-advance"
   ],
@@ -82,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "bellona",
-      "count": 2
-    },
-    {
       "card": "ganked",
       "count": 2
     },
@@ -99,6 +95,10 @@
     },
     {
       "card": "self_growth_program",
+      "count": 2
+    },
+    {
+      "card": "degree_mill",
       "count": 2
     }
   ]

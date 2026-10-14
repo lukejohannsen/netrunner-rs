@@ -1,0 +1,18 @@
+{
+  "id": "degree_mill",
+  "title": "Degree Mill",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "ShuffleInstalledIntoDeck": {
+      "filter": "Any",
+      "count": 2
+    }
+  },
+  "triggers": [],
+  "built_from": 21055,
+  "is_playable": true
+}
