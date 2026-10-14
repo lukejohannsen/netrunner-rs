@@ -34582,3 +34582,102 @@ mod kitara_stage_8 {
         assert!(act(&used, &registry, 2001).is_err(), "once per turn");
     }
 }
+
+mod kitara_stage_9a {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), counters, ..Default::default() }
+    }
+
+    /// The Corp ends their turn, and the Runner's begins, up to its first
+    /// decision.
+    fn runner_turn_begins(mut state: GameState, registry: &CardRegistry) -> GameState {
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let mut state = state;
+        while state.pending_decision.is_none() && crate::rules::current_actor(&state) != Some(Side::Runner) {
+            state = close_all_windows(state, registry).0;
+        }
+        state
+    }
+
+    #[test]
+    fn lewi_guilherme_shrinks_hq_and_costs_a_credit_or_itself_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
+        state.runner.rig = vec![rig("lewi_guilherme", 2001, 0)];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Corp), before - 1);
+
+        let asked = runner_turn_begins(state.clone(), &registry);
+        let credits = asked.runner.resources.credits.0;
+        let lose = crate::rules::legal_actions(&asked, &registry).into_iter().next().expect("lose 1[credit]");
+        let (kept, _) = apply_action(&asked, &registry, lose).expect("lose");
+        assert_eq!(kept.runner.resources.credits.0, credits - 1);
+        assert!(kept.runner.rig.iter().any(|card| card.card == id("lewi_guilherme")));
+
+        state.runner.resources.credits = Credits(0);
+        let broke = runner_turn_begins(state, &registry);
+        assert!(broke.runner.heap.contains(&id("lewi_guilherme")), "with nothing to lose, it is trashed");
+    }
+
+    #[test]
+    fn rogue_trading_pays_six_and_a_tag_for_two_clicks_until_it_is_empty() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("rogue_trading", 2001, 6)];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).expect("use it");
+        let used = pass_until_settled(used, &registry).0;
+        assert_eq!(used.runner.resources.credits.0, 16);
+        assert_eq!(used.runner.resources.clicks.0, 2);
+        assert_eq!(used.runner.tags, 1);
+        assert!(used.runner.heap.contains(&id("rogue_trading")), "no credits left: trash it");
+    }
+
+    #[test]
+    fn reclaim_trashes_a_grip_card_and_itself_to_install_from_the_heap() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble")];
+        state.runner.heap = vec![id("corroder"), id("diesel")];
+        state.runner.rig = vec![rig("reclaim", 2001, 0)];
+        let (mut at, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).expect("use it");
+        // The grip card to the cost when it asks, then Corroder (Diesel is
+        // an event).
+        while let Some(toggle) = crate::rules::legal_actions_for(&at, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })) {
+            at = apply_action(&at, &registry, toggle).expect("toggle").0;
+            if let Ok((next, _)) = apply_action(&at, &registry, PlayerAction::ConfirmCardSelection) {
+                at = next;
+            }
+        }
+        assert!(at.runner.rig.iter().any(|card| card.card == id("corroder")), "installed from the heap");
+        assert!(at.runner.heap.contains(&id("sure_gamble")) && at.runner.heap.contains(&id("reclaim")));
+        assert_eq!(at.runner.resources.credits.0, 8, "paying its install cost");
+    }
+
+    #[test]
+    fn pad_tap_pays_the_runner_when_the_corp_gains_through_a_card_and_only_the_corp_trashes_it() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.hq = vec![id("hedge_fund")];
+        state.runner.rig = vec![rig("pad_tap", 2001, 0)];
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }), "the Corp's ability");
+        let (mut played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("Hedge Fund");
+        while played.pending_decision.is_some() {
+            let first = crate::rules::legal_actions(&played, &registry).into_iter().next().expect("you may gain 1[credit]");
+            played = apply_action(&played, &registry, first).expect("answer").0;
+        }
+        assert_eq!(played.runner.resources.credits.0, 11);
+        let (trashed, _) = apply_action(&played, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).expect("the Corp trashes it");
+        assert!(trashed.runner.heap.contains(&id("pad_tap")));
+    }
+}

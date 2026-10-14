@@ -1,0 +1,62 @@
+{
+  "id": "pad_tap",
+  "title": "PAD Tap",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAbilityGainedCredits",
+      "subject": "Any",
+      "when": {
+        "Whose": "Corp"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Corp gains credits through a card ability each turn, you may gain 1[credit]."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Corp",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 3
+          }
+        ]
+      },
+      "effect": {
+        "TrashCard": "ThisCard"
+      },
+      "text": "[click], 3[credit]: Trash PAD Tap. Only the Corp can use this ability."
+    }
+  ],
+  "built_from": 21106,
+  "is_playable": true
+}

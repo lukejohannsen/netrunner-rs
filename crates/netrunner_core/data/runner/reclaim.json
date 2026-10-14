@@ -1,0 +1,88 @@
+{
+  "id": "reclaim",
+  "title": "Reclaim",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf",
+          {
+            "Trash": {
+              "from": "OwnGrip",
+              "filter": "Any",
+              "count": 1
+            }
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnHeap",
+          "filter": {
+            "All": [
+              {
+                "AnyOf": [
+                  {
+                    "CardTypeOneOf": [
+                      "Program",
+                      "Hardware"
+                    ]
+                  },
+                  {
+                    "All": [
+                      {
+                        "CardType": "Resource"
+                      },
+                      {
+                        "HasSubtype": "Virtual"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 0
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnHeap",
+                  "discount": {
+                    "Credits": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "[click], [trash], trash a card from your grip: Install a program, piece of hardware, or virtual resource from your heap, paying its install cost."
+    }
+  ],
+  "built_from": 21107,
+  "is_playable": true
+}
