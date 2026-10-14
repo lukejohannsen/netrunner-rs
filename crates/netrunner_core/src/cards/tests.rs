@@ -35206,3 +35206,57 @@ mod kitara_stage_12b {
         assert_eq!(counters(&placed), 2);
     }
 }
+
+mod kitara_stage_12c {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    /// A run on HQ, protected by `ice` alone, with Warden Fatuma in a
+    /// remote (rezzed or not), up to the encounter.
+    fn encounter(ice: &str, fatuma_rezzed: bool, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![
+            installed(ice, ServerId::Hq, InstallSlot::Ice, true),
+            installed("warden_fatuma", ServerId::Remote(1), InstallSlot::Root, fatuma_rezzed),
+        ];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn subroutines(state: &GameState) -> Vec<(String, bool)> {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().map(|subroutine| (subroutine.definition.text.clone(), subroutine.gained)).collect()
+    }
+
+    #[test]
+    fn warden_fatuma_gives_rezzed_bioroid_ice_a_subroutine_before_its_own() {
+        let registry = registry();
+        let state = encounter("eli_1_0", true, &registry);
+        let subroutines = subroutines(&state);
+        assert_eq!(subroutines.first(), Some(&("The Runner loses [click].".to_string(), true)), "{subroutines:?}");
+        assert_eq!(subroutines.len(), 3, "and Eli 1.0's two printed ones after it: {subroutines:?}");
+        assert!(subroutines[1..].iter().all(|(_, gained)| !gained));
+    }
+
+    #[test]
+    fn warden_fatuma_gives_nothing_unrezzed_or_to_ice_that_is_no_bioroid() {
+        let registry = registry();
+        let unrezzed = encounter("eli_1_0", false, &registry);
+        assert!(subroutines(&unrezzed).iter().all(|(_, gained)| !gained), "Warden Fatuma is not rezzed");
+        let enigma = encounter("enigma", true, &registry);
+        assert!(subroutines(&enigma).iter().all(|(_, gained)| !gained), "Enigma is no bioroid");
+    }
+}

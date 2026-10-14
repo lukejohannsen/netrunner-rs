@@ -425,7 +425,13 @@ pub enum ContinuousKind {
     /// "This ice loses 1 of its printed “[subroutine] End the run.”
     /// subroutines for each agenda point in your score area" (`per: -1`,
     /// CR 9.8.2b), the last printed first and never below none — and
-    /// `before` says nothing.
+    /// `before` says nothing. Said by another card about ice (`Scope::Ice`)
+    /// it is a standing grant, 9.8.3a or 9.8.3e rather than 9.8.3b or
+    /// 9.8.3d — Warden Fatuma's "Each rezzed piece of bioroid ice gains
+    /// “[subroutine] The Runner loses [click].” before its other
+    /// subroutines" — and only a gain: `GainSubroutine` is a trigger's
+    /// grant for a duration, and a static ability that stands while its
+    /// source does is this one's shape whoever prints it.
     Subroutines {
         subroutine: Box<crate::dsl::SubroutineDef>,
         count: Number,

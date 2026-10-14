@@ -1,0 +1,40 @@
+{
+  "id": "warden_fatuma",
+  "title": "Warden Fatuma",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 5,
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "The Runner loses [click].",
+            "effect": {
+              "LoseClicks": 1
+            }
+          },
+          "count": {
+            "per": 1
+          },
+          "before": true
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "All": [
+            "Rezzed",
+            {
+              "HasSubtype": "Bioroid"
+            }
+          ]
+        }
+      },
+      "text": "Each rezzed piece of bioroid ice gains \"[subroutine] The Runner loses [click].\" before its other subroutines."
+    }
+  ],
+  "triggers": [],
+  "built_from": 21093,
+  "is_playable": true
+}
