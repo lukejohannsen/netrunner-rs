@@ -337,6 +337,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 SubroutineBreakCount::Fixed(n) => plural(*n, "subroutine", "subroutines"),
                 SubroutineBreakCount::All => "all subroutines".to_string(),
                 SubroutineBreakCount::ChosenNumber => "X subroutines".to_string(),
+                SubroutineBreakCount::Last => "the last subroutine".to_string(),
             };
             match restrict_to {
                 Some(kind) => format!("break {which} on a {kind:?}"),
@@ -347,6 +348,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             SubroutineBreakCount::Fixed(n) => format!("break {}", plural(*n, "subroutine", "subroutines")),
             SubroutineBreakCount::All => "break all subroutines".to_string(),
             SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
+            SubroutineBreakCount::Last => "break the last subroutine on the encountered ice".to_string(),
         },
         Effect::Trace { base, on_success, on_failure } => match (describe_amount(base), on_failure) {
             (base, None) => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),

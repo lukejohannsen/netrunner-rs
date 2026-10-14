@@ -3044,6 +3044,12 @@ pub enum SubroutineBreakCount {
     /// `Fixed`): Lobisomem's "Break X barrier subroutines". Read anywhere
     /// else it breaks none, as `Amount::ChosenNumber` is 0.
     ChosenNumber,
+    /// The last subroutine on the ice, if it is one that may be broken now
+    /// — Gbahali's "Break the last subroutine on the encountered piece of
+    /// ice". Breaks none when the last is already broken or resolved, since
+    /// "the last" is a place, not "the last one left". Composition didn't
+    /// work: every other count breaks from the first.
+    Last,
 }
 
 impl Effect {

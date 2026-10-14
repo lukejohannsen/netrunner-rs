@@ -5355,10 +5355,16 @@ fn break_pending(
     count: &SubroutineBreakCount,
     by: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let mut pending = pending;
     let take = match count {
         SubroutineBreakCount::All => pending.len(),
         SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
         SubroutineBreakCount::ChosenNumber => 0,
+        SubroutineBreakCount::Last => {
+            let last = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).and_then(|ice| ice.subroutines.last()).map(|subroutine| subroutine.id);
+            pending.retain(|(idx, _)| Some(*idx) == last);
+            pending.len()
+        }
     };
     let mut events = Vec::new();
     for (idx, limited) in pending.into_iter().take(take) {

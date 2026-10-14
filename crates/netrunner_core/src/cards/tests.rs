@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "the_nihilist", "tranquilizer", "yusuf"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -35129,5 +35129,80 @@ mod kitara_stage_12a {
         let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
         let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
         assert!(stolen.corp.play_area.is_empty(), "an agenda was stolen");
+    }
+}
+
+mod kitara_stage_12b {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state
+    }
+
+    /// A run on HQ, its only ice already installed and rezzed, up to the
+    /// encounter.
+    fn encounter(card: &str, registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("gbahali")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    #[test]
+    fn gbahali_breaks_the_last_subroutine_only() {
+        let registry = registry();
+        let at_ice = encounter("enigma", &registry);
+        let gbahali = PlayerAction::ActivateAbility { target: install_of(&at_ice, "gbahali"), ability_index: 0 };
+        let (broken, events) = apply_action(&at_ice, &registry, gbahali).expect("[trash]: break the last subroutine");
+        let broken_ids: Vec<_> = events.iter().filter_map(|event| match event {
+            GameEvent::SubroutineBroken { index, .. } => Some(*index),
+            _ => None,
+        }).collect();
+        let last = at_ice.active_run.as_ref().map(|run| run.ice[run.position].subroutines.last().unwrap().id).unwrap();
+        assert_eq!(broken_ids, vec![last], "Enigma's second subroutine, not its first");
+        assert!(broken.runner.rig.is_empty() && broken.runner.heap.contains(&id("gbahali")));
+    }
+
+    #[test]
+    fn plague_grows_on_successful_runs_on_the_server_chosen_as_it_was_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("plague")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("plague"), trash_first: false, host: None }).expect("install");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("choose Archives");
+        let chosen = close_all_windows(chosen, &registry).0;
+        let counters = |state: &GameState| state.runner.rig.iter().find(|card| card.card == id("plague")).expect("installed").counters;
+
+        let (hq, _) = run_to_completion(chosen.clone(), &registry, ServerId::Hq);
+        let hq = close_all_windows(hq, &registry).0;
+        assert_eq!(counters(&hq), 0, "not the chosen server");
+
+        let (archives, _) = run_to_completion(chosen, &registry, ServerId::Archives);
+        let (placed, _) = apply_action(&archives, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 2 virus counters");
+        assert_eq!(counters(&placed), 2);
     }
 }

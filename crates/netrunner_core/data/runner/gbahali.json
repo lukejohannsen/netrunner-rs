@@ -1,0 +1,22 @@
+{
+  "id": "gbahali",
+  "title": "Gbahali",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": "Last"
+        }
+      },
+      "text": "[trash]: Break the last subroutine on the encountered piece of ice."
+    }
+  ],
+  "built_from": 21047,
+  "is_playable": true
+}
