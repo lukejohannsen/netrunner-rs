@@ -364,6 +364,18 @@ pub enum EffectRequirement {
     /// is why `CurrentlyAccessingACard`, the requirement Carnivore said it
     /// with, is gone; this one stays because BANGUN's trigger reads it.
     CurrentlyAccessingNonAgenda,
+    /// The card the Runner is accessing (`AccessState::currently_accessing`,
+    /// set as it is presented) matches the filter — RNG Key's
+    /// "reveal the next card that you access this run. If it has a rez
+    /// cost, play cost, or advancement requirement equal to the named
+    /// number", the filter carrying the number as `ChosenNumber` until it
+    /// is chosen. Composition didn't work: `CurrentlyAccessingNonAgenda`
+    /// asks one fixed question, and `ActingCardMatches` reads the card the
+    /// resolution is, which in a delayed ability is the card that left it.
+    /// `CurrentlyAccessingNonAgenda` stays beside it because the bots'
+    /// evaluator answers it from what it knows of an access, without a
+    /// filter.
+    CurrentlyAccessingMatches(crate::dsl::CardFilter),
     /// A subroutine has resolved during the active run
     /// (`RunState::subroutine_resolved`) — Ryō "Phoenix" Ōno's "a run becomes
     /// successful after a subroutine resolved during that run".
@@ -698,6 +710,7 @@ impl EffectRequirement {
             EffectRequirement::AmountAtLeast(amount, at_least) => EffectRequirement::AmountAtLeast(amount.filled(fill), at_least),
             EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.filled(fill))),
             EffectRequirement::And(a, b) => EffectRequirement::And(Box::new(a.filled(fill)), Box::new(b.filled(fill))),
+            EffectRequirement::CurrentlyAccessingMatches(filter) => EffectRequirement::CurrentlyAccessingMatches(filter.filled(fill)),
             other => other,
         }
     }

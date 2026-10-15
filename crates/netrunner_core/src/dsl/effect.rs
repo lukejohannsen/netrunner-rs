@@ -3331,6 +3331,9 @@ impl Effect {
             // and `on_success` has its margin written in when it succeeds.
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
+            // RNG Key's "the next card that you access this run": the
+            // number named rides into what waits for the access.
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run },
             Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(a), if_installed } => {
                 Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(Box::new(amount(*a))), if_installed }
             }

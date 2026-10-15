@@ -4788,6 +4788,14 @@ pub fn check_requirement(
             let is_agenda = registry.get(&accessing).is_some_and(|def| def.card_type == crate::dsl::CardType::Agenda);
             if is_agenda { Err(RulesError::RequirementNotMet) } else { Ok(()) }
         }
+        EffectRequirement::CurrentlyAccessingMatches(filter) => {
+            // `currently_accessing`, not the phase's card: "when you access"
+            // is heard as the card is presented, before the decision about
+            // it is parked (`AccessPhase::PendingChoice`).
+            let accessing = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.currently_accessing.clone());
+            let matches = accessing.and_then(|card| registry.get(&card)).is_some_and(|card| card_matches_filter(card, filter));
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::SubroutineResolvedThisRun => {
             if state.active_run.as_ref().is_some_and(|run| run.subroutine_resolved) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -5763,6 +5771,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::RunInProgress
         | EffectRequirement::InRunnersScoreArea
         | EffectRequirement::CurrentlyAccessingNonAgenda
+        | EffectRequirement::CurrentlyAccessingMatches(_)
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer
         | EffectRequirement::ProtectingRemote
