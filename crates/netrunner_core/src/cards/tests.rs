@@ -35986,3 +35986,63 @@ mod kitara_stage_13g {
         assert_eq!(declined.corp.installed[0].advancement_tokens, 0);
     }
 }
+
+mod kitara_stage_13h {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Every card the breach offers, passed, every window closed.
+    fn pass_every_access(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            state = close_all_windows(state, registry).0;
+            let Some(passing) = crate::rules::legal_actions(&state, registry)
+                .into_iter()
+                .find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::SelectCardToAccess { .. }))
+            else {
+                return state;
+            };
+            state = apply_action(&state, registry, passing).expect("pass the card").0;
+        }
+    }
+
+    fn with_mwanza_in(server: ServerId) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.resources.credits = Credits(0);
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        state.corp.hq = vec![id("hedge_fund"); 6];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1),
+            card: id("mwanza_city_grid"),
+            server,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        state
+    }
+
+    #[test]
+    fn mwanza_city_grid_adds_three_accesses_and_pays_two_for_each_access_when_the_breach_ends() {
+        let registry = registry();
+        let state = with_mwanza_in(ServerId::RnD);
+        let done = pass_every_access(run_to_completion(state, &registry, ServerId::RnD).0, &registry);
+        assert!(done.active_run.is_none());
+        let accessed = done.last_completed_run.as_ref().map(|run| run.cards_accessed);
+        assert_eq!(accessed, Some(5), "1 + 3 from R&D, and the grid itself");
+        assert_eq!(done.corp.resources.credits, Credits(10), "2[credit] for each access");
+    }
+
+    #[test]
+    fn mwanza_city_grid_hears_no_breach_of_another_server() {
+        let registry = registry();
+        let state = with_mwanza_in(ServerId::Hq);
+        let done = pass_every_access(run_to_completion(state, &registry, ServerId::RnD).0, &registry);
+        assert_eq!(done.last_completed_run.as_ref().map(|run| run.cards_accessed), Some(1));
+        assert_eq!(done.corp.resources.credits, Credits(0));
+    }
+}
