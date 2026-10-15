@@ -275,6 +275,15 @@ pub enum Cost {
     /// Composition didn't work: every cost that took the payer's cards
     /// trashed them, forfeited them or turned them facedown.
     AddInstalledToHand { filter: CardFilter, count: u32 },
+    /// `count` of the payer's own installed cards that `filter` admits are
+    /// shuffled into their deck — Degree Mill's "As an additional cost to
+    /// steal Degree Mill, the Runner must shuffle 2 installed Runner cards
+    /// into the stack". Asked one card at a time by replay, as
+    /// `AddInstalledToHand` is, and the deck is shuffled once, after the
+    /// last. Composition didn't work: `AddInstalledToHand`'s destination is
+    /// the hand, and a cost is paid before what it pays for (CR 1.16), so
+    /// the shuffle cannot be an effect after it.
+    ShuffleInstalledIntoDeck { filter: CardFilter, count: u32 },
     /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
     /// "unless the Corp reveals and trashes X cards from HQ at random",
     /// built by the engine into the `OfferPaidChoice` it parks (X is the
@@ -361,7 +370,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::VirusCounters(_) => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::VirusCounters(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

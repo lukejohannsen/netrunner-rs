@@ -213,6 +213,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::RevealSelf => "reveal this card".to_string(),
         Cost::DerezSelf => "derez this card".to_string(),
         Cost::AddInstalledToHand { filter, count } => format!("add {} installed {} to your hand", count, humanize(format!("{filter:?}")).to_lowercase()),
+        Cost::ShuffleInstalledIntoDeck { filter, count } => format!("shuffle {} installed {} into your deck", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::TurnHostedFacedown => "turn 1 hosted card facedown".to_string(),

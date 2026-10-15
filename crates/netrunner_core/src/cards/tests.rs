@@ -35544,3 +35544,82 @@ mod kitara_stage_13a {
         assert_eq!(declined.corp.hq, vec![id("enigma")]);
     }
 }
+
+// ---- Kitara Stage 13b: a steal paid by shuffling installs into the stack ----
+
+mod kitara_stage_13b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// A Runner's run on a remote holding Degree Mill, with no ice, through
+    /// to its access.
+    fn accessing(rig: Vec<crate::rules::InstalledRunnerCard>, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.rig = rig;
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("degree_mill"),
+            card: id("degree_mill"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (running, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        close_all_windows(apply_action(&running, registry, PlayerAction::CompleteRun).expect("breach").0, registry).0
+    }
+
+    fn steal() -> PlayerAction {
+        PlayerAction::StealAgenda { card_id: id("degree_mill") }
+    }
+
+    #[test]
+    fn degree_mill_is_stolen_only_by_shuffling_two_installed_runner_cards_into_the_stack() {
+        let registry = registry();
+        let accessed = accessing(vec![rig("corroder", 2001)], &registry);
+        assert!(apply_action(&accessed, &registry, steal()).is_err(), "one installed card is not two");
+        assert!(!crate::rules::legal_actions_for(&accessed, &registry, Side::Runner).contains(&steal()));
+
+        let accessed = accessing(vec![rig("corroder", 2001), rig("daily_casts", 2002)], &registry);
+        let (stolen, _) = apply_action(&accessed, &registry, steal()).expect("both go: nothing to ask");
+        assert!(stolen.runner.rig.is_empty());
+        let mut stack = stolen.runner.stack.clone();
+        stack.sort();
+        assert_eq!(stack, vec![id("corroder"), id("daily_casts"), id("sure_gamble")], "shuffled into the stack");
+        assert_eq!(stolen.runner.resources.agenda_points, AgendaPoints(3));
+    }
+
+    #[test]
+    fn degree_mill_asks_which_two_when_the_runner_has_more() {
+        let registry = registry();
+        let accessed = accessing(vec![rig("corroder", 2001), rig("daily_casts", 2002), rig("rezeki", 2003)], &registry);
+        let (asked, _) = apply_action(&accessed, &registry, steal()).expect("which two?");
+        assert!(asked.pending_payment.is_some(), "the payment asks: {:?}", asked.pending_payment);
+        let mut state = asked;
+        let mut asked_for = 0;
+        while state.pending_payment.is_some() {
+            let offered: Vec<usize> = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+                .into_iter()
+                .filter_map(|action| match action {
+                    PlayerAction::ToggleCardSelection { position } => Some(position),
+                    _ => None,
+                })
+                .collect();
+            assert!(offered.len() >= 2, "a choice among the installed cards: {offered:?}");
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("pick").0;
+            asked_for += 1;
+        }
+        assert!(asked_for >= 1);
+        assert_eq!(state.runner.rig.len(), 1, "two of three shuffled in");
+        assert_eq!(state.runner.resources.agenda_points, AgendaPoints(3));
+        assert_eq!(state.runner.stack.len(), 3);
+    }
+}

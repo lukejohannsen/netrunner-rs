@@ -103,7 +103,6 @@ pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("marathon", "Marathon"),
     ("code_replicator", "Code Replicator"),
     ("azmari_edtech_shaping_the_future", "Azmari EdTech: Shaping the Future"),
-    ("degree_mill", "Degree Mill"),
 ];
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.
