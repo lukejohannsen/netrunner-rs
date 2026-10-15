@@ -1062,7 +1062,7 @@ pub(crate) fn resolve_accept(
     // paid with Mantle's "use hardware and programs" credits. Another
     // player's "unless you pay" (Gold Farmer's) uses nothing of theirs.
     let purpose = match pending.source_card.as_ref().and_then(|card| registry.get(card)) {
-        Some(definition) if definition.side == pending.side => Purpose::Ability(definition),
+        Some(definition) if definition.side == pending.side => Purpose::Ability(definition, pending.source_install),
         _ => Purpose::Other,
     };
     let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, purpose, &payer)?;

@@ -788,9 +788,11 @@ impl CopyTurn {
     /// acting card, `pending_choice::copy_matches`). The Corp's installs
     /// keep `InstalledCard::installed_this_turn` instead, which a view
     /// carries; a rig copy's count is dated like the rest, and a card
-    /// installed again is a new copy with a fresh one.
+    /// installed again is a new copy with a fresh one. And spending its
+    /// credits, for Flame-out's "When a turn ends in which you used
+    /// credits on Flame-out" (`Amount::TimesThisTurnOnThisCopy`).
     pub(crate) fn counts_on_rig(trigger: Trigger) -> bool {
-        matches!(trigger, Trigger::OnInstall)
+        matches!(trigger, Trigger::OnInstall | Trigger::OnCreditsSpentFromInstalledCard)
     }
 
     fn bump(&mut self, turn: u32, trigger: Trigger) {

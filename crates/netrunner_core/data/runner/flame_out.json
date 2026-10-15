@@ -1,0 +1,84 @@
+{
+  "id": "flame_out",
+  "title": "Flame-out",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "UsingHosted"
+  ],
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "Flame-out can host a single program."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 9
+        }
+      ],
+      "text": "When you install Flame-out, place 9[credit] on it."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnOnThisCopy": "OnCreditsSpentFromInstalledCard"
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": "HostedOnThisCard"
+        }
+      ],
+      "text": "When a turn ends in which you used credits on Flame-out, trash hosted program."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnOnThisCopy": "OnCreditsSpentFromInstalledCard"
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": "HostedOnThisCard"
+        }
+      ],
+      "text": "When a turn ends in which you used credits on Flame-out, trash hosted program."
+    }
+  ],
+  "built_from": 21109,
+  "is_playable": true
+}
