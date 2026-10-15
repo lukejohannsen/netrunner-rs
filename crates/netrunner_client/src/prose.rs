@@ -672,6 +672,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SpendChosenServer => "the chosen server is spent for this turn".to_string(),
         Effect::MoveRunToOutermost(Some(server)) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::MoveRunToOutermost(None) => "move the run to the outermost ice of the attacked server".to_string(),
+        Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::PassedIce | netrunner_core::dsl::MovedTo::Ice { .. }) => "the Runner approaches the passed ice again, and may jack out".to_string(),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
         Effect::SwapApproachedIceWithCard { this_ice: true, .. } => "swap this ice with a card".to_string(),
         Effect::SwapApproachedIceWithCard { .. } => "swap the approached ice with a card".to_string(),

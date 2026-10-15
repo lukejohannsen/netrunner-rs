@@ -2168,7 +2168,20 @@ pub fn evaluate_effect(
                         }
                         _ => None,
                     };
-                    options.iter().map(|option| option.clone().filled(&fill)).collect()
+                    let passed = match ctx.triggering_event {
+                        Some(GameEvent::IcePassed { server, position, .. }) => Some((*server, *position)),
+                        _ => None,
+                    };
+                    options
+                        .iter()
+                        .map(|option| {
+                            let option = option.clone().filled(&fill);
+                            match passed {
+                                Some((server, position)) => option.with_passed_ice(server, position),
+                                None => option,
+                            }
+                        })
+                        .collect()
                 }
                 None => options.clone(),
             };
@@ -2876,6 +2889,12 @@ pub fn evaluate_effect(
             let Some(server) = server.or_else(|| state.active_run.as_ref().map(|run| run.server)) else { return Ok(Vec::new()) };
             crate::rules::run::move_run_to_outermost(state, registry, server)
         }
+
+        Effect::MoveRunToIce(crate::dsl::MovedTo::PassedIce) => match ctx.triggering_event {
+            Some(GameEvent::IcePassed { server, position, .. }) => Ok(crate::rules::run::move_run_in_front_of(state, *server, *position as usize)),
+            _ => Ok(Vec::new()),
+        },
+        Effect::MoveRunToIce(crate::dsl::MovedTo::Ice { server, position }) => Ok(crate::rules::run::move_run_in_front_of(state, *server, *position as usize)),
 
         Effect::SwapApproachedIceWithCard { origin, this_ice } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();

@@ -1990,6 +1990,14 @@ pub enum Effect {
     /// approaches it, so it is the server being run; written `null`, since
     /// the server it means is the run's and no card file can name it.
     MoveRunToOutermost(Option<ServerId>),
+    /// Moves the run back in front of a piece of ice, in the movement
+    /// phase before it — Code Replicator's "the Runner must approach that
+    /// ice again. They may jack out": the Runner's jack-out decision comes
+    /// first, then the Corp's window, then the approach (CR 6.9.4c–f), as
+    /// after any pass. Which ice is `MovedTo`. Composition didn't work:
+    /// `MoveRunToOutermost` puts the Runner in front of a server's
+    /// outermost ice, and nothing moved the run outward on its own server.
+    MoveRunToIce(MovedTo),
     /// Takes the acting card — an agenda the Runner has scored — out of
     /// the Runner's score area, removes tags equal to its printed points,
     /// and installs it unrezzed in a fresh remote. IP Enforcement's "as an
@@ -2853,6 +2861,19 @@ impl StrengthOf {
     }
 }
 
+/// Which piece of ice an `Effect::MoveRunToIce` moves the run in front of.
+/// Only what a pool card prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MovedTo {
+    /// The ice the moment heard was the pass of (`GameEvent::IcePassed`'s
+    /// server and position) — Code Replicator's "that ice".
+    PassedIce,
+    /// `PassedIce` as it is written in when the decision the move waits
+    /// behind is parked (`Effect::with_passed_ice`): the parked decision
+    /// keeps no moment. Never authored.
+    Ice { server: crate::rules::ServerId, position: u32 },
+}
+
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
 /// card in the pool prints; each is asked through `continuous::cannot`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -3123,6 +3144,19 @@ impl Effect {
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_those_trashed(cards)) },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)), otherwise: otherwise.map(|e| Box::new(e.with_those_trashed(cards))) },
+            other => other,
+        }
+    }
+
+    /// `MovedTo::PassedIce` written over as the ice the pass was of, in the
+    /// shapes a choice's option is written in.
+    pub fn with_passed_ice(self, server: crate::rules::ServerId, position: u32) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_passed_ice(server, position)).collect();
+        match self {
+            Effect::MoveRunToIce(MovedTo::PassedIce) => Effect::MoveRunToIce(MovedTo::Ice { server, position }),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_passed_ice(server, position)), otherwise: otherwise.map(|e| Box::new(e.with_passed_ice(server, position))) },
             other => other,
         }
     }
@@ -3603,6 +3637,7 @@ impl Effect {
             | Effect::ReplaceSubroutines
             | Effect::SpendChosenServer
             | Effect::MoveRunToOutermost(..)
+            | Effect::MoveRunToIce(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
