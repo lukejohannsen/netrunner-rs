@@ -2070,8 +2070,9 @@ impl CardDefinition {
                 (ContinuousKind::AdvancementRequirement(_), _) => {
                     return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2): it says so of itself (`This`), or an upgrade of the agendas in its root");
                 }
-                (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
-                (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
+                (ContinuousKind::BoostsLast(crate::dsl::EffectDuration::Run | crate::dsl::EffectDuration::Turn), Scope::This | Scope::Host) => {}
+                (ContinuousKind::BoostsLast(_), Scope::This | Scope::Host) => return misfit("BoostsLast", "a boost is lengthened to the run or the turn; no card prints another"),
+                (ContinuousKind::BoostsLast(_), _) => return misfit("BoostsLast", "a boost is an icebreaker's: this card or its host"),
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
                 // Djinn, a program, and Dinosaurus, a console.
@@ -2570,7 +2571,8 @@ mod tests {
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Ice(crate::dsl::CardFilter::Any))));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::HandSize(flat(1)), Scope::This)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::InstallCost(flat(-1)), Scope::Controller)));
-        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLastTheRun, Scope::Controller)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLast(crate::dsl::EffectDuration::Run), Scope::Controller)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLast(crate::dsl::EffectDuration::Encounter), Scope::Host)));
 
         // Palisade's "while this ice is protecting a remote server": ice
         // says it, and nothing else protects a server to say it about.

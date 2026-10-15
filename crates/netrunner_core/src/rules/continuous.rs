@@ -672,11 +672,14 @@ pub(crate) fn note_runner_card_trashed_by(state: &mut GameState, install: Option
     }
 }
 
-/// Whether a boost to the icebreaker `install` lasts the run rather than the
-/// encounter.
-pub(crate) fn boosts_last_the_run(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
-    let Some(card) = state.runner.rig.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)) else { return false };
-    any(state, registry, Target::Rig { card, install }, |kind| matches!(kind, ContinuousKind::BoostsLastTheRun))
+/// How long a boost to the icebreaker `install` lasts at least, where a
+/// card lengthens it (`ContinuousKind::BoostsLast`): the turn when any
+/// card says so, else the run when any says that.
+pub(crate) fn boosts_last(state: &GameState, registry: &CardRegistry, install: InstallId) -> Option<crate::dsl::EffectDuration> {
+    use crate::dsl::EffectDuration;
+    let card = state.runner.rig.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card))?;
+    let says = |duration: EffectDuration| any(state, registry, Target::Rig { card, install }, |kind| *kind == ContinuousKind::BoostsLast(duration));
+    [EffectDuration::Turn, EffectDuration::Run].into_iter().find(|duration| says(*duration))
 }
 
 /// Whether `card`, being accessed now, is revealed while it is (CR 1.21.7:
@@ -1209,7 +1212,7 @@ mod tests {
 
         assert_eq!(breaker_strength(&state, &registry, &state.runner.rig[0]), 1);
         assert_eq!(breaker_strength(&state, &registry, &state.runner.rig[1]), 2);
-        assert!(!boosts_last_the_run(&state, &registry, InstallId(2)), "a kind nobody prints is not found");
+        assert_eq!(boosts_last(&state, &registry, InstallId(2)), None, "a kind nobody prints is not found");
     }
 
     /// Two copies of "the first program you install each turn costs 1[c]

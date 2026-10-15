@@ -1829,13 +1829,14 @@ pub fn evaluate_effect(
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             // A hosted card can lengthen the boost (GAMEDRAGON™ Pro:
             // "abilities that increase its strength last for the remainder
-            // of the run"). Only ever a lengthening: a `Turn` boost is
-            // already longer and stays `Turn`.
+            // of the run"; Gebrselassie: "of the turn"). Only ever a
+            // lengthening: a `Turn` boost is already longer and stays
+            // `Turn`.
             let host_install = state.runner.rig[position].install_id;
-            let lasts_the_run = continuous::boosts_last_the_run(state, registry, host_install);
-            let duration = match duration {
-                EffectDuration::Encounter if lasts_the_run => EffectDuration::Run,
-                other => *other,
+            let duration = match (duration, continuous::boosts_last(state, registry, host_install)) {
+                (EffectDuration::Encounter, Some(longer)) => longer,
+                (EffectDuration::Run, Some(EffectDuration::Turn)) => EffectDuration::Turn,
+                (other, _) => *other,
             };
             let until = lingering::until(state, duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: On::Install(host_install), until, source: acting.clone() });

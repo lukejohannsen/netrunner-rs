@@ -4259,7 +4259,7 @@ mod system_gateway {
         assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 0, "6 cards fit under 5 + 1");
     }
 
-    fn corp_ice(id: &str, server: ServerId) -> crate::rules::InstalledCard {
+    pub(super) fn corp_ice(id: &str, server: ServerId) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
             install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
@@ -4639,7 +4639,7 @@ mod system_gateway {
     /// `click_breakable` ICE at `ice_id` already installed by the caller)
     /// up to and including entering the encounter with it, returning the
     /// resulting state.
-    fn enter_encounter_with(
+    pub(super) fn enter_encounter_with(
         state: GameState,
         registry: &CardRegistry,
         server: ServerId,
@@ -35766,5 +35766,70 @@ mod kitara_stage_13d {
         let (declined, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
         let (declined, _) = close_all_windows(declined, &registry);
         assert!(declined.pending_decision.is_none());
+    }
+}
+
+mod kitara_stage_13e {
+    use super::*;
+    use super::system_gateway::{corp_ice, enter_encounter_with};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn gebrselassie_hosts_on_a_non_ai_icebreaker_for_a_click_and_its_pumps_last_the_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: InstallId(1), base_strength: 3, ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("crypsis"), install_id: InstallId(2), base_strength: 0, ..Default::default() },
+        ];
+        state.next_install_id = 3;
+        state.runner.grip = vec![id("gebrselassie")];
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("gebrselassie"), host: None }).expect("install it");
+        assert!(state.pending_decision.is_none(), "installing it hosts nothing: the click does");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(3), ability_index: 0 })
+            .expect("[click]: host this hardware");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 0 })), "cleaver is offered");
+        assert!(!offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 1 })), "an AI icebreaker is not");
+        assert!(!offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 2 })), "nor the hardware itself");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick cleaver");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("host on it");
+        assert_eq!(state.runner.rig[2].hosted_on_rig_card, Some(InstallId(1)));
+        assert_eq!(state.runner.resources.clicks, Clicks(2), "one click to install, one to host");
+
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 })
+            .expect("pump cleaver");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            crate::rules::GameEvent::StrengthBoosted { duration: crate::dsl::EffectDuration::Turn, .. }
+        )));
+        assert_eq!(state.lingering.len(), 1);
+        assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfTurn(state.turn), "not the end of the encounter, nor the run");
+    }
+
+    #[test]
+    fn with_no_gebrselassie_a_pump_lasts_its_printed_duration() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: InstallId(1), base_strength: 3, ..Default::default() }];
+        state.next_install_id = 2;
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 })
+            .expect("pump cleaver");
+        assert_ne!(state.lingering[0].until, crate::rules::lingering::Until::EndOfTurn(state.turn));
     }
 }
