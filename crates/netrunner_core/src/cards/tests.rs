@@ -35623,3 +35623,76 @@ mod kitara_stage_13b {
         assert_eq!(state.runner.stack.len(), 3);
     }
 }
+
+// ---- Kitara Stage 13c: an install priced off what a selection trashed ----
+
+mod kitara_stage_13c {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn playing(grip: &[&str], stack: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = std::iter::once("emergent_creativity").chain(grip.iter().copied()).map(id).collect();
+        state.runner.stack = stack.iter().map(|card| id(card)).collect();
+        state
+    }
+
+    fn offered(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn emergent_creativity_installs_from_the_stack_paying_the_trashed_cards_install_costs_less() {
+        let registry = registry();
+        let state = playing(&["corroder", "gordian_blade", "sure_gamble"], &["mimic", "femme_fatale", "sure_gamble"]);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("emergent_creativity") }).expect("[click] and 2[credit]");
+        assert_eq!(asked.runner.resources.clicks, Clicks(2), "the play's click and the additional one");
+        assert_eq!(asked.runner.resources.credits, Credits(3));
+        assert_eq!(offered(&asked, &registry).len(), 2, "programs and hardware only, not Sure Gamble");
+
+        // Trash Corroder and Gordian Blade: X is 2 + 4.
+        let corroder = asked.runner.grip.iter().position(|card| *card == id("corroder")).expect("in the grip");
+        let gordian = asked.runner.grip.iter().position(|card| *card == id("gordian_blade")).expect("in the grip");
+        let searching = pick(&asked, &registry, &[corroder, gordian]);
+        assert!(searching.runner.heap.contains(&id("corroder")) && searching.runner.heap.contains(&id("gordian_blade")));
+        // Femme Fatale costs 9: 3 credits and 6 less is enough.
+        let femme = searching.runner.stack.iter().position(|card| *card == id("femme_fatale")).expect("in the stack");
+        assert!(offered(&searching, &registry).contains(&femme), "affordable at 6[credit] less");
+        let installed = pick(&searching, &registry, &[femme]);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("femme_fatale")), "{:?}", installed.runner.rig);
+        assert_eq!(installed.runner.resources.credits, Credits(0), "9 less 6 is 3");
+    }
+
+    #[test]
+    fn emergent_creativity_with_nothing_trashed_installs_at_full_cost_or_offers_nothing_unaffordable() {
+        let registry = registry();
+        let state = playing(&[], &["femme_fatale", "mimic"]);
+        let (searching, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("emergent_creativity") }).expect("play");
+        assert!(searching.pending_decision.is_some(), "no program or hardware in the grip: straight to the search");
+        let mimic = searching.runner.stack.iter().position(|card| *card == id("mimic")).expect("in the stack");
+        assert_eq!(offered(&searching, &registry), vec![mimic], "Mimic for 3[credit]; Femme Fatale is out of reach");
+        let installed = pick(&searching, &registry, &[mimic]);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("mimic")));
+        assert_eq!(installed.runner.resources.credits, Credits(0));
+    }
+}

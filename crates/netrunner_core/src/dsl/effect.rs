@@ -2353,6 +2353,18 @@ pub enum Amount {
     /// 1[credit] for each card revealed this way", read in the reveal's
     /// `then`. 0 outside a selection's `then`.
     CardsSelected,
+    /// The printed costs of the cards the resolving `PromptChooseCards`
+    /// selected, summed — Emergent Creativity's "Install it, paying X[credit]
+    /// less. X is equal to the total install cost of the trashed cards",
+    /// where the install is a later selection's `then`. Written into the
+    /// selection's `then` as `Fixed` when it resolves
+    /// (`pending_choice`), through the selections nested in it — the first
+    /// selection to resolve writes it, and a nested one finds it written —
+    /// so the number outlives the resolution that knew it, as a chosen
+    /// number does; 0 anywhere it was not written. Composition didn't work:
+    /// `CardsSelected` counts the cards, and `PaidCardPrintedCost` reads
+    /// one card a cost took.
+    CardsSelectedPrintedCost,
     /// The threat level: the greater of the two players' scores, in agenda
     /// points (Null Signal Games' *Elevation* rule — "the threat level is
     /// equal to the greatest score of any player"). Read through
@@ -3319,6 +3331,9 @@ impl Effect {
             // and `on_success` has its margin written in when it succeeds.
             Effect::Trace { base, on_success, on_failure } => Effect::Trace { base: amount(base), on_success, on_failure },
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
+            Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(a), if_installed } => {
+                Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(Box::new(amount(*a))), if_installed }
+            }
             other => other,
         }
     }

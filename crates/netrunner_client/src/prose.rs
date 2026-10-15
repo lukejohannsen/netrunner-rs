@@ -105,6 +105,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),
+        Amount::CardsSelectedPrintedCost => "the total cost of the cards chosen".to_string(),
         Amount::RunCreditsLeftLastRun => "the credits left on it from that run".to_string(),
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
         Amount::EncountersThisRun => "the times you have encountered ice this run".to_string(),
