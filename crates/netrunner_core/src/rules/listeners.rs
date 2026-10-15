@@ -362,6 +362,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             None => Vec::new(),
         },
         GameEvent::CardsLookedAt { .. } => Vec::new(),
+        GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.

@@ -3332,6 +3332,37 @@ impl Effect {
         }
     }
 
+    /// This effect with every card a selection's filter names left out
+    /// (`CardFilter::naming_no_cards`), through the shapes `with_that_card`
+    /// writes one into: what a player not making a parked choice is shown
+    /// of it, when the card came from a moment they did not see.
+    pub fn naming_no_cards(self) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.naming_no_cards());
+        let all = |effects: Vec<Effect>| effects.into_iter().map(Effect::naming_no_cards).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter: filter.naming_no_cards(),
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(boxed),
+                count,
+                up_to,
+            },
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
+            }
+            other => other,
+        }
+    }
+
     pub fn with_that_card(self, card: &crate::dsl::CardId) -> Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_that_card(card));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_that_card(card)).collect();

@@ -958,6 +958,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::CardAddedToDeck { side, revealed: false, .. } => viewer.is(*side).then(visible).flatten(),
         // A look is the looker's alone.
         GameEvent::CardsLookedAt { side, .. } => viewer.is(*side).then(visible).flatten(),
+        // So is which card was drawn; that one was is `CardDrawn`'s.
+        GameEvent::DrewCard { side, .. } => viewer.is(*side).then(visible).flatten(),
         // So is a secret number (Méliès U's copy).
         GameEvent::NumberChosen { chooser, secret: true, .. } => viewer.is(*chooser).then(visible).flatten(),
         GameEvent::CardDiscarded { .. } => visible(),
@@ -1286,6 +1288,22 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
         other => other.clone(),
     };
     let mut masked = decision.clone();
+    // What a card in a hidden zone the moment was about would be named
+    // in (Jinja City Grid's drawn ice, `ThatCard` written into its
+    // selection) is the chooser's alone — found by the session sweep's
+    // masking invariant at Kitara Stage 17, seed 104. Its `then` names
+    // no card, so the selection's own `then` is left as it is.
+    if let PendingDecision::ChooseEffect { chooser, options, .. } = &mut masked
+        && !viewer.is(*chooser)
+    {
+        *options = std::mem::take(options).into_iter().map(crate::dsl::Effect::naming_no_cards).collect();
+    }
+    // And the selection the option parks (seed 158).
+    if let PendingDecision::ChooseCards { side, filter, .. } = &mut masked
+        && !viewer.is(*side)
+    {
+        *filter = std::mem::replace(filter, crate::dsl::CardFilter::Any).naming_no_cards();
+    }
     match &mut masked {
         PendingDecision::ChooseEffect { source_card, prompting_card, .. }
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }

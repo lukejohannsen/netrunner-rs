@@ -3703,6 +3703,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Corp },
+                GameEvent::DrewCard { side: Side::Corp, card: CardId("top".to_string()) },
                 GameEvent::BasicDrawActionTaken { side: Side::Corp },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Draw },
             ]
@@ -3758,6 +3759,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Draw { side: Side::Runner, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Runner },
+                GameEvent::DrewCard { side: Side::Runner, card: CardId("stack_card_9".to_string()) },
                 GameEvent::BasicDrawActionTaken { side: Side::Runner },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
             ]

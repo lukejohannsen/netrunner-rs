@@ -36451,3 +36451,92 @@ mod kitara_stage_16 {
         assert_eq!(state.corp.resources.credits, Credits(0));
     }
 }
+
+mod kitara_stage_17 {
+    use super::*;
+    use crate::rules::{GameEvent, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Corp's turn with Jinja City Grid in the root of a remote,
+    /// `rezzed` or not, `protecting` it, and `top` on top of R&D.
+    fn with_grid(rezzed: bool, protecting: &[&str], top: &str) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(0);
+        state.corp.r_and_d = vec![id("hedge_fund"), id(top)];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("jinja_city_grid"),
+            card: id("jinja_city_grid"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed,
+            ..Default::default()
+        }];
+        for ice in protecting {
+            state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id(ice), card: id(ice), server: ServerId::Remote(0), slot: InstallSlot::Ice, ..Default::default() });
+        }
+        state
+    }
+
+    fn drawn(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let (state, events) = apply_action(state, registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("draw");
+        let (state, closing) = close_all_windows(state, registry);
+        (state, events.into_iter().chain(closing).collect())
+    }
+
+    fn installs_enigma(state: GameState, registry: &CardRegistry) -> GameState {
+        let (chose, _) = apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("reveal and install it");
+        let position = chose.corp.hq.iter().position(|card| *card == id("enigma")).expect("drawn into HQ");
+        let (toggled, _) = apply_action(&chose, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (asked, events) = apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { .. })), "{events:?}");
+        match &asked.pending_decision {
+            Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) => assert_eq!(servers, &[ServerId::Remote(0)], "protecting this server"),
+            other => panic!("a server is asked: {other:?}"),
+        }
+        let (installed, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("install");
+        close_all_windows(installed, registry).0
+    }
+
+    #[test]
+    fn jinja_city_grid_installs_drawn_ice_protecting_its_server_paying_4_less() {
+        let registry = registry();
+        let (state, events) = drawn(&with_grid(true, &["ice_wall"], "enigma"), &registry);
+        assert!(events.contains(&GameEvent::DrewCard { side: Side::Corp, card: id("enigma") }));
+        assert!(matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "{:?}", state.pending_decision);
+        let state = installs_enigma(state, &registry);
+        let remote: Vec<CardId> = state.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0) && card.slot == InstallSlot::Ice).map(|card| card.card.clone()).collect();
+        assert_eq!(remote, vec![id("enigma"), id("ice_wall")], "outermost");
+        assert_eq!(state.corp.resources.credits, Credits(0), "the 1[credit] tax, 4[credit] less");
+        assert!(!state.corp.hq.contains(&id("enigma")));
+    }
+
+    #[test]
+    fn jinja_city_grid_hears_only_ice_and_only_rezzed() {
+        let registry = registry();
+        let (state, _) = drawn(&with_grid(true, &[], "hedge_fund"), &registry);
+        assert!(state.pending_decision.is_none(), "an operation drawn: {:?}", state.pending_decision);
+        let (state, _) = drawn(&with_grid(false, &[], "enigma"), &registry);
+        assert!(state.pending_decision.is_none(), "unrezzed: {:?}", state.pending_decision);
+    }
+
+    #[test]
+    fn jinja_city_grid_declined_leaves_the_ice_in_hq() {
+        let registry = registry();
+        let (state, _) = drawn(&with_grid(true, &[], "enigma"), &registry);
+        let (declined, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(declined.pending_decision.is_none() && declined.corp.hq.contains(&id("enigma")));
+    }
+
+    #[test]
+    fn which_card_was_drawn_is_the_drawers_alone() {
+        let state = base_state();
+        let drew = GameEvent::DrewCard { side: Side::Corp, card: id("enigma") };
+        assert_eq!(crate::rules::mask_event_for_player(&drew, &state, Side::Runner), None);
+        assert_eq!(crate::rules::mask_event_for_player(&drew, &state, Side::Corp), Some(drew));
+    }
+}
