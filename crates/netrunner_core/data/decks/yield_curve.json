@@ -1,0 +1,121 @@
+{
+  "id": "yield_curve",
+  "name": "Yield Curve",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g.",
+  "style": [
+    "traps"
+  ],
+  "identity": "sso_industries_fueling_innovation",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "ice_wall",
+      "count": 1
+    },
+    {
+      "card": "blockchain",
+      "count": 2
+    },
+    {
+      "card": "sacrifice_zone_expansion",
+      "count": 2
+    },
+    {
+      "card": "punitive_counterstrike",
+      "count": 2
+    },
+    {
+      "card": "too_big_to_fail",
+      "count": 1
+    },
+    {
+      "card": "hostile_architecture",
+      "count": 2
+    },
+    {
+      "card": "superdeep_borehole",
+      "count": 2
+    },
+    {
+      "card": "hortum",
+      "count": 2
+    },
+    {
+      "card": "elizabeth_mills",
+      "count": 1
+    },
+    {
+      "card": "grndl_refinery",
+      "count": 1
+    },
+    {
+      "card": "broad_daylight",
+      "count": 2
+    },
+    {
+      "card": "transport_monopoly",
+      "count": 1
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_kaguya",
+      "count": 2
+    },
+    {
+      "card": "hadrians_wall",
+      "count": 2
+    },
+    {
+      "card": "research_station",
+      "count": 1
+    },
+    {
+      "card": "drudge_work",
+      "count": 2
+    },
+    {
+      "card": "formicary",
+      "count": 2
+    },
+    {
+      "card": "masvingo",
+      "count": 2
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "forced_connection",
+      "count": 2
+    },
+    {
+      "card": "wake_up_call",
+      "count": 2
+    },
+    {
+      "card": "death_and_taxes",
+      "count": 2
+    }
+  ]
+}

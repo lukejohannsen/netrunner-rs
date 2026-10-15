@@ -2665,6 +2665,12 @@ pub enum Amount {
     /// moment is what `first_each_turn` says, and `validate` refuses it.
     ActionsThisTurn,
     DifferentActionsThisTurn,
+    /// The printed agenda points on every installed faceup agenda — SSO
+    /// Industries' "1 advancement token on that piece of ice for each
+    /// agenda point on all installed faceup agendas". Composition didn't
+    /// work: `CorpInstalls` counts cards, and `AgendaPoints` reads a score
+    /// area.
+    InstalledFaceupAgendaPoints,
 }
 
 impl Amount {

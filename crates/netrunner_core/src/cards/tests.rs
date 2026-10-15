@@ -35917,3 +35917,72 @@ mod kitara_stage_13f {
         assert!(!matches!(fired.pending_decision, Some(PendingDecision::ChooseCards { .. })));
     }
 }
+
+mod kitara_stage_13g {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { card: id(card), install_id: InstallId(install), server, slot, rezzed, ..Default::default() }
+    }
+
+    /// The Corp's turn ended with SSO Industries, up to whatever it asks.
+    fn turn_ended(faceup_agenda: bool) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("sso_industries_fueling_innovation"));
+        state.corp.installed = vec![
+            installed("ice_wall", 1, ServerId::Hq, InstallSlot::Ice, true),
+            crate::rules::InstalledCard { advancement_tokens: 1, ..installed("ice_wall", 2, ServerId::RnD, InstallSlot::Ice, false) },
+            installed("hostile_takeover", 3, ServerId::Remote(1), InstallSlot::Root, faceup_agenda),
+            installed("project_vitruvius", 4, ServerId::Remote(2), InstallSlot::Root, faceup_agenda),
+        ];
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        while state.pending_decision.is_none() {
+            let side = state.paid_ability_window.as_ref().expect("a window before SSO Industries asks").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        (state, registry)
+    }
+
+    /// Takes SSO Industries up on it.
+    fn choosing(state: &GameState, registry: &CardRegistry) -> GameState {
+        assert!(matches!(&state.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "you may: {:?}", state.pending_decision);
+        apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose an ice").0
+    }
+
+    #[test]
+    fn sso_industries_advances_an_unadvanced_ice_once_per_faceup_agenda_point() {
+        let (state, registry) = turn_ended(true);
+        let state = choosing(&state, &registry);
+        assert!(matches!(&state.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "{:?}", state.pending_decision);
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0], "the unadvanced ice alone, never the advanced one or an agenda");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("ice wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("place");
+        let ice = state.corp.installed.iter().find(|card| card.install_id == InstallId(1)).unwrap();
+        assert_eq!(ice.advancement_tokens, 1 + 2, "Hostile Takeover's 1 and Project Vitruvius's 2");
+    }
+
+    #[test]
+    fn sso_industries_counts_no_facedown_agenda_and_may_be_declined() {
+        let (state, registry) = turn_ended(false);
+        let state = choosing(&state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("ice wall");
+        let (placed, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("place none");
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 0, "facedown agendas count nothing");
+        let (state, registry) = turn_ended(true);
+        let (declined, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("choose none");
+        assert_eq!(declined.corp.installed[0].advancement_tokens, 0);
+    }
+}
