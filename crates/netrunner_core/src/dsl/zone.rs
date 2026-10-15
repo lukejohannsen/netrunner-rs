@@ -533,6 +533,13 @@ pub enum CardFilter {
     /// Instance-level: a handle, not a card, so another copy of a chosen
     /// card is not one of them.
     AmongInstalls(Vec<crate::rules::InstallId>),
+    /// A piece of ice in the same position as the one `MovedTo` names,
+    /// positions counted from the innermost (CR 6.2.3) — Slipstream's
+    /// "1 piece of ice protecting a central server in the same position
+    /// as the passed ice". `MovedTo::PassedIce` is written over as
+    /// `MovedTo::Ice` when the choice the selection waits behind parks
+    /// (`Effect::with_passed_ice`); left unwritten, it admits nothing.
+    SamePositionAs(crate::dsl::MovedTo),
     /// **Those cards**: the ones the `Effect::Mill` whose `then` this is
     /// trashed — The Price's "You may install 1 of those cards". A
     /// placeholder, written over when the mill resolves
@@ -741,6 +748,7 @@ impl CardFilter {
                 | CardFilter::InstalledThisTurn
                 | CardFilter::ScoredThisTurn
                 | CardFilter::AmongInstalls(_)
+                | CardFilter::SamePositionAs(_)
         )
     }
 
@@ -787,6 +795,18 @@ impl CardFilter {
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_installs(installs)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_installs(installs)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_installs(installs))),
+            other => other,
+        }
+    }
+
+    /// `SamePositionAs(PassedIce)` written over as the pass the moment was,
+    /// through `All`, `AnyOf` and `Not`.
+    pub fn with_passed_ice(self, server: ServerId, position: u32) -> CardFilter {
+        match self {
+            CardFilter::SamePositionAs(crate::dsl::MovedTo::PassedIce) => CardFilter::SamePositionAs(crate::dsl::MovedTo::Ice { server, position }),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_passed_ice(server, position)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_passed_ice(server, position)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_passed_ice(server, position))),
             other => other,
         }
     }
@@ -879,6 +899,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName | CardFilter::ChosenThisWay => false,
         CardFilter::AmongInstalls(_) => true,
+        CardFilter::SamePositionAs(_) => matches!(card.card_type, CardType::Ice(_)),
         CardFilter::LastEncounteredLastRun => true,
         CardFilter::PassedDuringLastRun => true,
         CardFilter::BeingEncountered => true,

@@ -2895,6 +2895,8 @@ pub fn evaluate_effect(
             _ => Ok(Vec::new()),
         },
         Effect::MoveRunToIce(crate::dsl::MovedTo::Ice { server, position }) => Ok(crate::rules::run::move_run_in_front_of(state, *server, *position as usize)),
+        Effect::MoveRunToIce(crate::dsl::MovedTo::Install(ice)) => crate::rules::run::move_run_in_front_of_install(state, registry, *ice),
+        Effect::MoveRunToIce(crate::dsl::MovedTo::ChosenThisWay) => Ok(Vec::new()),
 
         Effect::SwapApproachedIceWithCard { origin, this_ice } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();

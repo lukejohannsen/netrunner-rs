@@ -2872,6 +2872,15 @@ pub enum MovedTo {
     /// behind is parked (`Effect::with_passed_ice`): the parked decision
     /// keeps no moment. Never authored.
     Ice { server: crate::rules::ServerId, position: u32 },
+    /// The piece of ice the selection this move is the `then` of chose —
+    /// Slipstream's "choose 1 piece of ice protecting a central server …
+    /// Move to that ice". Written over as `Install` when the selection is
+    /// answered (`Effect::with_chosen_installs`); left unwritten, nothing
+    /// moves.
+    ChosenThisWay,
+    /// `ChosenThisWay` as it is written in: the chosen ice by handle, on
+    /// whichever server it protects. Never authored.
+    Install(crate::rules::InstallId),
 }
 
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
@@ -3154,6 +3163,11 @@ impl Effect {
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_passed_ice(server, position)).collect();
         match self {
             Effect::MoveRunToIce(MovedTo::PassedIce) => Effect::MoveRunToIce(MovedTo::Ice { server, position }),
+            // Slipstream's "in the same position as the passed ice", in the
+            // selection the move waits behind.
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter: filter.with_passed_ice(server, position), min, max, reveal, shuffle_after, destination, then, count, up_to }
+            }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_passed_ice(server, position)), otherwise: otherwise.map(|e| Box::new(e.with_passed_ice(server, position))) },
@@ -3169,6 +3183,10 @@ impl Effect {
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
                 Effect::PromptChooseCards { side, source, filter: filter.with_chosen_installs(installs), min, max, reveal, shuffle_after, destination, then, count, up_to }
             }
+            Effect::MoveRunToIce(MovedTo::ChosenThisWay) => match installs {
+                [chosen] => Effect::MoveRunToIce(MovedTo::Install(*chosen)),
+                _ => Effect::MoveRunToIce(MovedTo::ChosenThisWay),
+            },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },

@@ -112,7 +112,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("trypano", "Trypano"),
     ("contaminate", "Contaminate"),
-    ("slipstream", "Slipstream"),
     ("jackpot", "Jackpot!"),
 ];
 
