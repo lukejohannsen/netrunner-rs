@@ -2789,6 +2789,14 @@ pub enum EffectDuration {
     /// (`Until::BeforeTurn`). Composition didn't work: `ThroughYourNextTurn`
     /// holds through that turn, and the card is free the moment it begins.
     UntilYourNextTurnBegins,
+    /// Until the card makes the same choice again — Azmari EdTech's "the
+    /// type you last named this way": named as each of the Corp's turns
+    /// ends, and kept through a turn its "may" was declined
+    /// (`Until::ChosenAgain`, which `Effect::Remember` ends by making the
+    /// next). Composition didn't work: every other duration is a span of
+    /// the game or the life of an install, and an identity has neither
+    /// end.
+    UntilChosenAgain,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word

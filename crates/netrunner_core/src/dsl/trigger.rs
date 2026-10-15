@@ -928,6 +928,17 @@ impl EventFilter {
         }
     }
 
+    /// This filter with "the type you last named" written as the type it
+    /// is (`CardFilter::with_chosen_card_type`), for a count that has to
+    /// name a column (`turn_log::first_time_on`), as `with_mark` is.
+    pub(crate) fn with_chosen_card_type(self, chosen: Option<&crate::dsl::CardType>) -> EventFilter {
+        match self {
+            EventFilter::Card(filter) if filter.names_chosen_card_type() => EventFilter::Card(filter.with_chosen_card_type(chosen)),
+            EventFilter::All(parts) => EventFilter::All(parts.into_iter().map(|part| part.with_chosen_card_type(chosen)).collect()),
+            other => other,
+        }
+    }
+
     pub(crate) fn names_whose(&self) -> bool {
         match self {
             EventFilter::Whose(_)

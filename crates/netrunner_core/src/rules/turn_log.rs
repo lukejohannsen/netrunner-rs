@@ -641,7 +641,7 @@ pub(crate) fn first_time_on(definition: &CardDefinition, state: &crate::rules::G
         .iter()
         .filter(|triggered| triggered.first_each_turn)
         .filter_map(|triggered| {
-            let when = triggered.when.as_ref().map(|filter| filter.with_mark(mark));
+            let when = triggered.when.as_ref().map(|filter| filter.with_mark(mark).with_chosen_card_type(crate::rules::lingering::chosen_card_type_of(state, &definition.id, None)));
             Occurrences::meant_by(triggered.trigger, when.as_ref(), definition.side).ok()
         })
         .collect()
@@ -687,6 +687,10 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
     }
     let card_types = match filter {
         CardFilter::Any => return Ok(Kind::ALL.to_vec()),
+        // The type is the state's: `first_time_on` writes the one named
+        // in before a count is read, so this is only what `validate`
+        // checks. Before any is named nothing is heard to count.
+        CardFilter::OfChosenCardType => return Ok(Kind::ALL.to_vec()),
         CardFilter::Ice => return Ok(vec![Kind::Ice]),
         CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
         CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),

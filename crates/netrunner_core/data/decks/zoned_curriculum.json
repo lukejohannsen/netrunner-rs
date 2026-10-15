@@ -1,0 +1,109 @@
+{
+  "id": "zoned_curriculum",
+  "name": "Zoned Curriculum",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "azmari_edtech_shaping_the_future",
+  "cards": [
+    {
+      "card": "increased_drop_rates",
+      "count": 2
+    },
+    {
+      "card": "pop_up_window",
+      "count": 2
+    },
+    {
+      "card": "sansan_city_grid",
+      "count": 2
+    },
+    {
+      "card": "wraparound",
+      "count": 2
+    },
+    {
+      "card": "the_powers_that_be",
+      "count": 1
+    },
+    {
+      "card": "kingmaking",
+      "count": 1
+    },
+    {
+      "card": "project_beale",
+      "count": 2
+    },
+    {
+      "card": "digital_rights_management",
+      "count": 2
+    },
+    {
+      "card": "sweeps_week",
+      "count": 2
+    },
+    {
+      "card": "daily_quest",
+      "count": 2
+    },
+    {
+      "card": "slot_machine",
+      "count": 2
+    },
+    {
+      "card": "license_acquisition",
+      "count": 2
+    },
+    {
+      "card": "focus_group",
+      "count": 2
+    },
+    {
+      "card": "flare",
+      "count": 2
+    },
+    {
+      "card": "vladisibirsk_city_grid",
+      "count": 2
+    },
+    {
+      "card": "reversed_accounts",
+      "count": 2
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    },
+    {
+      "card": "loot_box",
+      "count": 2
+    },
+    {
+      "card": "daily_business_show",
+      "count": 2
+    },
+    {
+      "card": "ghost_branch",
+      "count": 2
+    },
+    {
+      "card": "melange_mining_corp",
+      "count": 1
+    },
+    {
+      "card": "breaking_news",
+      "count": 2
+    },
+    {
+      "card": "astroscript_pilot_program",
+      "count": 2
+    },
+    {
+      "card": "matrix_analyzer",
+      "count": 2
+    }
+  ]
+}
