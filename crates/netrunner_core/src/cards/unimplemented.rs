@@ -109,7 +109,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("trypano", "Trypano"),
     ("contaminate", "Contaminate"),
-    ("jackpot", "Jackpot!"),
 ];
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.

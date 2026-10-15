@@ -223,13 +223,16 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // onto otherwise. Scoring pushes, so the last match is this one.
         GameEvent::AgendaScored { card: scored, .. } => {
             let install = state.corp.scored_agendas.iter().rev().find(|entry| &entry.card == scored).map(|entry| entry.install_id);
-            vec![moment(Trigger::OnAgendaScored, &card(scored, install), Some(Side::Corp))]
+            vec![moment(Trigger::OnAgendaScored, &card(scored, install), Some(Side::Corp)), moment(Trigger::OnAgendaAddedToScoreArea, &card(scored, install), Some(Side::Corp))]
         }
-        GameEvent::AgendaStolen { card: stolen, .. } => vec![moment(Trigger::OnAgendaStolen, &card(stolen, None), Some(Side::Runner))],
+        GameEvent::AgendaStolen { card: stolen, .. } => {
+            vec![moment(Trigger::OnAgendaStolen, &card(stolen, None), Some(Side::Runner)), moment(Trigger::OnAgendaAddedToScoreArea, &card(stolen, None), Some(Side::Runner))]
+        }
         GameEvent::AgendaForfeited { side, card: forfeited } => vec![moment(Trigger::OnForfeit, &card(forfeited, None), Some(*side))],
-        // Not scored (CR 1.17.3f), and nothing prints "when a card is added
-        // to a score area".
-        GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } => Vec::new(),
+        // Not scored (CR 1.17.3f), but added (Jackpot!'s "whenever an agenda
+        // is added to your score area").
+        GameEvent::AddedToScoreAreaAsAgenda { side, card: added, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(*side))],
+        GameEvent::AgendaAddedToScoreArea { card: added, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(Side::Corp))],
         GameEvent::CardAddedToHand { .. } => Vec::new(),
         // Whoever turned it facedown: Saci hears its host derezzed by a
         // Tranquilizer as by a Corp's cost.

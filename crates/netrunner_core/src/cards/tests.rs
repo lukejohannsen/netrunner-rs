@@ -36590,3 +36590,67 @@ mod kitara_stage_18 {
         assert_eq!(crate::rules::continuous::memory(&state, &registry), before + 2);
     }
 }
+
+mod kitara_stage_19 {
+    use super::*;
+    use super::reprints::runner_turn;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A Runner's turn with Jackpot! holding `credits`, run on a remote
+    /// with Hostile Takeover in its root, up to the steal.
+    fn at_the_steal(registry: &CardRegistry, credits: u32) -> GameState {
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(900), card: id("jackpot"), counters: credits, ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("hostile_takeover"),
+            card: id("hostile_takeover"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let (state, _) = run_to_completion(state, registry, ServerId::Remote(0));
+        let (state, _) = apply_action(&state, registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn jackpot_takes_any_number_of_its_credits_when_an_agenda_is_stolen_and_is_trashed() {
+        let registry = registry();
+        let state = at_the_steal(&registry, 3);
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseNumber { .. }) => {}
+            other => panic!("how many credits: {other:?}"),
+        }
+        let (took, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("take 2");
+        assert_eq!(took.runner.resources.credits, Credits(2));
+        assert!(!took.runner.rig.iter().any(|card| card.card == id("jackpot")), "trash Jackpot!");
+        assert!(took.runner.heap.contains(&id("jackpot")));
+    }
+
+    #[test]
+    fn jackpot_taking_none_stays() {
+        let registry = registry();
+        let state = at_the_steal(&registry, 3);
+        let (kept, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("take none");
+        let jackpot = kept.runner.rig.iter().find(|card| card.card == id("jackpot")).expect("stays");
+        assert_eq!((jackpot.counters, kept.runner.resources.credits), (3, Credits(0)));
+    }
+
+    #[test]
+    fn jackpot_may_place_a_credit_as_the_runners_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(900), card: id("jackpot"), ..Default::default() }];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "{:?}", state.pending_decision);
+        let (placed, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place");
+        assert_eq!(placed.runner.rig[0].counters, 1);
+    }
+}

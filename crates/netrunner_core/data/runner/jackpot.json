@@ -1,0 +1,75 @@
+{
+  "id": "jackpot",
+  "title": "Jackpot!",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1[credit] on Jackpot!",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may place 1[credit] on Jackpot!."
+    },
+    {
+      "trigger": "OnAgendaAddedToScoreArea",
+      "subject": "Any",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "max": "HostedCounters",
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ChosenNumber",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "RemoveCounters": "ChosenNumber"
+                    },
+                    {
+                      "GainCreditsAmount": [
+                        "Runner",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "TrashCard": "ThisCard"
+                    }
+                  ]
+                }
+              }
+            },
+            "text": "you may take any number of credits from Jackpot!"
+          }
+        }
+      ],
+      "text": "Whenever an agenda is added to your score area, you may take any number of credits from Jackpot!. If you do, trash Jackpot!."
+    }
+  ],
+  "built_from": 21090,
+  "is_playable": true
+}

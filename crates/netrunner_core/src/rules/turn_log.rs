@@ -359,6 +359,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnCardDrawn => true,
         // Exposed is revealed to both players (CR 1.21.4).
         Trigger::OnCardExposed => false,
+        // A score area is public.
+        Trigger::OnAgendaAddedToScoreArea => false,
         // An operation resolves in the open, and an expendable card is
         // revealed as it is used from HQ.
         Trigger::OnFinishedResolving => false,

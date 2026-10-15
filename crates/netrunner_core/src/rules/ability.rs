@@ -1317,7 +1317,8 @@ pub fn evaluate_effect(
                 let Some((_, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
                 events.extend(cascade_trash_hosted_programs(state, install));
                 let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
-                events.push(add_to_score_area_as_agenda(state, to, card_id, *as_agenda));
+                let added = add_to_score_area_as_agenda(state, to, card_id, *as_agenda);
+                dispatcher::emit(state, registry, &mut events, added)?;
                 return Ok(events);
             }
             // A Runner card, out of the rig into the Runner's score area.
@@ -1326,7 +1327,8 @@ pub fn evaluate_effect(
             if let Some(position) = acting_rig_position(state, ctx) {
                 let removed = state.runner.rig.remove(position);
                 let mut events = cascade_trash_hosted_on_rig_card(state, registry, &removed);
-                events.push(add_to_score_area_as_agenda(state, Side::Runner, removed.card, *as_agenda));
+                let added = add_to_score_area_as_agenda(state, Side::Runner, removed.card, *as_agenda);
+                dispatcher::emit(state, registry, &mut events, added)?;
                 return Ok(events);
             }
             // A Runner event, as it resolves (Notoriety's "Add Notoriety to
@@ -1338,7 +1340,10 @@ pub fn evaluate_effect(
                 if let Some(position) = state.runner.play_area.iter().rposition(|card| *card == card_id) {
                     state.runner.play_area.remove(position);
                 }
-                return Ok(vec![add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda)]);
+                let added = add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda);
+                let mut events = Vec::new();
+                dispatcher::emit(state, registry, &mut events, added)?;
+                return Ok(events);
             }
             // A Corp operation as it resolves: never trashed, by the rules, it
             // leaves for the score area as it resolves, so it was never added
@@ -1348,7 +1353,10 @@ pub fn evaluate_effect(
                 return Ok(Vec::new());
             }
             let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
-            Ok(vec![add_to_score_area_as_agenda(state, to, card_id, *as_agenda)])
+            let added = add_to_score_area_as_agenda(state, to, card_id, *as_agenda);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, added)?;
+            Ok(events)
         }
 
         // "It" is the encountered ice, as the trigger's subject; a
