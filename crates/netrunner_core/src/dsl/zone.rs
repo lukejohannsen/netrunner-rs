@@ -437,6 +437,12 @@ pub enum CardFilter {
     /// most N − 1" reads the amount twice under a `Not`, which is not
     /// resolved.
     AgendaPointsExactly(Box<crate::dsl::Amount>),
+    /// An agenda whose printed advancement requirement is exactly this —
+    /// RNG Key's "if it has … an advancement requirement equal to the named
+    /// number". `AgendaPointsExactly`'s twin for the requirement, read the
+    /// same way. Composition didn't work: no filter read an agenda's
+    /// advancement requirement.
+    AdvancementRequirementExactly(Box<crate::dsl::Amount>),
     /// The same card type as the card a nested cost just trashed — World
     /// Tree's "trash 1 of your other installed cards to search your stack
     /// for 1 card **of the same type**", written in as the selection is
@@ -593,6 +599,7 @@ impl CardFilter {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
+            CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::TopOf(count) => CardFilter::TopOfZone(amount(&count)),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
             // A discount read off the resolution (Rejig's "paying X[credit]
@@ -646,6 +653,7 @@ impl CardFilter {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(amount(at_most)),
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(amount(exactly)),
+            CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
             CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
                 CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(amount(of)))
@@ -857,6 +865,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         },
         CardFilter::AgendaPointsExactly(exactly) => match **exactly {
             crate::dsl::Amount::Fixed(n) => card.card_type == CardType::Agenda && card.agenda_points == Some(n),
+            _ => false,
+        },
+        CardFilter::AdvancementRequirementExactly(exactly) => match **exactly {
+            crate::dsl::Amount::Fixed(n) => card.card_type == CardType::Agenda && card.advancement_requirement == Some(n),
             _ => false,
         },
         CardFilter::SameTypeAsPaidCard => false,

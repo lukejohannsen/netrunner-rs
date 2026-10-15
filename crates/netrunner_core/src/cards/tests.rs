@@ -35696,3 +35696,75 @@ mod kitara_stage_13c {
         assert_eq!(installed.runner.resources.credits, Credits(0));
     }
 }
+
+// ---- Kitara Stage 13d: the next card accessed, held to a number named ----
+
+mod kitara_stage_13d {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A successful run on R&D with RNG Key installed, up to the choice it
+    /// offers; R&D's top card is `top`.
+    fn offered(top: &str, registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("rng_key"), install_id: InstallId(2001), ..Default::default() }];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.r_and_d.push(id(top));
+        let (running, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (running, _) = crate::rules::test_support::through_movement(&running, registry).expect("to R&D");
+        let (mut state, _) = apply_action(&running, registry, PlayerAction::CompleteRun).expect("successful");
+        while !matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { .. })) {
+            let side = state.paid_ability_window.as_ref().expect("a window before RNG Key asks").active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    /// Names `number`, then passes until the access of R&D's top card.
+    fn named(top: &str, number: u32, registry: &CardRegistry) -> GameState {
+        let asked = offered(top, registry);
+        let (naming, _) = apply_action(&asked, registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("name a number");
+        let (named, _) = apply_action(&naming, registry, PlayerAction::ChooseNumber { amount: number }).expect("the number");
+        close_all_windows(named, registry).0
+    }
+
+    #[test]
+    fn rng_key_pays_out_when_the_next_card_accessed_costs_the_number_named() {
+        let registry = registry();
+        let accessing = named("hedge_fund", 5, &registry);
+        assert!(matches!(accessing.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "gain 3 or draw 2: {:?}", accessing.pending_decision);
+        let credits = accessing.runner.resources.credits;
+        let (gained, _) = apply_action(&accessing, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain 3[credit]");
+        assert_eq!(gained.runner.resources.credits, Credits(credits.0 + 3));
+
+        let grip = accessing.runner.grip.len();
+        let (drew, _) = apply_action(&accessing, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("draw 2 cards");
+        assert_eq!(drew.runner.grip.len(), grip + 2);
+    }
+
+    #[test]
+    fn rng_key_reads_an_agendas_advancement_requirement_and_nothing_else() {
+        let registry = registry();
+        // Hostile Takeover: advance 2, and no rez cost to name.
+        let accessing = named("hostile_takeover", 2, &registry);
+        assert!(matches!(accessing.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "an advancement requirement of 2: {:?}", accessing.pending_decision);
+        let missed = named("hostile_takeover", 0, &registry);
+        assert!(missed.pending_decision.is_none(), "an agenda's 0 is not a rez cost: {:?}", missed.pending_decision);
+        let missed = named("hedge_fund", 4, &registry);
+        assert!(missed.pending_decision.is_none(), "5 is not 4");
+    }
+
+    #[test]
+    fn rng_key_may_be_declined() {
+        let registry = registry();
+        let asked = offered("hedge_fund", &registry);
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        let (declined, _) = close_all_windows(declined, &registry);
+        assert!(declined.pending_decision.is_none());
+    }
+}

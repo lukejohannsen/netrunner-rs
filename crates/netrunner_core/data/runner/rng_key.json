@@ -1,0 +1,95 @@
+{
+  "id": "rng_key",
+  "title": "RNG Key",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "ChooseNumber": {
+                  "chooser": "Runner",
+                  "max": {
+                    "Fixed": 20
+                  },
+                  "then": {
+                    "LaterThisTurn": {
+                      "when": "OnAccessed",
+                      "this_run": true,
+                      "effect": {
+                        "EffectIf": {
+                          "condition": {
+                            "CurrentlyAccessingMatches": {
+                              "AnyOf": [
+                                {
+                                  "PrintedCostExactly": "ChosenNumber"
+                                },
+                                {
+                                  "AdvancementRequirementExactly": "ChosenNumber"
+                                }
+                              ]
+                            }
+                          },
+                          "effect": {
+                            "PresentChoice": {
+                              "chooser": "Runner",
+                              "options": [
+                                {
+                                  "GainCredits": [
+                                    "Runner",
+                                    3
+                                  ]
+                                },
+                                {
+                                  "DrawCards": [
+                                    "Runner",
+                                    2
+                                  ]
+                                }
+                              ],
+                              "texts": [
+                                "gain 3[credit]",
+                                "draw 2 cards"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "text": "name a number"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may name a number",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time you make a successful run on HQ or R&D each turn, you may name a number. If you do, reveal the next card that you access this run. If it has a rez cost, play cost, or advancement requirement equal to the named number, either gain 3[credit] or draw 2 cards."
+    }
+  ],
+  "built_from": 21029,
+  "is_playable": true
+}
