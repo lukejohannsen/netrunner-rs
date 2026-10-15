@@ -3725,7 +3725,14 @@ fn trash_hosted_cards(state: &mut GameState, registry: &CardRegistry, ctx: &Reso
     let position = acting_rig_position(state, ctx).ok_or(RulesError::UnresolvedCardTarget)?;
     let hosted = std::mem::take(&mut state.runner.rig[position].hosted_cards);
     let by = carried_out_by(registry, ctx);
-    Ok(hosted.into_iter().map(|card| trash_hosted_card(state, registry, card, by)).collect())
+    let mut events: Vec<GameEvent> = hosted.into_iter().map(|card| trash_hosted_card(state, registry, card, by)).collect();
+    // And what is installed on it — Flame-out's "trash hosted program".
+    let host = state.runner.rig[position].install_id;
+    let installed: Vec<InstallId> = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host)).map(|card| card.install_id).collect();
+    for install in installed {
+        events.extend(trash_install(state, registry, Side::Runner, install, by)?);
+    }
+    Ok(events)
 }
 
 /// Trashes one card hosted uninstalled on a rig card to its *owner's*
@@ -5741,10 +5748,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .acting_install
             .and_then(|install| state.find_rig_install(install))
             .map_or(0, |card| crate::rules::continuous::breaker_strength(state, registry, card).max(0) as u32),
-        Amount::TimesThisTurnOnThisCopy(trigger) => ctx
-            .acting_install
-            .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))
-            .map_or(0, |installed| installed.this_turn.count(state.turn, *trigger)),
+        Amount::TimesThisTurnOnThisCopy(trigger) => match ctx.acting_install {
+            Some(install) => match state.corp.installed.iter().find(|installed| installed.install_id == install) {
+                Some(installed) => installed.this_turn.count(state.turn, *trigger),
+                None => state.find_rig_install(install).map_or(0, |installed| installed.this_turn.count(state.turn, *trigger)),
+            },
+            None => 0,
+        },
         Amount::AgendaPoints(side) => match side {
             Side::Corp => state.corp.resources.agenda_points.0.max(0) as u32,
             Side::Runner => state.runner.resources.agenda_points.0.max(0) as u32,

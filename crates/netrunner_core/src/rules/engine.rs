@@ -2783,7 +2783,7 @@ fn activate_ability(
         // An X cost is asked first (CR 1.16.2c), so X is the first answer
         // the payment will take — read before paying takes it.
         chosen_x = discounted.names_x().then(|| next.payment_answers.first().copied()).flatten();
-        cost_events = ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?;
+        cost_events = ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def, ability_ctx(is_identity, target, &card_id).acting_install), &ability_ctx(is_identity, target, &card_id))?;
         events.extend(cost_events.iter().cloned());
     }
     // X is written into the effect as any chosen number is.
@@ -2869,7 +2869,7 @@ fn activate_hand_ability(
     let mut events = Vec::new();
     let mut cost_events = Vec::new();
     if let Some(cost) = &ability.cost {
-        cost_events = ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Ability(card_def), &ctx)?;
+        cost_events = ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Ability(card_def, ctx.acting_install), &ctx)?;
         events.extend(cost_events.iter().cloned());
     }
     // Heard with the cost's events, as `activate_ability`'s is.

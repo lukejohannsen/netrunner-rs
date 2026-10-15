@@ -103,7 +103,11 @@ pub(crate) enum Purpose<'a> {
     /// pay…"), which is using the card as much (CR 9.1.6), stated by
     /// `pending_choice::resolve_accept`; asked ahead of time only by
     /// applying the acceptance, so there is no second site to agree with.
-    Ability(&'a CardDefinition),
+    ///
+    /// The install is the copy being used, where there is one — Flame-out's
+    /// credits pay for "using hosted program", which is a question about
+    /// where that copy sits (`PaysFor::UsingHosted`).
+    Ability(&'a CardDefinition, Option<InstallId>),
     /// The basic action that removes a tag.
     RemoveTag,
 }
@@ -465,14 +469,17 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::TrashCosts(filter), Purpose::TrashCost(card)) => card_matches_filter(card, filter),
         (PaysFor::TrashCostsOfInstalledCards, Purpose::TrashCost(_)) => accessing_an_install(state),
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
-        (PaysFor::Using(filter), Purpose::Ability(card)) => card_matches_filter(card, filter),
+        (PaysFor::Using(filter), Purpose::Ability(card, _)) => card_matches_filter(card, filter),
         (PaysFor::Playing(filter), Purpose::Play(card)) => card_matches_filter(card, filter),
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
+        (PaysFor::UsingHosted, Purpose::Ability(_, Some(using))) => {
+            host.is_some() && state.find_rig_install(using).is_some_and(|card| card.hosted_on_rig_card == host)
+        }
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
         (PaysFor::DuringRunsOn(server), _) => during_a_run_on(state, server),
         (PaysFor::DuringSuccessfulRuns, _) => during_a_successful_run(state),
-        (PaysFor::UsingDuringRuns(filter), Purpose::Ability(card)) => state.active_run.is_some() && card_matches_filter(card, filter),
+        (PaysFor::UsingDuringRuns(filter), Purpose::Ability(card, _)) => state.active_run.is_some() && card_matches_filter(card, filter),
         (PaysFor::DuringItsRun, _) => {
             let hosting = host.and_then(|host| state.find_rig_install(host)).map(|card| &card.card);
             hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
@@ -494,6 +501,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
             | PaysFor::UsingDuringRuns(_)
+            | PaysFor::UsingHosted
             | PaysFor::Playing(_)
             | PaysFor::RemovingTags,
             _,
@@ -1397,8 +1405,8 @@ mod tests {
         let feeder = Pool::Hosted(fixture_install_id("cyberfeeder"));
         let of = |id: &str| registry.get(&CardId(id.to_string())).expect("in the pool");
         let pools = |purpose| sources(&state, &registry, Side::Runner, purpose, None).into_iter().map(|source| source.pool).collect::<Vec<_>>();
-        assert_eq!(pools(Purpose::Ability(of("corroder"))), vec![feeder, Pool::Wallet], "a fracter's pump or break");
-        assert_eq!(pools(Purpose::Ability(of("madani"))), vec![Pool::Wallet], "a console's ability is not an icebreaker's");
+        assert_eq!(pools(Purpose::Ability(of("corroder"), None)), vec![feeder, Pool::Wallet], "a fracter's pump or break");
+        assert_eq!(pools(Purpose::Ability(of("madani"), None)), vec![Pool::Wallet], "a console's ability is not an icebreaker's");
         assert_eq!(pools(Purpose::Install(of("hantu"))), vec![feeder, Pool::Wallet], "a virus program");
         assert_eq!(pools(Purpose::Install(of("corroder"))), vec![Pool::Wallet], "a program that is no virus");
         assert_eq!(pools(Purpose::RemoveTag), vec![Pool::Wallet]);

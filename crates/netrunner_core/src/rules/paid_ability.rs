@@ -332,7 +332,7 @@ pub fn ability_is_usable(state: &GameState, registry: &CardRegistry, side: Side,
     }
     let ctx = ability::ResolutionContext::for_install(install, card_id).using(card, index);
     ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
-        && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card), &ctx))
+        && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card, Some(install)), &ctx))
 }
 
 /// Every card `side` could activate a paid ability from: their rezzed

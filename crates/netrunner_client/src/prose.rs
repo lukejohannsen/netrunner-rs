@@ -898,6 +898,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::Using(filter) => format!("to use a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::Playing(filter) => format!("to play a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
+        PaysFor::UsingHosted => "to pay for using the hosted program".to_string(),
         PaysFor::TrashCostsOfInstalledCards => "to pay the trash cost of an installed card".to_string(),
         PaysFor::DuringRuns => "during runs".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),

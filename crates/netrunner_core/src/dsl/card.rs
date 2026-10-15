@@ -1125,6 +1125,11 @@ pub enum PaysFor {
     /// its filter implies the other's (`payment::Breadth::within`), so The
     /// Toolbox's credits still go before Mantle's on a break.
     Using(crate::dsl::CardFilter),
+    /// Using a card hosted on this one — Flame-out's "Use these credits
+    /// to pay for using hosted program". Composition didn't work: `Using`'s
+    /// filter is about the card's definition, and which copy sits on this
+    /// card is the install's (`payment::Purpose::Ability`'s second half).
+    UsingHosted,
     /// The play cost of a card the filter admits — Mystic Maemi's "You can
     /// spend hosted credits to play events" (`CardType(Event)`). The
     /// play's own price (`payment::Purpose::Play`), never its additional

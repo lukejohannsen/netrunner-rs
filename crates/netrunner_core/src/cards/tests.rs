@@ -23140,7 +23140,7 @@ mod uprising {
 
         let available = |state: &GameState, card: &str| {
             let definition = registry.get(&id(card)).expect("a card");
-            crate::rules::payment::available(state, &registry, Side::Runner, crate::rules::payment::Purpose::Ability(definition))
+            crate::rules::payment::available(state, &registry, Side::Runner, crate::rules::payment::Purpose::Ability(definition, None))
         };
         let mut held = runner_turn();
         held.runner.rig = vec![holding("mantle", 2001, 1), rig("corroder", 2002)];
@@ -23153,7 +23153,7 @@ mod uprising {
         let mut both = runner_turn();
         both.runner.rig = vec![holding("mantle", 2001, 1), holding("the_toolbox", 2002, 2), rig("corroder", 2003)];
         both.runner.resources.credits = Credits(0);
-        let entries: Vec<_> = crate::rules::payment::sources(&both, &registry, Side::Runner, crate::rules::payment::Purpose::Ability(registry.get(&id("corroder")).expect("a card")), None)
+        let entries: Vec<_> = crate::rules::payment::sources(&both, &registry, Side::Runner, crate::rules::payment::Purpose::Ability(registry.get(&id("corroder")).expect("a card"), None), None)
             .into_iter()
             .map(|source| (source, crate::rules::payment::class_of(&both, &registry, Side::Runner, source.pool)))
             .collect();
@@ -25809,10 +25809,10 @@ mod downfall {
         state.runner.rig = vec![holding("trickster_taka", 2001, 2), rig("corroder", 2002)];
         let corroder = registry.get(&id("corroder")).expect("a card");
         let tool = registry.get(&id("the_toolbox")).expect("a card");
-        assert_eq!(available(&state, &registry, crate::rules::payment::Purpose::Ability(corroder)), 10, "not outside a run");
+        assert_eq!(available(&state, &registry, crate::rules::payment::Purpose::Ability(corroder, None)), 10, "not outside a run");
         let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
-        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(corroder)), 12, "a program, during a run");
-        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(tool)), 10, "not a piece of hardware");
+        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(corroder, None)), 12, "a program, during a run");
+        assert_eq!(available(&run, &registry, crate::rules::payment::Purpose::Ability(tool, None)), 10, "not a piece of hardware");
 
         let mut full = runner_turn();
         full.runner.rig = vec![holding("trickster_taka", 2001, 3)];
@@ -36263,5 +36263,84 @@ mod kitara_stage_14b {
         let (on, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("none");
         assert!(on.corp.hq.contains(&id("enigma")));
         assert!(on.corp.installed.is_empty());
+    }
+}
+
+mod kitara_stage_15 {
+    use super::*;
+    use super::reprints::{encounter, ice_at_hq, runner_turn};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Flame-out installed from the grip, Corroder installed onto it, and
+    /// nothing in the credit pool.
+    fn hosting(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(4);
+        state.runner.grip = vec![id("flame_out"), id("corroder")];
+        state.next_install_id = 4_000_000;
+        let (installed, _) = apply_action(&state, registry, PlayerAction::InstallHardware { card_id: id("flame_out"), host: None }).expect("install Flame-out");
+        let flame_out = installed.runner.rig.iter().find(|card| card.card == id("flame_out")).expect("installed");
+        assert_eq!(flame_out.counters, 9, "place 9[credit] on it");
+        let host = flame_out.install_id;
+        let (mut state, _) =
+            apply_action(&installed, registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: Some(host) }).expect("onto Flame-out");
+        state.runner.resources.credits = Credits(0);
+        state
+    }
+
+    fn of(state: &GameState, card: &str) -> crate::rules::InstalledRunnerCard {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("in the rig").clone()
+    }
+
+    #[test]
+    fn flame_out_pays_for_its_hosted_program_and_trashes_it_when_the_turn_ends() {
+        let registry = registry();
+        let state = hosting(&registry);
+        let corroder = of(&state, "corroder");
+        assert_eq!(corroder.hosted_on_rig_card, Some(of(&state, "flame_out").install_id));
+        let mut state = state;
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&state, &registry);
+        let (pumped, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: corroder.install_id, ability_index: 0 }).expect("pumped off Flame-out");
+        assert_eq!(of(&pumped, "flame_out").counters, 8, "1[credit] off Flame-out");
+        let (out, _) = close_all_windows(pumped, &registry);
+        let mut out = out;
+        while out.active_run.is_some() {
+            out = match crate::rules::legal_actions(&out, &registry).into_iter().find(|action| matches!(action, PlayerAction::JackOut)) {
+                Some(jack) => apply_action(&out, &registry, jack).expect("jack out").0,
+                None => close_all_windows(crate::rules::test_support::continue_run(&out, &registry).expect("on").0, &registry).0,
+            };
+        }
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&out), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(!ended.runner.rig.iter().any(|card| card.card == id("corroder")), "trash hosted program");
+        assert!(ended.runner.heap.contains(&id("corroder")));
+        assert!(ended.runner.rig.iter().any(|card| card.card == id("flame_out")), "Flame-out stays");
+    }
+
+    #[test]
+    fn flame_out_unused_keeps_its_program() {
+        let registry = registry();
+        let state = hosting(&registry);
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.active_run.is_none() && ended.runner.rig.iter().any(|card| card.card == id("corroder")));
+    }
+
+    #[test]
+    fn flame_out_pays_for_nothing_it_does_not_host() {
+        let registry = registry();
+        let mut state = hosting(&registry);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: InstallId(77), card: id("gordian_blade"), ..Default::default() });
+        let blade = registry.get(&id("gordian_blade")).expect("a card");
+        let corroder = registry.get(&id("corroder")).expect("a card");
+        let hosted = of(&state, "corroder").install_id;
+        let available = |purpose| crate::rules::payment::available(&state, &registry, Side::Runner, purpose);
+        assert_eq!(available(crate::rules::payment::Purpose::Ability(corroder, Some(hosted))), 9);
+        assert_eq!(available(crate::rules::payment::Purpose::Ability(blade, Some(InstallId(77)))), 0);
     }
 }
