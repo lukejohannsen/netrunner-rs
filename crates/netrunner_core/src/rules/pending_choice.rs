@@ -1618,7 +1618,8 @@ pub(crate) fn resolve_confirm_card_selection(
                         ArchivedCard::facedown(card_id.clone())
                     });
                 } else if matches!(dest, CardZoneRef::OwnScoreArea) && side == Side::Corp {
-                    events.push(ability::add_agenda_to_score_area(state, registry, card_id.clone()));
+                    let added = ability::add_agenda_to_score_area(state, registry, card_id.clone());
+                    crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
                     onto_deck += 1;

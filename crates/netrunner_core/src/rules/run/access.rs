@@ -1437,7 +1437,8 @@ pub(crate) fn move_currently_accessed_card(state: &mut GameState, registry: &Car
             events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: card_id.clone() });
         }
         AccessedTo::RunnerScoreArea(as_agenda) => {
-            events.push(ability::add_to_score_area_as_agenda(state, Side::Runner, card_id.clone(), as_agenda));
+            let added = ability::add_to_score_area_as_agenda(state, Side::Runner, card_id.clone(), as_agenda);
+            crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
         }
     }
     if at_decision {
