@@ -1,0 +1,49 @@
+{
+  "id": "zamba",
+  "title": "Zamba",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardExposed",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever a Corp card is exposed, you may gain 1[credit]."
+    }
+  ],
+  "built_from": 21003,
+  "is_playable": true
+}

@@ -4619,7 +4619,8 @@ pub(crate) fn expose(state: &mut GameState, registry: &CardRegistry, install: In
     let card = exposed.card.clone();
     reveal(state, Side::Corp, &card, false);
     let mut events = Vec::new();
-    dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by: Side::Runner })?;
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card: card.clone(), by: Side::Runner })?;
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardExposed { install, card })?;
     Ok(events)
 }
 

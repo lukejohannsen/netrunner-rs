@@ -555,6 +555,7 @@ pub fn narrate_event(
         GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
         // Only the drawer's copy of the log carries it.
         GameEvent::DrewCard { card, .. } => format!("drew {}", title(card)),
+        GameEvent::CardExposed { card, .. } => format!("exposed {}", title(card)),
         GameEvent::CardsSetAside { cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();
             format!("set aside {}", and_list(&names))

@@ -36540,3 +36540,53 @@ mod kitara_stage_17 {
         assert_eq!(crate::rules::mask_event_for_player(&drew, &state, Side::Corp), Some(drew));
     }
 }
+
+mod kitara_stage_18 {
+    use super::*;
+    use super::reprints::runner_turn;
+    use crate::rules::{GameEvent, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Infiltration played to expose a facedown PAD Campaign, with Zamba
+    /// in the rig.
+    fn exposing(registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("infiltration")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(900), card: id("zamba"), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: false,
+            ..Default::default()
+        }];
+        let (asked, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("infiltration") }).expect("play");
+        let (choosing, _) = apply_action(&asked, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("expose");
+        let (toggled, _) = apply_action(&choosing, registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+    }
+
+    #[test]
+    fn zamba_may_gain_1_whenever_a_corp_card_is_exposed() {
+        let registry = registry();
+        let (state, events) = exposing(&registry);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardExposed { card, .. } if *card == id("pad_campaign"))), "{events:?}");
+        assert!(matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "{:?}", state.pending_decision);
+        let credits = state.runner.resources.credits;
+        let (gained, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain");
+        assert_eq!(gained.runner.resources.credits, Credits(credits.0 + 1));
+    }
+
+    #[test]
+    fn zamba_gives_two_memory() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let before = crate::rules::continuous::memory(&state, &registry);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(900), card: id("zamba"), ..Default::default() }];
+        assert_eq!(crate::rules::continuous::memory(&state, &registry), before + 2);
+    }
+}

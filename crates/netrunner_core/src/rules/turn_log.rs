@@ -357,6 +357,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnCardMoved => true,
         // A drawn card is its drawer's alone.
         Trigger::OnCardDrawn => true,
+        // Exposed is revealed to both players (CR 1.21.4).
+        Trigger::OnCardExposed => false,
         // An operation resolves in the open, and an expendable card is
         // revealed as it is used from HQ.
         Trigger::OnFinishedResolving => false,

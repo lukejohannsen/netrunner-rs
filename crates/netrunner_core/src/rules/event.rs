@@ -42,6 +42,11 @@ pub enum GameEvent {
     /// `Trigger::OnCardDrawn`). Not a field on `CardDrawn`: that is the
     /// public fact, which both players' logs keep, and one per draw.
     DrewCard { side: Side, card: CardId },
+    /// `card`, installed facedown as `install`, was exposed (CR 1.21.4),
+    /// after its `CardRevealed`: what "whenever a Corp card is exposed"
+    /// hears (Zamba, `Trigger::OnCardExposed`). Public, the card having
+    /// been shown.
+    CardExposed { install: crate::rules::InstallId, card: CardId },
     IceApproached { server: ServerId, position: u32 },
     IceEncountered { card_id: CardId, strength: i32, subroutine_count: usize },
     /// `strength` is the ice's strength as the subroutine was broken
@@ -858,7 +863,7 @@ impl GameEvent {
     /// which is what covers a shuffle or a random discard.
     pub fn may_teach_the_actor(&self) -> bool {
         match self {
-            GameEvent::CardDrawn { .. } | GameEvent::DrewCard { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
+            GameEvent::CardDrawn { .. } | GameEvent::DrewCard { .. } | GameEvent::CardExposed { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
             | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. } | GameEvent::CardsSetAside { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
