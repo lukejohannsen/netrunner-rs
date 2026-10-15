@@ -1662,8 +1662,7 @@ pub fn evaluate_effect(
             // to HQ", which is faceup in Archives or was not heard — and
             // recorded as the revealed selection a prompt over Archives
             // would have made (`CardsSelected`), which Hyoubu Institute
-            // hears as a reveal. The Corp's only: no Runner card adds
-            // itself to the grip from the heap. Not
+            // hears as a reveal. A Runner event in the heap is below. Not
             // `PromptChooseCards` over Archives, which never offers the
             // last faceup copy of the operation it is resolving for
             // (`pending_choice::resolving_operation_in`): this card is not
@@ -1695,6 +1694,21 @@ pub fn evaluate_effect(
                 && let Some(position) = state.runner.play_area.iter().rposition(|held| *held == card_id)
             {
                 state.runner.play_area.remove(position);
+                state.runner.grip.push(card_id.clone());
+                return Ok(vec![GameEvent::CardAddedToHand { side: Side::Runner, card: Some(card_id), install: InstallId::PLACEHOLDER, faceup: true }]);
+            }
+            // A Runner event whose run has outlived it is in the heap:
+            // Marathon's "When the run ends, … add Marathon to your grip
+            // instead of trashing it if the run was successful", said by
+            // the run's end (`SetRunEndedEffect`). The play filed it as the
+            // run began, the run being the event's last instruction; it
+            // comes back from there, the last copy, as Subliminal
+            // Messaging's comes out of Archives.
+            if ctx.acting_install.is_none()
+                && registry.get(&card_id).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Event)
+                && let Some(position) = state.runner.heap.iter().rposition(|held| *held == card_id)
+            {
+                state.runner.heap.remove(position);
                 state.runner.grip.push(card_id.clone());
                 return Ok(vec![GameEvent::CardAddedToHand { side: Side::Runner, card: Some(card_id), install: InstallId::PLACEHOLDER, faceup: true }]);
             }
@@ -1796,7 +1810,7 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server } => {
             let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             // The card whose text it is, for whoever shows it; a prohibition
             // with no card behind it has nothing to be shown as. About
@@ -1812,6 +1826,9 @@ pub fn evaluate_effect(
                     .map(|ice| ice.install_id)
                     .ok_or(RulesError::NotInEncounter)?;
                 (On::Install(ice), acting)
+            } else if *attacked_server {
+                let server = state.active_run.as_ref().map(|run| run.server).ok_or(RulesError::NoActiveRun)?;
+                (On::Server(server), acting)
             } else if *copies_of_it {
                 (On::CopiesOf(acting.clone()), ctx.attributed_card().unwrap_or(acting))
             } else if *this_install {
@@ -2415,6 +2432,10 @@ pub fn evaluate_effect(
             // server" (Front Company): not offered, as `start_run` would
             // refuse it.
             let no_remote = crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote);
+            // "You may not make another run on that server" (Marathon): not
+            // offered, as `start_run` would refuse it.
+            let barred = |server: &ServerId| crate::rules::lingering::prohibits_server(state, crate::dsl::Prohibition::Run, *server);
+            let any_barred = state.lingering.iter().any(|effect| matches!(effect.on, crate::rules::lingering::On::Server(_)));
             // "Run the attacked server again": the last run's, if there was
             // one and it is still a server to run.
             let allowed_servers = if *last_run_server {
@@ -2423,7 +2444,7 @@ pub fn evaluate_effect(
                     ServerId::Remote(id) => crate::rules::legal_actions::existing_remote_ids(state).contains(&id),
                     _ => true,
                 };
-                if !exists || (no_remote && matches!(last, ServerId::Remote(_))) {
+                if !exists || (no_remote && matches!(last, ServerId::Remote(_))) || barred(&last) {
                     return Err(RulesError::NoServerLeftToRun);
                 }
                 Some(vec![last])
@@ -2431,7 +2452,7 @@ pub fn evaluate_effect(
                 allowed_servers.clone()
             };
             let allowed_servers = &allowed_servers;
-            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() || no_remote {
+            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() || no_remote || any_barred {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
                 // `legal_actions` offers them, fresh remote included.
@@ -2452,6 +2473,7 @@ pub fn evaluate_effect(
                     .filter(|server| !*exclude_servers_run_this_turn || !already_run.contains(server))
                     .filter(|server| !*only_protected_by_ice || protected(server))
                     .filter(|server| !no_remote || !matches!(server, ServerId::Remote(_)))
+                    .filter(|server| !barred(server))
                     .filter(|server| {
                         only_in.is_none_or(|kind| {
                             let exists = match server {

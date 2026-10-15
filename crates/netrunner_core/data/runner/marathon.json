@@ -1,0 +1,46 @@
+{
+  "id": "marathon",
+  "title": "Marathon",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_in": "Remote",
+            "on_start": {
+              "Prohibit": {
+                "what": "Run",
+                "until": "Turn",
+                "attacked_server": true
+              }
+            },
+            "on_success": {
+              "SetRunEndedEffect": {
+                "Sequence": [
+                  {
+                    "GainClicks": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  "AddToHand"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run on a remote server. When the run ends, gain [click] and add Marathon to your grip instead of trashing it if the run was successful. You may not make another run on that server for the remainder of this turn."
+    }
+  ],
+  "built_from": 21046,
+  "is_playable": true
+}

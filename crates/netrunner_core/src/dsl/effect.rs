@@ -1563,6 +1563,14 @@ pub enum Effect {
         /// could name it.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         encountered_ice: bool,
+        /// Only about the attacked server, as it is when this resolves —
+        /// Marathon's "You may not make another run on **that server** for
+        /// the remainder of this turn", made as its run begins
+        /// (`lingering::On::Server`). The server is fixed when it is made,
+        /// which is what "that server" says: a redirect later in the run
+        /// does not move it. `RulesError::NoActiveRun` outside a run.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        attacked_server: bool,
     },
     /// Leaves `effect` waiting for a moment later this turn, then resolves
     /// it as the card that made it (a `lingering::DelayedAbility`, CR

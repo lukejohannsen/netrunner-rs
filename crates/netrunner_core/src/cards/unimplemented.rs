@@ -95,7 +95,6 @@ pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.
 pub(crate) const COTC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("marathon", "Marathon"),
 ];
 
 /// *The Devil and the Dragon* (`the_devil_and_the_dragon`): tranche F3 of the FFG plan.

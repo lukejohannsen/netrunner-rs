@@ -36654,3 +36654,75 @@ mod kitara_stage_19 {
         assert_eq!(placed.runner.rig[0].counters, 1);
     }
 }
+
+mod kitara_stage_20 {
+    use super::*;
+    use super::reprints::runner_turn;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A Runner's turn with Marathon in the grip and an Ice Wall protecting
+    /// a remote with nothing in its root; `rezzed` decides whether the
+    /// wall ends the run.
+    fn with_a_remote(rezzed: bool) -> GameState {
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("marathon")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        }];
+        state
+    }
+
+    fn plays_marathon(state: &GameState, registry: &CardRegistry) -> bool {
+        crate::rules::legal_actions_for(state, registry, Side::Runner).contains(&PlayerAction::PlayEvent { card_id: id("marathon") })
+    }
+
+    #[test]
+    fn marathon_runs_a_remote_and_comes_back_with_a_click_when_it_succeeds_then_bars_that_server() {
+        let registry = registry();
+        let state = with_a_remote(false);
+        let clicks = state.runner.resources.clicks;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("marathon") }).expect("play");
+        match &asked.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) => {
+                assert_eq!(servers, &vec![ServerId::Remote(0)], "a remote server, and only one exists");
+            }
+            other => panic!("which server: {other:?}"),
+        }
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (ended, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("breach");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none());
+        assert_eq!(ended.runner.resources.clicks, Clicks(clicks.0 - 1 + 1), "gain [click]");
+        assert_eq!(ended.runner.grip, vec![id("marathon")], "add Marathon to your grip instead of trashing it");
+        assert!(!ended.runner.heap.contains(&id("marathon")));
+
+        let refused = apply_action(&ended, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        assert_eq!(refused.err(), Some(RulesError::RunProhibited { server: ServerId::Remote(0) }), "no other run on that server this turn");
+        assert!(!plays_marathon(&ended, &registry), "the only remote is barred, so Marathon has nothing to run");
+        assert!(apply_action(&ended, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).is_ok(), "another server is open");
+    }
+
+    #[test]
+    fn marathon_stays_in_the_heap_when_its_run_fails_and_still_bars_the_server() {
+        let registry = registry();
+        let state = with_a_remote(true);
+        let clicks = state.runner.resources.clicks;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("marathon") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run");
+        let (ended, _) = pass_until_settled(running, &registry);
+        assert!(ended.active_run.is_none(), "Ice Wall ended the run");
+        assert_eq!(ended.runner.resources.clicks, Clicks(clicks.0 - 1), "no [click] for a run that failed");
+        assert!(ended.runner.heap.contains(&id("marathon")) && ended.runner.grip.is_empty(), "trashed as any event is");
+        let refused = apply_action(&ended, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        assert_eq!(refused.err(), Some(RulesError::RunProhibited { server: ServerId::Remote(0) }), "barred whether or not the run succeeded");
+    }
+}
