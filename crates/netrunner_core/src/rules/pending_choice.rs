@@ -1796,6 +1796,11 @@ pub(crate) fn resolve_confirm_card_selection(
                 fired: 0,
             });
         } else if let Some(effect) = effect {
+            // What the selection cost, written in now: the install it pays
+            // for is a later selection's `then`, resolved after this one's
+            // context is gone (Emergent Creativity).
+            let printed: u32 = selected.iter().filter_map(|card| registry.get(card)).map(|card| card.cost).sum();
+            let effect = effect.filled(&|amount| matches!(amount, crate::dsl::Amount::CardsSelectedPrintedCost).then_some(printed));
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
             ctx.selected_count = selected.len() as u32;
             // Which face the chosen Archives copy had, read before anything

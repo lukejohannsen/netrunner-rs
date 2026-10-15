@@ -1,0 +1,140 @@
+{
+  "id": "emergent_creativity",
+  "title": "Emergent Creativity",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "CardTypeOneOf": [
+                    "Program",
+                    "Hardware"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnGrip",
+                "filter": {
+                  "CardTypeOneOf": [
+                    "Program",
+                    "Hardware"
+                  ]
+                },
+                "min": 0,
+                "max": 99,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHeap",
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OwnStack",
+                    "filter": {
+                      "All": [
+                        {
+                          "CardTypeOneOf": [
+                            "Program",
+                            "Hardware"
+                          ]
+                        },
+                        {
+                          "InstallableRunnerCardWithDiscount": {
+                            "Amount": "CardsSelectedPrintedCost"
+                          }
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": true,
+                    "then": {
+                      "EffectIf": {
+                        "condition": {
+                          "AmountAtLeast": [
+                            "CardsSelected",
+                            1
+                          ]
+                        },
+                        "effect": {
+                          "InstallRunnerCardFromZone": {
+                            "from": "OwnStack",
+                            "discount": {
+                              "Amount": "CardsSelectedPrintedCost"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnStack",
+                "filter": {
+                  "All": [
+                    {
+                      "CardTypeOneOf": [
+                        "Program",
+                        "Hardware"
+                      ]
+                    },
+                    {
+                      "InstallableRunnerCardWithDiscount": {
+                        "Credits": 0
+                      }
+                    }
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": true,
+                "then": {
+                  "EffectIf": {
+                    "condition": {
+                      "AmountAtLeast": [
+                        "CardsSelected",
+                        1
+                      ]
+                    },
+                    "effect": {
+                      "InstallRunnerCardFromZone": {
+                        "from": "OwnStack",
+                        "discount": {
+                          "Credits": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash any number of programs and/or pieces of hardware from your grip. Search your stack for 1 program or piece of hardware. Install it, paying X[credit] less. X is equal to the total install cost of the trashed cards."
+    }
+  ],
+  "built_from": 21028,
+  "is_playable": true
+}

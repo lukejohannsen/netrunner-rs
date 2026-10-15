@@ -647,6 +647,9 @@ impl CardFilter {
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
+            CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
+                CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(amount(of)))
+            }
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.filled(fill)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.filled(fill)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.filled(fill))),
