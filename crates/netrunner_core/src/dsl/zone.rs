@@ -797,6 +797,19 @@ impl CardFilter {
         }
     }
 
+    /// This filter with the cards an `AmongCards` names left out, for a
+    /// player who may not be told them (`masking`): "that card" written in
+    /// from a moment about a card in HQ (Jinja City Grid's drawn ice).
+    pub fn naming_no_cards(self) -> CardFilter {
+        match self {
+            CardFilter::AmongCards(_) => CardFilter::AmongCards(Vec::new()),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(CardFilter::naming_no_cards).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(CardFilter::naming_no_cards).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.naming_no_cards())),
+            other => other,
+        }
+    }
+
     /// `ChosenThisWay` written over as the installs a selection chose,
     /// through `All`, `AnyOf` and `Not`.
     pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> CardFilter {

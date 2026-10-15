@@ -1907,6 +1907,8 @@ pub(crate) fn substitute_install_server(effect: Effect, server: crate::rules::ru
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
         }
         Effect::Sequence(effects) => Effect::Sequence(effects.into_iter().map(|e| substitute_install_server(e, server)).collect()),
+        // Jinja City Grid's "you may … install it protecting this server".
+        Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: options.into_iter().map(|e| substitute_install_server(e, server)).collect(), texts },
         Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
         other => other,
     }

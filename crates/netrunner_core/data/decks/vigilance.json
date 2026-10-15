@@ -3,7 +3,7 @@
   "name": "Vigilance",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Asa Group: Security Through Vigilance, Kitara's Haas-Bioroid identity, which the first time each turn the Corp installs a card may install 1 non-agenda card from HQ in the root of or protecting the same server. On Stronger Together's list, a bioroid deck with ice to stack behind each install. Eternal-legal only. Kitara Stage 13a.",
+  "description": "Not a published list: built so the sweeps reach Asa Group: Security Through Vigilance, Kitara's Haas-Bioroid identity, which the first time each turn the Corp installs a card may install 1 non-agenda card from HQ in the root of or protecting the same server. On Stronger Together's list, a bioroid deck with ice to stack behind each install. Eternal-legal only. Kitara Stage 13a. Kitara Stage 17: two Jinja City Grid for its two Next Activation Command, an upgrade that installs the ice the Corp draws protecting its server, 4[credit] cheaper; four other decks keep Next Activation Command.",
   "style": [
     "glacier"
   ],
@@ -66,10 +66,6 @@
       "count": 2
     },
     {
-      "card": "next_activation_command",
-      "count": 2
-    },
-    {
       "card": "napd_cordon",
       "count": 2
     },
@@ -99,6 +95,10 @@
     },
     {
       "card": "warden_fatuma",
+      "count": 2
+    },
+    {
+      "card": "jinja_city_grid",
       "count": 2
     }
   ]

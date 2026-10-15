@@ -598,7 +598,7 @@ fn happen(
         WouldHappen::Trace { .. } => Ok(Vec::new()),
         // Whatever heard it has resolved; the cards are drawn now, from
         // the stack as it has left it.
-        WouldHappen::Draw { side, .. } => Ok(ability::draw(state, *side, amount)),
+        WouldHappen::Draw { side, .. } => ability::draw_and_hear(state, registry, *side, amount),
         // Not prevented: the card is revealed, and the Runner remembers it.
         WouldHappen::Expose { install } => ability::expose(state, registry, *install),
         WouldHappen::Trash { owner, install, by } => {

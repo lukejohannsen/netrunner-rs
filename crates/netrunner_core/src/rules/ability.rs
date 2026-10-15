@@ -329,7 +329,7 @@ pub(crate) fn runner_would_draw(state: &mut GameState, registry: &CardRegistry, 
 /// nothing about to happen to announce.
 pub(crate) fn corp_would_draw(state: &mut GameState, registry: &CardRegistry, amount: u32, ctx: &mut ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
     if state.corp.r_and_d.is_empty() {
-        return Ok(draw(state, Side::Corp, amount));
+        return Ok(draw(state, Side::Corp, amount).0);
     }
     crate::rules::prevention::would(state, registry, WouldHappen::Draw { side: Side::Corp, amount }, ctx)
 }
@@ -343,8 +343,9 @@ pub(crate) fn corp_would_draw(state: &mut GameState, registry: &CardRegistry, am
 /// silent stop for both, and Sprint or Spin Doctor on an empty R&D drew
 /// nothing and played on. Called by `corp_would_draw` for an empty R&D,
 /// and by `prevention::happen` once a draw has been announced.
-pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> Vec<GameEvent> {
+pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> (Vec<GameEvent>, Vec<CardId>) {
     let mut events = Vec::new();
+    let mut drawn_cards = Vec::new();
     for _ in 0..amount {
         let drawn = match side {
             Side::Corp => state.corp.r_and_d.pop(),
@@ -352,6 +353,7 @@ pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> Vec<GameEv
         };
         match drawn {
             Some(card) => {
+                drawn_cards.push(card.clone());
                 match side {
                     Side::Corp => state.corp.hq.push(card),
                     Side::Runner => state.runner.grip.push(card),
@@ -366,7 +368,18 @@ pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> Vec<GameEv
             }
         }
     }
-    events
+    (events, drawn_cards)
+}
+
+/// `draw`, and then which cards were drawn, each heard by whatever hears a
+/// draw (`GameEvent::DrewCard`): once all are drawn, so a "whenever you
+/// draw" resolves after the draw, not between its cards.
+pub(crate) fn draw_and_hear(state: &mut GameState, registry: &CardRegistry, side: Side, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+    let (mut events, drawn) = draw(state, side, amount);
+    for card in drawn {
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::DrewCard { side, card })?;
+    }
+    Ok(events)
 }
 
 /// Whose text the resolution is: the side of the card it is attributed to
@@ -3202,6 +3215,17 @@ pub(crate) fn fire_card_triggers(
                 same_server = triggered_effects.iter().cloned().map(|effect| crate::rules::pending_choice::substitute_install_server(effect, *server)).collect();
                 &same_server
             }
+            // Jinja City Grid's "install it protecting **this server**": a
+            // moment about no server narrows the install to the listener's.
+            Some(GameEvent::DrewCard { .. }) if triggered_effects.iter().any(Effect::names_only_server) => {
+                match due.install.and_then(|install| state.corp.installed.iter().find(|card| card.install_id == install)).map(|card| card.server) {
+                    Some(server) => {
+                        same_server = triggered_effects.iter().cloned().map(|effect| crate::rules::pending_choice::substitute_install_server(effect, server)).collect();
+                        &same_server
+                    }
+                    None => triggered_effects,
+                }
+            }
             _ => triggered_effects,
         };
         let that_card = triggering_event
@@ -6022,7 +6046,15 @@ mod tests {
         assert!(state.runner.stack.is_empty());
         // Announced as the three it would be (The Class Act's "the
         // number of cards you would draw"), drawn as the one there is.
-        assert_eq!(events, vec![GameEvent::AboutToResolve { what: WouldHappen::Draw { side: Side::Runner, amount: 3 } }, GameEvent::CardDrawn { side: Side::Runner }]);
+        // Then which card, the drawer's record (`DrewCard`).
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AboutToResolve { what: WouldHappen::Draw { side: Side::Runner, amount: 3 } },
+                GameEvent::CardDrawn { side: Side::Runner },
+                GameEvent::DrewCard { side: Side::Runner, card: CardId("only_card".to_string()) }
+            ]
+        );
     }
 
     /// CR 1.19.1: "Trashing is the act of moving an object to its owner's
@@ -6067,7 +6099,8 @@ mod tests {
         assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
         // Announced first, as every draw is (Daily Business Show).
         let about_to = GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 2 } };
-        assert_eq!(events, vec![about_to, GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }]);
+        let drew = GameEvent::DrewCard { side: Side::Corp, card: CardId("only_card".to_string()) };
+        assert_eq!(events, vec![about_to, GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }, drew]);
     }
 
     #[test]

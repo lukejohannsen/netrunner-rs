@@ -355,6 +355,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // rezzed card or moves itself, being active — but nothing in the
         // move says so.
         Trigger::OnCardMoved => true,
+        // A drawn card is its drawer's alone.
+        Trigger::OnCardDrawn => true,
         // An operation resolves in the open, and an expendable card is
         // revealed as it is used from HQ.
         Trigger::OnFinishedResolving => false,

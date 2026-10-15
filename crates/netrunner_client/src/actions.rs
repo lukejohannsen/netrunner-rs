@@ -553,6 +553,8 @@ pub fn narrate_event(
             format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))
         }
         GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
+        // Only the drawer's copy of the log carries it.
+        GameEvent::DrewCard { card, .. } => format!("drew {}", title(card)),
         GameEvent::CardsSetAside { cards, .. } => {
             let names: Vec<String> = cards.iter().map(&title).collect();
             format!("set aside {}", and_list(&names))

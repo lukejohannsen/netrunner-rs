@@ -36,6 +36,12 @@ pub enum GameEvent {
     ClickSpent { side: Side },
     CreditsGained { side: Side, amount: u32 },
     CardDrawn { side: Side },
+    /// Which card `side` drew, after `CardDrawn` — the drawer's own record,
+    /// masked from the other player as a look is (`rules::masking`), and the
+    /// moment "whenever you draw a piece of ice" hears (Jinja City Grid,
+    /// `Trigger::OnCardDrawn`). Not a field on `CardDrawn`: that is the
+    /// public fact, which both players' logs keep, and one per draw.
+    DrewCard { side: Side, card: CardId },
     IceApproached { server: ServerId, position: u32 },
     IceEncountered { card_id: CardId, strength: i32, subroutine_count: usize },
     /// `strength` is the ice's strength as the subroutine was broken
@@ -852,7 +858,7 @@ impl GameEvent {
     /// which is what covers a shuffle or a random discard.
     pub fn may_teach_the_actor(&self) -> bool {
         match self {
-            GameEvent::CardDrawn { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
+            GameEvent::CardDrawn { .. } | GameEvent::DrewCard { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
             | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. } | GameEvent::CardsSetAside { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
