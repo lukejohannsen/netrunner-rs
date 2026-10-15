@@ -3,7 +3,7 @@
   "name": "Endless Exploration",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Saraswati Mnemonics: Endless Exploration, Reign and Reverie's Jinteki identity, which installs a card from HQ in a remote's root with an advancement counter for [click] and 1[credit]. A Thousand Cuts' frame, with Lady Liberty and a third Project Junebug for its two Zaibatsu Loyalty. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 8.",
+  "description": "Not a published list: built so the sweeps reach Saraswati Mnemonics: Endless Exploration, Reign and Reverie's Jinteki identity, which installs a card from HQ in a remote's root with an advancement counter for [click] and 1[credit]. A Thousand Cuts' frame, with Lady Liberty and a third Project Junebug for its two Zaibatsu Loyalty. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 8. Two Project Junebug made room for two Mwanza City Grid, so a breach of HQ or R&D can pay the Corp.",
   "style": [
     "traps"
   ],
@@ -95,7 +95,7 @@
     },
     {
       "card": "project_junebug",
-      "count": 3
+      "count": 1
     },
     {
       "card": "akitaro_watanabe",
@@ -107,6 +107,10 @@
     },
     {
       "card": "chum",
+      "count": 2
+    },
+    {
+      "card": "mwanza_city_grid",
       "count": 2
     }
   ]

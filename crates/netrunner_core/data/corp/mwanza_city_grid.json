@@ -1,0 +1,78 @@
+{
+  "id": "mwanza_city_grid",
+  "title": "Mwanza City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 5,
+  "install_only_in": [
+    "Hq",
+    "RnD"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "This",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 3
+          }
+        },
+        {
+          "SetRunEndedEffect": {
+            "GainCreditsAmount": [
+              "Corp",
+              {
+                "Times": {
+                  "amount": "CardsAccessedLastRun",
+                  "times": 2
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner breaches this server, they access 3 additional cards. When the breach ends, gain 2[credit] for each time the Runner accessed a card during that breach."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "This",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 3
+          }
+        },
+        {
+          "SetRunEndedEffect": {
+            "GainCreditsAmount": [
+              "Corp",
+              {
+                "Times": {
+                  "amount": "CardsAccessedLastRun",
+                  "times": 2
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner breaches this server, they access 3 additional cards. When the breach ends, gain 2[credit] for each time the Runner accessed a card during that breach."
+    }
+  ],
+  "built_from": 21096,
+  "is_playable": true
+}

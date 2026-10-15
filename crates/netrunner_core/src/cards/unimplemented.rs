@@ -115,7 +115,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("contaminate", "Contaminate"),
     ("slipstream", "Slipstream"),
     ("jackpot", "Jackpot!"),
-    ("mwanza_city_grid", "Mwanza City Grid"),
 ];
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.
