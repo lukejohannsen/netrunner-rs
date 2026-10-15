@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::{CardId, EffectDuration, EndRunPrevention, Prohibition};
 use crate::rules::run::RunPhase;
 use crate::rules::state::{GameState, InstallId, InstalledRunnerCard};
-use crate::rules::{RulesError, Side};
+use crate::rules::{RulesError, ServerId, Side};
 
 /// A delayed conditional ability (CR 9.6.13): an ability a resolution
 /// leaves waiting for a moment, which resolves the next time that moment
@@ -96,10 +96,11 @@ pub struct LingeringEffect {
 
 /// What it is about. Only what a card in the pool says for a duration.
 ///
-/// There is no `Server`, though the plan for this list had one for Tread
-/// Lightly: the card says "the rez cost of **each piece of ice**", and a
-/// server named when the run began is the wrong server once the run is
-/// redirected (`RunState::redirect_on_approach`).
+/// Tread Lightly's "the rez cost of **each piece of ice**" is `EachIce`,
+/// not the server its run began on: a server named when the run began is
+/// the wrong server once the run is redirected (`RunState::
+/// redirect_on_approach`). A `Server` is only what a card says of a server
+/// fixed when it spoke (Marathon's "that server").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum On {
     /// One installed card — a rig card or a piece of ice; install handles
@@ -120,6 +121,15 @@ pub enum On {
     /// the effect is made, which is the reason there is no `Server`: a
     /// redirect moves it. Nothing outside a run.
     RootOfAttackedServer,
+    /// One server, fixed when the effect was made — Marathon's "You may
+    /// not make another run on that server for the remainder of this
+    /// turn", a prohibition that binds the Runner only about runs on it
+    /// (`prohibits_server`). A remote's number is recycled once it is
+    /// emptied (`legal_actions::fresh_remote_id`), so a remote emptied and
+    /// made again within the turn would inherit the entry; that needs the
+    /// Corp to install a new remote by a card's text on the Runner's turn
+    /// after Marathon's server was emptied, and the turn's end clears it.
+    Server(ServerId),
 }
 
 /// What changes. Only what a card in the pool does for a duration.
@@ -417,7 +427,7 @@ fn reaches(state: &GameState, on: &On, install: InstallId) -> bool {
     match on {
         On::Install(about) => *about == install,
         On::RootOfAttackedServer => in_attacked_root(state).any(|card| card == install),
-        On::EachIce | On::Player(_) | On::CopiesOf(_) => false,
+        On::EachIce | On::Player(_) | On::CopiesOf(_) | On::Server(_) => false,
     }
 }
 
@@ -569,6 +579,14 @@ fn in_force_about(list: &[LingeringEffect], what: Prohibition, card: &CardId, ho
 pub fn prohibits_install(state: &GameState, what: Prohibition, install: InstallId) -> bool {
     in_force(&state.lingering, what, |effect| effect.holds(state))
         || state.lingering.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::Install(install) && effect.holds(state))
+}
+
+/// Whether a prohibition is in force about the server `server`: bound on
+/// its player, or on that server alone (Marathon's "another run on that
+/// server"). The question a run asks as its server is announced.
+pub fn prohibits_server(state: &GameState, what: Prohibition, server: ServerId) -> bool {
+    in_force(&state.lingering, what, |effect| effect.holds(state))
+        || state.lingering.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::Server(server) && effect.holds(state))
 }
 
 /// The installs a prohibition bound to one install holds for right now

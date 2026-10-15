@@ -157,7 +157,8 @@ pub enum RulesError {
 
     /// A run on this server cannot be made now — Front Company's "The first
     /// run each turn cannot be made against a remote server"
-    /// (`Prohibition::RunOnRemote`).
+    /// (`Prohibition::RunOnRemote`), or Marathon's "You may not make another
+    /// run on that server" (`Prohibition::Run` bound to the server).
     #[error("a run cannot be made on {server:?} now")]
     RunProhibited { server: crate::rules::run::ServerId },
 

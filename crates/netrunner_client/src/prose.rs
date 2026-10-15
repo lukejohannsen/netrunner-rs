@@ -608,7 +608,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::HostThisAsCondition { .. } => "install this on it as a hosted condition counter".to_string(),
         Effect::HostOtherIdentity { .. } => "host it on this card, which gains its text".to_string(),
-        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server } => {
             let what = match (what, copies_of_it) {
                 (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",
                 (Prohibition::ScoreAgendas, _) if *this_install => "the Corp cannot score that card",
@@ -621,6 +621,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
                 (Prohibition::EndTheRun, _) => "subroutines cannot end the run",
                 (Prohibition::RunOnRemote, _) => "the Runner cannot run on a remote server",
+                (Prohibition::Run, _) if *attacked_server => "the Runner cannot make another run on that server",
                 (Prohibition::Run, _) => "the Runner cannot make another run",
                 (Prohibition::AccessOthers, _) => "the Runner cannot access cards other than this card",
                 (Prohibition::Access, _) => "the Runner cannot access this card",

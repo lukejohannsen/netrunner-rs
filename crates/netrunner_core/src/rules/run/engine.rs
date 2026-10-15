@@ -221,6 +221,11 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
     if matches!(server, ServerId::Remote(_)) && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote) {
         return Err(RulesError::RunProhibited { server });
     }
+    // "You may not make another run on that server for the remainder of
+    // this turn" (Marathon), asked where Front Company's is.
+    if crate::rules::lingering::prohibits_server(state, crate::dsl::Prohibition::Run, server) {
+        return Err(RulesError::RunProhibited { server });
+    }
     // "Any costs to run a server must be paid at the time that server is
     // announced as the attacked server" (CR 6.3.2b) — before the run's bad
     // publicity credits exist (6.3.3), which cannot pay them. All at once
