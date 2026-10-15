@@ -107,7 +107,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("because_i_can", "Because I Can"),
     ("malia_z0l0k4", "Malia Z0L0K4"),
     ("kill_switch", "Kill Switch"),
-    ("sso_industries_fueling_innovation", "SSO Industries: Fueling Innovation"),
 ];
 
 /// *Whispers in Nalubaale* (`whispers_in_nalubaale`): tranche F3 of the FFG plan.

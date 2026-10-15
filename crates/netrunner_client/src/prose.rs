@@ -150,6 +150,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::AgendaPoints(side) => format!("the {side:?}'s agenda points"),
         Amount::ActionsThisTurn => "the actions taken this turn".to_string(),
         Amount::DifferentActionsThisTurn => "the different actions taken this turn".to_string(),
+        Amount::InstalledFaceupAgendaPoints => "the agenda points on installed faceup agendas".to_string(),
     }
 }
 

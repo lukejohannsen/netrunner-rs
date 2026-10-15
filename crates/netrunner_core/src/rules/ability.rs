@@ -5724,6 +5724,17 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         },
         Amount::ActionsThisTurn => state.this_turn.actions_finished(),
         Amount::DifferentActionsThisTurn => state.this_turn.different_actions(),
+        // An installed agenda is faceup when it is "rezzed" (CR 8.1.1: it
+        // is neither, and the engine marks a faceup one so).
+        Amount::InstalledFaceupAgendaPoints => state
+            .corp
+            .installed
+            .iter()
+            .filter(|card| card.rezzed)
+            .filter_map(|card| registry.get(&card.card))
+            .filter(|definition| definition.card_type == crate::dsl::CardType::Agenda)
+            .map(|definition| definition.agenda_points.unwrap_or(0))
+            .sum(),
         Amount::AboutToResolve => match ctx.triggering_event {
             Some(GameEvent::AboutToResolve { what }) => what.amount(),
             _ => 0,

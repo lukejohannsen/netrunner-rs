@@ -1,0 +1,51 @@
+{
+  "id": "sso_industries_fueling_innovation",
+  "title": "SSO Industries: Fueling Innovation",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnInstalled",
+                  "filter": {
+                    "All": [
+                      "Ice",
+                      "Unadvanced"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PlaceAdvancementCounters": "InstalledFaceupAgendaPoints"
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "choose a piece of ice with no advancement tokens on it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, you may choose a piece of ice with no advancement tokens on it. If you do, place 1 advancement token on that piece of ice for each agenda point on all installed faceup agendas."
+    }
+  ],
+  "built_from": 21077,
+  "is_playable": true
+}
