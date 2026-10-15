@@ -301,6 +301,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::JackOut => "the Runner cannot jack out",
         Prohibition::AccessMoreThanOneCard => "the Runner cannot access more than 1 card",
         Prohibition::AccessRootOfHqOrRnD => "the Runner cannot access cards in the root of HQ or R&D",
+        Prohibition::Install => "the Runner cannot install cards",
     }
 }
 

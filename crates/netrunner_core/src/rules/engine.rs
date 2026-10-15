@@ -1935,6 +1935,9 @@ pub(crate) fn turn_runner_card_faceup(state: &mut GameState, registry: &CardRegi
 /// (`install_into_rig`) and every gate that offers a text install ask it,
 /// so they cannot disagree.
 pub(crate) fn install_requirement_met(state: &GameState, registry: &CardRegistry, card_id: &CardId) -> bool {
+    if continuous::cannot(state, registry, Prohibition::Install) {
+        return false;
+    }
     let Some(requirement) = registry.get(card_id).and_then(|definition| definition.install_requirement.as_ref()) else { return true };
     let ctx = ability::ResolutionContext::for_card(Some(card_id));
     ability::check_requirement(state, requirement, Side::Runner, &ctx, registry).is_ok()

@@ -3022,12 +3022,19 @@ pub enum Prohibition {
     /// One word for the two centrals, since no pool card names one of
     /// them alone where the other could be breached.
     AccessRootOfHqOrRnD,
+    /// The Runner cannot install cards — Jua's "When the Runner encounters
+    /// this ice, they cannot install cards for the remainder of the turn".
+    /// Asked by `engine::install_requirement_met`, which the one door into
+    /// the rig (`install_into_rig`) and every gate offering an install
+    /// ask, so the basic actions, a card's text and the action list refuse
+    /// alike; and by a selection that would install facedown (Reboot).
+    Install,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 20] = [
+    pub const ALL: [Prohibition; 21] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3048,13 +3055,14 @@ impl Prohibition {
         Prohibition::JackOut,
         Prohibition::AccessMoreThanOneCard,
         Prohibition::AccessRootOfHqOrRnD,
+        Prohibition::Install,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install => Side::Runner,
         }
     }
 
@@ -3065,7 +3073,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install => None,
         }
     }
 }
@@ -3109,6 +3117,23 @@ impl Effect {
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
             Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_those_trashed(cards)) },
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)), otherwise: otherwise.map(|e| Box::new(e.with_those_trashed(cards))) },
+            other => other,
+        }
+    }
+
+    /// `CardFilter::ChosenThisWay` written over as the installs a selection
+    /// chose (its `then`), in the shapes `with_those_trashed` walks.
+    pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_installs(installs)).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter: filter.with_chosen_installs(installs), min, max, reveal, shuffle_after, destination, then, count, up_to }
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
+            Effect::Repeat { times, effect } => Effect::Repeat { times, effect: Box::new(effect.with_chosen_installs(installs)) },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_chosen_installs(installs)), otherwise: otherwise.map(|e| Box::new(e.with_chosen_installs(installs))) },
             other => other,
         }
     }

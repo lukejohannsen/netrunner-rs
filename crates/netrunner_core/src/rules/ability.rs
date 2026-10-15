@@ -2252,6 +2252,13 @@ pub fn evaluate_effect(
                 }
                 (None, None) => (*min, *max),
             };
+            // Reboot's facedown install is an install (Jua's "cannot
+            // install cards"): nothing to ask when none may be made.
+            if matches!(destination, Some(crate::dsl::CardZoneRef::OwnInstalledFacedown))
+                && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::Install)
+            {
+                return Ok(Vec::new());
+            }
             let paid = ctx.paid_with.first().and_then(|card| registry.get(card)).map(|definition| definition.card_type.clone());
             let filter = &filter
                 .clone()
