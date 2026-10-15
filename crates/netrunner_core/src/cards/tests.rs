@@ -36046,3 +36046,67 @@ mod kitara_stage_13h {
         assert_eq!(done.corp.resources.credits, Credits(0));
     }
 }
+
+mod kitara_stage_13i {
+    use super::*;
+    use super::reprints::{encounter, ice_at_hq, rig, runner_turn};
+    use crate::rules::RunPhase;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Corroder through HQ's rezzed Ice Wall with Code Replicator in HQ's
+    /// root, up to the Corp's choice after the pass.
+    fn passed(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder", 2)];
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at_hq("ice_wall"), crate::rules::InstalledCard { slot: InstallSlot::Root, ..ice_at_hq("code_replicator") }];
+        let at_ice = encounter(&state, registry);
+        let (broken, _) =
+            apply_action(&at_ice, registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let mut state = broken;
+        while !matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { .. })) {
+            let Some(window) = state.paid_ability_window.as_ref() else { panic!("no window: {:?} {:?}", state.active_run.as_ref().map(|r| (r.phase, r.position, r.jack_out_permitted)), state.pending_decision) };
+            let side = window.active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    #[test]
+    fn code_replicator_trashed_sends_the_runner_back_in_front_of_the_passed_ice_and_they_may_jack_out() {
+        let registry = registry();
+        let asked = passed(&registry);
+        let (back, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
+        assert!(back.corp.archives.iter().any(|archived| archived.card == id("code_replicator")), "trashed");
+        let run = back.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 0, true), "in front of the Ice Wall again");
+        let (out, _) = close_all_windows(back, &registry);
+        assert!(crate::rules::legal_actions_for(&out, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::JackOut)), "they may jack out");
+    }
+
+    #[test]
+    fn code_replicator_kept_lets_the_runner_go_on() {
+        let registry = registry();
+        let asked = passed(&registry);
+        let (on, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("keep it");
+        assert!(on.corp.installed.iter().any(|card| card.card == id("code_replicator")));
+        assert_eq!(on.active_run.as_ref().map(|run| run.position), Some(1), "past the ice");
+    }
+
+    #[test]
+    fn code_replicator_hears_no_pass_of_unrezzed_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") },
+            crate::rules::InstalledCard { slot: InstallSlot::Root, ..ice_at_hq("code_replicator") },
+        ];
+        let at_ice = encounter(&state, &registry);
+        let (past, _) = close_all_windows(at_ice, &registry);
+        assert!(!matches!(past.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "{:?}", past.pending_decision);
+    }
+}

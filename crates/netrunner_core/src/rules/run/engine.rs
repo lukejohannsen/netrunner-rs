@@ -1080,6 +1080,21 @@ pub(crate) fn move_run_to_outermost(
     Ok(events)
 }
 
+/// Puts the run in the movement phase in front of the ice at `position`
+/// of `server` — `Effect::MoveRunToIce`. The Runner then decides whether
+/// to jack out, the Corp has its window, and the ice is approached (CR
+/// 6.9.4c–f), as after any pass. A no-op unless the run is on `server` in
+/// its movement phase, with ice still at `position`: a pass leaves the run
+/// there, and anything else has moved it on by the time this resolves.
+pub(crate) fn move_run_in_front_of(state: &mut GameState, server: ServerId, position: usize) -> Vec<GameEvent> {
+    let Some(run) = state.active_run.as_mut() else { return Vec::new() };
+    if run.server != server || run.phase != RunPhase::Movement || position >= run.ice.len() {
+        return Vec::new();
+    }
+    enter_movement(run, position);
+    Vec::new()
+}
+
 /// Whether `card_id` may be swapped into the place of `install`, a Corp
 /// install (CR 8.8.2: "a card can only ever be swapped into a location it
 /// is normally allowed to occupy"): a piece of ice for a piece of ice, and

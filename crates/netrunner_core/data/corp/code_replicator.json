@@ -1,0 +1,52 @@
+{
+  "id": "code_replicator",
+  "title": "Code Replicator",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "Rezzed",
+            "InThisServer"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "TrashCard": "ThisCard"
+                  },
+                  {
+                    "MoveRunToIce": "PassedIce"
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trash this upgrade",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes a rezzed piece of ice protecting this server, you may trash this upgrade. If you do, the Runner must approach that ice again. They may jack out."
+    }
+  ],
+  "built_from": 21052,
+  "is_playable": true
+}
