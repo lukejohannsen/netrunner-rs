@@ -260,10 +260,14 @@ pub enum ContinuousKind {
     AdvancementRequirement(Number),
     /// The ice gains a subtype it does not print — Chromatophores.
     GainSubtype(IceType),
-    /// A strength boost that would last the encounter lasts the run
-    /// instead — GAMEDRAGON™ Pro. A fact about the card, with no payload,
-    /// which is the kind the numbers-only proposal had no room for.
-    BoostsLastTheRun,
+    /// A strength boost that would last a shorter while lasts this long
+    /// instead — GAMEDRAGON™ Pro's "abilities that increase its strength
+    /// last for the remainder of the run" (`Run`) and Gebrselassie's "for
+    /// the remainder of the turn (instead of any shorter duration)"
+    /// (`Turn`). Only ever a lengthening, and the longest that applies
+    /// wins. It was `BoostsLastTheRun` until a second card printed another
+    /// duration; `validate` admits only those two.
+    BoostsLast(crate::dsl::EffectDuration),
     /// The card is revealed while the Runner is accessing it — "While the
     /// Runner is accessing this asset in R&D, they must reveal it" (CR
     /// 1.21.7), the `while` saying where (`AccessingIn(RnD)`). Esca,

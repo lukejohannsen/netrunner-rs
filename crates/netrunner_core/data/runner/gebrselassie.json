@@ -1,0 +1,56 @@
+{
+  "id": "gebrselassie",
+  "title": "Gebrselassie",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Icebreaker",
+              "NotThisCardsHost",
+              {
+                "Not": {
+                  "HasSubtype": "AI"
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "HostRigCardOnInstall": {
+              "card": 0,
+              "host": 0
+            }
+          }
+        }
+      },
+      "text": "Host this hardware on an installed non-AI icebreaker."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "BoostsLast": "Turn"
+      },
+      "applies_to": "Host",
+      "text": "Abilities that increase host icebreaker's strength last for the remainder of the turn"
+    }
+  ],
+  "built_from": 21087,
+  "is_playable": true
+}

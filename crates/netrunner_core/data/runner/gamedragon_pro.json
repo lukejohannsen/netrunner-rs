@@ -91,7 +91,9 @@
       "text": "Host icebreaker gets +1 strength."
     },
     {
-      "kind": "BoostsLastTheRun",
+      "kind": {
+        "BoostsLast": "Run"
+      },
       "applies_to": "Host",
       "text": "Abilities that increase its strength last for the remainder of the run"
     }

@@ -974,7 +974,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::AdvancementRequirement(number) => format!("gets {} advancement requirement", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
-        ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
+        ContinuousKind::BoostsLast(crate_duration) => format!("keeps its strength boosts for the rest of the {}", if matches!(crate_duration, netrunner_core::dsl::EffectDuration::Turn) { "turn" } else { "run" }),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
         ContinuousKind::RezzedAsNonIce => "can be rezzed any time a non-ice card could be".to_string(),
         ContinuousKind::MayHost => "may be installed there".to_string(),
