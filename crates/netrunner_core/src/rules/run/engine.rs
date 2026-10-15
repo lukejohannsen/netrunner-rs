@@ -1095,6 +1095,60 @@ pub(crate) fn move_run_in_front_of(state: &mut GameState, server: ServerId, posi
     Vec::new()
 }
 
+/// Where a piece of ice stands counted from the innermost position of the
+/// server it protects (CR 6.2.3), 0 the innermost; `None` for anything
+/// else. The order is `run.ice`'s, the outermost first.
+pub(crate) fn ice_from_innermost(state: &GameState, ice: crate::rules::state::InstallId) -> Option<u32> {
+    let place = state.find_corp_install(ice).filter(|place| place.slot == InstallSlot::Ice)?;
+    let protecting: Vec<_> = state.corp.installed.iter().filter(|c| c.server == place.server && c.slot == InstallSlot::Ice).map(|c| c.install_id).collect();
+    let index = protecting.iter().position(|install| *install == ice)?;
+    Some((protecting.len() - 1 - index) as u32)
+}
+
+/// Puts the run in the movement phase in front of `ice`, on whichever
+/// server it protects — Slipstream's "Move to that ice and approach it.
+/// You may jack out". A server other than the attacked one becomes the
+/// attacked server, its ice the run's, as `move_run_to_outermost` makes
+/// it; then everything follows as after a pass (CR 6.9.4c–f). A no-op
+/// outside the movement phase, or once the ice has left the table.
+pub(crate) fn move_run_in_front_of_install(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    ice: crate::rules::state::InstallId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(target) = state.find_corp_install(ice).filter(|place| place.slot == InstallSlot::Ice).map(|place| place.server) else { return Ok(Vec::new()) };
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if run.phase != RunPhase::Movement {
+        return Ok(Vec::new());
+    }
+    let from = run.server;
+    let mut events = Vec::new();
+    if from != target {
+        let protecting: Vec<RunIce> = state
+            .corp
+            .installed
+            .iter()
+            .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
+            .map(|installed| build_run_ice(installed, registry))
+            .collect::<Result<Vec<Option<RunIce>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        let run = state.active_run.as_mut().expect("checked above");
+        run.server = target;
+        run.ice = protecting;
+        events.push(GameEvent::RunRedirected { from, to: target });
+        if !state.runner.servers_run_this_turn.contains(&target) {
+            state.runner.servers_run_this_turn.push(target);
+        }
+    }
+    let run = state.active_run.as_mut().expect("checked above");
+    if let Some(position) = run.ice.iter().position(|run_ice| run_ice.install_id == ice) {
+        enter_movement(run, position);
+    }
+    Ok(events)
+}
+
 /// Whether `card_id` may be swapped into the place of `install`, a Corp
 /// install (CR 8.8.2: "a card can only ever be swapped into a location it
 /// is normally allowed to occupy"): a piece of ice for a piece of ice, and

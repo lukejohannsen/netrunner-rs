@@ -468,6 +468,13 @@ fn instance_matches_filter(
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
         CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
+        // Counted from the innermost (CR 6.2.3): the passed ice's place in
+        // its run, read against the ice its server has now.
+        CardFilter::SamePositionAs(crate::dsl::MovedTo::Ice { server, position }) => corp_install.is_some_and(|c| {
+            let from_innermost = crate::rules::engine::ice_protecting(state, *server).checked_sub(position + 1);
+            c.slot == InstallSlot::Ice && from_innermost.is_some() && run::ice_from_innermost(state, c.install_id) == from_innermost
+        }),
+        CardFilter::SamePositionAs(_) => false,
         CardFilter::InThisServer => false,
         CardFilter::InChosenServer => false,
         CardFilter::Advanced => corp_install.is_some_and(|c| c.advancement_tokens > 0),

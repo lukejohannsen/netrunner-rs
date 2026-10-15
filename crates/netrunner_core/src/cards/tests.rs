@@ -36110,3 +36110,82 @@ mod kitara_stage_13i {
         assert!(!matches!(past.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "{:?}", past.pending_decision);
     }
 }
+
+mod kitara_stage_14a {
+    use super::*;
+    use super::reprints::{encounter, ice_at_hq, rig, runner_turn};
+    use crate::rules::RunPhase;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice_at(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { server, ..ice_at_hq(card) }
+    }
+
+    /// Corroder through HQ's rezzed Ice Wall with Slipstream in the rig,
+    /// up to the Runner's choice after the pass. R&D has Enigma outside
+    /// Wraparound, Archives a lone Tollbooth, the last facedown.
+    fn passed(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder", 2), rig("slipstream", 0)];
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            ice_at_hq("ice_wall"),
+            ice_at("enigma", ServerId::RnD),
+            ice_at("wraparound", ServerId::RnD),
+            crate::rules::InstalledCard { rezzed: false, ..ice_at("tollbooth", ServerId::Archives) },
+        ];
+        let at_ice = encounter(&state, registry);
+        let (broken, _) =
+            apply_action(&at_ice, registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let mut state = broken;
+        while !matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { .. })) {
+            let Some(window) = state.paid_ability_window.as_ref() else { panic!("no window: {:?} {:?}", state.active_run.as_ref().map(|r| (r.phase, r.position)), state.pending_decision) };
+            let side = window.active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        state
+    }
+
+    fn offered(state: &GameState, registry: &CardRegistry) -> Vec<CardId> {
+        let mut cards: Vec<CardId> = crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(state.corp.installed[*position].card.clone()),
+                _ => None,
+            })
+            .collect();
+        cards.sort_by(|a, b| a.0.cmp(&b.0));
+        cards
+    }
+
+    #[test]
+    fn slipstream_offers_the_innermost_ice_of_each_central_and_moves_the_run_there() {
+        let registry = registry();
+        let asked = passed(&registry);
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
+        assert!(choosing.runner.heap.contains(&id("slipstream")), "trashed");
+        assert_eq!(offered(&choosing, &registry), vec![id("ice_wall"), id("tollbooth"), id("wraparound")], "the innermost of each central, rezzed or not");
+        let position = choosing.corp.installed.iter().position(|card| card.card == id("wraparound")).expect("installed");
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (moved, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("move");
+        let run = moved.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.phase, run.position, run.jack_out_permitted), (ServerId::RnD, RunPhase::Movement, 1, true), "in front of Wraparound");
+        assert_eq!(run.ice.iter().map(|ice| ice.card_id.clone()).collect::<Vec<_>>(), vec![id("enigma"), id("wraparound")]);
+        assert!(moved.runner.servers_run_this_turn.contains(&ServerId::RnD));
+        let (out, _) = close_all_windows(moved, &registry);
+        assert!(crate::rules::legal_actions_for(&out, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::JackOut)), "they may jack out");
+    }
+
+    #[test]
+    fn slipstream_kept_lets_the_runner_go_on() {
+        let registry = registry();
+        let asked = passed(&registry);
+        let (on, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("keep it");
+        assert!(on.runner.rig.iter().any(|card| card.card == id("slipstream")));
+        assert_eq!(on.active_run.as_ref().map(|run| (run.server, run.position)), Some((ServerId::Hq, 1)), "past the ice");
+    }
+}

@@ -1,0 +1,81 @@
+{
+  "id": "slipstream",
+  "title": "Slipstream",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "Rezzed"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "TrashCard": "ThisCard"
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "All": [
+                          "Ice",
+                          {
+                            "AnyOf": [
+                              {
+                                "InServer": "Hq"
+                              },
+                              {
+                                "InServer": "RnD"
+                              },
+                              {
+                                "InServer": "Archives"
+                              }
+                            ]
+                          },
+                          {
+                            "SamePositionAs": "PassedIce"
+                          }
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "MoveRunToIce": "ChosenThisWay"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trash this resource",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you pass a rezzed piece of ice, you may trash this resource. If you do, choose 1 piece of ice protecting a central server in the same position as the passed ice. Move to that ice and approach it. You may jack out."
+    }
+  ],
+  "built_from": 21085,
+  "is_playable": true
+}
