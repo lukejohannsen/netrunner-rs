@@ -178,6 +178,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnScoreArea => "your score area",
         CardZoneRef::OpponentRemovedFromGame => "out of the game",
         CardZoneRef::PlayArea => "the play area",
+        CardZoneRef::RootOfAttackedServer => "the root of the attacked server",
     }
 }
 

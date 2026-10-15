@@ -1,0 +1,36 @@
+{
+  "id": "because_i_can",
+  "title": "Because I Can",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_in": "Remote",
+            "on_start": {
+              "SetAccessReplacement": {
+                "effect": {
+                  "ShuffleIntoDeck": [
+                    "RootOfAttackedServer"
+                  ]
+                },
+                "optional": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run a remote server. If successful, instead of breaching that server, you may force the Corp to shuffle all cards in the root of that server into R&D."
+    }
+  ],
+  "built_from": 21066,
+  "is_playable": true
+}

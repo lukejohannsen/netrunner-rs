@@ -36726,3 +36726,71 @@ mod kitara_stage_20 {
         assert_eq!(refused.err(), Some(RulesError::RunProhibited { server: ServerId::Remote(0) }), "barred whether or not the run succeeded");
     }
 }
+
+mod kitara_stage_21 {
+    use super::*;
+    use super::reprints::runner_turn;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A Runner's turn with Because I Can in the grip, a rezzed PAD
+    /// Campaign and an unrezzed Hostile Takeover in a remote's root, and
+    /// the run made up to its success.
+    fn at_the_success(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("because_i_can")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let root = |card: &str, rezzed| crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed,
+            ..Default::default()
+        };
+        state.corp.installed = vec![root("pad_campaign", true), root("hostile_takeover", false)];
+        let (asked, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("because_i_can") }).expect("play");
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &asked.pending_decision else { panic!("{:?}", asked.pending_decision) };
+        assert_eq!(servers, &[ServerId::Remote(0)], "a remote server");
+        let (running, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run");
+        let (there, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        let (success, _) = apply_action(&there, registry, PlayerAction::CompleteRun).expect("successful");
+        success
+    }
+
+    #[test]
+    fn because_i_can_may_shuffle_the_root_into_rnd_instead_of_breaching() {
+        let registry = registry();
+        let state = at_the_success(&registry);
+        assert!(matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may: {:?}", state.pending_decision);
+        let (done, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("shuffle them in");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardAccessed { .. })), "no breach");
+        assert!(done.corp.installed.is_empty(), "the root is empty");
+        assert_eq!(done.corp.r_and_d.len(), 5);
+        assert!(done.corp.r_and_d.contains(&id("pad_campaign")) && done.corp.r_and_d.contains(&id("hostile_takeover")), "both into R&D");
+        assert!(done.runner.scored_agendas.is_empty(), "the agenda was shuffled away, not stolen");
+        assert!(done.active_run.is_none());
+        let named: Vec<(&CardId, bool)> = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::rules::GameEvent::CardAddedToDeck { side: Side::Corp, card, revealed, .. } => Some((card, *revealed)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(named, vec![(&id("pad_campaign"), true), (&id("hostile_takeover"), false)], "the faceup one is named, the facedown one is not");
+    }
+
+    #[test]
+    fn because_i_can_declined_breaches_the_server_as_usual() {
+        let registry = registry();
+        let state = at_the_success(&registry);
+        let (breached, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("breach instead");
+        let accessing = breached.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some() || breached.pending_decision.is_some();
+        assert!(accessing, "the breach goes ahead");
+        assert_eq!(breached.corp.r_and_d.len(), 3, "nothing shuffled in");
+    }
+}

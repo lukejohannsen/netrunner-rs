@@ -147,6 +147,8 @@ pub fn purpose(
             Some(CardZoneRef::OwnSetAside | CardZoneRef::OwnSetAsideFacedown | CardZoneRef::OpponentSetAside) => format!("Set {what} aside"),
             Some(CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled) => format!("Install {what}"),
             Some(CardZoneRef::OwnInstalledFacedown) => format!("Install {what} facedown"),
+            // A source only, moved whole and never chosen.
+            Some(CardZoneRef::RootOfAttackedServer) => format!("Choose {what}"),
             // Nothing is ever put back into the pile.
             Some(CardZoneRef::OtherIdentities) => format!("Choose {what}"),
         }
@@ -269,6 +271,7 @@ fn zone_name(chooser: Side, zone: &CardZoneRef, source_card: Option<&CardId>, re
         CardZoneRef::OpponentRemovedFromGame => "out of the game".to_string(),
         CardZoneRef::PlayArea => "the play area".to_string(),
         CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled => "installed".to_string(),
+        CardZoneRef::RootOfAttackedServer => "the root of the attacked server".to_string(),
     }
 }
 
@@ -659,6 +662,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         // Installed zones carry an install and never reach here; a
         // position with none is still somewhere on the table.
         CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled => "installed".to_string(),
+        CardZoneRef::RootOfAttackedServer => "the root of the attacked server".to_string(),
     }
 }
 
