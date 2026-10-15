@@ -533,6 +533,11 @@ fn instance_matches_filter(
                     .get(position)
                     .is_some_and(|card| state.runner.discarded_this_discard_phase.contains(card))
         }
+        // Jua's "1 of the chosen cards": the installs the selection before
+        // this one chose, by handle.
+        CardFilter::AmongInstalls(installs) => {
+            zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_some_and(|install| installs.contains(&install))
+        }
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
@@ -1686,6 +1691,8 @@ pub(crate) fn resolve_confirm_card_selection(
     ability::emit_grip_or_stack_batch(state, registry, &mut events)?;
 
     if let Some(effect) = then {
+        // "The chosen cards", for a second chooser (Jua).
+        let effect = if selected_installs.is_empty() { effect } else { Box::new(effect.with_chosen_installs(&selected_installs)) };
         let acting = selected.first().or(source_card.as_ref());
         // …and the *install* the `then` acts as: the selected install when
         // the selection was over installs (Seamless Launch advances the

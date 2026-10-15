@@ -93,7 +93,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jinja_city_grid", "Jinja City Grid"),
     ("bacterial_programming", "Bacterial Programming"),
-    ("jua", "Jua"),
 ];
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.

@@ -519,6 +519,20 @@ pub enum CardFilter {
     /// same card in the same zone, as `Revealed`'s are). Definition-level:
     /// a card's id is its definition's.
     AmongCards(Vec<crate::dsl::CardId>),
+    /// **The chosen cards**: the installs the selection whose `then` this
+    /// is chose — Jua's "Choose 2 installed Runner cards, if able. The
+    /// Runner must add 1 of **the chosen cards** to the top of the stack",
+    /// the Corp choosing and the Runner then choosing among them. A
+    /// placeholder, written over as `AmongInstalls` when the selection
+    /// resolves (`Effect::with_chosen_installs`), as `TrashedThisWay` is;
+    /// unresolved it matches nothing. Composition didn't work: a
+    /// selection's `then` acts as its first card alone, and the second
+    /// chooser needs both.
+    ChosenThisWay,
+    /// One of these installs — what `ChosenThisWay` is written over as.
+    /// Instance-level: a handle, not a card, so another copy of a chosen
+    /// card is not one of them.
+    AmongInstalls(Vec<crate::rules::InstallId>),
     /// **Those cards**: the ones the `Effect::Mill` whose `then` this is
     /// trashed — The Price's "You may install 1 of those cards". A
     /// placeholder, written over when the mill resolves
@@ -726,6 +740,7 @@ impl CardFilter {
                 | CardFilter::NotAdvancedThisTurn
                 | CardFilter::InstalledThisTurn
                 | CardFilter::ScoredThisTurn
+                | CardFilter::AmongInstalls(_)
         )
     }
 
@@ -760,6 +775,18 @@ impl CardFilter {
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_that_card(card)).collect()),
             CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_that_card(card))),
+            other => other,
+        }
+    }
+
+    /// `ChosenThisWay` written over as the installs a selection chose,
+    /// through `All`, `AnyOf` and `Not`.
+    pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> CardFilter {
+        match self {
+            CardFilter::ChosenThisWay => CardFilter::AmongInstalls(installs.to_vec()),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_installs(installs)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_installs(installs)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_chosen_installs(installs))),
             other => other,
         }
     }
@@ -850,7 +877,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
-        CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName => false,
+        CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName | CardFilter::ChosenThisWay => false,
+        CardFilter::AmongInstalls(_) => true,
         CardFilter::LastEncounteredLastRun => true,
         CardFilter::PassedDuringLastRun => true,
         CardFilter::BeingEncountered => true,

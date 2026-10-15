@@ -27025,17 +27025,17 @@ mod reprints {
         CardId(card.to_string())
     }
 
-    fn rig(card: &str, strength: i32) -> crate::rules::InstalledRunnerCard {
+    pub(super) fn rig(card: &str, strength: i32) -> crate::rules::InstalledRunnerCard {
         crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength: strength, ..Default::default() }
     }
 
-    fn runner_turn() -> GameState {
+    pub(super) fn runner_turn() -> GameState {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state
     }
 
-    fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
+    pub(super) fn ice_at_hq(card: &str) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
             install_id: fixture_install_id(card),
             card: id(card),
@@ -27047,7 +27047,7 @@ mod reprints {
     }
 
     /// A run on HQ, its only ice already installed, up to the encounter.
-    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+    pub(super) fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
         let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
         let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
         let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
@@ -27426,7 +27426,7 @@ mod reprints {
 
     /// The encounter on HQ's only ice with both players passing, so its
     /// subroutines fire.
-    fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
+    pub(super) fn fire(state: &GameState, registry: &CardRegistry) -> GameState {
         let at_ice = encounter(state, registry);
         let (state, _) = apply_action(&at_ice, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
         apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes encounter: subroutines fire").0
@@ -35831,5 +35831,89 @@ mod kitara_stage_13e {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 })
             .expect("pump cleaver");
         assert_ne!(state.lingering[0].until, crate::rules::lingering::Until::EndOfTurn(state.turn));
+    }
+}
+
+mod kitara_stage_13f {
+    use super::*;
+    use super::reprints::{encounter, fire, ice_at_hq, rig, runner_turn};
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn jua_forbids_installs_for_the_rest_of_the_turn_once_encountered() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("jua")];
+        state.runner.grip = vec![id("sure_gamble"), id("corroder")];
+        let at_ice = encounter(&state, &registry);
+        assert!(crate::rules::continuous::cannot(&at_ice, &registry, crate::dsl::Prohibition::Install), "the encounter forbids it");
+        let mut after = at_ice.clone();
+        after.active_run = None;
+        after.paid_ability_window = None;
+        after.pending_decision = None;
+        after.runner.resources.clicks = Clicks(3);
+        after.runner.resources.credits = Credits(10);
+        assert!(apply_action(&after, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None }).is_err());
+        assert!(!crate::rules::legal_actions_for(&after, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::InstallProgram { .. })));
+        assert!(!crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::Install), "not before the encounter");
+    }
+
+    #[test]
+    fn jua_has_the_corp_choose_two_installed_cards_and_the_runner_stack_one_of_them() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("jua")];
+        state.runner.rig = vec![rig("corroder", 2), rig("gordian_blade", 2), rig("dyson_mem_chip", 0)];
+        state.runner.stack = vec![id("sure_gamble")];
+        let asked = fire(&state, &registry);
+        assert!(matches!(&asked.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "{:?}", asked.pending_decision);
+        assert_eq!(toggles(&asked, &registry, Side::Corp).len(), 3);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("corroder");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("dyson");
+        let (runner, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("the chosen two");
+        assert!(matches!(&runner.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Runner, .. })), "{:?}", runner.pending_decision);
+        assert_eq!(toggles(&runner, &registry, Side::Runner), vec![0, 2], "only the chosen cards");
+        let (runner, _) = apply_action(&runner, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("dyson");
+        let (done, _) = apply_action(&runner, &registry, PlayerAction::ConfirmCardSelection).expect("to the top of the stack");
+        assert_eq!(done.runner.stack.last(), Some(&id("dyson_mem_chip")), "on top");
+        assert_eq!(done.runner.rig.iter().map(|card| card.card.0.as_str()).collect::<Vec<_>>(), vec!["corroder", "gordian_blade"]);
+    }
+
+    #[test]
+    fn jua_with_one_installed_card_stacks_that_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("jua")];
+        state.runner.rig = vec![rig("corroder", 2)];
+        let asked = fire(&state, &registry);
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("corroder");
+        let (runner, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("as many as there are");
+        let (runner, _) = apply_action(&runner, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("corroder");
+        let (done, _) = apply_action(&runner, &registry, PlayerAction::ConfirmCardSelection).expect("stacked");
+        assert_eq!(done.runner.stack.last(), Some(&id("corroder")));
+        assert!(done.runner.rig.is_empty());
+    }
+
+    #[test]
+    fn jua_with_nothing_installed_asks_nothing() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("jua")];
+        let fired = fire(&state, &registry);
+        assert!(!matches!(fired.pending_decision, Some(PendingDecision::ChooseCards { .. })));
     }
 }
