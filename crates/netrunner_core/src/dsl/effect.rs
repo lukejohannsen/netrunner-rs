@@ -954,6 +954,14 @@ pub enum Effect {
         /// destinations is the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         any_position: bool,
+        /// "Install 1 piece of ice … **in the innermost position**
+        /// protecting that server" — Mti Mwekundu (CR 6.2.2b: inward from
+        /// the innermost position there is). The card lands inward of all
+        /// of the chosen server's ice and nobody is asked; `any_position`'s
+        /// question with its answer fixed. A field for the reason
+        /// `any_position` is one.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        innermost: bool,
         /// Offer only this server, its root or protecting it — Fast Break's
         /// "Install up to X cards in the root of and/or protecting **a
         /// single remote server**". The server is written as a placeholder
@@ -2881,6 +2889,13 @@ pub enum MovedTo {
     /// `ChosenThisWay` as it is written in: the chosen ice by handle, on
     /// whichever server it protects. Never authored.
     Install(crate::rules::InstallId),
+    /// The ice the resolution is about — the install an
+    /// `PromptInstallCorpCard::if_installed` resolves as: Mti Mwekundu's
+    /// "install 1 piece of ice … The Runner moves to that ice and
+    /// approaches it", from the approach to the server. The Runner may
+    /// jack out only if they have approached ice this run before
+    /// (`RunState::ice_approached`).
+    ThisCard,
 }
 
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
@@ -3466,7 +3481,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_this_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_this_server(server)).collect();
         match self {
-            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, only_server } => {
+            Effect::PromptInstallCorpCard { not_in_root_of: Some(ThisServer::This), origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, any_position, innermost, only_server } => {
                 Effect::PromptInstallCorpCard {
                     not_in_root_of: Some(ThisServer::Server(server)),
                     origin_zone,
@@ -3482,6 +3497,7 @@ impl Effect {
                     if_installed,
                     ignore_credit_costs,
                     any_position,
+                    innermost,
                     only_server,
                 }
             }

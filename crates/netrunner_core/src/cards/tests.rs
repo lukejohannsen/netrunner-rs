@@ -36189,3 +36189,79 @@ mod kitara_stage_14a {
         assert_eq!(on.active_run.as_ref().map(|run| (run.server, run.position)), Some((ServerId::Hq, 1)), "past the ice");
     }
 }
+
+mod kitara_stage_14b {
+    use super::*;
+    use crate::rules::PendingDecision;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A Runner's turn against Mti Mwekundu with Enigma in HQ and `ice`
+    /// facedown protecting HQ, run up to the Corp's choice at the approach
+    /// to the server.
+    fn approached(registry: &CardRegistry, ice: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.identity = Some(id("mti_mwekundu_life_improved"));
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![id("enigma"), id("hedge_fund")];
+        state.corp.installed = ice
+            .iter()
+            .map(|card| crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() })
+            .collect();
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        while !matches!(state.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })) {
+            state = match state.paid_ability_window.as_ref() {
+                Some(window) => apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&state, registry).unwrap_or_else(|e| panic!("{e:?} {:?} {:?}", state.active_run.as_ref().map(|r| r.phase), state.pending_decision)).0,
+            };
+        }
+        state
+    }
+
+    fn install_enigma(state: &GameState, registry: &CardRegistry) -> GameState {
+        let position = state.corp.hq.iter().position(|c| *c == id("enigma")).expect("in HQ");
+        let (toggled, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (asked, _) = apply_action(&toggled, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        match &asked.pending_decision {
+            Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) => assert_eq!(servers, &[ServerId::Hq], "protecting that server"),
+            other => panic!("a server is asked: {other:?}"),
+        }
+        apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("install").0
+    }
+
+    #[test]
+    fn mti_mwekundu_installs_ice_innermost_for_free_and_the_runner_approaches_it_and_may_jack_out() {
+        let registry = registry();
+        let asked = approached(&registry, &["ice_wall"]);
+        let moved = install_enigma(&asked, &registry);
+        let hq_ice: Vec<CardId> = moved.corp.installed.iter().filter(|c| c.server == ServerId::Hq && c.slot == InstallSlot::Ice).map(|c| c.card.clone()).collect();
+        assert_eq!(hq_ice, vec![id("ice_wall"), id("enigma")], "innermost");
+        assert_eq!(moved.corp.resources.credits, Credits(0), "ignoring all costs");
+        let run = moved.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 1, true), "in front of Enigma, Ice Wall approached before");
+    }
+
+    #[test]
+    fn mti_mwekundu_on_the_first_approach_of_ice_this_run_allows_no_jack_out() {
+        let registry = registry();
+        let asked = approached(&registry, &[]);
+        let moved = install_enigma(&asked, &registry);
+        let run = moved.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 0, false));
+        assert!(!crate::rules::legal_actions_for(&moved, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::JackOut)), "no jack out");
+    }
+
+    #[test]
+    fn mti_mwekundu_declined_lets_the_run_go_on_to_the_breach() {
+        let registry = registry();
+        let asked = approached(&registry, &[]);
+        let (on, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("none");
+        assert!(on.corp.hq.contains(&id("enigma")));
+        assert!(on.corp.installed.is_empty());
+    }
+}

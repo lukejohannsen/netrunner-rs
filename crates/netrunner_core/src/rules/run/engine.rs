@@ -251,7 +251,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, ice_approached: 0, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -687,6 +687,7 @@ fn approach_next(run: &mut RunState) -> Vec<GameEvent> {
     run.jack_out_permitted = false;
     if run.position < run.ice.len() {
         run.phase = RunPhase::ApproachIce;
+        run.ice_approached += 1;
         vec![GameEvent::IceApproached { server, position: run.position as u32 }]
     } else {
         run.phase = RunPhase::Success;
@@ -1093,6 +1094,42 @@ pub(crate) fn move_run_in_front_of(state: &mut GameState, server: ServerId, posi
     }
     enter_movement(run, position);
     Vec::new()
+}
+
+/// Mti Mwekundu's "The Runner moves to that ice and approaches it. If
+/// this is not the first time they have approached ice this run, they may
+/// jack out": from the approach to the attacked server (CR 6.9.4e,
+/// `RunPhase::Success` before the success phase begins), back to the
+/// movement phase in front of `ice`, a piece of ice just installed
+/// protecting that server, so the Corp's window and the approach follow
+/// (6.9.4c–f). The run's ice list takes the new piece, keeping what the
+/// others had, as Formicary's move does. A no-op anywhere else.
+pub(crate) fn move_run_back_to_ice(state: &mut GameState, registry: &CardRegistry, ice: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let server = run.server;
+    if run.phase != RunPhase::Success || run.reached_success_phase {
+        return Ok(Vec::new());
+    }
+    if state.find_corp_install(ice).is_none_or(|place| place.server != server || place.slot != InstallSlot::Ice) {
+        return Ok(Vec::new());
+    }
+    let fresh: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let run = state.active_run.as_mut().expect("checked above");
+    run.ice = fresh.into_iter().map(|fresh| run.ice.iter().find(|old| old.install_id == fresh.install_id).cloned().unwrap_or(fresh)).collect();
+    let Some(position) = run.ice.iter().position(|run_ice| run_ice.install_id == ice) else { return Ok(Vec::new()) };
+    let approached_before = run.ice_approached > 0;
+    enter_movement(run, position);
+    run.jack_out_permitted = approached_before;
+    Ok(Vec::new())
 }
 
 /// Where a piece of ice stands counted from the innermost position of the

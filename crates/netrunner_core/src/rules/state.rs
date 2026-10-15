@@ -1301,6 +1301,10 @@ pub struct PendingInstallFromZone {
     /// (`PendingDecision::ChooseNumber::install`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub any_position: bool,
+    /// `Effect::PromptInstallCorpCard::innermost`: the card lands inward
+    /// of every piece of ice the chosen server has, and nobody is asked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub innermost: bool,
 }
 
 /// An install of ice "in any position" whose server is chosen and whose

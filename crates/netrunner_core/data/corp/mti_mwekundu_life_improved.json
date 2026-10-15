@@ -1,0 +1,42 @@
+{
+  "id": "mti_mwekundu_life_improved",
+  "title": "Mti Mwekundu: Life Improved",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Ice",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true,
+                "innermost": true,
+                "only_server": "Hq",
+                "if_installed": {
+                  "MoveRunToIce": "ThisCard"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Once per turn → When the Runner approaches a server, you may install 1 piece of ice from HQ in the innermost position protecting that server, ignoring all costs. The Runner moves to that ice and approaches it. If this is not the first time they have approached ice this run, they may jack out."
+    }
+  ],
+  "built_from": 21114,
+  "is_playable": true
+}
