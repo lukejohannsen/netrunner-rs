@@ -853,6 +853,7 @@ fn determinize_run(
         // position returns to (Konjin, Ganked!).
         suspended,
         event_counters: run.event_counters,
+        ice_approached: run.ice_approached,
         gained_for_the_run: run.gained_for_the_run.clone(),
         // Public and carried by the view — see `PublicRunState`. Zeroing
         // these made the sample poorer than the information the searcher

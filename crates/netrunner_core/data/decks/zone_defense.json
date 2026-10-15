@@ -1,0 +1,113 @@
+{
+  "id": "zone_defense",
+  "name": "Zone Defense",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Mti Mwekundu: Life Improved, Kitara's Jinteki identity, which once per turn when the Runner approaches a server may install a piece of ice from HQ innermost protecting it, ignoring all costs, and send the Runner to approach it. On A Thousand Cuts' list, a Jinteki deck with ice to spare. Eternal-legal only. Kitara Stage 14b.",
+  "style": [
+    "traps"
+  ],
+  "identity": "mti_mwekundu_life_improved",
+  "cards": [
+    {
+      "card": "cyberdex_sandbox",
+      "count": 2
+    },
+    {
+      "card": "hangeki",
+      "count": 2
+    },
+    {
+      "card": "la_costa_grid",
+      "count": 2
+    },
+    {
+      "card": "kakurenbo",
+      "count": 2
+    },
+    {
+      "card": "fujii_asset_retrieval",
+      "count": 1
+    },
+    {
+      "card": "sting",
+      "count": 3
+    },
+    {
+      "card": "whirlpool",
+      "count": 2
+    },
+    {
+      "card": "thimblerig",
+      "count": 2
+    },
+    {
+      "card": "otoroshi",
+      "count": 2
+    },
+    {
+      "card": "zaibatsu_loyalty",
+      "count": 2
+    },
+    {
+      "card": "braintrust",
+      "count": 1
+    },
+    {
+      "card": "flower_sermon",
+      "count": 2
+    },
+    {
+      "card": "prana_condenser",
+      "count": 2
+    },
+    {
+      "card": "neural_katana",
+      "count": 2
+    },
+    {
+      "card": "project_junebug",
+      "count": 2
+    },
+    {
+      "card": "daruma",
+      "count": 2
+    },
+    {
+      "card": "envelope",
+      "count": 2
+    },
+    {
+      "card": "mlinzi",
+      "count": 2
+    },
+    {
+      "card": "anansi",
+      "count": 1
+    },
+    {
+      "card": "sadaka",
+      "count": 1
+    },
+    {
+      "card": "aimor",
+      "count": 1
+    },
+    {
+      "card": "viral_weaponization",
+      "count": 2
+    },
+    {
+      "card": "rashida_jaheem",
+      "count": 1
+    },
+    {
+      "card": "genotyping",
+      "count": 2
+    },
+    {
+      "card": "reverse_infection",
+      "count": 2
+    }
+  ]
+}

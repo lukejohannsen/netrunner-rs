@@ -2511,7 +2511,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
             // "Ignoring credit costs": a discount of every credit, which a
             // price never goes below 0 for.
             let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
@@ -2601,6 +2601,7 @@ pub fn evaluate_effect(
                     if_rezzed: if_rezzed.clone(),
                     if_installed: if_installed.clone(),
                     any_position: *any_position,
+                    innermost: *innermost,
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -2897,6 +2898,10 @@ pub fn evaluate_effect(
         Effect::MoveRunToIce(crate::dsl::MovedTo::Ice { server, position }) => Ok(crate::rules::run::move_run_in_front_of(state, *server, *position as usize)),
         Effect::MoveRunToIce(crate::dsl::MovedTo::Install(ice)) => crate::rules::run::move_run_in_front_of_install(state, registry, *ice),
         Effect::MoveRunToIce(crate::dsl::MovedTo::ChosenThisWay) => Ok(Vec::new()),
+        Effect::MoveRunToIce(crate::dsl::MovedTo::ThisCard) => match ctx.acting_install {
+            Some(ice) => crate::rules::run::move_run_back_to_ice(state, registry, ice),
+            None => Ok(Vec::new()),
+        },
 
         Effect::SwapApproachedIceWithCard { origin, this_ice } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
@@ -3182,7 +3187,8 @@ pub(crate) fn fire_card_triggers(
         // as Fast Break's first install writes its own into the next.
         let same_server: Vec<Effect>;
         let triggered_effects: &[Effect] = match triggering_event {
-            Some(GameEvent::CardInstalled { side: Side::Corp, server, .. }) if triggered_effects.iter().any(Effect::names_only_server) => {
+            // Mti Mwekundu's "protecting **that server**", the one approached.
+            Some(GameEvent::CardInstalled { side: Side::Corp, server, .. } | GameEvent::ServerApproached { server }) if triggered_effects.iter().any(Effect::names_only_server) => {
                 same_server = triggered_effects.iter().cloned().map(|effect| crate::rules::pending_choice::substitute_install_server(effect, *server)).collect();
                 &same_server
             }

@@ -482,6 +482,9 @@ pub struct PublicRunState {
     /// `RunState::event_counters`: public, as counters on a card are.
     #[serde(default)]
     pub event_counters: u32,
+    /// `RunState::ice_approached`: public, as every approach was.
+    #[serde(default)]
+    pub ice_approached: u32,
     /// `RunState::gained_for_the_run`: public, as the rez and the ability
     /// that gave them were.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1444,6 +1447,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
             })
             .collect(),
         event_counters: run.event_counters,
+        ice_approached: run.ice_approached,
         gained_for_the_run: run.gained_for_the_run.clone(),
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,

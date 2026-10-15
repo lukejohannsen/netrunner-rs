@@ -119,7 +119,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hippo", "Hippo"),
     ("flame_out", "Flame-out"),
-    ("mti_mwekundu_life_improved", "Mti Mwekundu: Life Improved"),
 ];
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.

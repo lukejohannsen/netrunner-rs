@@ -593,6 +593,9 @@ mod tests {
             // Kitara Stage 13g: SSO Industries' deck, on Family Business's
             // list; Kitara is in neither pool.
             ("yield_curve", &neither),
+            // Kitara Stage 14b: Mti Mwekundu's deck, on A Thousand Cuts'
+            // list; Kitara is in neither pool.
+            ("zone_defense", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

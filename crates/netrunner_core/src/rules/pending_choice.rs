@@ -1883,7 +1883,7 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
 pub(crate) fn substitute_install_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
     let boxed = |effect: Box<Effect>| Box::new(substitute_install_server(*effect, server));
     match effect {
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, only_server } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, central_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs, not_in_root_of, any_position, innermost, only_server } => {
             Effect::PromptInstallCorpCard {
                 origin_zone,
                 ignore_costs,
@@ -1899,6 +1899,7 @@ pub(crate) fn substitute_install_server(effect: Effect, server: crate::rules::ru
                 ignore_credit_costs,
                 not_in_root_of,
                 any_position,
+                innermost,
                 only_server: only_server.map(|_| server),
             }
         }
@@ -2144,8 +2145,9 @@ pub(crate) fn resolve_choose_server(
                 GameEvent::NumberChoiceOffered { chooser: Side::Corp, min: 0, max: ice_there },
             ]);
         }
+        let outward = if pending_install.innermost && parked_install_is_ice(state, registry, &pending_install) { ice_there } else { 0 };
         let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
-        events.extend(install_parked(state, registry, server, pending_install, 0, Parked { source_card, prompting_card, source_install, resume })?);
+        events.extend(install_parked(state, registry, server, pending_install, outward, Parked { source_card, prompting_card, source_install, resume })?);
         return Ok(events);
     }
 

@@ -615,6 +615,13 @@ pub struct RunState {
     /// kept, and the counters go with the run. Public, as counters are.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub event_counters: u32,
+    /// How many times the Runner has approached a piece of ice this run
+    /// (`run::engine::approach_next`) — Mti Mwekundu's "If this is not the
+    /// first time they have approached ice this run, they may jack out".
+    /// The turn log counts the turn's approaches, across every run in it;
+    /// this is the run's. Public: both players saw every approach.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ice_approached: u32,
     /// Subroutines pieces of ice gained for the rest of this run from an
     /// ability not their own — Thunderbolt Armaments' "that ice … gains
     /// “[subroutine] End the run unless…” after its other subroutines for
@@ -929,6 +936,7 @@ impl Default for RunState {
             forced_encounter: false,
             suspended: Vec::new(),
             event_counters: 0,
+            ice_approached: 0,
             gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,
             additional_rd_access: 0,
