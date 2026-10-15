@@ -470,6 +470,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::WhileInstalled(_) => ", while it remains installed",
                 Until::WhileInPlay(_) => ", while it stays in play",
                 Until::ActionsFinished { .. } => ", for the next action",
+                Until::ChosenAgain => "",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))

@@ -686,6 +686,16 @@ impl CardFilter {
         }
     }
 
+    /// Whether `with_chosen_card_type` has anything to write in, so a
+    /// listener that does not ask copies no filter.
+    pub fn names_chosen_card_type(&self) -> bool {
+        match self {
+            CardFilter::OfChosenCardType => true,
+            CardFilter::All(filters) | CardFilter::AnyOf(filters) => filters.iter().any(CardFilter::names_chosen_card_type),
+            _ => false,
+        }
+    }
+
     /// This filter with `OfChosenCardType` written over as the type the
     /// card chose (`Effect::Remember`), where it chose one; left
     /// unresolved, it matches nothing.

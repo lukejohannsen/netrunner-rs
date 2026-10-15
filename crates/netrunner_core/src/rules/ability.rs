@@ -663,17 +663,27 @@ pub fn evaluate_effect(
 
         // About the chooser: the selection's prompter inside its `then`,
         // the acting install otherwise.
+        // An identity has no install, so its choice is its player's, by the
+        // card (`On::Player`, as Tsakhia's server is). A choice replaces
+        // what the same copy last chose of its kind: "the type you last
+        // named".
         Effect::Remember { what, until } => {
-            let chooser = ctx.prompting_install.or(ctx.acting_install).ok_or(RulesError::MissingActingCardContext)?;
+            let chooser = ctx.prompting_install.or(ctx.acting_install);
             let source = ctx.prompting_card.or(acting_card).ok_or(RulesError::MissingActingCardContext)?.clone();
             let controller = registry.get(&source).map(|definition| definition.side).ok_or(RulesError::MissingActingCardContext)?;
+            let on = match chooser {
+                Some(chooser) => crate::rules::lingering::On::Install(chooser),
+                None if registry.get(&source).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Identity) => crate::rules::lingering::On::Player(controller),
+                None => return Err(RulesError::MissingActingCardContext),
+            };
             let what = match what {
                 crate::dsl::Remembered::SelectedCard => Lingering::ChosenCard(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
                 crate::dsl::Remembered::CardType(card_type) => Lingering::ChosenCardType(card_type.clone()),
                 crate::dsl::Remembered::IceType(ice_type) => Lingering::ChosenIceType(*ice_type),
             };
-            let until = crate::rules::lingering::until(state, *until, controller, Some(chooser))?;
-            state.lingering.push(LingeringEffect { what, on: crate::rules::lingering::On::Install(chooser), until, source });
+            let until = crate::rules::lingering::until(state, *until, controller, chooser)?;
+            state.lingering.retain(|kept| !(kept.on == on && kept.source == source && std::mem::discriminant(&kept.what) == std::mem::discriminant(&what)));
+            state.lingering.push(LingeringEffect { what, on, until, source });
             Ok(Vec::new())
         }
 

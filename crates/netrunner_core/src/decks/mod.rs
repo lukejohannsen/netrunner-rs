@@ -596,6 +596,9 @@ mod tests {
             // Kitara Stage 14b: Mti Mwekundu's deck, on A Thousand Cuts'
             // list; Kitara is in neither pool.
             ("zone_defense", &neither),
+            // Kitara Stage 16: Azmari EdTech's deck, on Paid Content's list;
+            // Kitara is in neither pool.
+            ("zoned_curriculum", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

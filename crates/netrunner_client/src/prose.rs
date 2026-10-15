@@ -279,6 +279,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::NextAction => "for the next action",
         EffectDuration::NextBreach => "during the next breach",
         EffectDuration::UntilYourNextTurnBegins => "until your next turn begins",
+        EffectDuration::UntilChosenAgain => "until you choose again",
     }
 }
 
@@ -317,6 +318,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::NextAction => "the next action",
                 EffectDuration::NextBreach => "the next breach",
                 EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
+                EffectDuration::UntilChosenAgain => "the time until you choose again",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -582,6 +584,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::NextAction => "the next action",
                 netrunner_core::dsl::EffectDuration::NextBreach => "the next breach",
                 netrunner_core::dsl::EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
+                netrunner_core::dsl::EffectDuration::UntilChosenAgain => "as long as it is not chosen again",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }

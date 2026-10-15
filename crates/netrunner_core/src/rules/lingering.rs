@@ -274,6 +274,10 @@ pub enum Until {
     /// Mnemonics). `NextTurnOf` is not it — that holds until something
     /// takes it off, which only `AllottedClicks` ever does.
     BeforeTurn(u32),
+    /// Until the card that made it chooses again
+    /// (`EffectDuration::UntilChosenAgain`): it always holds, and
+    /// `Effect::Remember` drops it as it keeps the next choice.
+    ChosenAgain,
 }
 
 impl LingeringEffect {
@@ -290,6 +294,7 @@ impl LingeringEffect {
             }
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::BeforeTurn(turn) => state.turn < turn,
+            Until::ChosenAgain => true,
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
             Until::WhileInstalled(install) => {
@@ -329,6 +334,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::WhileInstalled => made_by.map(Until::WhileInstalled).ok_or(RulesError::UnresolvedCardTarget),
         EffectDuration::NextBreach => Ok(Until::ThroughNextBreach { turn: state.turn, begun: state.this_turn.times(crate::dsl::Trigger::OnBreach) }),
         EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
+        EffectDuration::UntilChosenAgain => Ok(Until::ChosenAgain),
     }
 }
 
@@ -477,6 +483,17 @@ pub fn chosen_card(state: &GameState, chooser: InstallId) -> Option<InstallId> {
 /// the choice holds — Engram Flush's, for the encounter.
 pub fn chosen_card_type(state: &GameState, chooser: InstallId) -> Option<&crate::dsl::CardType> {
     state.lingering.iter().filter(|effect| effect.on == On::Install(chooser) && effect.holds(state)).find_map(|effect| match &effect.what {
+        Lingering::ChosenCardType(card_type) => Some(card_type),
+        _ => None,
+    })
+}
+
+/// The card type `card`'s copy `install` chose (`Effect::Remember`),
+/// while the choice holds — read as a listener reads its `when`, so an
+/// identity, which has no install, answers by its card: Azmari EdTech's
+/// named type.
+pub fn chosen_card_type_of<'s>(state: &'s GameState, card: &CardId, install: Option<InstallId>) -> Option<&'s crate::dsl::CardType> {
+    state.lingering.iter().filter(|effect| &effect.source == card && by_copy(effect, install) && effect.holds(state)).find_map(|effect| match &effect.what {
         Lingering::ChosenCardType(card_type) => Some(card_type),
         _ => None,
     })

@@ -36344,3 +36344,110 @@ mod kitara_stage_15 {
         assert_eq!(available(crate::rules::payment::Purpose::Ability(blade, Some(InstallId(77)))), 0);
     }
 }
+
+mod kitara_stage_16 {
+    use super::*;
+    use super::reprints::runner_turn;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Corp's turn ending under Azmari EdTech, the type named as
+    /// `option` of its choice (0 event, 1 hardware, 2 program, 3 resource,
+    /// 4 none: the "may" declined).
+    fn named(state: GameState, registry: &CardRegistry, option: usize) -> GameState {
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end turn");
+        let mut asked = false;
+        loop {
+            state = match (&state.pending_decision, &state.paid_ability_window) {
+                // First whether to name one, then which.
+                (Some(PendingDecision::ChooseEffect { chooser: Side::Corp, options, .. }), _) => {
+                    let index = match (options.len(), option) {
+                        (2, 4) => 1,
+                        (2, _) => 0,
+                        (_, option) => option,
+                    };
+                    asked = true;
+                    apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: index }).expect("name a type").0
+                }
+                (None, Some(window)) => apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                _ => break,
+            };
+        }
+        assert!(asked, "the Corp may name a card type as the turn ends: {:?}", state.pending_decision);
+        state
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(id("azmari_edtech_shaping_the_future"));
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        state
+    }
+
+    /// A Runner's turn carrying what the Corp's turn named.
+    fn runner_after(named: &GameState) -> GameState {
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("azmari_edtech_shaping_the_future"));
+        state.lingering = named.lingering.clone();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(20);
+        state.corp.resources.credits = Credits(0);
+        state.runner.grip = vec![id("corroder"), id("gordian_blade"), id("the_toolbox"), id("sure_gamble")];
+        state
+    }
+
+    fn act(state: &GameState, registry: &CardRegistry, action: PlayerAction) -> GameState {
+        close_all_windows(apply_action(state, registry, action).expect("legal").0, registry).0
+    }
+
+    #[test]
+    fn azmari_edtech_gains_the_first_time_each_turn_the_runner_installs_the_named_type() {
+        let registry = registry();
+        let named = named(corp_turn(), &registry, 2);
+        let state = runner_after(&named);
+        let state = act(&state, &registry, PlayerAction::InstallHardware { card_id: id("the_toolbox"), host: None });
+        assert_eq!(state.corp.resources.credits, Credits(0), "hardware was not named");
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None });
+        assert_eq!(state.corp.resources.credits, Credits(2), "the first program this turn");
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("gordian_blade"), trash_first: false, host: None });
+        assert_eq!(state.corp.resources.credits, Credits(2), "only the first time");
+    }
+
+    #[test]
+    fn azmari_edtech_hears_an_event_played() {
+        let registry = registry();
+        let state = runner_after(&named(corp_turn(), &registry, 0));
+        let state = act(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") });
+        assert_eq!(state.corp.resources.credits, Credits(2));
+    }
+
+    #[test]
+    fn azmari_edtech_keeps_the_type_last_named_through_a_turn_it_names_none() {
+        let registry = registry();
+        let first = named(corp_turn(), &registry, 3);
+        let mut again = corp_turn();
+        again.lingering = first.lingering.clone();
+        let declined = named(again.clone(), &registry, 4);
+        let kept: Vec<_> = declined.lingering.iter().filter(|effect| matches!(effect.what, crate::rules::lingering::Lingering::ChosenCardType(_))).collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].what, crate::rules::lingering::Lingering::ChosenCardType(crate::dsl::CardType::Resource), "the type last named");
+        let renamed = named(again, &registry, 1);
+        let types: Vec<_> = renamed.lingering.iter().filter_map(|effect| match &effect.what {
+            crate::rules::lingering::Lingering::ChosenCardType(card_type) => Some(card_type.clone()),
+            _ => None,
+        }).collect();
+        assert_eq!(types, vec![crate::dsl::CardType::Hardware], "a new name replaces the last");
+    }
+
+    #[test]
+    fn azmari_edtech_with_nothing_named_gains_nothing() {
+        let registry = registry();
+        let state = runner_after(&corp_turn());
+        let state = act(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None });
+        assert_eq!(state.corp.resources.credits, Credits(0));
+    }
+}

@@ -769,6 +769,15 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     let listening = install;
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
+            // "A card that has the type you last named" (Azmari EdTech):
+            // the listener's choice, written in where the filter asks.
+            let named;
+            let filter = if filter.names_chosen_card_type() {
+                named = filter.clone().with_chosen_card_type(crate::rules::lingering::chosen_card_type_of(state, listener_card, listening));
+                &named
+            } else {
+                filter
+            };
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
                 && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, listening, here), *install)
         }
