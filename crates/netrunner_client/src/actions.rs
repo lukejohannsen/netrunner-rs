@@ -452,6 +452,21 @@ pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &Ca
             lines.push(if discarded.is_empty() { took } else { format!("{took}: {} trashed", and_list(&discarded)) });
             continue;
         }
+        // A card's credits are said with the card that gave them. Both
+        // events are otherwise silent, so Built to Last's 2[credit] on a
+        // first advance read as a log line about an `OnAdvance` and a pool
+        // that grew by one where a credit was paid — reported as a bug
+        // (14 October 2026). The dispatcher's tests pin this order.
+        if let GameEvent::TriggerFired { card, .. } = event {
+            let mut ahead = rest.clone();
+            if let (Some(GameEvent::CreditsGained { side, amount }), Some(GameEvent::AbilityGainedCredits { card: gainer, .. })) = (ahead.next(), ahead.next())
+                && gainer == card
+            {
+                lines.push(format!("{}: the {side:?} gained {amount} credit{}", card_title(card, registry), if *amount == 1 { "" } else { "s" }));
+                rest = ahead;
+                continue;
+            }
+        }
         // The breach of the server the run just succeeded on goes without
         // saying; one of another server (Eru Ayase-Pessoa's run on
         // Archives breaching R&D), or of a server with no run, does not.
@@ -556,7 +571,8 @@ pub fn narrate_event(
         GameEvent::CardsTrashedFromGripOrStack { cards, .. } => format!("trashed {} card(s) from the grip or stack", cards.len()),
 
         // ---- what the cards did ----
-        GameEvent::TriggerFired { card, trigger } => format!("{} triggered ({trigger:?})", title(card)),
+        // The trigger's name is the engine's word, never the person's.
+        GameEvent::TriggerFired { card, .. } => format!("{}'s ability resolved", title(card)),
         GameEvent::SubroutineFired { card_id, index, .. } => {
             format!("subroutine {} on {} fired", index + 1, title(card_id))
         }
@@ -1255,6 +1271,24 @@ mod tests {
 
         let discard_phase = [GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
         assert!(narrate_events(&discard_phase, &action, &registry, None).is_empty());
+    }
+
+    /// Built to Last's first-advance credits were invisible: the log said
+    /// "triggered (OnAdvance)" and nothing about the 2[credit], so a first
+    /// advance looked like it paid the Corp instead of costing a credit.
+    #[test]
+    fn credits_from_a_card_are_named_with_the_card() {
+        let registry = crate::decks::sample_deck_registry();
+        let built_to_last = CardId("weyland_consortium_built_to_last".to_string());
+        let action = PublicAction::Visible(PlayerAction::EndTurn);
+        let fired = GameEvent::TriggerFired { card: built_to_last.clone(), trigger: netrunner_core::dsl::Trigger::OnAdvance };
+        let events = [
+            fired.clone(),
+            GameEvent::CreditsGained { side: Side::Corp, amount: 2 },
+            GameEvent::AbilityGainedCredits { side: Side::Corp, card: built_to_last.clone() },
+        ];
+        assert_eq!(narrate_events(&events, &action, &registry, None), ["Weyland Consortium: Built to Last: the Corp gained 2 credits"]);
+        assert_eq!(narrate_events(&[fired], &action, &registry, None), ["Weyland Consortium: Built to Last's ability resolved"]);
     }
 
     /// A breach of the server the run succeeded on goes without saying; a
