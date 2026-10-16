@@ -271,7 +271,8 @@ pub enum ContinuousKind {
     /// The card is revealed while the Runner is accessing it — "While the
     /// Runner is accessing this asset in R&D, they must reveal it" (CR
     /// 1.21.7), the `while` saying where (`AccessingIn(RnD)`). Esca,
-    /// Snare! and Byte! print it. A kind rather than a word on the access
+    /// Snare! and Byte! print it of themselves (`This`); Kill Switch of
+    /// every agenda (`Accessing`). A kind rather than a word on the access
     /// because it is a static ability of the card's, read wherever the card
     /// is, like every `Scope::This` effect.
     RevealedWhileAccessed,
@@ -533,7 +534,10 @@ pub enum Scope {
     /// (`continuous::Target::Card`), beside the install's own question that
     /// `RootOfThisServer` answers (`continuous::trash_cost_delta`).
     /// Composition didn't work: every other scope that reaches a Corp card
-    /// reaches an install, and a card accessed out of HQ is none.
+    /// reaches an install, and a card accessed out of HQ is none. Kill
+    /// Switch's "while the Runner is accessing an agenda in R&D, they must
+    /// reveal it" is the second question asked here
+    /// (`RevealedWhileAccessed`), from a Corp card about its own side's.
     Accessing(CardFilter),
     /// An agenda the Runner is stealing, matching the filter — Magistrate
     /// Revontulet's "an agenda".
