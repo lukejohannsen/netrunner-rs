@@ -1,0 +1,56 @@
+{
+  "id": "next_wave_2",
+  "title": "NEXT Wave 2",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "NEXT"
+                }
+              ]
+            }
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DealDamage": [
+                  "Brain",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may do 1 core damage",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you score this agenda, if there is a rezzed piece of NEXT ice, you may do 1 core damage."
+    }
+  ],
+  "built_from": 12009,
+  "is_playable": true
+}

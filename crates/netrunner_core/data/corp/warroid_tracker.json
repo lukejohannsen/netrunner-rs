@@ -1,0 +1,75 @@
+{
+  "id": "warroid_tracker",
+  "title": "Warroid Tracker",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          "TrashedFromThisServer"
+        ]
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnInstalled",
+                "filter": "Any",
+                "min": 0,
+                "max": 0,
+                "count": {
+                  "Fixed": 2
+                },
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHeap"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner trashes at least 1 card from this server, from its root, or protecting it, Trace[4]. If successful, the Runner trashes 2 of their installed cards."
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": "TrashedFromThisServer",
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnInstalled",
+                "filter": "Any",
+                "min": 0,
+                "max": 0,
+                "count": {
+                  "Fixed": 2
+                },
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnHeap"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner trashes at least 1 card from this server, from its root, or protecting it, Trace[4]. If successful, the Runner trashes 2 of their installed cards."
+    }
+  ],
+  "built_from": 12068,
+  "is_playable": true
+}

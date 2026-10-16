@@ -1,0 +1,49 @@
+{
+  "id": "threat_level_alpha",
+  "title": "Threat Level Alpha",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 1,
+            "on_success": {
+              "Sequence": [
+                {
+                  "EffectIf": {
+                    "condition": "IsTagged",
+                    "effect": {
+                      "GiveTags": "RunnerTags"
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "Not": "IsTagged"
+                    },
+                    "effect": {
+                      "GiveTags": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12117,
+  "is_playable": true
+}

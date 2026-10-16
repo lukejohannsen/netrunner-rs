@@ -1,0 +1,32 @@
+{
+  "id": "henry_phillips",
+  "title": "Henry Phillips",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "RunAgainstThisServer",
+          "IsTagged"
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever the Runner breaks a subroutine during a run on this server, gain 2[credit] if they are tagged."
+    }
+  ],
+  "built_from": 12056,
+  "is_playable": true
+}

@@ -1,0 +1,38 @@
+{
+  "id": "traffic_analyzer",
+  "title": "Traffic Analyzer",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "InThisServer"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you rez a piece of ice protecting this server, Trace[2]. If successful, the Corp gains 1[credit]."
+    }
+  ],
+  "built_from": 12075,
+  "is_playable": true
+}
