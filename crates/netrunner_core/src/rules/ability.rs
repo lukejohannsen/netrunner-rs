@@ -736,6 +736,25 @@ pub fn evaluate_effect(
             modify_counters(state, ctx, -i64::from(amount))
         }
 
+        // A rig card's virus counters are its own counters or the ones
+        // beside them (`pending_choice::virus_on`); any other card's are
+        // its own, as `AddCounters` places them.
+        Effect::AddVirusCounters(amount) => {
+            let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, i64::from(*amount)) };
+            let installed = &mut state.runner.rig[position];
+            let own = registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus);
+            let held = if own { &mut installed.counters } else { &mut installed.virus_counters };
+            *held = held.saturating_add(*amount);
+            Ok(vec![GameEvent::CountersAdded { card: installed.card.clone(), amount: *amount }])
+        }
+        Effect::RemoveVirusCounters(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            let Some(position) = acting_rig_position(state, ctx) else { return modify_counters(state, ctx, -i64::from(amount)) };
+            let installed = &mut state.runner.rig[position];
+            let taken = crate::rules::pending_choice::remove_virus_on(installed, registry, amount);
+            Ok(vec![GameEvent::CountersRemoved { card: installed.card.clone(), amount: taken }])
+        }
+
         Effect::TakeAllCountersAsCredits(side) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let current = counters_of(state, ctx).ok_or_else(|| RulesError::CardNotEligibleForCounters(card_id.clone()))?;
@@ -4621,7 +4640,7 @@ pub(crate) fn pay_cost_ctx(
             let mut events = Vec::new();
             for (position, amount) in taken {
                 let installed = &mut state.runner.rig[position];
-                installed.counters -= amount;
+                crate::rules::pending_choice::remove_virus_on(installed, registry, amount);
                 events.push(GameEvent::CountersRemoved { card: installed.card.clone(), amount });
             }
             Ok(events)
@@ -5676,6 +5695,8 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
             let holds = |card: &CardId| registry.get(card).and_then(|definition| definition.counter_kind) == Some(*kind);
             match side {
+                // Virus counters may sit beside a rig card's own kind.
+                Side::Runner if *kind == crate::dsl::CounterKind::Virus => state.runner.rig.iter().map(|c| crate::rules::pending_choice::virus_on(c, registry)).sum(),
                 Side::Runner => state.runner.rig.iter().filter(|c| holds(&c.card)).map(|c| c.counters).sum(),
                 Side::Corp => state.corp.installed.iter().filter(|c| holds(&c.card)).map(|c| c.counters).sum(),
             }
@@ -5690,6 +5711,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.last_turn.times_when(*trigger, when, controller)
         }
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
+        Amount::HostedVirusCounters => match acting_rig_position(state, ctx) {
+            Some(position) => crate::rules::pending_choice::virus_on(&state.runner.rig[position], registry),
+            None => counters_of(state, ctx).unwrap_or(0),
+        },
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
         Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |host| {
             let installed = state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host.install_id)).count();

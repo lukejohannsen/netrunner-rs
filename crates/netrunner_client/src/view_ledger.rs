@@ -174,6 +174,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         hosted_cards_playable: _, // engine's: the action list offers the hosted cards; drawn as they are hosted
         counters: _,              // drawn: the rig's chip line, board::facts
         credits: _,               // drawn: a credit badge on the desktop rig, ", N credits" on the terminal's rig line, board::facts
+        virus_counters: _,        // drawn: a virus badge on the desktop rig, ", N virus counters" on the terminal's rig line, board::facts
     } in rig
     {}
 

@@ -1866,6 +1866,7 @@ fn seed_rig_card(
         card: card_id,
         counters: 0,
         credits: 0,
+        virus_counters: 0,
         hosted_on_ice: None,
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),
@@ -3201,6 +3202,13 @@ pub(crate) fn purge_all_virus_counters(state: &mut GameState, registry: &CardReg
     for rigged in state.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
         removed += rigged.counters;
         rigged.counters = 0;
+        purged.push(rigged.card.clone());
+    }
+    // And the ones beside another kind (Contaminate's), which the card
+    // keeps.
+    for rigged in state.runner.rig.iter_mut().filter(|c| c.virus_counters > 0) {
+        removed += rigged.virus_counters;
+        rigged.virus_counters = 0;
         purged.push(rigged.card.clone());
     }
     GameEvent::VirusCountersPurged { cards: purged, removed }

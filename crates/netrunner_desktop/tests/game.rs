@@ -1008,7 +1008,7 @@ fn a_trojan_is_a_chip_on_its_ice_and_a_ghost_in_the_row() {
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
         hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true, this_turn: Default::default() });
-        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: trojan, current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1, credits: 0 });
+        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: trojan, current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1, credits: 0, virus_counters: 0 });
     }
     // The board redraws when its fit moves; the view changed under it.
     app.world_mut().resource_mut::<BoardFit>().face = 0.0;

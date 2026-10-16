@@ -604,6 +604,16 @@ pub struct InstalledRunnerCard {
     /// are its `counters`. Public, as the rig is.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub credits: u32,
+    /// Virus counters on a card whose `counters` are another kind, or no
+    /// kind at all — Contaminate's "place 3 virus counters on an installed
+    /// Runner card", which may be a Power card or one that hosts nothing.
+    /// On a card whose counters are virus counters they are its `counters`,
+    /// and this stays 0: `rules::pending_choice::virus_on` is the one question
+    /// for how many a card holds, which the purge, `Cost::VirusCounters`
+    /// and `CardFilter::HostsCounters(Virus)` all put. Public, as the rig
+    /// is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub virus_counters: u32,
     /// The Corp installed ICE this card is hosted on, if it was installed
     /// via `PlayerAction::InstallProgramOnIce` (a Trojan Program, `dsl::
     /// CardDefinition::installs_on_ice`) — e.g. Botulus, Tranquilizer.
@@ -687,6 +697,7 @@ impl Default for InstalledRunnerCard {
             base_strength: 0,
             counters: 0,
             credits: 0,
+            virus_counters: 0,
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),

@@ -475,7 +475,11 @@ pub enum CardFilter {
     /// Usual's "Remove all virus counters from 1 installed card", so a card
     /// with nothing to remove is never offered. The kind is the card's own
     /// (`CardDefinition::counter_kind`, as the purge reads it); how many it
-    /// holds is instance-level.
+    /// holds is instance-level. Virus counters are the exception: any
+    /// Runner card may hold them beside its own kind (Contaminate's,
+    /// `InstalledRunnerCard::virus_counters`), so for them the copy alone
+    /// decides (`is_about_the_copy_alone`) and `Not` says "with no hosted
+    /// virus counters".
     HostsCounters(crate::dsl::CounterKind),
     /// A card in the server the acting card is in, its root or its ice —
     /// Isaac Liberdade's "a piece of ice protecting that server" (with
@@ -761,6 +765,7 @@ impl CardFilter {
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
                 | CardFilter::TopOf(_)
+                | CardFilter::HostsCounters(crate::dsl::CounterKind::Virus)
                 | CardFilter::Revealed
                 | CardFilter::NotInstalledThisTurn
                 | CardFilter::NotAdvancedThisTurn
@@ -896,7 +901,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AgendaPointsAtMost(points) => card.card_type == CardType::Agenda && card.agenda_points.is_some_and(|printed| printed <= *points),
         CardFilter::Facedown => true,
         CardFilter::Faceup => true,
-        CardFilter::HostsCounters(kind) => card.counter_kind == Some(*kind),
+        // Any Runner card may hold virus counters beside its own kind
+        // (Contaminate's), so for a virus counter the definition decides
+        // only for a Corp card.
+        CardFilter::HostsCounters(kind) => card.counter_kind == Some(*kind) || (*kind == crate::dsl::CounterKind::Virus && card.side == crate::rules::Side::Runner),
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),

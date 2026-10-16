@@ -176,6 +176,8 @@ fn identical(view: &ClientView, actions: Option<&ActionMap>, a: &PublicInstalled
     a.card == b.card
         && a.current_strength == b.current_strength
         && a.counters == b.counters
+        && a.credits == b.credits
+        && a.virus_counters == b.virus_counters
         && alone(a)
         && alone(b)
         && used(a) == used(b)
@@ -235,6 +237,7 @@ mod tests {
             hosted_cards_playable: false,
             counters: 0,
             credits: 0,
+            virus_counters: 0,
         }
     }
 

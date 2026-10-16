@@ -427,9 +427,16 @@ fn instance_matches_filter(
             theirs.is_some() && zone_card_ids(state, chooser, zone, source).get(position).and_then(faction) == theirs
         }
         // The kind is the definition's half; this is the count.
-        CardFilter::HostsCounters(_) => {
+        // Virus counters may sit beside a rig card's own kind (Contaminate's),
+        // so a rig card is asked `virus_on`.
+        CardFilter::HostsCounters(kind) => {
             let rig_card = (installed_zone && owning_side(chooser, zone) == Side::Runner).then(|| state.runner.rig.get(position)).flatten();
-            corp_install.map(|c| c.counters).or(rig_card.map(|c| c.counters)).is_some_and(|counters| counters > 0)
+            let on_rig = |c: &crate::rules::InstalledRunnerCard| if *kind == crate::dsl::CounterKind::Virus { virus_on(c, registry) } else { c.counters };
+            // The kind is checked here too, since a negation about the copy
+            // alone (Contaminate's "with no hosted virus counters") never
+            // asked the definition.
+            let on_corp = |c: &crate::rules::InstalledCard| if registry.get(&c.card).and_then(|card| card.counter_kind) == Some(*kind) { c.counters } else { 0 };
+            corp_install.map(on_corp).or(rig_card.map(on_rig)).is_some_and(|counters| counters > 0)
         }
         CardFilter::AgendaPointsAtMostRunnerTags => zone_card_ids(state, chooser, zone, source)
             .get(position)
@@ -794,9 +801,32 @@ pub(crate) fn virus_counters(state: &GameState, registry: &CardRegistry) -> Vec<
         .rig
         .iter()
         .enumerate()
-        .filter(|(_, installed)| installed.counters > 0 && registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus))
-        .map(|(position, installed)| (position, installed.counters))
+        .map(|(position, installed)| (position, virus_on(installed, registry)))
+        .filter(|&(_, held)| held > 0)
         .collect()
+}
+
+/// How many virus counters a rig card holds: its `counters` where those
+/// are virus counters (`CounterKind::Virus`), and otherwise the ones
+/// placed beside them (`InstalledRunnerCard::virus_counters`,
+/// Contaminate's). The one question for it — the purge, the scan above
+/// and `CardFilter::HostsCounters(Virus)` put it.
+pub(crate) fn virus_on(installed: &crate::rules::InstalledRunnerCard, registry: &CardRegistry) -> u32 {
+    if registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus) {
+        installed.counters
+    } else {
+        installed.virus_counters
+    }
+}
+
+/// Takes `amount` virus counters off a rig card, from whichever number
+/// holds them (`virus_on`), and says how many it took.
+pub(crate) fn remove_virus_on(installed: &mut crate::rules::InstalledRunnerCard, registry: &CardRegistry, amount: u32) -> u32 {
+    let own = registry.get(&installed.card).and_then(|card| card.counter_kind) == Some(crate::dsl::CounterKind::Virus);
+    let held = if own { &mut installed.counters } else { &mut installed.virus_counters };
+    let taken = amount.min(*held);
+    *held -= taken;
+    taken
 }
 
 /// Which cards `Cost::VirusCounters` takes its `count` counters from, as
