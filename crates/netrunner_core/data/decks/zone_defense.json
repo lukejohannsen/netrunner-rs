@@ -3,7 +3,7 @@
   "name": "Zone Defense",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Mti Mwekundu: Life Improved, Kitara's Jinteki identity, which once per turn when the Runner approaches a server may install a piece of ice from HQ innermost protecting it, ignoring all costs, and send the Runner to approach it. On A Thousand Cuts' list, a Jinteki deck with ice to spare. Eternal-legal only. Kitara Stage 14b. Kitara Stage 23 takes two Bacterial Programming and a second Anansi for two Flower Sermon and Braintrust, six points for six. Red Sand Stage 1: two Kakugo for two Neural Katana. Red Sand Stage 2b: two Synth DNA Modification for two Prana Condenser, beside the deck's AP ice.",
+  "description": "Not a published list: built so the sweeps reach Mti Mwekundu: Life Improved, Kitara's Jinteki identity, which once per turn when the Runner approaches a server may install a piece of ice from HQ innermost protecting it, ignoring all costs, and send the Runner to approach it. On A Thousand Cuts' list, a Jinteki deck with ice to spare. Eternal-legal only. Kitara Stage 14b. Kitara Stage 23 takes two Bacterial Programming and a second Anansi for two Flower Sermon and Braintrust, six points for six. Red Sand Stage 1: two Kakugo for two Neural Katana. Red Sand Stage 2b: two Synth DNA Modification for two Prana Condenser, beside the deck's AP ice. Red Sand Stage 3: two Shipment from Tennin for two Genotyping.",
   "style": [
     "traps"
   ],
@@ -86,10 +86,6 @@
       "count": 1
     },
     {
-      "card": "genotyping",
-      "count": 2
-    },
-    {
       "card": "reverse_infection",
       "count": 2
     },
@@ -103,6 +99,10 @@
     },
     {
       "card": "synth_dna_modification",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_tennin",
       "count": 2
     }
   ]

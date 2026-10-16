@@ -1,0 +1,63 @@
+{
+  "id": "mca_austerity_policy",
+  "title": "MCA Austerity Policy",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "Sequence": [
+          {
+            "AddCounters": 1
+          },
+          {
+            "LaterThisTurn": {
+              "when": "OnTurnStart",
+              "filter": {
+                "Whose": "Runner"
+              },
+              "effect": {
+                "LoseClicks": 1
+              },
+              "next_turn": true
+            }
+          }
+        ]
+      },
+      "text": "Once per turn → [click]: Place 1 power counter on this asset. When the Runner's next turn begins, they lose [click]."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 3
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainClicks": [
+          "Corp",
+          4
+        ]
+      },
+      "text": "[click], [trash], 3 hosted power counters: Gain [click][click][click][click]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12111,
+  "is_playable": true
+}

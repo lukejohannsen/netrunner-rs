@@ -1,0 +1,57 @@
+{
+  "id": "o_shortage",
+  "title": "O₂ Shortage",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "CardsInHand": "Runner"
+                },
+                1
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "TrashCard": {
+                      "RandomFromHand": "Runner"
+                    }
+                  },
+                  {
+                    "GainClicks": [
+                      "Corp",
+                      2
+                    ]
+                  }
+                ],
+                "texts": [
+                  "The Runner may trash 1 card from the grip at random",
+                  "If they do not, gain [click][click]"
+                ]
+              }
+            },
+            "otherwise": {
+              "GainClicks": [
+                "Corp",
+                2
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12090,
+  "is_playable": true
+}

@@ -139,7 +139,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
     ("build_script", "Build Script"),
-    ("load_testing", "Load Testing"),
     ("bloom", "Bloom"),
     ("replanting", "Replanting"),
     ("cpc_generator", "CPC Generator"),
@@ -179,14 +178,11 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("loki", "Loki"),
     ("obokata_protocol", "Obokata Protocol"),
     ("miraju", "Mirāju"),
-    ("shipment_from_tennin", "Shipment from Tennin"),
     ("escalate_vitriol", "Escalate Vitriol"),
     ("reeducation", "Reeducation"),
-    ("meteor_mining", "Meteor Mining"),
     ("standoff", "Standoff"),
     ("success", "Success"),
     ("whampoa_reclamation", "Whampoa Reclamation"),
-    ("mass_commercialization", "Mass Commercialization"),
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
@@ -200,7 +196,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maven", "Maven"),
     ("nanotk", "Na'Not'K"),
     ("bloo_moose", "Bloo Moose"),
-    ("o_shortage", "O₂ Shortage"),
     ("helheim_servers", "Helheim Servers"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("water_monopoly", "Water Monopoly"),
@@ -223,13 +218,11 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reshape", "Reshape"),
     ("dummy_box", "Dummy Box"),
     ("corporate_defector", "Corporate Defector"),
-    ("mca_austerity_policy", "MCA Austerity Policy"),
     ("restore", "Restore"),
     ("breached_dome", "Breached Dome"),
     ("sand_storm", "Sand Storm"),
     ("ar_enhanced_security", "AR-Enhanced Security"),
     ("rolling_brownout", "Rolling Brownout"),
-    ("priority_construction", "Priority Construction"),
 ];
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.

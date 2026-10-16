@@ -73,6 +73,10 @@ pub struct DelayedAbility {
     /// Groove's "for the remainder of this turn, whenever".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub every_time: bool,
+    /// The turn it is heard on: the turn it was made, or the one after for
+    /// "when the Runner's next turn begins" (`Effect::LaterThisTurn::
+    /// next_turn`). One dated earlier than the turn is spent
+    /// (`listeners::delayed_spent_by`); one dated later waits.
     pub turn: u32,
     /// For the rest of the run, not the turn (`Effect::LaterThisTurn::
     /// this_run`): dropped as the run ends (`run::end_run`).

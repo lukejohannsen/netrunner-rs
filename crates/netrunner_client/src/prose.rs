@@ -496,9 +496,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         // "This card" inside it is the card whose text it is, which is how
         // the words already read.
         Effect::AsThisCard(effect) => describe_effect(effect, registry),
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false } => describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry),
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true } => {
-            describe_later_this_turn(*when, filter.as_ref(), *every_time, effect, registry).replace("this turn", "this run")
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: false, next_turn } => describe_later_this_turn(*when, filter.as_ref(), *every_time, *next_turn, effect, registry),
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run: true, .. } => {
+            describe_later_this_turn(*when, filter.as_ref(), *every_time, false, effect, registry).replace("this turn", "this run")
         }
         Effect::ChooseCardName { then, again_if, .. } => {
             let first = format!("choose a card name, then {}", describe_effect(then, registry));
@@ -726,9 +726,13 @@ pub fn humanize(debug: String) -> String {
 }
 /// A delayed ability's sentence (`Effect::LaterThisTurn`): "when this turn
 /// ends, …" for the turn's end, and otherwise the moment it waits for, once
-/// or every time, and what it will do. The hud reads a waiting one the same
-/// way.
-pub fn describe_later_this_turn(when: netrunner_core::dsl::Trigger, filter: Option<&EventFilter>, every_time: bool, effect: &Effect, registry: &CardRegistry) -> String {
+/// or every time, and what it will do — on the next turn rather than this
+/// one where it waits for that (`next_turn`, Load Testing's). The hud reads
+/// a waiting one the same way.
+pub fn describe_later_this_turn(when: netrunner_core::dsl::Trigger, filter: Option<&EventFilter>, every_time: bool, next_turn: bool, effect: &Effect, registry: &CardRegistry) -> String {
+    if next_turn {
+        return describe_later_this_turn(when, filter, every_time, false, effect, registry).replace("this turn", "next turn");
+    }
     let what = describe_effect(effect, registry);
     if when == netrunner_core::dsl::Trigger::OnDiscardPhaseEnd && filter.is_none() {
         return format!("when this turn ends, {what}");

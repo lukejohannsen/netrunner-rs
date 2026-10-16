@@ -1027,7 +1027,7 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => {
+        Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => {
             let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let effect = match state.active_run.as_ref() {
                 Some(run) => (**effect).clone().with_attacked_server(run.server),
@@ -1037,7 +1037,7 @@ pub fn evaluate_effect(
                 when: *when,
                 filter: filter.clone(),
                 every_time: *every_time,
-                turn: state.turn,
+                turn: state.turn + u32::from(*next_turn),
                 this_run: *this_run && state.active_run.is_some(),
                 effect,
                 card,
