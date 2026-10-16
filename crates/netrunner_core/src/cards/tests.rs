@@ -36912,3 +36912,99 @@ mod kitara_stage_23 {
         assert_eq!(&arranged.corp.r_and_d[..3], &["b1", "b2", "b3"].map(id), "nothing beneath the 7 moved");
     }
 }
+
+mod kitara_stage_24 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// The Runner's turn with Hippo and a Corroder, HQ protected by `ice`
+    /// (outermost first).
+    fn table(ice: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("hippo"), install_id: fixture_install_id("hippo"), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: fixture_install_id("corroder"), base_strength: 2, ..Default::default() },
+        ];
+        state.corp.installed = ice;
+        state
+    }
+
+    /// Runs HQ and steps the run — every player passing, the Corp rezzing
+    /// nothing — up to the encounter with `card`.
+    fn encounter(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..40 {
+            if let Some(run) = &state.active_run
+                && run.phase == crate::rules::RunPhase::EncounterIce
+                && run.ice[run.position].card_id == id(card)
+            {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        panic!("never encountered {card}: {:?}", state.active_run.map(|run| run.phase));
+    }
+
+    fn break_it(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        state
+    }
+
+    fn offered(state: &GameState) -> bool {
+        state.pending_paid_choice.is_some()
+    }
+
+    #[test]
+    fn hippo_trashes_the_outermost_ice_it_fully_broke_for_itself() {
+        let registry = registry();
+        let state = encounter(&table(vec![ice("ice_wall", true)]), &registry, "ice_wall");
+        let state = break_it(&state, &registry);
+        assert!(offered(&state), "fully broke the outermost: {:?}", state.pending_paid_choice);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("remove it from the game");
+        let state = close_all_windows(state, &registry).0;
+        assert!(state.corp.installed.is_empty(), "the ice is trashed");
+        assert!(state.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+        assert!(!state.runner.rig.iter().any(|card| card.card == id("hippo")), "Hippo left the rig");
+        assert!(!state.runner.heap.contains(&id("hippo")), "for the removed-from-game pile, not the heap");
+    }
+
+    #[test]
+    fn hippo_is_offered_only_the_first_time_each_turn() {
+        let registry = registry();
+        let state = encounter(&table(vec![ice("ice_wall", true)]), &registry, "ice_wall");
+        let state = break_it(&state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        // A second run this turn, the turn's log carried over.
+        let mut again = table(vec![ice("ice_wall", true)]);
+        again.turn = state.turn;
+        again.this_turn = state.this_turn;
+        let state = again;
+        let state = encounter(&state, &registry, "ice_wall");
+        let state = break_it(&state, &registry);
+        assert!(!offered(&state), "not the first time this turn");
+    }
+
+    /// The inner piece of ice, fully broken, is not the outermost — and
+    /// does not spend the turn's first time.
+    #[test]
+    fn hippo_ignores_ice_that_is_not_the_outermost() {
+        let registry = registry();
+        let state = encounter(&table(vec![ice("palisade", false), ice("ice_wall", true)]), &registry, "ice_wall");
+        assert_eq!(state.active_run.as_ref().unwrap().position, 1, "Palisade outermost, passed unrezzed");
+        let state = break_it(&state, &registry);
+        assert!(!offered(&state), "not the outermost");
+    }
+}

@@ -590,6 +590,8 @@ impl IceFacts {
         match trigger {
             Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, rezzed_bioroid: true, ..IceFacts::default() },
             Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ..IceFacts::default() },
+            // Hippo's "fully break the outermost piece of ice".
+            Trigger::OnIceFullyBroken => IceFacts { outermost: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }

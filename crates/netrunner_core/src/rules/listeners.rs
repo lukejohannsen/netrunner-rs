@@ -312,7 +312,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
             vec![ice_moment(Trigger::OnSubroutineResolved, position, IceFacts::default())]
         }
-        GameEvent::IceFullyBroken { position, by, .. } => vec![Moment { by: *by, ..ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default()) }],
+        // Hippo's "the first time each turn you fully break the
+        // **outermost** piece of ice": the moment states where the ice was.
+        GameEvent::IceFullyBroken { position, by, .. } => {
+            vec![Moment { by: *by, ..ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts { outermost: *position == 0, ..IceFacts::default() }) }]
+        }
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
         // About the ice by its install, which the event carries: an
         // encounter "end the run" ended is heard after the run is gone.
