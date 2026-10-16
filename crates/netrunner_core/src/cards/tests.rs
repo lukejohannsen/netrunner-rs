@@ -37089,3 +37089,85 @@ mod kitara_stage_25 {
         assert_eq!(scored.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "whenever an agenda is scored");
     }
 }
+
+mod kitara_stage_26 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn resource(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    /// The Corp's turn, Malia unrezzed in a remote and the Runner's rig
+    /// Crash Space (a location) and Crypt (virtual).
+    fn table() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("malia_z0l0k4"),
+            card: id("malia_z0l0k4"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state.runner.rig = vec![resource("crash_space"), resource("crypt")];
+        state
+    }
+
+    fn rezzed(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::RezIce { ice: fixture_install_id("malia_z0l0k4") }).expect("rez Malia");
+        close_all_windows(state, registry).0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn malia_takes_a_non_virtual_resources_abilities_while_she_is_rezzed() {
+        let registry = registry();
+        let asked = rezzed(&table(), &registry);
+        assert_eq!(toggles(&asked, &registry), vec![0], "Crash Space; Crypt is virtual");
+        let chosen = pick(&asked, &registry, 0);
+        let crash = fixture_install_id("crash_space");
+        assert!(crate::rules::active::lost_abilities(&chosen, &registry, crash), "the chosen resource loses its printed abilities");
+        assert!(!crate::rules::active::lost_abilities(&chosen, &registry, fixture_install_id("crypt")));
+        let meat = crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Meat, amount: 1 };
+        assert!(!crate::rules::prevention::could_prevent(&chosen, &registry, &meat), "its interrupt is lost");
+
+        let mut later = chosen.clone();
+        later.turn += 4;
+        assert!(crate::rules::active::lost_abilities(&later, &registry, crash), "for as long as Malia is rezzed");
+
+        let mut derezzed = chosen;
+        derezzed.corp.installed[0].rezzed = false;
+        assert!(!crate::rules::active::lost_abilities(&derezzed, &registry, crash), "and no longer");
+        assert!(crate::rules::prevention::could_prevent(&derezzed, &registry, &meat));
+    }
+
+    /// With only virtual resources installed, there is nothing to choose.
+    #[test]
+    fn malia_with_only_virtual_resources_chooses_nothing() {
+        let registry = registry();
+        let mut state = table();
+        state.runner.rig = vec![resource("crypt")];
+        let rezzed = rezzed(&state, &registry);
+        assert!(toggles(&rezzed, &registry).is_empty(), "{:?}", rezzed.pending_decision);
+        assert!(!crate::rules::active::lost_abilities(&rezzed, &registry, fixture_install_id("crypt")));
+    }
+}
