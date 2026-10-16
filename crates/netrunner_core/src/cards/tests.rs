@@ -37936,3 +37936,96 @@ mod red_sand_stage_3 {
         assert_eq!(installed.corp.resources.credits, Credits(9), "ignoring all costs: the second ice's tax too");
     }
 }
+
+mod red_sand_stage_3b {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).unwrap_or_else(|e| panic!("play {card}: {e:?}")).0
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).unwrap_or_else(|e| panic!("select {position}: {e:?}")).0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn audacity_trashes_hq_and_places_two_counters_needing_two_other_cards() {
+        let registry = registry();
+        let mut state = corp_turn(&["audacity", "hedge_fund"]);
+        state.corp.installed = vec![installed("hostile_takeover", 10, ServerId::Remote(0), InstallSlot::Root, false), installed("ice_wall", 11, ServerId::Hq, InstallSlot::Ice, true)];
+        let audacity = PlayerAction::PlayOperation { card_id: id("audacity") };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&audacity), "one other card in HQ");
+        state.corp.hq.push(id("ice_wall"));
+        let first = play(&state, &registry, "audacity");
+        assert!(first.corp.hq.is_empty(), "trash all cards from HQ: {:?}", first.corp.hq);
+        assert_eq!(first.corp.archives.iter().filter(|card| card.card != id("audacity")).count(), 2);
+        let second = select(&first, &registry, &[0]);
+        let done = select(&second, &registry, &[0]);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 2, "a total of 2, both on one card if the Corp likes");
+    }
+
+    #[test]
+    fn replanting_returns_an_install_to_hq_and_installs_two_for_free() {
+        let registry = registry();
+        let mut state = corp_turn(&["replanting", "pad_campaign"]);
+        state.corp.installed = vec![installed("ice_wall", 10, ServerId::Hq, InstallSlot::Ice, true)];
+        let asked = play(&state, &registry, "replanting");
+        assert_eq!(asked.corp.resources.clicks, Clicks(1), "spend [click] as well");
+        let returned = select(&asked, &registry, &[0]);
+        assert!(returned.corp.installed.is_empty() && returned.corp.hq.contains(&id("ice_wall")), "add one of your installed cards to HQ");
+        let mut state = returned;
+        for _ in 0..2 {
+            let ice_wall = state.corp.hq.iter().position(|card| *card == id("ice_wall")).or(Some(0)).expect("a card");
+            state = select(&state, &registry, &[ice_wall]);
+            let server = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+                .into_iter()
+                .find_map(|action| match action {
+                    PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                    _ => None,
+                })
+                .expect("a server to install in");
+            state = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("install").0;
+        }
+        assert_eq!(state.corp.installed.len(), 2, "install 2 cards from HQ");
+        assert_eq!(state.corp.resources.credits, Credits(10 - 1), "ignoring all costs");
+    }
+
+    #[test]
+    fn biased_reporting_pays_the_runner_for_trashes_and_the_corp_for_what_stays() {
+        let registry = registry();
+        let mut state = corp_turn(&["biased_reporting"]);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(700), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("easy_mark"), install_id: InstallId(701), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("smartware_distributor"), install_id: InstallId(702), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: InstallId(703), base_strength: 2, ..Default::default() },
+        ];
+        let asked = play(&state, &registry, "biased_reporting");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "choose resource, hardware, or program");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("resource");
+        let done = select(&chosen, &registry, &[0]);
+        assert_eq!(done.runner.rig.len(), 3, "one resource trashed");
+        assert_eq!(done.runner.resources.credits, Credits(10 + 1), "1[credit] for each card trashed this way");
+        assert_eq!(done.corp.resources.credits, Credits(10 - 2 + 2), "2[credit] for Smartware Distributor, still installed");
+    }
+}

@@ -3,7 +3,7 @@
   "name": "Zoned Curriculum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16.",
+  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16. Red Sand Stage 3b: two Biased Reporting for two Sweeps Week.",
   "style": [
     "fast-advance"
   ],
@@ -39,10 +39,6 @@
     },
     {
       "card": "digital_rights_management",
-      "count": 2
-    },
-    {
-      "card": "sweeps_week",
       "count": 2
     },
     {
@@ -103,6 +99,10 @@
     },
     {
       "card": "matrix_analyzer",
+      "count": 2
+    },
+    {
+      "card": "biased_reporting",
       "count": 2
     }
   ]

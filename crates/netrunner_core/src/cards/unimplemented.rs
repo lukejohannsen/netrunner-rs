@@ -140,7 +140,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("customized_secretary", "Customized Secretary"),
     ("build_script", "Build Script"),
     ("bloom", "Bloom"),
-    ("replanting", "Replanting"),
     ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
     ("clyde_van_rite", "Clyde Van Rite"),
@@ -162,7 +161,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
     ("bamboo_dome", "Bamboo Dome"),
     ("ben_musashi", "Ben Musashi"),
-    ("audacity", "Audacity"),
     ("red_planet_couriers", "Red Planet Couriers"),
 ];
 
@@ -200,7 +198,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("water_monopoly", "Water Monopoly"),
     ("metamorph", "Metamorph"),
-    ("biased_reporting", "Biased Reporting"),
     ("open_forum", "Open Forum"),
     ("tithonium", "Tithonium"),
     ("transparency_initiative", "Transparency Initiative"),
