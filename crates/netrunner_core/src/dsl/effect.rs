@@ -2371,6 +2371,11 @@ pub enum Amount {
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
+    /// Written into the selection's `then` as `Fixed` when it resolves,
+    /// through the selections nested in it, as `CardsSelectedPrintedCost`
+    /// is, so a nested selection's own `then` reads the outer count
+    /// (Bacterial Programming's arrangement of what the first two steps
+    /// left).
     RemainingAfterSelection(u32),
     /// How many cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — Meeting of Minds's "Gain
