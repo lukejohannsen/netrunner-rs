@@ -105,7 +105,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Whispers in Nalubaale* (`whispers_in_nalubaale`): tranche F3 of the FFG plan.
 pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("trypano", "Trypano"),
     ("contaminate", "Contaminate"),
 ];
 
