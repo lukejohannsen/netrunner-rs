@@ -914,7 +914,7 @@ mod tests {
     fn a_click_break_is_counted_separately_from_a_breaker_break() {
         let mut coverage = Coverage::default();
         let ice = CardId("bran_1_0".to_string());
-        let broken = |i| GameEvent::SubroutineBroken { card_id: ice.clone(), index: i, strength: 1, printed: true };
+        let broken = |i| GameEvent::SubroutineBroken { card_id: ice.clone(), index: i, strength: 1, printed: true, ap: false };
         coverage.absorb_entry(
             &entry(
                 Side::Runner,

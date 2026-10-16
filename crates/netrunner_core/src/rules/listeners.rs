@@ -301,9 +301,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
                 ..IceFacts::default()
             },
         )],
-        GameEvent::SubroutineBroken { strength, printed, .. } => {
+        GameEvent::SubroutineBroken { strength, printed, ap, .. } => {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
-            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, printed_subroutine: *printed, ..IceFacts::default() })]
+            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, printed_subroutine: *printed, ap: *ap, ..IceFacts::default() })]
         }
         // Only an encountered piece of ice resolves a subroutine here: a
         // card that resolves one by its text (Nanisivik Grid) announces

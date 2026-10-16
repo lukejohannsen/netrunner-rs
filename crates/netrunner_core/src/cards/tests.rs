@@ -37719,3 +37719,60 @@ mod red_sand_stage_2 {
         assert_eq!(drew.corp.hq.len(), hq + 1, "You may draw 1 card");
     }
 }
+
+mod red_sand_stage_2b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn table(ice: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: fixture_install_id("corroder"), base_strength: 2, ..Default::default() }];
+        let synth = crate::rules::InstalledCard { install_id: InstallId(500), card: id("synth_dna_modification"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() };
+        state.corp.installed = ice.into_iter().chain(std::iter::once(synth)).collect();
+        state
+    }
+
+    /// Passes up to the next encounter, breaks every subroutine there with
+    /// Corroder and settles the windows.
+    fn break_the_next(state: GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state;
+        for _ in 0..40 {
+            if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        let (broken, _) = apply_action(&state, registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        close_all_windows(broken, registry).0
+    }
+
+    #[test]
+    fn synth_dna_modification_does_net_damage_the_first_time_each_turn_an_ap_subroutine_is_broken() {
+        let registry = registry();
+        // Kakugo outermost, then a second Kakugo: two AP breaks in one run.
+        let state = table(vec![ice("kakugo", 10), ice("kakugo", 11)]);
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let first = break_the_next(running, &registry);
+        assert_eq!(first.runner.grip.len(), 5 - 1 - 1, "1 net damage for the break, and Kakugo's own as it is passed");
+        let second = break_the_next(first, &registry);
+        assert_eq!(second.runner.grip.len(), 2, "only Kakugo's pass this time: not the first AP break this turn");
+
+        let walls = table(vec![ice("ice_wall", 10)]);
+        let (running, _) = apply_action(&walls, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert_eq!(break_the_next(running, &registry).runner.grip.len(), 5, "Ice Wall is not AP");
+    }
+}

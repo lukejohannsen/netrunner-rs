@@ -571,6 +571,17 @@ pub struct IceFacts {
     /// widened every row of a log that is copied with every `GameState`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rezzed_bioroid: bool,
+    /// "A subroutine on a piece of **AP** ice is broken" — Synth DNA
+    /// Modification, the first time each turn. AP is a printed subtype, and
+    /// ice is rezzed to be broken, so it is public. Read off the break
+    /// (`GameEvent::SubroutineBroken::ap`).
+    ///
+    /// **It shares a column bit with `rezzed_code_gate_or_sentry`**, as
+    /// `rezzed_bioroid` does with `at_most_zero_strength`: that is a
+    /// pass's fact and this a break's (`stated_by`), so within any row of
+    /// the log the bit means one fact.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ap: bool,
 }
 
 impl IceFacts {
@@ -582,6 +593,7 @@ impl IceFacts {
             && (!self.rezzed_code_gate_or_sentry || moment.rezzed_code_gate_or_sentry)
             && (!self.printed_subroutine || moment.printed_subroutine)
             && (!self.rezzed_bioroid || moment.rezzed_bioroid)
+            && (!self.ap || moment.ap)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
@@ -589,7 +601,7 @@ impl IceFacts {
     pub fn stated_by(trigger: Trigger) -> IceFacts {
         match trigger {
             Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, rezzed_bioroid: true, ..IceFacts::default() },
-            Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ..IceFacts::default() },
+            Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ap: true, ..IceFacts::default() },
             // Hippo's "fully break the outermost piece of ice".
             Trigger::OnIceFullyBroken => IceFacts { outermost: true, ..IceFacts::default() },
             _ => IceFacts::default(),
@@ -597,7 +609,7 @@ impl IceFacts {
     }
 
     /// How many columns of the turn log the facts take: five bits, the
-    /// sixth fact sharing one (`rezzed_bioroid`).
+    /// sixth and seventh facts sharing one each (`rezzed_bioroid`, `ap`).
     pub const COLUMNS: usize = 32;
 
     /// The facts as a number, 0..`COLUMNS` — a column of the turn log's row
@@ -607,16 +619,17 @@ impl IceFacts {
         usize::from(self.outermost)
             | usize::from(self.after_fully_breaking) << 1
             | usize::from(self.at_most_zero_strength || self.rezzed_bioroid) << 2
-            | usize::from(self.rezzed_code_gate_or_sentry) << 3
+            | usize::from(self.rezzed_code_gate_or_sentry || self.ap) << 3
             | usize::from(self.printed_subroutine) << 4
     }
 
-    /// Every combination of the six, the sixth in the top bit of the index.
-    pub const ALL: [IceFacts; 64] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false };
-        let mut all = [none; 64];
+    /// Every combination of the seven, the sixth and seventh in the top
+    /// bits of the index.
+    pub const ALL: [IceFacts; 128] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false };
+        let mut all = [none; 128];
         let mut bits = 0;
-        while bits < 64 {
+        while bits < 128 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
@@ -624,6 +637,7 @@ impl IceFacts {
                 rezzed_code_gate_or_sentry: bits & 8 != 0,
                 printed_subroutine: bits & 16 != 0,
                 rezzed_bioroid: bits & 32 != 0,
+                ap: bits & 64 != 0,
             };
             bits += 1;
         }
@@ -1288,6 +1302,7 @@ mod tests {
         for trigger in Trigger::ALL {
             let stated = IceFacts::stated_by(trigger);
             assert!(!(stated.rezzed_bioroid && stated.at_most_zero_strength), "{trigger:?} states both");
+            assert!(!(stated.ap && stated.rezzed_code_gate_or_sentry), "{trigger:?} states both");
         }
         assert!(IceFacts::ALL.iter().all(|facts| facts.bits() < IceFacts::COLUMNS));
     }
