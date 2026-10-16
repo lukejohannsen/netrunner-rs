@@ -1,0 +1,40 @@
+{
+  "id": "cfc_excavation_contract",
+  "title": "CFC Excavation Contract",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Times": {
+                "amount": {
+                  "CorpInstalls": {
+                    "All": [
+                      "Rezzed",
+                      {
+                        "HasSubtype": "Bioroid"
+                      }
+                    ]
+                  }
+                },
+                "times": 2
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you score CFC Excavation Contract, gain 2[credit] for each rezzed bioroid."
+    }
+  ],
+  "built_from": 12110,
+  "is_playable": true
+}

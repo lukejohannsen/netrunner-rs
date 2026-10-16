@@ -1,0 +1,99 @@
+{
+  "id": "nerine_2_0",
+  "title": "Nerine 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 4,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage. You may draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 core damage. You may draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 12030,
+  "is_playable": true
+}

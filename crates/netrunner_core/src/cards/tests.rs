@@ -37514,3 +37514,208 @@ mod red_sand_stage_1 {
         assert_eq!(searched.corp.r_and_d.len(), 2);
     }
 }
+
+mod red_sand_stage_2 {
+    use super::*;
+    use crate::rules::{GameEvent, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn(installed: Vec<crate::rules::InstalledCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: fixture_install_id("corroder"), base_strength: 2, ..Default::default() }];
+        state.corp.installed = installed;
+        state
+    }
+
+    /// Runs `server` and passes until `stop` holds.
+    fn run_until(state: &GameState, registry: &CardRegistry, server: ServerId, stop: impl Fn(&GameState) -> bool) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        for _ in 0..40 {
+            if stop(&state) {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        panic!("never stopped: {:?}", state.active_run.map(|run| run.phase));
+    }
+
+    fn encountering(state: &GameState) -> bool {
+        state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce)
+    }
+
+    /// Both players bid nothing on the trace in progress.
+    fn bid_nothing(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let (state, mut events) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (state, more) = apply_action(&state, registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids");
+        events.extend(more);
+        (state, events)
+    }
+
+    fn scored(card: &str, tokens: u32, registry: &CardRegistry, mut state: GameState) -> GameState {
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        let mut agenda = installed(card, ServerId::Remote(0), InstallSlot::Root, false);
+        agenda.advancement_tokens = tokens;
+        state.corp.installed.push(agenda);
+        apply_action(&state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id(card) }).expect("score").0
+    }
+
+    #[test]
+    fn traffic_analyzer_traces_for_a_credit_when_ice_on_its_server_is_rezzed() {
+        let registry = registry();
+        let state = runner_turn(vec![installed("traffic_analyzer", ServerId::Hq, InstallSlot::Root, true), installed("ice_wall", ServerId::Hq, InstallSlot::Ice, false)]);
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("ice_wall") };
+        let approached = run_until(&state, &registry, ServerId::Hq, |s| crate::rules::legal_actions_for(s, &registry, Side::Corp).contains(&rez));
+        let (rezzed, _) = apply_action(&approached, &registry, rez).expect("rez Ice Wall");
+        assert_eq!(rezzed.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Trace[2]");
+        let credits = rezzed.corp.resources.credits;
+        let (traced, _) = bid_nothing(&rezzed, &registry);
+        assert_eq!(traced.corp.resources.credits.0, credits.0 + 1, "the Corp gains 1[credit]");
+
+        let elsewhere = runner_turn(vec![installed("traffic_analyzer", ServerId::RnD, InstallSlot::Root, true), installed("ice_wall", ServerId::Hq, InstallSlot::Ice, false)]);
+        let rez = PlayerAction::RezIce { ice: fixture_install_id("ice_wall") };
+        let approached = run_until(&elsewhere, &registry, ServerId::Hq, |s| crate::rules::legal_actions_for(s, &registry, Side::Corp).contains(&rez));
+        assert!(apply_action(&approached, &registry, rez).expect("rez").0.active_trace.is_none(), "not this server's ice");
+    }
+
+    #[test]
+    fn warroid_tracker_traces_when_the_runner_trashes_from_its_server() {
+        let registry = registry();
+        let mut state = runner_turn(vec![installed("warroid_tracker", ServerId::Remote(0), InstallSlot::Root, true), installed("ngo_front", ServerId::Remote(0), InstallSlot::Root, false)]);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(700), ..Default::default() });
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { card: id("easy_mark"), install_id: InstallId(701), ..Default::default() });
+        let accessing = run_to_completion(state, &registry, ServerId::Remote(0)).0;
+        let pick = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(fixture_install_id("ngo_front")) };
+        let accessing = if crate::rules::legal_actions_for(&accessing, &registry, Side::Runner).contains(&pick) {
+            apply_action(&accessing, &registry, pick).expect("access NGO Front").0
+        } else {
+            accessing
+        };
+        let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("ngo_front") }).expect("trash it");
+        assert_eq!(trashed.active_trace.as_ref().map(|trace| trace.base_strength), Some(4), "Trace[4]");
+        let (traced, _) = bid_nothing(&trashed, &registry);
+        let mut chosen = traced.clone();
+        for position in [0, 1] {
+            chosen = apply_action(&chosen, &registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(done.runner.rig.len(), 1, "the Runner trashes 2 of their installed cards");
+    }
+
+    #[test]
+    fn cfc_excavation_contract_pays_two_for_each_rezzed_bioroid() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("eli_1_0", ServerId::Hq, InstallSlot::Ice, true), installed("ice_wall", ServerId::RnD, InstallSlot::Ice, true)];
+        let mut unrezzed = installed("eli_1_0", ServerId::RnD, InstallSlot::Ice, false);
+        unrezzed.install_id = InstallId(400);
+        state.corp.installed.push(unrezzed);
+        let credits = state.corp.resources.credits;
+        let done = scored("cfc_excavation_contract", 4, &registry, state);
+        assert_eq!(done.corp.resources.credits.0, credits.0 + 2, "one rezzed bioroid");
+    }
+
+    #[test]
+    fn fractal_threat_matrix_trashes_the_top_two_of_the_stack_when_its_ice_is_fully_broken() {
+        let registry = registry();
+        let mut state = runner_turn(vec![installed("fractal_threat_matrix", ServerId::Hq, InstallSlot::Root, true), installed("ice_wall", ServerId::Hq, InstallSlot::Ice, true)]);
+        state.runner.stack = vec![id("sure_gamble"); 4];
+        let at_ice = run_until(&state, &registry, ServerId::Hq, encountering);
+        let (broken, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let broken = close_all_windows(broken, &registry).0;
+        assert_eq!(broken.runner.stack.len(), 2, "trash the top 2 cards of the stack");
+        assert_eq!(broken.runner.heap.len(), 2);
+    }
+
+    #[test]
+    fn threat_level_alpha_doubles_the_runners_tags_or_gives_one() {
+        let registry = registry();
+        let play = |tags: u32| {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.resources.clicks = Clicks(3);
+            state.corp.resources.credits = Credits(10);
+            state.corp.hq = vec![id("threat_level_alpha")];
+            state.runner.tags = tags;
+            let (tracing, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("threat_level_alpha") }).expect("play");
+            assert_eq!(tracing.corp.resources.clicks, Clicks(1), "spend [click] as well");
+            assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(1), "Trace[1]");
+            bid_nothing(&tracing, &registry).0.runner.tags
+        };
+        assert_eq!(play(0), 1, "no tags: give them 1 tag");
+        assert_eq!(play(2), 4, "1 tag for each tag they have");
+    }
+
+    #[test]
+    fn next_wave_2_may_do_core_damage_with_next_ice_rezzed() {
+        let registry = registry();
+        let mut with_next = base_state();
+        with_next.corp.installed = vec![installed("next_silver", ServerId::Hq, InstallSlot::Ice, true)];
+        with_next.runner.grip = vec![id("sure_gamble"); 3];
+        let asked = scored("next_wave_2", 4, &registry, with_next);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "you may do 1 core damage: {:?}", asked.pending_decision);
+        let (damaged, events) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("do it");
+        assert_eq!(damaged.runner.brain_damage, 1, "{events:?}");
+
+        let mut unrezzed = base_state();
+        unrezzed.corp.installed = vec![installed("next_silver", ServerId::Hq, InstallSlot::Ice, false)];
+        let not_asked = scored("next_wave_2", 4, &registry, unrezzed);
+        assert!(not_asked.pending_decision.is_none(), "no rezzed NEXT ice");
+    }
+
+    #[test]
+    fn henry_phillips_pays_for_each_break_on_its_server_against_a_tagged_runner() {
+        let registry = registry();
+        let breaks = |tags: u32, server: ServerId| {
+            let mut state = runner_turn(vec![installed("henry_phillips", server, InstallSlot::Root, true), installed("ice_wall", ServerId::Hq, InstallSlot::Ice, true)]);
+            state.runner.tags = tags;
+            let at_ice = run_until(&state, &registry, ServerId::Hq, encountering);
+            let credits = at_ice.corp.resources.credits;
+            let (broken, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+            broken.corp.resources.credits.0 - credits.0
+        };
+        assert_eq!(breaks(1, ServerId::Hq), 2, "gain 2[credit] if they are tagged");
+        assert_eq!(breaks(0, ServerId::Hq), 0, "untagged");
+        assert_eq!(breaks(1, ServerId::RnD), 0, "a run on another server");
+    }
+
+    #[test]
+    fn next_opal_gains_an_install_for_each_rezzed_next_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![installed("next_opal", ServerId::Hq, InstallSlot::Ice, true), installed("next_silver", ServerId::RnD, InstallSlot::Ice, true)];
+        assert_eq!(crate::rules::continuous::own_subroutines(&state, &registry, fixture_install_id("next_opal")).after.len(), 2, "itself and NEXT Silver");
+        state.corp.installed[1].rezzed = false;
+        assert_eq!(crate::rules::continuous::own_subroutines(&state, &registry, fixture_install_id("next_opal")).after.len(), 1);
+    }
+
+    #[test]
+    fn nerine_does_core_damage_and_may_draw_and_is_broken_by_two_clicks() {
+        let registry = registry();
+        let mut state = runner_turn(vec![installed("nerine_2_0", ServerId::Hq, InstallSlot::Ice, true)]);
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.r_and_d = vec![id("hedge_fund"); 4];
+        let at_ice = run_until(&state, &registry, ServerId::Hq, |s| encountering(s) && s.paid_ability_window.is_some());
+        let lose = PlayerAction::ActivateAbility { target: fixture_install_id("nerine_2_0"), ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&at_ice, &registry, Side::Runner).contains(&lose), "Lose [click][click]: Break up to 2 subroutines");
+
+        let fired = run_until(&state, &registry, ServerId::Hq, |s| s.pending_decision.is_some());
+        assert_eq!(fired.runner.brain_damage, 1, "Do 1 core damage");
+        let hq = fired.corp.hq.len();
+        let (drew, _) = apply_action(&fired, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw");
+        assert_eq!(drew.corp.hq.len(), hq + 1, "You may draw 1 card");
+    }
+}
