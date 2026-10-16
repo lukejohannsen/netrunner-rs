@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "yusuf"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -36792,5 +36792,61 @@ mod kitara_stage_21 {
         let accessing = breached.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some() || breached.pending_decision.is_some();
         assert!(accessing, "the breach goes ahead");
         assert_eq!(breached.corp.r_and_d.len(), 3, "nothing shuffled in");
+    }
+}
+
+mod kitara_stage_22 {
+    use super::*;
+    use super::reprints::ice_at_hq;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn beginning with Trypano on HQ's Ice Wall holding
+    /// `counters`, up to its "may".
+    fn at_turn_start(registry: &CardRegistry, counters: u32) -> GameState {
+        let mut state = base_state();
+        let wall = ice_at_hq("ice_wall");
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            install_id: InstallId(900),
+            card: id("trypano"),
+            counters,
+            hosted_on_ice: Some(wall.install_id),
+            ..Default::default()
+        }];
+        state.corp.installed = vec![wall];
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, Side::Runner);
+        let state = close_all_windows(state, registry).0;
+        assert!(matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may: {:?}", state.pending_decision);
+        state
+    }
+
+    #[test]
+    fn trypano_trashes_its_host_at_five_virus_counters() {
+        let registry = registry();
+        let state = at_turn_start(&registry, 4);
+        let (placed, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 1");
+        let placed = close_all_windows(placed, &registry).0;
+        assert!(placed.corp.installed.is_empty(), "5 hosted virus counters: trash host ice");
+        assert!(placed.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+        assert!(placed.runner.heap.contains(&id("trypano")), "and the Trojan it hosted with it");
+    }
+
+    #[test]
+    fn trypano_below_five_or_declining_leaves_the_host() {
+        let registry = registry();
+        let state = at_turn_start(&registry, 3);
+        let (placed, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 1");
+        let placed = close_all_windows(placed, &registry).0;
+        assert_eq!(placed.runner.rig[0].counters, 4);
+        assert_eq!(placed.corp.installed.len(), 1, "4 is not 5");
+
+        let state = at_turn_start(&registry, 4);
+        let (declined, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        let declined = close_all_windows(declined, &registry).0;
+        assert_eq!(declined.runner.rig[0].counters, 4, "the counter is the Runner's to place");
+        assert_eq!(declined.corp.installed.len(), 1);
     }
 }

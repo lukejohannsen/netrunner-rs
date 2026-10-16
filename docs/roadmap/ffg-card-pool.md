@@ -624,6 +624,8 @@ go in a Sweep deck by influence. Their identities arrive with F6.
 
 **Stage 21 closed** (15 October 2026): Because I Can, held at Stage 6a (22 of 118 `Effect` variants single-use, none unused, over 1,007 card files; no `Effect` added). "If successful, instead of breaching that server, you may force the Corp to shuffle all cards in the root of that server into R&D" is Singularity's replacement made `optional`, as Account Siphon's is, over `ShuffleIntoDeck` of a new zone, `CardZoneRef::RootOfAttackedServer`. That zone is a source for the shuffle only and is never chosen from. `CardTarget::AttackedServerRoot` already said the same cards for a trash, and a deck is a zone, so the shuffle names it as one. Each card leaves the table by `uninstall::corp_install`, as a trash's does. A rezzed card is named going into R&D (`CardAddedToDeck::revealed`) and an unrezzed one is not. Safety Net takes two for its two Modded.
 
+**Stage 22 closed** (16 October 2026): Trypano, held at Stage 7a (22 of 118 `Effect` variants single-use, none unused, over 1,008 card files; no engine change). The Stage 7a record held it on a standing condition the checkpoint did not read. Parasite's `Trigger::WhileTrue` has read one since (CR 9.6.7): "When there are 5 or more hosted virus counters, trash host ice" is that trigger, with `AmountAtLeast(HostedCounters, 5)` as its requirement and `TrashCard(HostIce)` as its effect, and the Trojan goes with its host as Parasite does. The "may place 1 virus counter" as the turn begins is Jackpot!'s `PresentChoice` of `AddCounters`. Pure Anarchy takes two for its two Hantu.
+
 ### F4. Red Sand — 120 cards (C 63 / V 48 / M 9)
 
 **Decks:** four new identities — AgInfusion: New Miracles for a New World

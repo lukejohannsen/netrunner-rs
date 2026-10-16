@@ -1,0 +1,52 @@
+{
+  "id": "trypano",
+  "title": "Trypano",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may place 1 virus counter on this program",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may place 1 virus counter on this program."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCounters",
+          5
+        ]
+      },
+      "effects": [
+        {
+          "TrashCard": "HostIce"
+        }
+      ],
+      "text": "When there are 5 or more hosted virus counters, trash host ice."
+    }
+  ],
+  "built_from": 21082,
+  "is_playable": true
+}
