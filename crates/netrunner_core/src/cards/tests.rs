@@ -36850,3 +36850,65 @@ mod kitara_stage_22 {
         assert_eq!(declined.corp.installed.len(), 1);
     }
 }
+
+mod kitara_stage_23 {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The positions the Corp may toggle in the open selection.
+    fn offered(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: GameState, registry: &CardRegistry, cards: &[&str]) -> GameState {
+        let mut state = state;
+        for card in cards {
+            let position = state.corp.r_and_d.iter().rposition(|c| *c == id(card)).expect("in R&D");
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("toggle").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn bacterial_programming_adds_trashes_and_arranges_among_the_top_seven() {
+        let registry = registry();
+        let mut state = base_state();
+        // The top is the end: a1 … a7 are the top 7, under b1 … b3.
+        state.corp.r_and_d = ["b1", "b2", "b3", "hedge_fund", "ice_wall", "enigma", "pad_campaign", "hostile_takeover", "project_vitruvius", "rototurret"].map(id).to_vec();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1011),
+            card: id("bacterial_programming"),
+            server: ServerId::Remote(0),
+            advancement_tokens: 5,
+            ..Default::default()
+        }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "bacterial_programming") }).expect("score");
+        assert!(matches!(scored.pending_decision, Some(PendingDecision::ChooseCards { .. })), "{:?}", scored.pending_decision);
+        assert_eq!(offered(&scored, &registry), (3..10).collect::<Vec<_>>(), "the top 7");
+
+        let to_hq = pick(scored, &registry, &["rototurret", "ice_wall"]);
+        assert!(to_hq.corp.hq.contains(&id("rototurret")) && to_hq.corp.hq.contains(&id("ice_wall")));
+        assert_eq!(offered(&to_hq, &registry), (3..8).collect::<Vec<_>>(), "the 5 of those left, and none beneath");
+
+        let trashed = pick(to_hq, &registry, &["hedge_fund"]);
+        assert!(trashed.corp.archives.iter().any(|card| card.card == id("hedge_fund")));
+        assert_eq!(offered(&trashed, &registry), (3..7).collect::<Vec<_>>(), "the 4 left to arrange");
+
+        let arranged = pick(trashed, &registry, &["enigma"]);
+        let arranged = close_all_windows(arranged, &registry).0;
+        assert!(arranged.pending_decision.is_none());
+        assert_eq!(arranged.corp.r_and_d.len(), 7);
+        assert_eq!(arranged.corp.r_and_d.last(), Some(&id("enigma")), "the first chosen goes on top");
+        assert_eq!(&arranged.corp.r_and_d[..3], &["b1", "b2", "b3"].map(id), "nothing beneath the 7 moved");
+    }
+}

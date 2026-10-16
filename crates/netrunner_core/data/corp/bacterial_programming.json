@@ -1,0 +1,151 @@
+{
+  "id": "bacterial_programming",
+  "title": "Bacterial Programming",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 7
+            },
+            "min": 0,
+            "max": 7,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHq",
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "TopOf": {
+                    "RemainingAfterSelection": 7
+                  }
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnArchives",
+                "up_to": {
+                  "RemainingAfterSelection": 7
+                },
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnRAndD",
+                    "filter": {
+                      "TopOf": {
+                        "Reduced": {
+                          "amount": {
+                            "RemainingAfterSelection": 7
+                          },
+                          "by": "CardsSelected"
+                        }
+                      }
+                    },
+                    "min": 0,
+                    "max": 0,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnRAndD",
+                    "up_to": {
+                      "Reduced": {
+                        "amount": {
+                          "RemainingAfterSelection": 7
+                        },
+                        "by": "CardsSelected"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When Bacterial Programming is scored or stolen, you may look at the top 7 cards of R&D, add any number of them to HQ, trash any number of them, and arrange the rest in any order."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 7
+            },
+            "min": 0,
+            "max": 7,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHq",
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "TopOf": {
+                    "RemainingAfterSelection": 7
+                  }
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnArchives",
+                "up_to": {
+                  "RemainingAfterSelection": 7
+                },
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnRAndD",
+                    "filter": {
+                      "TopOf": {
+                        "Reduced": {
+                          "amount": {
+                            "RemainingAfterSelection": 7
+                          },
+                          "by": "CardsSelected"
+                        }
+                      }
+                    },
+                    "min": 0,
+                    "max": 0,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnRAndD",
+                    "up_to": {
+                      "Reduced": {
+                        "amount": {
+                          "RemainingAfterSelection": 7
+                        },
+                        "by": "CardsSelected"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When Bacterial Programming is scored or stolen, you may look at the top 7 cards of R&D, add any number of them to HQ, trash any number of them, and arrange the rest in any order."
+    }
+  ],
+  "built_from": 21033,
+  "is_playable": true
+}

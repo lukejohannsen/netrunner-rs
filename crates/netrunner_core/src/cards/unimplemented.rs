@@ -90,7 +90,6 @@ pub(crate) const SS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Down the White Nile* (`down_the_white_nile`): tranche F3 of the FFG plan.
 pub(crate) const DTWN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("bacterial_programming", "Bacterial Programming"),
 ];
 
 /// *Council of the Crest* (`council_of_the_crest`): tranche F3 of the FFG plan.

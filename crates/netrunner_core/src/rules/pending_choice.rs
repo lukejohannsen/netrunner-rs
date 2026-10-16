@@ -1817,7 +1817,18 @@ pub(crate) fn resolve_confirm_card_selection(
             // for is a later selection's `then`, resolved after this one's
             // context is gone (Emergent Creativity).
             let printed: u32 = selected.iter().filter_map(|card| registry.get(card)).map(|card| card.cost).sum();
-            let effect = effect.filled(&|amount| matches!(amount, crate::dsl::Amount::CardsSelectedPrintedCost).then_some(printed));
+            // And how many of the cards it chose from are left, for a
+            // selection nested in this one's `then`: Bacterial
+            // Programming's trash and arrangement are among the 7 cards the
+            // first selection did not add to HQ, and its arrangement among
+            // those the trash also left (`Reduced` by the trash's own
+            // `CardsSelected`), which this selection's count is gone by.
+            let chosen = selected.len() as u32;
+            let effect = effect.filled(&|amount| match amount {
+                crate::dsl::Amount::CardsSelectedPrintedCost => Some(printed),
+                crate::dsl::Amount::RemainingAfterSelection(of) => Some(of.saturating_sub(chosen)),
+                _ => None,
+            });
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
             ctx.selected_count = selected.len() as u32;
             // Which face the chosen Archives copy had, read before anything
