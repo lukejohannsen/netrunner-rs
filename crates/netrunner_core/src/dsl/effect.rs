@@ -467,6 +467,23 @@ pub enum Effect {
     /// would otherwise have been a `RemoveAllCounters` beside it — the shape
     /// `PlaceAdvancementCounters` took.
     RemoveCounters(Amount),
+    /// Places `amount` **virus** counters on the acting rig card, whatever
+    /// its own kind — Contaminate's "Place 3 virus counters on an installed
+    /// Runner card", whose card may host power counters or none: they are
+    /// the card's `counters` where those are virus counters, and its
+    /// `InstalledRunnerCard::virus_counters` otherwise
+    /// (`pending_choice::virus_on`). Composition didn't work: `AddCounters`
+    /// places the card's own kind, which on a Power card is not a virus
+    /// counter.
+    AddVirusCounters(u32),
+    /// Removes `amount` virus counters from the acting rig card, from
+    /// whichever number holds them — The Nihilist's "remove any 2 virus
+    /// counters from your installed cards" and Business As Usual's
+    /// "remove all virus counters from 1 installed card" (with
+    /// `Amount::HostedVirusCounters`), which since Contaminate may be on a
+    /// card whose own counters are another kind. `RemoveCounters`'s
+    /// virus-counter twin, for the reason `AddVirusCounters` is.
+    RemoveVirusCounters(Amount),
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -2240,6 +2257,12 @@ pub enum Amount {
     /// `acting_card`'s own hosted generic counter count — e.g. Conduit's
     /// R&D-access bonus.
     HostedCounters,
+    /// The virus counters on the acting rig card, its own or the ones
+    /// beside them (`pending_choice::virus_on`) — Business As Usual's
+    /// "remove all virus counters", which since Contaminate may sit beside
+    /// a card's power counters. Composition didn't work: `HostedCounters`
+    /// reads the card's own kind.
+    HostedVirusCounters,
     /// `acting_card`'s own hosted advancement token count (Corp installed
     /// cards only) — e.g. Clearinghouse, Urtica Cipher.
     HostedAdvancementTokens,
@@ -3660,6 +3683,8 @@ impl Effect {
             | Effect::Prevent(..)
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
+            | Effect::AddVirusCounters(..)
+            | Effect::RemoveVirusCounters(..)
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard

@@ -3385,6 +3385,11 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                     let token = Token { kind: TokenKind::Counter(Some(netrunner_core::dsl::CounterKind::Credit)), amount: card.credits.to_string() };
                                     spawn_badge(slot, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
                                 }
+                                // Virus counters beside another kind (Contaminate's).
+                                if card.virus_counters > 0 {
+                                    let token = Token { kind: TokenKind::Counter(Some(netrunner_core::dsl::CounterKind::Virus)), amount: card.virus_counters.to_string() };
+                                    spawn_badge(slot, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
+                                }
                             });
                         }
                     });

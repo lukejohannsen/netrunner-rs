@@ -37171,3 +37171,90 @@ mod kitara_stage_26 {
         assert!(!crate::rules::active::lost_abilities(&rezzed, &registry, fixture_install_id("crypt")));
     }
 }
+
+mod kitara_stage_27 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), counters, ..Default::default() }
+    }
+
+    /// The Runner's turn with Contaminate in the grip and `rig` installed.
+    fn table(rig: Vec<crate::rules::InstalledRunnerCard>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("contaminate")];
+        state.runner.rig = rig;
+        state
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn played(state: &GameState, registry: &CardRegistry) -> GameState {
+        apply_action(state, registry, PlayerAction::PlayEvent { card_id: id("contaminate") }).expect("play Contaminate").0
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        close_all_windows(state, registry).0
+    }
+
+    /// Crash Space's counters are credits and Amelia Earhart's power
+    /// counters; Contaminate's virus counters sit beside them. Datasucker,
+    /// holding virus counters already, is not offered; empty, it is, and
+    /// they are its own.
+    #[test]
+    fn contaminate_places_three_virus_counters_beside_a_cards_own_kind() {
+        let registry = registry();
+        let state = table(vec![rig("crash_space", 2), rig("amelia_earhart", 1), rig("datasucker", 1), rig("corroder", 0)]);
+        let asked = played(&state, &registry);
+        assert_eq!(toggles(&asked, &registry), vec![0, 1, 3], "not Datasucker, which hosts virus counters");
+
+        let crash = pick(&asked, &registry, 0);
+        assert_eq!((crash.runner.rig[0].counters, crash.runner.rig[0].virus_counters), (2, 3), "beside its credits");
+        let power = pick(&asked, &registry, 1);
+        assert_eq!((power.runner.rig[1].counters, power.runner.rig[1].virus_counters), (1, 3), "beside its power counters");
+        let none = pick(&asked, &registry, 3);
+        assert_eq!(none.runner.rig[3].virus_counters, 3, "on a card with no counters of its own");
+
+        let empty = played(&table(vec![rig("datasucker", 0)]), &registry);
+        assert_eq!(toggles(&empty, &registry), vec![0]);
+        let datasucker = pick(&empty, &registry, 0);
+        assert_eq!((datasucker.runner.rig[0].counters, datasucker.runner.rig[0].virus_counters), (3, 0), "a virus program's own counters");
+    }
+
+    /// They are virus counters to every reader: spent as virus counters,
+    /// counted as the Runner's, and purged — the card's own kind kept.
+    #[test]
+    fn contaminated_virus_counters_are_spent_counted_and_purged_as_virus_counters() {
+        let registry = registry();
+        let state = table(vec![rig("amelia_earhart", 1)]);
+        let mut state = pick(&played(&state, &registry), &registry, 0);
+        assert_eq!(crate::rules::pending_choice::virus_counters(&state, &registry), vec![(0, 3)], "what Cost::VirusCounters takes from");
+
+        let amelia = id("amelia_earhart");
+        let remove = crate::dsl::Effect::RemoveVirusCounters(crate::dsl::Amount::Fixed(2));
+        crate::rules::evaluate_effect(&mut state, &remove, &mut crate::rules::ResolutionContext::for_card(Some(&amelia)), &registry).expect("remove 2 virus counters");
+        assert_eq!((state.runner.rig[0].counters, state.runner.rig[0].virus_counters), (1, 1), "taken from the virus counters, not the power counter");
+
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::VirusCountersPurged { removed: 1, .. })), "{events:?}");
+        assert_eq!((state.runner.rig[0].counters, state.runner.rig[0].virus_counters), (1, 0), "its power counter stays");
+    }
+}

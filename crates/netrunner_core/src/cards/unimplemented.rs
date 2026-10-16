@@ -102,7 +102,6 @@ pub(crate) const TDATD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Whispers in Nalubaale* (`whispers_in_nalubaale`): tranche F3 of the FFG plan.
 pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("contaminate", "Contaminate"),
 ];
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.

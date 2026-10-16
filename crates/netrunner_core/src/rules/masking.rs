@@ -251,6 +251,11 @@ pub struct PublicInstalledRunnerCard {
     /// rig is.
     #[serde(default)]
     pub credits: u32,
+    /// Virus counters beside a card's own kind
+    /// (`InstalledRunnerCard::virus_counters`, Contaminate's). Public, as
+    /// the rig is.
+    #[serde(default)]
+    pub virus_counters: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1639,6 +1644,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         hosted_cards_playable: card.hosted_cards_playable,
         counters: card.counters,
         credits: card.credits,
+        virus_counters: card.virus_counters,
     }
 }
 
@@ -2287,6 +2293,7 @@ mod tests {
             hosted_cards_playable: false,
             counters: 0,
             credits: 0,
+            virus_counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);

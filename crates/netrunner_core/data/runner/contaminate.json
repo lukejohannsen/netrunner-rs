@@ -1,0 +1,36 @@
+{
+  "id": "contaminate",
+  "title": "Contaminate",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "Not": {
+                "HostsCounters": "Virus"
+              }
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddVirusCounters": 3
+            }
+          }
+        }
+      ],
+      "text": "Place 3 virus counters on an installed Runner card with no hosted virus counters."
+    }
+  ],
+  "built_from": 21083,
+  "is_playable": true
+}

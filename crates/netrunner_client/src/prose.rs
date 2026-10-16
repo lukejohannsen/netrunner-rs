@@ -82,6 +82,7 @@ pub fn describe_amount(amount: &Amount) -> String {
             format!("the times \"{}\" happened last turn ({})", humanize(format!("{trigger:?}")), humanize(format!("{when:?}")).to_lowercase())
         }
         Amount::HostedCounters => "the counters on this card".to_string(),
+        Amount::HostedVirusCounters => "the virus counters on this card".to_string(),
         Amount::HostedCards => "the cards hosted on this card".to_string(),
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
         Amount::InstalledIcebreakerCount => "the number of installed icebreakers".to_string(),
@@ -406,6 +407,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::HostedCounters) => "remove all its counters".to_string(),
         Effect::RemoveCounters(amount) => format!("remove counters equal to {}", describe_amount(amount)),
+        Effect::AddVirusCounters(n) => format!("place {}", plural(*n, "virus counter", "virus counters")),
+        Effect::RemoveVirusCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "virus counter", "virus counters")),
+        Effect::RemoveVirusCounters(Amount::HostedVirusCounters) => "remove all its virus counters".to_string(),
+        Effect::RemoveVirusCounters(amount) => format!("remove virus counters equal to {}", describe_amount(amount)),
         Effect::EffectIf { condition, effect, otherwise: None } => format!("if {}: {}", humanize(format!("{condition:?}")), describe_effect(effect, registry)),
         Effect::EffectIf { condition, effect, otherwise: Some(otherwise) } => format!(
             "if {}: {}; otherwise {}",

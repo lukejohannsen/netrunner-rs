@@ -96,7 +96,7 @@
                       "reveal": false,
                       "shuffle_after": false,
                       "then": {
-                        "RemoveCounters": "HostedCounters"
+                        "RemoveVirusCounters": "HostedVirusCounters"
                       }
                     }
                   }
@@ -195,7 +195,7 @@
                       "reveal": false,
                       "shuffle_after": false,
                       "then": {
-                        "RemoveCounters": "HostedCounters"
+                        "RemoveVirusCounters": "HostedVirusCounters"
                       }
                     }
                   },

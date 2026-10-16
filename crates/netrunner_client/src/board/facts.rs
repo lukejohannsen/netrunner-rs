@@ -414,6 +414,9 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if rig.credits > 0 {
                 lines.push(counter_word(Some(CounterKind::Credit), rig.credits));
             }
+            if rig.virus_counters > 0 {
+                lines.push(counter_word(Some(CounterKind::Virus), rig.virus_counters));
+            }
             if let Some(ice) = rig.hosted_on_ice {
                 lines.push(format!("Hosted on {}", crate::actions::install_label(&ice, registry, Some(view))));
             }
