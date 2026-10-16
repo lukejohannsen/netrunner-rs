@@ -1,0 +1,51 @@
+{
+  "id": "data_loop",
+  "title": "Data Loop",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 7,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "count": {
+              "Fixed": 2
+            },
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnStack"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, they add 2 cards from the grip to the top of the stack."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12095,
+  "is_playable": true
+}

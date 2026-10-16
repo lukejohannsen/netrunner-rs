@@ -1,0 +1,31 @@
+{
+  "id": "seidr_adaptive_barrier",
+  "title": "Seidr Adaptive Barrier",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "IceProtectingThisServer"
+        }
+      },
+      "applies_to": "This",
+      "text": "Seidr Adaptive Barrier has +1 strength for each piece of ice protecting this server."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12029,
+  "is_playable": true
+}

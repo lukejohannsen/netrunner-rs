@@ -1,0 +1,26 @@
+{
+  "id": "self_adapting_code_wall",
+  "title": "Self-Adapting Code Wall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 1,
+  "continuous": [
+    {
+      "kind": "StrengthCannotBeLowered",
+      "applies_to": "This",
+      "text": "The strength of Self-Adapting Code Wall cannot be lowered."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12040,
+  "is_playable": true
+}

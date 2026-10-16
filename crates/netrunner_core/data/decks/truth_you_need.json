@@ -3,7 +3,7 @@
   "name": "The Truth You Need",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment. Kitara Stage 13b: two Degree Mill for its two Bellona, the same three points each, stolen only by shuffling two installed Runner cards into the stack. Two Gold Farmer made room for two Jua, so an encounter can forbid the turn's installs.",
+  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment. Kitara Stage 13b: two Degree Mill for its two Bellona, the same three points each, stolen only by shuffling two installed Runner cards into the stack. Two Gold Farmer made room for two Jua, so an encounter can forbid the turn's installs. Red Sand Stage 1: two each of Authenticator, Data Loop and Free Lunch for two each of Capacitor, Klevetnik and Unsmiling Tsarevna.",
   "style": [
     "fast-advance"
   ],
@@ -23,10 +23,6 @@
     },
     {
       "card": "lethe",
-      "count": 2
-    },
-    {
-      "card": "capacitor",
       "count": 2
     },
     {
@@ -59,14 +55,6 @@
     },
     {
       "card": "fly_on_the_wall",
-      "count": 2
-    },
-    {
-      "card": "klevetnik",
-      "count": 2
-    },
-    {
-      "card": "unsmiling_tsarevna",
       "count": 2
     },
     {
@@ -103,6 +91,18 @@
     },
     {
       "card": "jua",
+      "count": 2
+    },
+    {
+      "card": "authenticator",
+      "count": 2
+    },
+    {
+      "card": "data_loop",
+      "count": 2
+    },
+    {
+      "card": "free_lunch",
       "count": 2
     }
   ]
