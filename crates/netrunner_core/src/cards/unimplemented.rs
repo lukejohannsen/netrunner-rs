@@ -109,7 +109,6 @@ pub(crate) const WIN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kampala Ascendent* (`kampala_ascendent`): tranche F3 of the FFG plan.
 pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("hippo", "Hippo"),
 ];
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
