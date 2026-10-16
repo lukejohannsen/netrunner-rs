@@ -1,0 +1,43 @@
+{
+  "id": "free_lunch",
+  "title": "Free Lunch",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "counter_kind": "Power",
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          1
+        ]
+      },
+      "text": "Hosted power counter: The Runner loses 1[credit]."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Place 1 power counter on Free Lunch.",
+      "effect": {
+        "AddCounters": 1
+      }
+    },
+    {
+      "text": "Place 1 power counter on Free Lunch.",
+      "effect": {
+        "AddCounters": 1
+      }
+    }
+  ],
+  "built_from": 12035,
+  "is_playable": true
+}

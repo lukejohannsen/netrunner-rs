@@ -1,0 +1,62 @@
+{
+  "id": "conundrum",
+  "title": "Conundrum",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 8,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "ZoneHasAtLeast": {
+          "zone": "OpponentInstalled",
+          "count": 1,
+          "filter": {
+            "HasSubtype": "AI"
+          }
+        }
+      },
+      "text": "Conundrum has +3 strength if there is an installed AI."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner trashes an installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap"
+        }
+      }
+    },
+    {
+      "text": "The Runner loses [click], if able.",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12120,
+  "is_playable": true
+}

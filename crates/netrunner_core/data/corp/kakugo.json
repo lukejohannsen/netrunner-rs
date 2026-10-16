@@ -1,0 +1,33 @@
+{
+  "id": "kakugo",
+  "title": "Kakugo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner passes Kakugo, do 1 net damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12013,
+  "is_playable": true
+}

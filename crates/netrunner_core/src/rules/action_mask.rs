@@ -86,8 +86,16 @@ pub const MAX_PENDING_CHOICE_OPTIONS: usize = 4;
 /// the width of `ChooseCardName`'s segment: every playable Runner card is
 /// 259 today (Complete Image names one of them), with room for the
 /// reprint packs. The pool outgrowing it is caught by
-/// `every_name_a_card_can_choose_has_a_slot`.
-pub const MAX_NAME_OPTIONS: usize = 512;
+/// `every_name_a_card_can_choose_has_a_slot`. It was 512 until Red Sand
+/// Stage 1 gave the Corp 522 playable cards; the slots past the first 512
+/// are a segment appended at the end (`CHOOSE_CARD_NAME_MORE_START`), so
+/// no index moved, and 2,048 is room for every card NetrunnerDB lists on
+/// either side.
+pub const MAX_NAME_OPTIONS: usize = 2048;
+
+/// The names `ChooseCardName`'s first segment holds, where Downfall Stage
+/// 8 laid it out; the rest are `CHOOSE_CARD_NAME_MORE_START`'s.
+const FIRST_NAME_SLOTS: usize = 512;
 
 /// `Hq`/`RnD`/`Archives` plus `MAX_REMOTE_SERVERS` numbered remotes.
 const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
@@ -268,7 +276,7 @@ const HAND_ABILITY_LEN: usize = 2 * MAX_HAND_SIZE * MAX_ABILITIES_PER_CARD;
 /// name for as long as the decision is parked. **Appended** (Downfall
 /// Stage 8), so nothing moved: 3261 → 3773.
 const CHOOSE_CARD_NAME_START: usize = HAND_ABILITY_START + HAND_ABILITY_LEN;
-const CHOOSE_CARD_NAME_LEN: usize = MAX_NAME_OPTIONS;
+const CHOOSE_CARD_NAME_LEN: usize = FIRST_NAME_SLOTS;
 
 /// `InstallHardware` onto a rig card (The Personal Touch's "only on an
 /// icebreaker"), laid out as `InstallResource` onto one is: every hand
@@ -284,13 +292,19 @@ const INSTALL_HARDWARE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SI
 const INSTALL_PROGRAM_ON_HOST_START: usize = INSTALL_HARDWARE_ON_HOST_START + INSTALL_HARDWARE_ON_HOST_LEN;
 const INSTALL_PROGRAM_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
 
+/// `ChooseCardName`'s names past the first 512, once the Corp's pool
+/// outgrew them (Red Sand Stage 1, 522 names). **Appended**, so nothing
+/// moved: 4797 → 6333.
+const CHOOSE_CARD_NAME_MORE_START: usize = INSTALL_PROGRAM_ON_HOST_START + INSTALL_PROGRAM_ON_HOST_LEN;
+const CHOOSE_CARD_NAME_MORE_LEN: usize = MAX_NAME_OPTIONS - FIRST_NAME_SLOTS;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = INSTALL_PROGRAM_ON_HOST_START + INSTALL_PROGRAM_ON_HOST_LEN;
+    pub const SIZE: usize = CHOOSE_CARD_NAME_MORE_START + CHOOSE_CARD_NAME_MORE_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -464,7 +478,9 @@ impl ActionSpace {
             PlayerAction::ChooseNumber { amount } => (*amount <= MAX_CHOSEN_NUMBER).then_some(CHOOSE_NUMBER_START + *amount as usize),
             PlayerAction::ChooseCardName { card } => match &state.pending_decision {
                 Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) => {
-                    names.iter().position(|name| name == card).filter(|slot| *slot < MAX_NAME_OPTIONS).map(|slot| CHOOSE_CARD_NAME_START + slot)
+                    names.iter().position(|name| name == card).filter(|slot| *slot < MAX_NAME_OPTIONS).map(|slot| {
+                        if slot < FIRST_NAME_SLOTS { CHOOSE_CARD_NAME_START + slot } else { CHOOSE_CARD_NAME_MORE_START + slot - FIRST_NAME_SLOTS }
+                    })
                 }
                 _ => None,
             },
@@ -700,6 +716,10 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, CHOOSE_CARD_NAME_START, CHOOSE_CARD_NAME_LEN) {
             let Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) = &state.pending_decision else { return None };
             return names.get(local).map(|card| PlayerAction::ChooseCardName { card: card.clone() });
+        }
+        if let Some(local) = in_segment(index, CHOOSE_CARD_NAME_MORE_START, CHOOSE_CARD_NAME_MORE_LEN) {
+            let Some(crate::rules::state::PendingDecision::ChooseCardName { names, .. }) = &state.pending_decision else { return None };
+            return names.get(FIRST_NAME_SLOTS + local).map(|card| PlayerAction::ChooseCardName { card: card.clone() });
         }
         None
     }
@@ -1522,6 +1542,29 @@ mod tests {
     }
 
     #[test]
+    fn a_name_past_the_first_512_has_a_slot_of_its_own_and_round_trips() {
+        let mut state = GameState::new(0);
+        let names: Vec<CardId> = (0..600).map(|n| CardId(format!("name_{n:04}"))).collect();
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseCardName {
+            chooser: Side::Corp,
+            names: names.clone(),
+            effect: Box::new(Effect::Sequence(vec![])),
+            text: String::new(),
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let first = PlayerAction::ChooseCardName { card: names[511].clone() };
+        let past = PlayerAction::ChooseCardName { card: names[550].clone() };
+        let (at_first, at_past) = (ActionSpace::index_of(&state, &first).expect("slot 511"), ActionSpace::index_of(&state, &past).expect("slot 550"));
+        assert_eq!(at_first, CHOOSE_CARD_NAME_START + 511, "the first 512 stay where they were");
+        assert_eq!(at_past, CHOOSE_CARD_NAME_MORE_START + 38, "the rest are the appended segment's");
+        assert_eq!(ActionSpace::action_at(&state, at_first), Some(first));
+        assert_eq!(ActionSpace::action_at(&state, at_past), Some(past));
+    }
+
+    #[test]
     fn action_space_size_is_stable() {
         // A regression guard: this constant is part of any trained model's
         // input/output shape — changing it is a breaking change that
@@ -1605,7 +1648,10 @@ mod tests {
         // slot (512).
         // **4285 → 4797: a program installed onto a rig card (tranche 8
         // Stage 11t, Djinn), appended.** Hand slot by rig slot (512).
-        assert_eq!(ActionSpace::SIZE, 4797);
+        // **4797 → 6333: the names past the first 512 a card can choose
+        // (Red Sand Stage 1, the Corp's 522), appended.**
+        assert_eq!(ActionSpace::SIZE, 6333);
+        assert_eq!(CHOOSE_CARD_NAME_MORE_START, 4797, "appended after a program onto a rig card");
         assert_eq!(INSTALL_PROGRAM_ON_HOST_START, 4285, "appended after hardware onto a rig card");
         assert_eq!(INSTALL_HARDWARE_ON_HOST_START, 3773, "appended after a card name chosen");
         assert_eq!(CHOOSE_CARD_NAME_START, 3261, "appended after an ability used from a hand");

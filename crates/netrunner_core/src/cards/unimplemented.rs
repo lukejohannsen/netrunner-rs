@@ -122,7 +122,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zed_2_0", "Zed 2.0"),
     ("defense_construct", "Defense Construct"),
     ("synth_dna_modification", "Synth DNA Modification"),
-    ("kakugo", "Kakugo"),
     ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
     ("jemison_astronautics_sacrifice_audacity_success", "Jemison Astronautics: Sacrifice. Audacity. Success."),
@@ -142,18 +141,14 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
     ("build_script", "Build Script"),
-    ("seidr_adaptive_barrier", "Seidr Adaptive Barrier"),
     ("nerine_2_0", "Nerine 2.0"),
     ("load_testing", "Load Testing"),
     ("bloom", "Bloom"),
     ("replanting", "Replanting"),
     ("cpc_generator", "CPC Generator"),
-    ("free_lunch", "Free Lunch"),
     ("mca_informant", "MCA Informant"),
     ("clyde_van_rite", "Clyde Van Rite"),
-    ("watchtower", "Watchtower"),
     ("sacrifice", "Sacrifice"),
-    ("self_adapting_code_wall", "Self-Adapting Code Wall"),
 ];
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
@@ -172,12 +167,9 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
     ("bamboo_dome", "Bamboo Dome"),
     ("ben_musashi", "Ben Musashi"),
-    ("authenticator", "Authenticator"),
     ("henry_phillips", "Henry Phillips"),
-    ("battlement", "Battlement"),
     ("audacity", "Audacity"),
     ("red_planet_couriers", "Red Planet Couriers"),
-    ("owl", "Owl"),
 ];
 
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.
@@ -220,7 +212,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("water_monopoly", "Water Monopoly"),
     ("metamorph", "Metamorph"),
-    ("data_loop", "Data Loop"),
     ("biased_reporting", "Biased Reporting"),
     ("open_forum", "Open Forum"),
     ("tithonium", "Tithonium"),
@@ -249,7 +240,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("threat_level_alpha", "Threat Level Alpha"),
     ("priority_construction", "Priority Construction"),
     ("fractal_threat_matrix", "Fractal Threat Matrix"),
-    ("conundrum", "Conundrum"),
 ];
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.

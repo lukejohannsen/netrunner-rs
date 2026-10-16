@@ -1,0 +1,49 @@
+{
+  "id": "authenticator",
+  "title": "Authenticator",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "they may take 1 tag to bypass it"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, they may take 1 tag to bypass it."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Corp gains 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12055,
+  "is_playable": true
+}

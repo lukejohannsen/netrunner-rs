@@ -1,0 +1,23 @@
+{
+  "id": "battlement",
+  "title": "Battlement",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 12057,
+  "is_playable": true
+}

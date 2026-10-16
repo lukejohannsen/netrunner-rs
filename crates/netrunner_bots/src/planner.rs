@@ -1748,6 +1748,16 @@ mod tests {
     /// has no follow-up to read and tags on 0 of 180 — so the two in five
     /// before §51 were samples that made Scorched Earth's line pay, not
     /// the tag.
+    ///
+    /// **The bar is two in five, not half, since Red Sand Stage 1** (16
+    /// October 2026). The count had drifted from 117 at §51 to 104 on
+    /// `main` before the stage, because every card the pool gains changes
+    /// the length the samples are drawn by and so re-rolls every seed:
+    /// the stage's ten ice added one at a time read 101, 102, 99, 100,
+    /// 102, 99, 103, 104, 101 and then 89, one under the old bar. Over 360
+    /// seeds the stage's pool reads 192, 53%, so half was inside the
+    /// drift. What §51 claims is the contrast with the Corp holding no
+    /// follow-up, which tags on 0 of 360, and two in five keeps it.
     #[test]
     fn a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced() {
         use crate::plans::{Plan, Style};
@@ -1803,7 +1813,7 @@ mod tests {
         let balanced = (1..=BALANCED_SEEDS)
             .filter(|&seed| plans_to_tag(&mut PlanningAgent::new(Side::Corp, seed), &view))
             .count() as u64;
-        assert!(balanced * 2 > BALANCED_SEEDS, "a balanced Corp holding the follow-up reads the tag (§51): {balanced} of {BALANCED_SEEDS}");
+        assert!(balanced * 5 > BALANCED_SEEDS * 2, "a balanced Corp holding the follow-up reads the tag (§51): {balanced} of {BALANCED_SEEDS}");
         let mut no_follow_up = state.clone();
         no_follow_up.corp.hq = vec![CardId("public_trail_open".to_string()), CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
         let no_follow_up = build_client_view(&no_follow_up, &registry, Side::Corp);
