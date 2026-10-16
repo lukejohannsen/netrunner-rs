@@ -1528,6 +1528,23 @@ pub fn evaluate_effect(
             crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
             Ok(Vec::new())
         }
+        // Every card in the root of the attacked server, into R&D —
+        // Because I Can's "force the Corp to shuffle all cards in the root
+        // of that server into R&D", in place of a breach. Each leaves the
+        // table as any uninstall does; a rezzed one was faceup, so it is
+        // named going in, and an unrezzed one is not.
+        Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::RootOfAttackedServer] => {
+            let roots: Vec<InstallId> = crate::rules::lingering::in_attacked_root(state).collect();
+            let mut events = Vec::new();
+            for install in roots {
+                let Some((removed, uninstalled)) = uninstall::corp_install(state, registry, install)? else { continue };
+                events.extend(uninstalled);
+                state.corp.r_and_d.push(removed.card.clone());
+                events.push(GameEvent::CardAddedToDeck { side: Side::Corp, card: removed.card, top: true, revealed: removed.rezzed });
+            }
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(events)
+        }
         Effect::ShuffleIntoDeck(zones) => {
             // R&D named alone is "shuffle R&D" (Sadaka's "either arrange
             // them in any order or shuffle R&D"): nothing goes in, and the

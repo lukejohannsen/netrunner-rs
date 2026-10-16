@@ -92,6 +92,13 @@ pub enum CardZoneRef {
     /// cards it took back into; `PromptChooseCards::shuffle_after` does
     /// the shuffling, as it does for R&D.
     OpponentDeck,
+    /// Every card in the root of the attacked server — Because I Can's
+    /// "force the Corp to shuffle all cards in the root of that server into
+    /// R&D". A source for `Effect::ShuffleIntoDeck` only, which moves every
+    /// card in it, the Corp's whoever resolves it; never a selection's,
+    /// and nothing outside a run. `CardTarget::AttackedServerRoot` says
+    /// the same cards for a trash; a deck is a zone, so here it is one.
+    RootOfAttackedServer,
     /// The opposing side's score area — the Runner's, when the chooser is
     /// the Corp (IP Enforcement's "install 1 agenda from the Runner's
     /// score area"). A source only: nothing puts a card *into* an
@@ -142,6 +149,7 @@ impl CardZoneRef {
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
             | CardZoneRef::OpponentRemovedFromGame
+            | CardZoneRef::RootOfAttackedServer
             | CardZoneRef::PlayArea => false,
         }
     }
@@ -167,7 +175,8 @@ impl CardZoneRef {
             | CardZoneRef::HostedOnSource
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
-            | CardZoneRef::OpponentRemovedFromGame => TrashedFrom::Elsewhere,
+            | CardZoneRef::OpponentRemovedFromGame
+            | CardZoneRef::RootOfAttackedServer => TrashedFrom::Elsewhere,
             CardZoneRef::PlayArea => TrashedFrom::PlayArea,
         }
     }
