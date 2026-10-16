@@ -3,7 +3,7 @@
   "name": "Yield Curve",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g.",
+  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g. Red Sand Stage 3b: two Audacity for two Wake Up Call.",
   "style": [
     "traps"
   ],
@@ -110,11 +110,11 @@
       "count": 2
     },
     {
-      "card": "wake_up_call",
+      "card": "death_and_taxes",
       "count": 2
     },
     {
-      "card": "death_and_taxes",
+      "card": "audacity",
       "count": 2
     }
   ]
