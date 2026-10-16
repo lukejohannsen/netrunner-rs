@@ -1,0 +1,28 @@
+{
+  "id": "escalate_vitriol",
+  "title": "Escalate Vitriol",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          "RunnerTags"
+        ]
+      },
+      "text": "Once per turn → [click]: Gain 1[credit] for each tag the Runner has."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12073,
+  "is_playable": true
+}

@@ -1,0 +1,27 @@
+{
+  "id": "ben_musashi",
+  "title": "Ben Musashi",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "persistent_after_trash": true,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "SufferDamage": [
+            "Net",
+            2
+          ]
+        }
+      },
+      "applies_to": "StealingFromThisServer",
+      "text": "Persistent → As an additional cost to steal an agenda from this server or its root, the Runner must suffer 2 net damage."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12054,
+  "is_playable": true
+}

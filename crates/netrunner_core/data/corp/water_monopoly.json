@@ -1,0 +1,36 @@
+{
+  "id": "water_monopoly",
+  "title": "Water Monopoly",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "OpponentInstalling": {
+          "All": [
+            {
+              "CardType": "Resource"
+            },
+            {
+              "Not": {
+                "HasSubtype": "Virtual"
+              }
+            }
+          ]
+        }
+      },
+      "text": "The install cost of each non-virtual resource is increased by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12093,
+  "is_playable": true
+}

@@ -119,7 +119,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("network_exchange", "Network Exchange"),
     ("mad_dash", "Mad Dash"),
     ("zed_2_0", "Zed 2.0"),
-    ("defense_construct", "Defense Construct"),
     ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
     ("jemison_astronautics_sacrifice_audacity_success", "Jemison Astronautics: Sacrifice. Audacity. Success."),
@@ -142,7 +141,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bloom", "Bloom"),
     ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
-    ("clyde_van_rite", "Clyde Van Rite"),
     ("sacrifice", "Sacrifice"),
 ];
 
@@ -159,8 +157,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("dadiana_chacon", "Dadiana Chacon"),
     ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
-    ("bamboo_dome", "Bamboo Dome"),
-    ("ben_musashi", "Ben Musashi"),
     ("red_planet_couriers", "Red Planet Couriers"),
 ];
 
@@ -174,13 +170,10 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("daredevil", "Daredevil"),
     ("mass_driver", "Mass-Driver"),
     ("loki", "Loki"),
-    ("obokata_protocol", "Obokata Protocol"),
     ("miraju", "Mirāju"),
-    ("escalate_vitriol", "Escalate Vitriol"),
     ("reeducation", "Reeducation"),
     ("standoff", "Standoff"),
     ("success", "Success"),
-    ("whampoa_reclamation", "Whampoa Reclamation"),
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
@@ -196,7 +189,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bloo_moose", "Bloo Moose"),
     ("helheim_servers", "Helheim Servers"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
-    ("water_monopoly", "Water Monopoly"),
     ("metamorph", "Metamorph"),
     ("open_forum", "Open Forum"),
     ("tithonium", "Tithonium"),
@@ -216,9 +208,7 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("dummy_box", "Dummy Box"),
     ("corporate_defector", "Corporate Defector"),
     ("restore", "Restore"),
-    ("breached_dome", "Breached Dome"),
     ("sand_storm", "Sand Storm"),
-    ("ar_enhanced_security", "AR-Enhanced Security"),
     ("rolling_brownout", "Rolling Brownout"),
 ];
 
