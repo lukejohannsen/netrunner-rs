@@ -56,8 +56,19 @@ pub enum GameEvent {
     /// strength read later could have moved. `printed` is whether the
     /// subroutine was printed on the ice rather than gained (Gold Farmer's
     /// "a printed subroutine"), carried for the same reason: the run has
-    /// moved on by the time a parked trigger is asked again.
-    SubroutineBroken { card_id: CardId, index: usize, strength: i32, printed: bool },
+    /// moved on by the time a parked trigger is asked again. `ap` is
+    /// whether the ice prints the AP subtype (Synth DNA Modification's "a
+    /// subroutine on a piece of **AP** ice"), carried for the same reason
+    /// and for the turn's count of first times (`IceFacts::ap`): a rezzed
+    /// piece of ice's subtypes are public.
+    SubroutineBroken {
+        card_id: CardId,
+        index: usize,
+        strength: i32,
+        printed: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ap: bool,
+    },
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
     /// The ice being encountered gained a subroutine ahead of the others
     /// for the rest of the encounter (`Effect::GainSubroutine`); `text` is

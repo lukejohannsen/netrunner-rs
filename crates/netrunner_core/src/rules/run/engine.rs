@@ -1573,7 +1573,8 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .and_then(|run| run.ice.get(run.position))
         .and_then(|ice| ice.subroutines.get(index))
         .is_some_and(|subroutine| !subroutine.gained);
-    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength, printed }];
+    let ap = registry.get(&card_id).is_some_and(|definition| definition.subtypes.contains(&crate::dsl::CardSubtype::Ap));
+    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength, printed, ap }];
     // What kind of icebreaker broke it, when it was printed (Virtual
     // Service Agent's "its printed subroutine with a decoder"): the
     // subtypes of the card whose ability it was, read before the run is
@@ -2181,7 +2182,7 @@ mod tests {
         );
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false }]
         );
     }
 

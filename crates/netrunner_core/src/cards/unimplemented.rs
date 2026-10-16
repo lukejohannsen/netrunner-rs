@@ -120,7 +120,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mad_dash", "Mad Dash"),
     ("zed_2_0", "Zed 2.0"),
     ("defense_construct", "Defense Construct"),
-    ("synth_dna_modification", "Synth DNA Modification"),
     ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
     ("jemison_astronautics_sacrifice_audacity_success", "Jemison Astronautics: Sacrifice. Audacity. Success."),

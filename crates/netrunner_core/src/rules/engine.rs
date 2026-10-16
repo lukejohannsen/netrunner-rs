@@ -5673,7 +5673,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false },
             ]
         );
     }
@@ -6045,7 +6045,7 @@ mod tests {
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
                 GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false },
                 // Corroder broke every subroutine, so it fully broke the ice
                 // too (CR 6.5.7b).
                 GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: Some(install_of(&state, &card_id.0)) },

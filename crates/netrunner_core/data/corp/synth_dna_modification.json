@@ -1,0 +1,31 @@
+{
+  "id": "synth_dna_modification",
+  "title": "Synth DNA Modification",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "ap": true
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "The first time a subroutine on a piece of AP ice is broken each turn, do 1 net damage."
+    }
+  ],
+  "built_from": 12012,
+  "is_playable": true
+}

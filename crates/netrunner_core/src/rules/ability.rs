@@ -7226,8 +7226,8 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true, ap: false },
             ]
         );
     }
@@ -7338,7 +7338,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2, printed: true, ap: false }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -7356,7 +7356,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0, printed: true, ap: false }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
     }
 
     fn ice_encounter_state_of_type(
@@ -7392,7 +7392,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
     }
 
@@ -7435,7 +7435,7 @@ mod tests {
 
             assert_eq!(
                 events,
-                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0, printed: true, ap: false }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
             );
         }
     }
