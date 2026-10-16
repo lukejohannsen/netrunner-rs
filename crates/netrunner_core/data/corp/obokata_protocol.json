@@ -1,0 +1,18 @@
+{
+  "id": "obokata_protocol",
+  "title": "Obokata Protocol",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "SufferDamage": [
+      "Net",
+      4
+    ]
+  },
+  "triggers": [],
+  "built_from": 12070,
+  "is_playable": true
+}

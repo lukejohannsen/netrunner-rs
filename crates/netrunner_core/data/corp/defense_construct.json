@@ -1,0 +1,35 @@
+{
+  "id": "defense_construct",
+  "title": "Defense Construct",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 0,
+  "advancement_requirement": 0,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "DuringRunOn": "Archives"
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Facedown",
+          "min": 0,
+          "max": 0,
+          "count": "HostedAdvancementTokens",
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "[trash]: Add 1 facedown card from Archives to HQ for each advancement token on Defense Construct. Use this ability only during a run on Archives."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12011,
+  "is_playable": true
+}

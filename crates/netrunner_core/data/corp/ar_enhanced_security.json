@@ -1,0 +1,45 @@
+{
+  "id": "ar_enhanced_security",
+  "title": "AR-Enhanced Security",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner trashes a Corp card, give them 1 tag."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner trashes a Corp card, give them 1 tag."
+    }
+  ],
+  "built_from": 12115,
+  "is_playable": true
+}

@@ -38029,3 +38029,199 @@ mod red_sand_stage_3b {
         assert_eq!(done.corp.resources.credits, Credits(10 - 2 + 2), "2[credit] for Smartware Distributor, still installed");
     }
 }
+
+mod red_sand_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn at(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn scored(card: &str) -> crate::rules::ScoredAgenda {
+        crate::rules::ScoredAgenda { install_id: InstallId(90), ..crate::rules::ScoredAgenda::plain(id(card)) }
+    }
+
+    /// Runs `server` to its breach and accesses the root card `install`, if
+    /// the Runner is asked which card to access first.
+    fn accessing(state: GameState, registry: &CardRegistry, server: ServerId, install: u32) -> GameState {
+        let (breaching, _) = run_to_completion(state, registry, server);
+        apply_action(&breaching, registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(InstallId(install)) })
+            .map(|(state, _)| state)
+            .unwrap_or(breaching)
+    }
+
+    #[test]
+    fn ar_enhanced_security_tags_the_first_runner_trash_of_a_corp_card_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![scored("ar_enhanced_security")];
+        state.corp.installed = vec![at("pad_campaign", 10, ServerId::Remote(0), InstallSlot::Root, false), at("pad_campaign", 11, ServerId::Remote(1), InstallSlot::Root, false)];
+        let first = accessing(state, &registry, ServerId::Remote(0), 10);
+        let (trashed, _) = apply_action(&first, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash");
+        let (trashed, _) = pass_until_settled(trashed, &registry);
+        assert_eq!(trashed.runner.tags, 1, "give them 1 tag");
+        let second = accessing(trashed, &registry, ServerId::Remote(1), 11);
+        let (again, _) = apply_action(&second, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash again");
+        assert_eq!(pass_until_settled(again, &registry).0.runner.tags, 1, "the first time each turn only");
+    }
+
+    #[test]
+    fn escalate_vitriol_pays_a_credit_per_tag_once_per_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 3;
+        state.corp.scored_agendas = vec![scored("escalate_vitriol")];
+        let use_it = PlayerAction::ActivateAbility { target: InstallId(90), ability_index: 0 };
+        let (paid, _) = apply_action(&state, &registry, use_it.clone()).expect("use it");
+        let (paid, _) = close_all_windows(paid, &registry);
+        assert_eq!((paid.corp.resources.credits, paid.corp.resources.clicks), (Credits(13), Clicks(2)));
+        assert!(!crate::rules::legal_actions_for(&paid, &registry, Side::Corp).contains(&use_it), "once per turn");
+    }
+
+    #[test]
+    fn obokata_protocol_and_ben_musashi_charge_net_damage_to_steal() {
+        let registry = registry();
+        let steal_for = |agenda: &str, musashi: bool, grip: usize| {
+            let mut state = runner_turn();
+            state.runner.grip = vec![id("sure_gamble"); grip];
+            state.corp.installed = vec![at(agenda, 20, ServerId::Remote(0), InstallSlot::Root, false)];
+            if musashi {
+                state.corp.installed.push(at("ben_musashi", 21, ServerId::Remote(0), InstallSlot::Root, true));
+            }
+            let access = accessing(state, &registry, ServerId::Remote(0), 20);
+            let steal = PlayerAction::StealAgenda { card_id: id(agenda) };
+            assert!(crate::rules::legal_actions_for(&access, &registry, Side::Runner).contains(&steal), "{agenda}: may steal");
+            let (stolen, _) = apply_action(&access, &registry, steal).expect("steal");
+            stolen
+        };
+        let obokata = steal_for("obokata_protocol", false, 5);
+        assert_eq!((obokata.runner.grip.len(), obokata.runner.scored_agendas.len()), (1, 1), "suffer 4 net damage");
+        let musashi = steal_for("hostile_takeover", true, 5);
+        assert_eq!((musashi.runner.grip.len(), musashi.runner.scored_agendas.len()), (3, 1), "suffer 2 net damage");
+        let plain = steal_for("hostile_takeover", false, 5);
+        assert_eq!(plain.runner.grip.len(), 5);
+    }
+
+    #[test]
+    fn water_monopoly_taxes_non_virtual_resources() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.scored_agendas = vec![scored("water_monopoly")];
+        state.runner.grip = vec![id("daily_casts")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).expect("install");
+        assert_eq!(installed.runner.resources.credits, Credits(10 - 3 - 1), "Daily Casts costs 1 more");
+    }
+
+    #[test]
+    fn breached_dome_does_meat_damage_and_mills_on_access() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![at("breached_dome", 30, ServerId::Remote(0), InstallSlot::Root, false)];
+        let done = pass_until_settled(accessing(state, &registry, ServerId::Remote(0), 30), &registry).0;
+        assert_eq!((done.runner.grip.len(), done.runner.stack.len(), done.runner.heap.len()), (4, 4, 2));
+    }
+
+    #[test]
+    fn clyde_van_rite_asks_a_credit_or_the_top_of_the_stack_as_the_corps_turn_begins() {
+        let registry = registry();
+        for (pay, credits, stack) in [(true, 9, 5), (false, 10, 4)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![at("clyde_van_rite", 40, ServerId::Remote(0), InstallSlot::Root, true)];
+            let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the Runner turn");
+            let mut state = state;
+            for _ in 0..20 {
+                if state.pending_paid_choice.is_some() {
+                    let answer = if pay { PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } } else { PlayerAction::DeclinePendingPaidChoice };
+                    state = apply_action(&state, &registry, answer).expect("answer").0;
+                    continue;
+                }
+                match &state.paid_ability_window {
+                    Some(window) => state = apply_action(&state, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                    None => break,
+                }
+            }
+            assert_eq!((state.runner.resources.credits, state.runner.stack.len()), (Credits(credits), stack), "paid: {pay}");
+        }
+    }
+
+    #[test]
+    fn defense_construct_returns_facedown_cards_from_archives_during_a_run_on_archives() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut construct = at("defense_construct", 50, ServerId::Archives, InstallSlot::Root, true);
+        construct.advancement_tokens = 2;
+        state.corp.installed = vec![construct];
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("hedge_fund")), crate::rules::ArchivedCard::facedown(id("ice_wall")), crate::rules::ArchivedCard::faceup(id("pad_campaign"))];
+        let use_it = PlayerAction::ActivateAbility { target: InstallId(50), ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&use_it), "only during a run on Archives");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run Archives");
+        let mut running = running;
+        for _ in 0..10 {
+            if crate::rules::legal_actions_for(&running, &registry, Side::Corp).contains(&use_it) {
+                break;
+            }
+            running = match &running.paid_ability_window {
+                Some(window) => apply_action(&running, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => apply_action(&running, &registry, PlayerAction::ContinueRun).expect("on").0,
+            };
+        }
+        let (asked, _) = apply_action(&running, &registry, use_it).expect("trash it");
+        let mut chosen = asked;
+        for position in [0, 1] {
+            chosen = apply_action(&chosen, &registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(done.corp.hq.len(), 2, "1 facedown card for each advancement token");
+        assert!(done.corp.installed.is_empty(), "[trash]");
+    }
+
+    #[test]
+    fn whampoa_reclamation_trades_a_card_from_hq_for_one_from_archives_to_the_bottom_of_rnd() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.r_and_d = vec![id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("pad_campaign"))];
+        state.corp.installed = vec![at("whampoa_reclamation", 60, ServerId::Remote(0), InstallSlot::Root, true)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 }).expect("use it");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(done.corp.hq.is_empty(), "trash 1 card from HQ");
+        assert_eq!(done.corp.r_and_d.first(), Some(&id("pad_campaign")), "the bottom of R&D: {:?}", done.corp.r_and_d);
+    }
+
+    #[test]
+    fn bamboo_dome_installs_only_in_rnd_and_draws_one_of_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("bamboo_dome")];
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("hostile_takeover")];
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        let servers: Vec<ServerId> = legal.iter().filter_map(|action| match action {
+            PlayerAction::InstallCard { card_id, zone, .. } if *card_id == id("bamboo_dome") => Some(*zone),
+            _ => None,
+        }).collect();
+        assert_eq!(servers, vec![ServerId::RnD], "install only in the root of R&D");
+        state.corp.hq.clear();
+        state.corp.installed = vec![at("bamboo_dome", 70, ServerId::RnD, InstallSlot::Root, true)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(70), ability_index: 0 }).expect("use it");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 3 }).expect("the top card");
+        let (arranging, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("to HQ");
+        assert_eq!(arranging.corp.hq, vec![id("hostile_takeover")]);
+        let (done, _) = pass_until_settled(apply_action(&arranging, &registry, PlayerAction::ConfirmCardSelection).expect("leave them").0, &registry);
+        assert_eq!(done.corp.r_and_d.len(), 3);
+    }
+}

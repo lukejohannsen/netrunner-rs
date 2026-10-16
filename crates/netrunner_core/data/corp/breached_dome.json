@@ -1,0 +1,43 @@
+{
+  "id": "breached_dome",
+  "title": "Breached Dome",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        },
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 1
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset, do 1 meat damage and trash the top card of the stack."
+    }
+  ],
+  "built_from": 12113,
+  "is_playable": true
+}

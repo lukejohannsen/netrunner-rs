@@ -1,0 +1,62 @@
+{
+  "id": "bamboo_dome",
+  "title": "Bamboo Dome",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 2,
+  "install_only_in": [
+    "RnD"
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "TopOfDeck": {
+              "deck": "Corp",
+              "count": 3,
+              "reveal": true
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "TopOfZone": 3
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHq"
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "TopOfZone": 2
+              },
+              "min": 0,
+              "max": 2,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnRAndD"
+            }
+          }
+        ]
+      },
+      "text": "[click]: Reveal the top 3 cards of R&D. Secretly choose 1 to add to HQ. Return the others to the top of R&D, in any order."
+    }
+  ],
+  "triggers": [],
+  "built_from": 12053,
+  "is_playable": true
+}
