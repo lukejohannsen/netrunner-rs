@@ -1624,6 +1624,17 @@ pub enum Effect {
         /// run ends (`DelayedAbility::this_run`).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_run: bool,
+        /// For the next turn, not this one — Load Testing's and MCA
+        /// Austerity Policy's "**When the Runner's next turn begins**, they
+        /// lose [click]", made on the Corp's turn: the ability is dated the
+        /// turn after this one (`DelayedAbility::turn`), so this turn's
+        /// moments never reach it and the next turn's first one of `when`
+        /// does. A lost click at the turn's beginning is not one fewer
+        /// allotted (`AllottedClicksNextTurn`, Caveat Emptor's words): the
+        /// Runner gains their four and then loses one, among the turn's
+        /// other "when your turn begins" abilities (CR 9.6.13).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        next_turn: bool,
     },
     /// "After you resolve this operation, your action phase ends" — a
     /// terminal card's line (Active Policing, Bring Them Home): the rest of
@@ -3357,12 +3368,13 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => Effect::LaterThisTurn {
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => Effect::LaterThisTurn {
                 when,
                 filter: filter.map(|filter| filter.with_chosen_name(card)),
                 every_time,
                 effect: boxed(effect),
                 this_run,
+                next_turn,
             },
             other => other,
         }
@@ -3506,7 +3518,7 @@ impl Effect {
             Effect::AsThisCard(effect) => Effect::AsThisCard(boxed(effect)),
             // RNG Key's "the next card that you access this run": the
             // number named rides into what waits for the access.
-            Effect::LaterThisTurn { when, filter, every_time, effect, this_run } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run },
+            Effect::LaterThisTurn { when, filter, every_time, effect, this_run, next_turn } => Effect::LaterThisTurn { when, filter, every_time, effect: boxed(effect), this_run, next_turn },
             Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(a), if_installed } => {
                 Effect::InstallRunnerCardFromZone { from, discount: Discount::Amount(Box::new(amount(*a))), if_installed }
             }

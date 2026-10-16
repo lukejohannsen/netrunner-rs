@@ -1,0 +1,77 @@
+{
+  "id": "meteor_mining",
+  "title": "Meteor Mining",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "RunnerTags",
+                2
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      7
+                    ]
+                  },
+                  {
+                    "DealDamage": [
+                      "Meat",
+                      7
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may gain 7[credit]",
+                  "you may do 7 meat damage instead",
+                  ""
+                ]
+              }
+            },
+            "otherwise": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      7
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may gain 7[credit]",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score Meteor Mining, you may gain 7[credit]. If the Runner has at least 2 tags, you may do 7 meat damage instead."
+    }
+  ],
+  "built_from": 12076,
+  "is_playable": true
+}

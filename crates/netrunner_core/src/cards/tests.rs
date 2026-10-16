@@ -37776,3 +37776,163 @@ mod red_sand_stage_2b {
         assert_eq!(break_the_next(running, &registry).runner.grip.len(), 5, "Ice Wall is not AP");
     }
 }
+
+mod red_sand_stage_3 {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed: true, advancement_tokens: tokens, ..Default::default() }
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).unwrap_or_else(|e| panic!("play {card}: {e:?}")).0
+    }
+
+    /// Ends the Corp's turn and settles into the Runner's action phase.
+    fn into_the_runners_turn(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end the Corp turn");
+        let (state, _) = pass_until_settled(state, registry);
+        assert_eq!(state.phase, GamePhase::Action(Side::Runner));
+        state
+    }
+
+    #[test]
+    fn mass_commercialization_pays_two_for_each_card_with_an_advancement_token() {
+        let registry = registry();
+        let mut state = corp_turn(&["mass_commercialization"]);
+        state.corp.installed = vec![
+            installed("ice_wall", 10, ServerId::Hq, InstallSlot::Ice, 2),
+            installed("hostile_takeover", 11, ServerId::Remote(0), InstallSlot::Root, 1),
+            installed("ice_wall", 12, ServerId::RnD, InstallSlot::Ice, 0),
+        ];
+        assert_eq!(play(&state, &registry, "mass_commercialization").corp.resources.credits, Credits(10 + 4));
+    }
+
+    #[test]
+    fn meteor_mining_may_gain_seven_or_against_two_tags_do_seven_meat_instead() {
+        let registry = registry();
+        let scored = |tags: u32| {
+            let mut state = corp_turn(&[]);
+            state.runner.tags = tags;
+            state.runner.grip = vec![id("sure_gamble"); 10];
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..installed("meteor_mining", 20, ServerId::Remote(0), InstallSlot::Root, 5) }];
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(20) }).expect("score").0
+        };
+        let options = |state: &GameState| match &state.pending_decision {
+            Some(PendingDecision::ChooseEffect { options, .. }) => options.len(),
+            other => panic!("you may: {other:?}"),
+        };
+        let untagged = scored(1);
+        assert_eq!(options(&untagged), 2, "gain 7[credit], or nothing");
+        let (gained, _) = apply_action(&untagged, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain");
+        assert_eq!(gained.corp.resources.credits, Credits(10 + 7));
+
+        let tagged = scored(2);
+        assert_eq!(options(&tagged), 3, "or 7 meat damage instead");
+        let (damaged, _) = apply_action(&tagged, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("damage");
+        let (damaged, _) = pass_until_settled(damaged, &registry);
+        assert_eq!((damaged.runner.heap.len(), damaged.corp.resources.credits), (7, Credits(10)), "instead: no credits");
+    }
+
+    #[test]
+    fn shipment_from_tennin_places_two_counters_unless_the_runner_ran_successfully_last_turn() {
+        let registry = registry();
+        let mut state = corp_turn(&["shipment_from_tennin"]);
+        state.corp.installed = vec![installed("ice_wall", 10, ServerId::Hq, InstallSlot::Ice, 0)];
+        let asked = play(&state, &registry, "shipment_from_tennin");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select Ice Wall");
+        let (placed, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(placed.corp.installed[0].advancement_tokens, 2);
+
+        crate::rules::test_support::a_run_succeeded_last_turn(&mut state);
+        let shipment = PlayerAction::PlayOperation { card_id: id("shipment_from_tennin") };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&shipment), "play only if they did not");
+    }
+
+    #[test]
+    fn load_testing_takes_a_click_as_the_runners_next_turn_begins() {
+        let registry = registry();
+        let played = play(&corp_turn(&["load_testing"]), &registry, "load_testing");
+        assert_eq!(played.runner.resources.clicks, Clicks(4), "nothing yet: the Runner's turn has not begun");
+        assert_eq!(played.delayed.len(), 1, "it waits for the next turn");
+        let runners = into_the_runners_turn(&played, &registry);
+        assert_eq!(runners.runner.resources.clicks, Clicks(3), "they lose [click]");
+        assert!(runners.delayed.is_empty(), "once");
+    }
+
+    #[test]
+    fn mca_austerity_policy_takes_a_click_next_turn_once_per_turn_and_cashes_three_counters_for_four_clicks() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![installed("mca_austerity_policy", 30, ServerId::Remote(0), InstallSlot::Root, 0)];
+        let place = PlayerAction::ActivateAbility { target: InstallId(30), ability_index: 0 };
+        let (placed, _) = apply_action(&state, &registry, place.clone()).expect("place a counter");
+        let (placed, _) = close_all_windows(placed, &registry);
+        assert_eq!((placed.corp.installed[0].counters, placed.corp.resources.clicks), (1, Clicks(2)));
+        assert!(!crate::rules::legal_actions_for(&placed, &registry, Side::Corp).contains(&place), "once per turn");
+        assert_eq!(into_the_runners_turn(&placed, &registry).runner.resources.clicks, Clicks(3), "they lose [click]");
+
+        let mut full = state.clone();
+        full.corp.installed[0].counters = 3;
+        let (cashed, _) = apply_action(&full, &registry, PlayerAction::ActivateAbility { target: InstallId(30), ability_index: 1 }).expect("cash in");
+        assert_eq!(cashed.corp.resources.clicks, Clicks(3 - 1 + 4), "Gain [click][click][click][click]");
+        assert!(cashed.corp.installed.is_empty(), "[trash]");
+    }
+
+    #[test]
+    fn o2_shortage_takes_a_random_card_from_the_grip_or_gives_two_clicks() {
+        let registry = registry();
+        let answered = |grip: usize, option: Option<usize>| {
+            let mut state = corp_turn(&["o_shortage"]);
+            state.runner.grip = vec![id("sure_gamble"); grip];
+            let played = play(&state, &registry, "o_shortage");
+            match option {
+                Some(option_index) => apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index }).expect("the Runner answers").0,
+                None => played,
+            }
+        };
+        let trashed = answered(3, Some(0));
+        assert_eq!((trashed.runner.grip.len(), trashed.runner.heap.len(), trashed.corp.resources.clicks), (2, 1, Clicks(2)));
+        let declined = answered(3, Some(1));
+        assert_eq!((declined.runner.grip.len(), declined.corp.resources.clicks), (3, Clicks(4)), "if they do not, gain [click][click]");
+        let empty = answered(0, None);
+        assert!(empty.pending_decision.is_none(), "nothing to trash: not asked");
+        assert_eq!(empty.corp.resources.clicks, Clicks(4));
+    }
+
+    #[test]
+    fn priority_construction_installs_ice_on_a_remote_for_free_with_three_counters() {
+        let registry = registry();
+        let mut state = corp_turn(&["priority_construction", "ice_wall"]);
+        state.corp.installed = vec![installed("pad_campaign", 40, ServerId::Remote(0), InstallSlot::Root, 0), installed("ice_wall", 41, ServerId::Remote(0), InstallSlot::Ice, 0)];
+        let asked = play(&state, &registry, "priority_construction");
+        assert_eq!((asked.corp.resources.clicks, asked.corp.resources.credits), (Clicks(1), Credits(9)), "spend [click] as well");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select Ice Wall");
+        let (chosen, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let servers: Vec<ServerId> = crate::rules::legal_actions_for(&chosen, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert!(!servers.is_empty() && servers.iter().all(|server| matches!(server, ServerId::Remote(_))), "protecting a remote server: {servers:?}");
+        let (installed, _) = apply_action(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("install");
+        let ice = installed.corp.installed.iter().find(|card| card.slot == InstallSlot::Ice && card.install_id != InstallId(41)).expect("the new ice");
+        assert_eq!((ice.server, ice.advancement_tokens), (ServerId::Remote(0), 3));
+        assert_eq!(installed.corp.resources.credits, Credits(9), "ignoring all costs: the second ice's tax too");
+    }
+}
