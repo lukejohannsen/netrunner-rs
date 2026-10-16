@@ -2015,7 +2015,11 @@ impl CardDefinition {
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}
                 (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own, that of a card in its server's root, or that of a card being accessed"),
-                (_, Scope::Accessing(_)) => return misfit("Accessing", "only a trash cost is asked of a card being accessed"),
+                // Kill Switch's "while the Runner is accessing an agenda in
+                // R&D, they must reveal it": the reveal is asked of the card
+                // being accessed, as Demolisher's trash cost is.
+                (ContinuousKind::RevealedWhileAccessed, Scope::Accessing(_)) if self.side == Side::Corp => {}
+                (_, Scope::Accessing(_)) => return misfit("Accessing", "only a trash cost or a reveal is asked of a card being accessed"),
                 (ContinuousKind::GainSubtype(IceType::Other), _) => {
                     return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
                 }
@@ -2104,7 +2108,7 @@ impl CardDefinition {
                 }
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::RevealedWhileAccessed, _) => {
-                    return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
+                    return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and a Corp card says so of itself (`This`) or of the cards being accessed (`Accessing`)");
                 }
                 (ContinuousKind::Subroutines { .. }, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 // Another card's static grant (Warden Fatuma's "each rezzed

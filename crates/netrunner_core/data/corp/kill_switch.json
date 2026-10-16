@@ -1,0 +1,66 @@
+{
+  "id": "kill_switch",
+  "title": "Kill Switch",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": {
+        "Accessing": {
+          "CardType": "Agenda"
+        }
+      },
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing an agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Agenda"
+        }
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is accessed or scored, Trace[3]. If successful, do 1 core damage."
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is accessed or scored, Trace[3]. If successful, do 1 core damage."
+    }
+  ],
+  "built_from": 21070,
+  "is_playable": true
+}

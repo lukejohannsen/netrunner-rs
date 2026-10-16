@@ -37008,3 +37008,84 @@ mod kitara_stage_24 {
         assert!(!offered(&state), "not the outermost");
     }
 }
+
+mod kitara_stage_25 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with Kill Switch in the Corp's play area.
+    fn kill_switch_in_play() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        state.corp.play_area.push(crate::rules::PlayedOperation { card: id("kill_switch"), handle: InstallId(4242) });
+        state
+    }
+
+    fn bids(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let (bid, _) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: corp }).expect("the Corp bids");
+        apply_action(&bid, registry, PlayerAction::SubmitRunnerTraceBid { amount: runner }).expect("the Runner bids").0
+    }
+
+    fn revealed(events: &[crate::rules::GameEvent], card: &str) -> bool {
+        events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { card: shown, .. } if *shown == id(card)))
+    }
+
+    #[test]
+    fn kill_switch_reveals_an_agenda_accessed_in_r_and_d_and_traces_for_core_damage() {
+        let registry = registry();
+        let mut state = kill_switch_in_play();
+        state.corp.r_and_d = vec![id("hostile_takeover")];
+        let (tracing, events) = run_to_completion(state, &registry, ServerId::RnD);
+        assert!(revealed(&events, "hostile_takeover"), "they must reveal it: {events:?}");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "Trace[3]");
+
+        let hurt = bids(&tracing, &registry, 0, 0);
+        assert_eq!(hurt.runner.brain_damage, 1, "do 1 core damage");
+        let avoided = bids(&tracing, &registry, 0, 3);
+        assert_eq!(avoided.runner.brain_damage, 0, "only if successful");
+    }
+
+    /// An agenda accessed in HQ is traced for but not revealed, and a
+    /// non-agenda in R&D is neither.
+    #[test]
+    fn kill_switch_reveals_only_in_r_and_d_and_traces_only_for_agendas() {
+        let registry = registry();
+        let mut state = kill_switch_in_play();
+        state.corp.hq = vec![id("hostile_takeover")];
+        let (tracing, events) = run_to_completion(state, &registry, ServerId::Hq);
+        assert!(!revealed(&events, "hostile_takeover"), "not in R&D");
+        assert!(tracing.active_trace.is_some(), "but an agenda was accessed");
+
+        let mut state = kill_switch_in_play();
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let (state, events) = run_to_completion(state, &registry, ServerId::RnD);
+        assert!(!revealed(&events, "hedge_fund"));
+        assert!(state.active_trace.is_none(), "not an agenda");
+    }
+
+    #[test]
+    fn kill_switch_traces_when_the_corp_scores_an_agenda() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.play_area.push(crate::rules::PlayedOperation { card: id("kill_switch"), handle: InstallId(4242) });
+        state.corp.installed.push(crate::rules::InstalledCard {
+            install_id: InstallId(77),
+            card: id("hostile_takeover"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(77) }).expect("score");
+        // Hostile Takeover's own trigger and Kill Switch's are both the
+        // Corp's to order; Kill Switch's first.
+        assert!(matches!(scored.pending_decision, Some(crate::rules::PendingDecision::ChooseTriggerOrder { .. })), "{:?}", scored.pending_decision);
+        let (scored, _) = apply_action(&scored, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 }).expect("Kill Switch first");
+        assert_eq!(scored.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "whenever an agenda is scored");
+    }
+}
