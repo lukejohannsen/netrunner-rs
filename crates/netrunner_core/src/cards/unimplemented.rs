@@ -113,11 +113,8 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("pushing_the_envelope", "Pushing the Envelope"),
     ("maw", "Maw"),
     ("the_archivist", "The Archivist"),
-    ("exploit", "Exploit"),
-    ("spot_the_prey", "Spot the Prey"),
     ("bio_modeled_network", "Bio-Modeled Network"),
     ("network_exchange", "Network Exchange"),
-    ("mad_dash", "Mad Dash"),
     ("zed_2_0", "Zed 2.0"),
     ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
@@ -133,11 +130,8 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("severnius_stim_implant", "Severnius Stim Implant"),
     ("clan_vengeance", "Clan Vengeance"),
     ("counter_surveillance", "Counter Surveillance"),
-    ("mobius", "Möbius"),
-    ("los_data_hijacker", "Los: Data Hijacker"),
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
-    ("build_script", "Build Script"),
     ("bloom", "Bloom"),
     ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
@@ -162,7 +156,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.
 pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("alice_merchant_clan_agitator", "Alice Merchant: Clan Agitator"),
     ("jarogniew_mercs", "Jarogniew Mercs"),
     ("maui", "Māui"),
     ("bug_out_bag", "Bug Out Bag"),
@@ -178,7 +171,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mars_for_martians", "Mars for Martians"),
     ("god_of_war", "God of War"),
     ("leave_no_trace", "Leave No Trace"),
     ("rip_deal", "Rip Deal"),
@@ -198,13 +190,11 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Crimson Dust* (`crimson_dust`): tranche F4 of the FFG plan.
 pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mining_accident", "Mining Accident"),
     ("respirocytes", "Respirocytes"),
     ("salvaged_vanadis_armory", "Salvaged Vanadis Armory"),
     ("aumakua", "Aumakua"),
     ("caldera", "Caldera"),
     ("dianas_hunt", "Diana's Hunt"),
-    ("reshape", "Reshape"),
     ("dummy_box", "Dummy Box"),
     ("corporate_defector", "Corporate Defector"),
     ("restore", "Restore"),

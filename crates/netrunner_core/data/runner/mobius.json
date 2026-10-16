@@ -1,0 +1,60 @@
+{
+  "id": "mobius",
+  "title": "Möbius",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "RnD"
+            ],
+            "on_success": {
+              "SetRunEndedEffect": {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "PromptChooseServer": {
+                        "chooser": "Runner",
+                        "rez_cost_delta": 0,
+                        "bonus_run_credits": 0,
+                        "allowed_servers": [
+                          "RnD"
+                        ],
+                        "on_success": {
+                          "GainCredits": [
+                            "Runner",
+                            4
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "Sequence": []
+                    }
+                  ],
+                  "texts": [
+                    "you may run R&D again",
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, when that run ends, you may run R&D again. If the second run is successful, gain 4[credit]."
+    }
+  ],
+  "built_from": 12024,
+  "is_playable": true
+}

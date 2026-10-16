@@ -1,0 +1,29 @@
+{
+  "id": "build_script",
+  "title": "Build Script",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 12028,
+  "is_playable": true
+}
