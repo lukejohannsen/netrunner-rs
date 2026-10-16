@@ -1,0 +1,122 @@
+{
+  "id": "zealotry",
+  "name": "Clan Zeal",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "alice_merchant_clan_agitator",
+  "cards": [
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 2
+    },
+    {
+      "card": "darwin",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 1
+    },
+    {
+      "card": "hemorrhage",
+      "count": 2
+    },
+    {
+      "card": "wyldside",
+      "count": 2
+    },
+    {
+      "card": "yog_0",
+      "count": 2
+    },
+    {
+      "card": "datasucker",
+      "count": 2
+    },
+    {
+      "card": "grimoire",
+      "count": 1
+    },
+    {
+      "card": "demolition_run",
+      "count": 2
+    },
+    {
+      "card": "deja_vu",
+      "count": 2
+    },
+    {
+      "card": "djinn",
+      "count": 2
+    },
+    {
+      "card": "district_99",
+      "count": 2
+    },
+    {
+      "card": "glut_cipher",
+      "count": 2
+    },
+    {
+      "card": "crypt",
+      "count": 2
+    },
+    {
+      "card": "exer",
+      "count": 2
+    },
+    {
+      "card": "musaazi",
+      "count": 2
+    },
+    {
+      "card": "yusuf",
+      "count": 2
+    },
+    {
+      "card": "knobkierie",
+      "count": 1
+    },
+    {
+      "card": "imp",
+      "count": 2
+    },
+    {
+      "card": "plague",
+      "count": 2
+    },
+    {
+      "card": "trypano",
+      "count": 2
+    },
+    {
+      "card": "hippo",
+      "count": 2
+    },
+    {
+      "card": "contaminate",
+      "count": 2
+    },
+    {
+      "card": "mining_accident",
+      "count": 2
+    },
+    {
+      "card": "mars_for_martians",
+      "count": 2
+    },
+    {
+      "card": "reshape",
+      "count": 1
+    }
+  ]
+}

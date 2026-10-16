@@ -1,0 +1,50 @@
+{
+  "id": "mars_for_martians",
+  "title": "Mars for Martians",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesThisTurn": "OnActionFinished"
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCardsAmount": [
+            "Runner",
+            {
+              "RunnerInstalls": {
+                "All": [
+                  {
+                    "CardType": "Resource"
+                  },
+                  {
+                    "HasSubtype": "Clan"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            "RunnerTags"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 12081,
+  "is_playable": true
+}

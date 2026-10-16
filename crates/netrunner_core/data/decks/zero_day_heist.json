@@ -1,0 +1,125 @@
+{
+  "id": "zero_day_heist",
+  "name": "Zero-Day Heist",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "los_data_hijacker",
+  "cards": [
+    {
+      "card": "poison_vial",
+      "count": 2
+    },
+    {
+      "card": "tremolo",
+      "count": 2
+    },
+    {
+      "card": "jeitinho",
+      "count": 1
+    },
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "laser_pointer",
+      "count": 2
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "mr_li",
+      "count": 2
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "cats_cradle",
+      "count": 2
+    },
+    {
+      "card": "swift",
+      "count": 1
+    },
+    {
+      "card": "prognostic_q_loop",
+      "count": 1
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "doppelganger",
+      "count": 1
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "bankroll",
+      "count": 2
+    },
+    {
+      "card": "thunder_art_gallery",
+      "count": 1
+    },
+    {
+      "card": "amina",
+      "count": 2
+    },
+    {
+      "card": "slipstream",
+      "count": 2
+    },
+    {
+      "card": "jackpot",
+      "count": 2
+    },
+    {
+      "card": "spot_the_prey",
+      "count": 2
+    },
+    {
+      "card": "mobius",
+      "count": 2
+    },
+    {
+      "card": "exploit",
+      "count": 2
+    },
+    {
+      "card": "build_script",
+      "count": 2
+    },
+    {
+      "card": "mad_dash",
+      "count": 2
+    }
+  ]
+}

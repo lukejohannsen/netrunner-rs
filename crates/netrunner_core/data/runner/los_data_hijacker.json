@@ -1,0 +1,29 @@
+{
+  "id": "los_data_hijacker",
+  "title": "Los: Data Hijacker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "The first time the Corp rezzes a piece of ice each turn, gain 2[credit]."
+    }
+  ],
+  "built_from": 12025,
+  "is_playable": true
+}

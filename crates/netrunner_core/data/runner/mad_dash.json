@@ -1,0 +1,43 @@
+{
+  "id": "mad_dash",
+  "title": "Mad Dash",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "EffectIf": {
+                  "condition": "StoleAgendaDuringLastRun",
+                  "effect": {
+                    "AddToScoreAreaAsAgenda": {
+                      "points": 1
+                    }
+                  },
+                  "otherwise": {
+                    "DealDamage": [
+                      "Meat",
+                      1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server. When that run ends, if you stole an agenda during that run, add this event to your score area as an agenda worth 1 agenda point. Otherwise, suffer 1 meat damage."
+    }
+  ],
+  "built_from": 12008,
+  "is_playable": true
+}

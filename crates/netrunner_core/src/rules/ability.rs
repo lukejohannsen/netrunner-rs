@@ -1355,9 +1355,18 @@ pub fn evaluate_effect(
             // text has resolved (`engine::play_event` trashes it after), or
             // waiting in the play area behind what its text parked, so it
             // leaves for the score area from there and is never trashed.
+            // A run event whose run has outlived it is in the heap (Mad
+            // Dash's "When that run ends, if you stole an agenda during it,
+            // add Mad Dash to your score area"), and comes from there, the
+            // last copy, as Marathon comes back to the grip. Never as it is
+            // played: a Notoriety resolving at once is in no zone, and the
+            // copy in the heap is another one.
             if registry.get(&card_id).is_some_and(|card| card.side == Side::Runner && card.card_type == crate::dsl::CardType::Event) {
+                let as_played = matches!(ctx.triggering_event, Some(GameEvent::EventPlayed { card, .. }) if *card == card_id);
                 if let Some(position) = state.runner.play_area.iter().rposition(|card| *card == card_id) {
                     state.runner.play_area.remove(position);
+                } else if !as_played && let Some(position) = state.runner.heap.iter().rposition(|card| *card == card_id) {
+                    state.runner.heap.remove(position);
                 }
                 let added = add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda);
                 let mut events = Vec::new();
