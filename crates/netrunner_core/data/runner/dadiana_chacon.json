@@ -1,0 +1,45 @@
+{
+  "id": "dadiana_chacon",
+  "title": "Dadiana Chacon",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "RunnerCreditsAtMost": 5
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] if you have fewer than 6[credit]."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": {
+        "RunnerCreditsAtMost": 0
+      },
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        },
+        {
+          "DealDamage": [
+            "Meat",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever you have 0[credit], trash Dadiana Chacon and take 3 meat damage."
+    }
+  ],
+  "built_from": 12049,
+  "is_playable": true
+}

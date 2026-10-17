@@ -1111,7 +1111,8 @@ fn raise_to(
         Some(install) => ResolutionContext::for_parked(Some(install), Some(card)),
         None => ResolutionContext::for_card(Some(card)),
     };
-    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0));
+    let ice = |server| state.corp.installed.iter().filter(|installed| installed.server == server && installed.slot == crate::rules::InstallSlot::Ice).count() as u32;
+    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice);
     let held = match install {
         Some(install) => hosted_credits(state, registry, side, install),
         None => state.corp.identity_counters,

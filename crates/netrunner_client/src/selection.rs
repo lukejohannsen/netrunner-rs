@@ -141,7 +141,7 @@ pub fn purpose(
             }
             Some(CardZoneRef::OwnScoreArea) => format!("Add {what} to your score area"),
             Some(CardZoneRef::OpponentScoreArea) => format!("Add {what} to {}'s score area", crate::prose::who(chooser.other())),
-            Some(CardZoneRef::OpponentRemovedFromGame) => format!("Remove {what} from the game"),
+            Some(CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame) => format!("Remove {what} from the game"),
             Some(CardZoneRef::HostedOnSource) => format!("Host {what} on {}", source_card.map_or_else(|| "this card".to_string(), |card| card_title(card, registry))),
             Some(CardZoneRef::PlayArea) => format!("Put {what} in the play area"),
             Some(CardZoneRef::OwnSetAside | CardZoneRef::OwnSetAsideFacedown | CardZoneRef::OpponentSetAside) => format!("Set {what} aside"),
@@ -268,7 +268,7 @@ fn zone_name(chooser: Side, zone: &CardZoneRef, source_card: Option<&CardId>, re
         CardZoneRef::OpponentDiscard => discard(opponent),
         CardZoneRef::OpponentScoreArea => format!("{}'s score area", crate::prose::who(opponent)),
         CardZoneRef::OwnScoreArea => "your score area".to_string(),
-        CardZoneRef::OpponentRemovedFromGame => "out of the game".to_string(),
+        CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => "out of the game".to_string(),
         CardZoneRef::PlayArea => "the play area".to_string(),
         CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled => "installed".to_string(),
         CardZoneRef::RootOfAttackedServer => "the root of the attacked server".to_string(),
@@ -657,7 +657,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OpponentDiscard => discard(opponent),
         CardZoneRef::OpponentScoreArea => format!("the {opponent:?}'s score area"),
         CardZoneRef::OwnScoreArea => "your score area".to_string(),
-        CardZoneRef::OpponentRemovedFromGame => "out of the game".to_string(),
+        CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => "out of the game".to_string(),
         CardZoneRef::PlayArea => "the play area".to_string(),
         // Installed zones carry an install and never reach here; a
         // position with none is still somewhere on the table.

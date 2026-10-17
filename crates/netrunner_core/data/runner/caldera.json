@@ -1,0 +1,42 @@
+{
+  "id": "caldera",
+  "title": "Caldera",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 3[credit]: Prevent 1 core damage or 1 net damage.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Brain",
+            "up_to": 1
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → 3[credit]: Prevent 1 core damage or 1 net damage.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Net",
+            "up_to": 1
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 12105,
+  "is_playable": true
+}

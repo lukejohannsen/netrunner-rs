@@ -177,7 +177,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OpponentDeck => "the opponent's deck",
         CardZoneRef::OpponentScoreArea => "the opponent's score area",
         CardZoneRef::OwnScoreArea => "your score area",
-        CardZoneRef::OpponentRemovedFromGame => "out of the game",
+        CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => "out of the game",
         CardZoneRef::PlayArea => "the play area",
         CardZoneRef::RootOfAttackedServer => "the root of the attacked server",
     }
@@ -851,6 +851,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
         let up_to = match credits {
             RecurringCredits::Fixed(n) => plural(n, "hosted credit", "hosted credits"),
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => "a hosted credit for each counter on it".to_string(),
+            RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => format!("a hosted credit for each piece of ice protecting {}", describe_server(server)),
         };
         lines.push(format!("• [recurring] → when this becomes active, and before your turn begins, refill to {up_to}"));
     }

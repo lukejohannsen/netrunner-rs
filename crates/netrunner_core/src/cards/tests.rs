@@ -38478,3 +38478,103 @@ mod red_sand_stage_5 {
         assert!(playable(&state, &registry, "mars_for_martians"), "losing clicks does not matter");
     }
 }
+
+mod red_sand_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.stack = vec![id("diesel"); 5];
+        state
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), ..Default::default() }
+    }
+
+    fn ice(install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id("ice_wall"), server, slot: InstallSlot::Ice, ..Default::default() }
+    }
+
+    #[test]
+    fn maui_holds_a_credit_for_each_piece_of_ice_protecting_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("maui")];
+        state.corp.installed = vec![ice(10, ServerId::Hq), ice(11, ServerId::Hq), ice(12, ServerId::RnD)];
+        let memory = crate::rules::memory::memory_balance(&state, &registry);
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("maui"), host: None }).expect("install");
+        let maui = installed.runner.rig.iter().find(|card| card.card == id("maui")).expect("Maui");
+        assert_eq!(maui.counters, 2, "X is the number of pieces of ice protecting HQ");
+        assert_eq!(crate::rules::memory::memory_balance(&installed, &registry), memory + 2, "+2[mu]");
+    }
+
+    #[test]
+    fn caldera_pays_three_to_prevent_one_net_or_core_damage() {
+        let registry = registry();
+        for kind in [crate::dsl::DamageType::Net, crate::dsl::DamageType::Brain] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig("caldera", 20)];
+            let source = id("a_corp_card");
+            crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(kind, 2), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("damage");
+            assert_eq!(state.runner.grip.len(), 5, "asked first");
+            let index = if kind == crate::dsl::DamageType::Brain { 0 } else { 1 };
+            let (after, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(20), ability_index: index }).expect("prevent");
+            let after = close_all_windows(after, &registry).0;
+            assert_eq!((after.runner.grip.len(), after.runner.resources.credits), (4, Credits(7)), "{kind:?}: 1 of the 2 prevented, for 3[credit]");
+        }
+    }
+
+    #[test]
+    fn bloo_moose_trades_a_heap_card_for_two_credits_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("bloo_moose", 30)];
+        state.runner.heap = vec![id("diesel")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "{:?}", state.pending_decision);
+        let credits = state.runner.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove one");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(done.runner.heap.is_empty());
+        assert_eq!(done.runner.removed_from_game, vec![id("diesel")]);
+        assert_eq!(done.runner.resources.credits, Credits(credits.0 + 2));
+    }
+
+    #[test]
+    fn dadiana_chacon_tops_up_a_poor_runner_and_burns_out_at_zero() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("dadiana_chacon", 40)];
+        state.runner.resources.credits = Credits(5);
+        let mut poor = state.clone();
+        crate::rules::test_support::enter_start_of_turn(&mut poor, &registry, Side::Runner);
+        let (poor, _) = close_all_windows(poor, &registry);
+        assert_eq!(poor.runner.resources.credits, Credits(6), "fewer than 6[credit]: gain 1");
+        let mut rich = state.clone();
+        rich.runner.resources.credits = Credits(6);
+        crate::rules::test_support::enter_start_of_turn(&mut rich, &registry, Side::Runner);
+        let (rich, _) = close_all_windows(rich, &registry);
+        assert_eq!(rich.runner.resources.credits, Credits(6));
+
+        state.runner.grip = vec![id("sure_gamble"), id("diesel"), id("diesel"), id("diesel"), id("diesel")];
+        state.runner.resources.credits = Credits(5);
+        let (broke, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("Sure Gamble");
+        assert_eq!(broke.runner.resources.credits, Credits(9));
+        let mut broke = broke;
+        broke.runner.grip = vec![id("diesel"); 4];
+        broke.runner.resources.credits = Credits(0);
+        let (spent, _) = apply_action(&broke, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (spent, _) = close_all_windows(spent, &registry);
+        assert!(spent.runner.rig.is_empty(), "trash Dadiana Chacon");
+        assert_eq!(spent.runner.grip.len(), 5 - 3, "and take 3 meat damage");
+    }
+}
