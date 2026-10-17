@@ -113,6 +113,12 @@ pub enum CardZoneRef {
     /// Corp: Ansel 2.0's "remove 1 card in the heap from the game" — and
     /// the Corp's when the chooser is the Runner. A destination only.
     OpponentRemovedFromGame,
+    /// Out of the game, on the chooser's own side — Bloo Moose's "remove 1
+    /// card in the heap from the game". A destination only. Composition
+    /// didn't work: `Effect::RemoveFromGame(ThisCard)` removes the acting
+    /// card from where it is installed or was trashed to, not from wherever
+    /// a selection found it.
+    OwnRemovedFromGame,
     /// The operations in the play area that stay there after resolving
     /// (`CorpState::play_area`) — the zone is both players' (CR 4.1.1b), so
     /// neither "own" nor "opponent": every lockdown's "Play only if there
@@ -149,6 +155,7 @@ impl CardZoneRef {
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
             | CardZoneRef::OpponentRemovedFromGame
+            | CardZoneRef::OwnRemovedFromGame
             | CardZoneRef::RootOfAttackedServer
             | CardZoneRef::PlayArea => false,
         }
@@ -176,6 +183,7 @@ impl CardZoneRef {
             | CardZoneRef::OpponentScoreArea
             | CardZoneRef::OwnScoreArea
             | CardZoneRef::OpponentRemovedFromGame
+            | CardZoneRef::OwnRemovedFromGame
             | CardZoneRef::RootOfAttackedServer => TrashedFrom::Elsewhere,
             CardZoneRef::PlayArea => TrashedFrom::PlayArea,
         }

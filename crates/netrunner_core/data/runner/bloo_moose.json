@@ -1,0 +1,61 @@
+{
+  "id": "bloo_moose",
+  "title": "Bloo Moose",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnHeap",
+                "count": 1,
+                "filter": "Any"
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnHeap",
+                      "filter": "Any",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "GainCredits": [
+                          "Runner",
+                          2
+                        ]
+                      },
+                      "destination": "OwnRemovedFromGame"
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may remove 1 card in the heap from the game. If you do, gain 2[credit]",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove 1 card in the heap from the game. If you do, gain 2[credit]."
+    }
+  ],
+  "built_from": 12089,
+  "is_playable": true
+}

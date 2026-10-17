@@ -1,0 +1,31 @@
+{
+  "id": "maui",
+  "title": "Maui",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "unique": true,
+  "counter_kind": "Credit",
+  "recurring_credits": {
+    "IceProtecting": "Hq"
+  },
+  "pays_for": [
+    {
+      "DuringRunsOn": "Hq"
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [],
+  "built_from": 12063,
+  "is_playable": true
+}

@@ -139,7 +139,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
             Side::Corp => state.corp.installed.iter().map(|c| c.card.clone()).collect(),
             Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
         },
-        CardZoneRef::OpponentRemovedFromGame => match owner {
+        CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => match owner {
             Side::Corp => state.corp.removed_from_game.clone(),
             Side::Runner => state.runner.removed_from_game.clone(),
         },
@@ -709,7 +709,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         // Counted, never chosen from: a played operation is no list of
         // card ids (`PlayedOperation`).
         CardZoneRef::PlayArea | CardZoneRef::RootOfAttackedServer => None,
-        CardZoneRef::OpponentRemovedFromGame => match owner {
+        CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => match owner {
             Side::Corp => Some(&mut state.corp.removed_from_game),
             Side::Runner => Some(&mut state.runner.removed_from_game),
         },
@@ -1684,7 +1684,7 @@ pub(crate) fn resolve_confirm_card_selection(
                         crate::rules::continuous::note_runner_card_trashed_by(state, source_install);
                     }
                 }
-                if matches!(dest, CardZoneRef::OpponentRemovedFromGame) {
+                if matches!(dest, CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame) {
                     events.push(GameEvent::CardRemovedFromGame { side: owning_side(side, dest), card: card_id.clone() });
                 }
                 if matches!(source, CardZoneRef::OwnHq) && side == Side::Corp && is_discard_pile(dest) {

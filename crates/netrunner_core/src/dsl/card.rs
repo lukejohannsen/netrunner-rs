@@ -1052,14 +1052,21 @@ pub enum CountedRecurring {
     /// placed or refilled (CR 1.10.5a), so a counter placed mid-turn adds a
     /// credit at the next turn's refill and not before.
     HostedCounters,
+    /// The pieces of ice protecting a server — Maui's "X is the number of
+    /// pieces of ice protecting HQ", counted as Pheromones' counters are,
+    /// when the credits are placed or refilled. Composition didn't work:
+    /// what an X[recurring-credit] counts was the card's own counters.
+    IceProtecting(crate::rules::ServerId),
 }
 
 impl RecurringCredits {
-    /// N, for a card holding `counters` of its own kind.
-    pub fn of(self, counters: u32) -> u32 {
+    /// N, for a card holding `counters` of its own kind, with `ice` the
+    /// number of pieces of ice protecting a server.
+    pub fn of(self, counters: u32, ice: impl Fn(crate::rules::ServerId) -> u32) -> u32 {
         match self {
             RecurringCredits::Fixed(n) => n,
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => counters,
+            RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => ice(server),
         }
     }
 

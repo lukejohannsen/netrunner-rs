@@ -148,7 +148,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("adjusted_matrix", "Adjusted Matrix"),
     ("dedicated_processor", "Dedicated Processor"),
     ("inversificator", "Inversificator"),
-    ("dadiana_chacon", "Dadiana Chacon"),
     ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
     ("red_planet_couriers", "Red Planet Couriers"),
@@ -157,7 +156,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.
 pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jarogniew_mercs", "Jarogniew Mercs"),
-    ("maui", "Māui"),
     ("bug_out_bag", "Bug Out Bag"),
     ("keros_mcintyre", "Keros Mcintyre"),
     ("daredevil", "Daredevil"),
@@ -178,7 +176,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("lean_and_mean", "Lean and Mean"),
     ("maven", "Maven"),
     ("nanotk", "Na'Not'K"),
-    ("bloo_moose", "Bloo Moose"),
     ("helheim_servers", "Helheim Servers"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
@@ -193,7 +190,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("respirocytes", "Respirocytes"),
     ("salvaged_vanadis_armory", "Salvaged Vanadis Armory"),
     ("aumakua", "Aumakua"),
-    ("caldera", "Caldera"),
     ("dianas_hunt", "Diana's Hunt"),
     ("dummy_box", "Dummy Box"),
     ("corporate_defector", "Corporate Defector"),
