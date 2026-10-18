@@ -1,0 +1,46 @@
+{
+  "id": "flashbang",
+  "title": "Flashbang",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 0,
+  "memory_cost": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 6[credit]: Derez the sentry you are encountering.",
+      "cost": {
+        "Credits": 6
+      },
+      "effect": {
+        "DerezCard": "EncounteredIce"
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Encountering": "Sentry"
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "triggers": [],
+  "built_from": 12085,
+  "is_playable": true
+}

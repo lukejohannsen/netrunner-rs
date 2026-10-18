@@ -3,7 +3,7 @@
   "name": "Clan Zeal",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside.",
+  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside. Red Sand Stage 7 takes two Berserker and two God of War for two Imp and two Darwin.",
   "style": [
     "rig",
     "dismantle"
@@ -12,10 +12,6 @@
   "cards": [
     {
       "card": "valentina_ferreira_carvalho",
-      "count": 2
-    },
-    {
-      "card": "darwin",
       "count": 2
     },
     {
@@ -83,10 +79,6 @@
       "count": 1
     },
     {
-      "card": "imp",
-      "count": 2
-    },
-    {
       "card": "plague",
       "count": 2
     },
@@ -121,6 +113,14 @@
     {
       "card": "dadiana_chacon",
       "count": 1
+    },
+    {
+      "card": "berserker",
+      "count": 2
+    },
+    {
+      "card": "god_of_war",
+      "count": 2
     }
   ]
 }
