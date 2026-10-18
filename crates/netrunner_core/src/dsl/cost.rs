@@ -284,6 +284,15 @@ pub enum Cost {
     /// the hand, and a cost is paid before what it pays for (CR 1.16), so
     /// the shuffle cannot be an effect after it.
     ShuffleInstalledIntoDeck { filter: CardFilter, count: u32 },
+    /// `count` of the payer's own installed cards that `filter` admits are
+    /// removed from the game — Rosetta 2.0's "[click], remove an installed
+    /// program from the game: … lowering the install cost by the cost of
+    /// the program removed from the game". Picked as `AddInstalledToHand`
+    /// picks, and the card is what the payment was made with
+    /// (`ResolutionContext::paid_with`), so the effect reads its printed
+    /// cost. Composition didn't work: `RemoveSelfFromGame` removes the card
+    /// whose text it is, and `Trash` puts the card in the heap.
+    RemoveInstalledFromGame { filter: CardFilter, count: u32 },
     /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
     /// "unless the Corp reveals and trashes X cards from HQ at random",
     /// built by the engine into the `OfferPaidChoice` it parks (X is the
@@ -370,7 +379,7 @@ impl Cost {
 
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::VirusCounters(_) => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } | Cost::AddInstalledToHand { .. } | Cost::ShuffleInstalledIntoDeck { .. } | Cost::RemoveInstalledFromGame { .. } | Cost::VirusCounters(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }
