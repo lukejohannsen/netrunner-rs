@@ -1,0 +1,61 @@
+{
+  "id": "rolling_brownout",
+  "title": "Rolling Brownout",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "PlayCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Playing": "Any"
+      },
+      "text": "The play cost of each operation and event is increased by 1."
+    },
+    {
+      "kind": {
+        "PlayCost": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "OpponentPlaying": "Any"
+      },
+      "text": "The play cost of each operation and event is increased by 1."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Card": {
+              "CardType": "Event"
+            }
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time the Runner plays an event each turn, gain 1[credit]."
+    }
+  ],
+  "built_from": 12116,
+  "is_playable": true
+}

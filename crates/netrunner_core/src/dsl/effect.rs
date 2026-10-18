@@ -2929,6 +2929,12 @@ pub enum StrengthOf {
     EachIce,
     /// The Corp install resolving the effect (`acting_install`).
     This,
+    /// Each piece of ice protecting the server the resolving Corp install
+    /// is in — Helheim Servers' "all ice protecting this server has +2
+    /// strength until the end of the run", the ones installed there later
+    /// too (`lingering::On::Server`). Composition didn't work: `EachIce`
+    /// is every server's, and `This` is the upgrade's own.
+    ProtectingThisServer,
 }
 
 impl StrengthOf {

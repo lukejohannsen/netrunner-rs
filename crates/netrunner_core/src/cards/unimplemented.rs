@@ -118,7 +118,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zed_2_0", "Zed 2.0"),
     ("sync_bre", "SYNC BRE"),
     ("oberth_protocol", "Oberth Protocol"),
-    ("khondi_plaza", "Khondi Plaza"),
 ];
 
 /// *Station One* (`station_one`): tranche F4 of the FFG plan.
@@ -164,7 +163,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leave_no_trace", "Leave No Trace"),
     ("rip_deal", "Rip Deal"),
     ("lean_and_mean", "Lean and Mean"),
-    ("helheim_servers", "Helheim Servers"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
     ("open_forum", "Open Forum"),
@@ -182,7 +180,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("corporate_defector", "Corporate Defector"),
     ("restore", "Restore"),
     ("sand_storm", "Sand Storm"),
-    ("rolling_brownout", "Rolling Brownout"),
 ];
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.

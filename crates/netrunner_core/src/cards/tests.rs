@@ -38906,3 +38906,105 @@ mod red_sand_stage_9 {
         assert_eq!(done.corp.hq.len(), hq + 1, "you may draw 1 card");
     }
 }
+
+mod red_sand_stage_10 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, install: u32) -> i32 {
+        crate::rules::continuous::installed_ice_strength(state, registry, &id("ice_wall"), InstallId(install))
+    }
+
+    #[test]
+    fn helheim_servers_gives_the_ice_protecting_its_server_2_strength_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![
+            installed("helheim_servers", 10, ServerId::Remote(0), InstallSlot::Root, true),
+            installed("ice_wall", 11, ServerId::Remote(0), InstallSlot::Ice, true),
+            installed("ice_wall", 12, ServerId::Hq, InstallSlot::Ice, true),
+        ];
+        let (here, there) = (strength(&state, &registry, 11), strength(&state, &registry, 12));
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).is_err(), "only during a run on this server");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (running, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes");
+        let (boosted, _) = apply_action(&running, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("trash 1 card from HQ");
+        let boosted = match &boosted.pending_payment {
+            Some(_) => apply_action(&boosted, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the card").0,
+            None => boosted,
+        };
+        assert!(boosted.corp.hq.is_empty() && boosted.corp.archives.len() == 1, "the cost");
+        assert_eq!(strength(&boosted, &registry, 11), here + 2, "+2 strength for the ice protecting this server");
+        assert_eq!(strength(&boosted, &registry, 12), there, "not ice protecting another server");
+        let mut ended = boosted;
+        ended.active_run = None;
+        assert_eq!(strength(&ended, &registry, 11), here, "for the remainder of the run");
+    }
+
+    #[test]
+    fn khondi_plaza_holds_a_credit_for_each_remote_server_when_rezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![
+            installed("khondi_plaza", 10, ServerId::Remote(0), InstallSlot::Root, false),
+            installed("pad_campaign", 11, ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(10) }).expect("rez");
+        assert_eq!(rezzed.corp.installed[0].counters, 2, "1[recurring-credit] for each remote server");
+    }
+
+    #[test]
+    fn khondi_plaza_credits_pay_only_for_rezzing_ice_protecting_its_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(0);
+        let mut khondi = installed("khondi_plaza", 10, ServerId::Remote(0), InstallSlot::Root, true);
+        khondi.counters = 2;
+        state.corp.installed = vec![khondi, installed("ice_wall", 11, ServerId::Remote(0), InstallSlot::Ice, false), installed("ice_wall", 12, ServerId::Hq, InstallSlot::Ice, false)];
+        let approach = |state: &GameState, server: ServerId| {
+            let (running, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server }).expect("run");
+            crate::rules::test_support::continue_run(&running, &registry).expect("approach").0
+        };
+        let here = approach(&state, ServerId::Remote(0));
+        let (rezzed, _) = apply_action(&here, &registry, PlayerAction::RezIce { ice: InstallId(11) }).expect("paid from Khondi Plaza");
+        assert!(rezzed.corp.installed[1].rezzed);
+        assert_eq!(rezzed.corp.installed[0].counters, 1);
+        let there = approach(&state, ServerId::Hq);
+        assert!(apply_action(&there, &registry, PlayerAction::RezIce { ice: InstallId(12) }).is_err(), "not ice protecting another server");
+    }
+
+    #[test]
+    fn rolling_brownout_taxes_both_sides_and_pays_for_the_runners_first_event() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.corp.play_area = vec![crate::rules::PlayedOperation { card: id("rolling_brownout"), handle: InstallId(4242) }];
+        let hedge_fund = registry.get(&id("hedge_fund")).expect("hedge fund").clone();
+        assert_eq!(crate::rules::continuous::play_cost_of(&state, &registry, &hedge_fund), hedge_fund.cost + 1, "each operation");
+        let (first, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("first event");
+        let first = close_all_windows(first, &registry).0;
+        assert_eq!(first.runner.resources.credits, Credits(20 - 6 + 9), "and event");
+        assert_eq!(first.corp.resources.credits, Credits(11), "the first time the Runner plays an event each turn");
+        let (second, _) = apply_action(&first, &registry, PlayerAction::PlayEvent { card_id: id("sure_gamble") }).expect("second event");
+        let second = close_all_windows(second, &registry).0;
+        assert_eq!(second.corp.resources.credits, Credits(11), "not the second");
+    }
+}
