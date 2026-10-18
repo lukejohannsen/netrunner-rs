@@ -111,7 +111,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
 pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maw", "Maw"),
-    ("bio_modeled_network", "Bio-Modeled Network"),
     ("network_exchange", "Network Exchange"),
     ("zed_2_0", "Zed 2.0"),
     ("sync_bre", "SYNC BRE"),
@@ -158,7 +157,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("leave_no_trace", "Leave No Trace"),
     ("rip_deal", "Rip Deal"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),

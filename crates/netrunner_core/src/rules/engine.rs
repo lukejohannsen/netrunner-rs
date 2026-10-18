@@ -1360,6 +1360,9 @@ fn rez_priced(
     rezzed.rezzed = true;
     // Face up is seen: a card derezzed later stays one the Runner knows.
     rezzed.seen_by_runner = true;
+    if let Some(run) = next.active_run.as_mut() {
+        run.rezzed.push(ice);
+    }
     let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(rez_cost), Purpose::Rez(ice), Some(&ice_id))?;
     // Comprehensive Rules 1.10.5b: recurring credits are first placed "as
     // soon as the card is turned faceup" — after its own cost is paid, so a

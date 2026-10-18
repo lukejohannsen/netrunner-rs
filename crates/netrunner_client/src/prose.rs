@@ -387,12 +387,16 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("{} gets {}{} allotted {} next turn", who(*side), if *n < 0 { "−" } else { "+" }, n.unsigned_abs(), if n.unsigned_abs() == 1 { "click" } else { "clicks" })
         }
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
-        Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL }) => match kind {
+        Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL, leaving }) if *leaving > 0 => match kind {
+            Some(kind) => format!("prevent all but {leaving} {} damage", format!("{kind:?}").to_lowercase()),
+            None => format!("prevent all but {leaving} damage"),
+        },
+        Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL, .. }) => match kind {
             Some(kind) => format!("prevent all {} damage", format!("{kind:?}").to_lowercase()),
             None => "prevent all damage".to_string(),
         },
         Effect::Prevent(Preventable::Tags(Preventable::ALL)) => "prevent all tags".to_string(),
-        Effect::Prevent(Preventable::Damage { kind, up_to }) => match kind {
+        Effect::Prevent(Preventable::Damage { kind, up_to, .. }) => match kind {
             Some(kind) => format!("prevent up to {up_to} {} damage", format!("{kind:?}").to_lowercase()),
             None => format!("prevent up to {up_to} damage"),
         },

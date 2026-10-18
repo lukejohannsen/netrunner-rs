@@ -3,7 +3,7 @@
   "name": "Zero-Day Heist",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12",
+  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12 Red Sand Stage 13",
   "style": [
     "pressure"
   ],
@@ -35,10 +35,6 @@
     },
     {
       "card": "femme_fatale",
-      "count": 2
-    },
-    {
-      "card": "lemuria_codecracker",
       "count": 2
     },
     {
@@ -120,6 +116,10 @@
     {
       "card": "hernando_cortez",
       "count": 1
+    },
+    {
+      "card": "leave_no_trace",
+      "count": 2
     }
   ]
 }

@@ -39224,3 +39224,70 @@ mod red_sand_stage_12 {
         assert_eq!(strength_of(&ended, &registry, 1), 2, "during that run");
     }
 }
+
+mod red_sand_stage_13 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn damaged(state: &GameState, registry: &CardRegistry, kind: crate::dsl::DamageType, amount: usize) -> GameState {
+        let mut state = state.clone();
+        let source = id("a_corp_card");
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(kind, amount), &mut crate::rules::ResolutionContext::for_card(Some(&source)), registry).expect("damage");
+        state
+    }
+
+    #[test]
+    fn bio_modeled_network_prevents_all_but_1_net_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = (0..5).map(|i| id(&format!("card_{i}"))).collect();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("bio_modeled_network"), install_id: InstallId(900), ..Default::default() }];
+        let parked = damaged(&state, &registry, crate::dsl::DamageType::Net, 4);
+        assert_eq!(parked.runner.grip.len(), 5, "the Runner is asked first");
+        let (after, _) = apply_action(&parked, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 }).expect("[trash]");
+        let after = close_all_windows(after, &registry).0;
+        assert_eq!(after.runner.grip.len(), 4, "all but 1 prevented");
+        assert!(after.runner.heap.contains(&id("bio_modeled_network")));
+
+        let one = damaged(&state, &registry, crate::dsl::DamageType::Net, 1);
+        assert!(one.pending_prevention.is_none(), "1 net damage leaves nothing to prevent");
+        assert_eq!(one.runner.grip.len(), 4);
+        let meat = damaged(&state, &registry, crate::dsl::DamageType::Meat, 2);
+        assert!(meat.pending_prevention.is_none(), "only net damage");
+    }
+
+    #[test]
+    fn leave_no_trace_derezzes_the_ice_rezzed_during_its_run_when_it_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("leave_no_trace")];
+        let ice = |card: &str, install: u32, rezzed: bool| crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() };
+        state.corp.installed = vec![ice("enigma", 11, false), crate::rules::InstalledCard { server: ServerId::RnD, ..ice("ice_wall", 12, true) }];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("leave_no_trace") }).expect("play");
+        let (run, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (run, _) = crate::rules::test_support::continue_run(&run, &registry).expect("approach Enigma");
+        let (run, _) = apply_action(&run, &registry, PlayerAction::RezIce { ice: InstallId(11) }).expect("rez Enigma");
+        let mut run = run;
+        for _ in 0..24 {
+            if run.active_run.is_none() {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, &registry, action).expect("onward").0;
+        }
+        let run = close_all_windows(run, &registry).0;
+        assert!(run.active_run.is_none(), "Enigma ends the run");
+        let rezzed = |install: u32| run.corp.installed.iter().find(|card| card.install_id == InstallId(install)).expect("installed").rezzed;
+        assert!(!rezzed(11), "derez all ice that was rezzed during this run");
+        assert!(rezzed(12), "not ice rezzed before it");
+    }
+}

@@ -814,6 +814,13 @@ pub struct RunState {
     /// engine's, as `last_encountered` is: no client draws a past pass.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub passed: Vec<crate::rules::state::InstallId>,
+    /// The Corp installs rezzed during this run, in the order rezzed —
+    /// Leave No Trace's "derez all ice that was rezzed during this run"
+    /// (`CardFilter::RezzedDuringLastRun`), read off `CompletedRun` as the
+    /// run ends. Set where a Corp card is turned faceup
+    /// (`engine::rez_install`); public, as every rez is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rezzed: Vec<crate::rules::state::InstallId>,
     /// The piece of ice encountered last this run, by its handle — set as
     /// each encounter begins and kept into `CompletedRun::last_encountered`
     /// for Always Have a Backup Plan's "the last piece of ice you
@@ -969,6 +976,7 @@ impl Default for RunState {
             encounters: 0,
             ice_passed: 0,
             passed: Vec::new(),
+            rezzed: Vec::new(),
             last_encountered: None,
             on_success_card: None,
             on_success_install: None,

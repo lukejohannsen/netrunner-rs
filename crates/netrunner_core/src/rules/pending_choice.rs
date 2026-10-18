@@ -474,6 +474,7 @@ fn instance_matches_filter(
             corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.server == c.server))
         }
         CardFilter::PassedDuringLastRun => corp_install.is_some_and(|c| passed_during_last_run(state, c.install_id)),
+        CardFilter::RezzedDuringLastRun => corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&c.install_id))),
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
         CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
@@ -605,6 +606,9 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     }
     if let CardFilter::PassedDuringLastRun = filter {
         return passed_during_last_run(state, install);
+    }
+    if let CardFilter::RezzedDuringLastRun = filter {
+        return state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));
     }
     if let CardFilter::BeingEncountered = filter {
         return state

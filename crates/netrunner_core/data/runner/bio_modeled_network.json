@@ -1,0 +1,26 @@
+{
+  "id": "bio_modeled_network",
+  "title": "Bio-Modeled Network",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent all but 1 net damage.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Net",
+            "up_to": 4294967295,
+            "leaving": 1
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12006,
+  "is_playable": true
+}
