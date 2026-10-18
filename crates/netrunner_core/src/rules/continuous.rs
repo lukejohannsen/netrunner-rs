@@ -256,6 +256,9 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::Playing(filter), Target::Card(card)) => {
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
+        (Scope::OpponentPlaying(filter), Target::Card(card)) => {
+            card.side != source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
+        }
         (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
         // Only a Corp card is accessed, whichever side's card asks: Demolisher's
         // "each Corp card" and Kill Switch's "an agenda" alike.

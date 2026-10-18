@@ -1,0 +1,34 @@
+{
+  "id": "helheim_servers",
+  "title": "Helheim Servers",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "unique": true,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnHq",
+          "filter": "Any",
+          "count": 1,
+          "reveal": false
+        }
+      },
+      "requirement": "RunAgainstThisServer",
+      "effect": {
+        "ModifyStrength": {
+          "delta": 2,
+          "ice": "ProtectingThisServer",
+          "duration": "Run"
+        }
+      },
+      "text": "Trash 1 card from HQ: All ice protecting this server has +2 strength until the end of the run. Use this ability only during a run on this server."
+    }
+  ],
+  "built_from": 12091,
+  "is_playable": true
+}

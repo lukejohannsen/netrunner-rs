@@ -1057,16 +1057,21 @@ pub enum CountedRecurring {
     /// when the credits are placed or refilled. Composition didn't work:
     /// what an X[recurring-credit] counts was the card's own counters.
     IceProtecting(crate::rules::ServerId),
+    /// The remote servers there are — Khondi Plaza's "X is the number of
+    /// remote servers", counted when the credits are placed or refilled.
+    RemoteServers,
 }
 
 impl RecurringCredits {
     /// N, for a card holding `counters` of its own kind, with `ice` the
-    /// number of pieces of ice protecting a server.
-    pub fn of(self, counters: u32, ice: impl Fn(crate::rules::ServerId) -> u32) -> u32 {
+    /// number of pieces of ice protecting a server and `remotes` the
+    /// number of remote servers.
+    pub fn of(self, counters: u32, ice: impl Fn(crate::rules::ServerId) -> u32, remotes: u32) -> u32 {
         match self {
             RecurringCredits::Fixed(n) => n,
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => counters,
             RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => ice(server),
+            RecurringCredits::Counted(CountedRecurring::RemoteServers) => remotes,
         }
     }
 
@@ -1115,6 +1120,11 @@ pub enum PaysFor {
     /// are deliberately not covered — the printed text names assets and
     /// ice.
     RezzingInThisServer,
+    /// The rez cost of a piece of ice protecting the server this card is
+    /// installed in, and nothing in its root — Khondi Plaza's "Use these
+    /// credits to rez ice protecting this server". Composition didn't
+    /// work: `RezzingInThisServer` pays for the root's assets too.
+    RezzingIceProtectingThisServer,
     /// Either player's bid in a trace attempt — NBN: Making News's "Use
     /// these credits during trace attempts". It was not a word at all: the
     /// identity's credits were a source whenever the Corp paid anything
@@ -2036,6 +2046,7 @@ impl CardDefinition {
                     return misfit("PlayCost", "only an event or an operation is played");
                 }
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), Scope::This | Scope::Playing(_)) => {}
+                (ContinuousKind::PlayCost(_), Scope::OpponentPlaying(_)) => {}
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), _) => {
                     return misfit("PlayCost", "a play cost is this card's own or that of a card being `Playing`");
                 }

@@ -133,6 +133,8 @@ pub enum On {
     /// made again within the turn would inherit the entry; that needs the
     /// Corp to install a new remote by a card's text on the Runner's turn
     /// after Marathon's server was emptied, and the turn's end clears it.
+    /// A strength about a server is about the ice protecting it, read at
+    /// every ask (Helheim Servers, `ice_strength_terms`).
     Server(ServerId),
 }
 
@@ -377,10 +379,13 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
 /// apiece, so a piece of ice whose strength cannot be lowered (Lotus Field)
 /// can drop the terms that lower it and keep the rest.
 pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Item = i32> + '_ {
+    // Helheim Servers' "all ice protecting this server": the ice's server,
+    // as it stands now.
+    let server = state.find_corp_install(on).map(|ice| ice.server);
     state
         .lingering
         .iter()
-        .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce) && effect.holds(state))
+        .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
             Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,

@@ -496,6 +496,15 @@ pub fn evaluate_effect(
                 state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Install(install), until, source: ctx.attributed_card().unwrap_or_else(|| card_id.clone()) });
                 return Ok(Vec::new());
             }
+            // "All ice protecting this server" (Helheim Servers): the
+            // server, asked at every read, as `EachIce` is every server.
+            if *which == crate::dsl::StrengthOf::ProtectingThisServer {
+                let server = ctx.acting_install.and_then(|install| state.find_corp_install(install)).map(|card| card.server).ok_or(RulesError::UnresolvedCardTarget)?;
+                let card_id = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+                let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+                state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Server(server), until, source: card_id });
+                return Ok(Vec::new());
+            }
             // "Each piece of ice … for the remainder of this run" (ezaM):
             // every piece of ice, the ones installed later too, which is
             // `On::EachIce` asked at every read — not one entry per ice.
@@ -1459,7 +1468,7 @@ pub fn evaluate_effect(
             state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
             Ok(Vec::new())
         }
-        Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce, .. } => Err(RulesError::UnresolvedCardTarget),
+        Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce | crate::dsl::StrengthOf::ProtectingThisServer, .. } => Err(RulesError::UnresolvedCardTarget),
         // "That ice gains … until the end of the turn" (Tinkering): the ice
         // chosen, faceup or not, credited to the card whose text it is.
         Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn: true, .. } => {

@@ -493,11 +493,17 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             let named = registry.get(&rezzing.card).is_some_and(|def| matches!(def.card_type, CardType::Ice(_) | CardType::Asset));
             named && host.slot == InstallSlot::Root && host.server == rezzing.server
         }
+        (PaysFor::RezzingIceProtectingThisServer, Purpose::Rez(rezzing)) => {
+            let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
+            let (Some(host), Some(rezzing)) = (host.and_then(installed), installed(rezzing)) else { return false };
+            rezzing.slot == InstallSlot::Ice && host.slot == InstallSlot::Root && host.server == rezzing.server
+        }
         (
             PaysFor::TrashCosts(_)
             | PaysFor::TrashCostsOfInstalledCards
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
+            | PaysFor::RezzingIceProtectingThisServer
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
             | PaysFor::UsingDuringRuns(_)
@@ -1112,7 +1118,8 @@ fn raise_to(
         None => ResolutionContext::for_card(Some(card)),
     };
     let ice = |server| state.corp.installed.iter().filter(|installed| installed.server == server && installed.slot == crate::rules::InstallSlot::Ice).count() as u32;
-    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice);
+    let remotes = crate::rules::legal_actions::existing_remote_ids(state).len() as u32;
+    let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes);
     let held = match install {
         Some(install) => hosted_credits(state, registry, side, install),
         None => state.corp.identity_counters,

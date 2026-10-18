@@ -506,6 +506,12 @@ pub enum Scope {
     /// install"); a whose on the filter would have been a second way to
     /// say the first's side, and `CardFilter` names no player.
     OpponentInstalling(CardFilter),
+    /// An event or operation the *other* player is playing, matching the
+    /// filter — Rolling Brownout's "the play cost of each operation and
+    /// event is increased by 1", a Corp current about the Runner's events
+    /// beside `Playing` for the Corp's own operations. `Playing`'s half of
+    /// `OpponentInstalling`, for its reason.
+    OpponentPlaying(CardFilter),
     /// Each piece of ice matching the filter — Fransofia Ward's "each piece
     /// of ice" (`Any`), Cat's Cradle's "each piece of **code gate** ice".
     /// The filter is read off the definition and off the copy, as

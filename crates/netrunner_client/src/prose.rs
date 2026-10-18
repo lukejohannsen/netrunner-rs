@@ -310,6 +310,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::StrengthOf::Encountered => "the encountered ice gets",
                 netrunner_core::dsl::StrengthOf::EachIce => "each piece of ice gets",
                 netrunner_core::dsl::StrengthOf::This => "this ice gets",
+                netrunner_core::dsl::StrengthOf::ProtectingThisServer => "each piece of ice protecting this server gets",
             };
             let sign = if *delta >= 0 { "+" } else { "" };
             let until = match duration {
@@ -610,6 +611,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             ),
             netrunner_core::dsl::StrengthOf::EachIce => format!("each piece of ice gains {}", crate::board::facts::ice_type_words(&[*subtype])),
             netrunner_core::dsl::StrengthOf::This => format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*subtype])),
+            netrunner_core::dsl::StrengthOf::ProtectingThisServer => format!("each piece of ice protecting this server gains {}", crate::board::facts::ice_type_words(&[*subtype])),
         },
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
@@ -856,6 +858,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             RecurringCredits::Fixed(n) => plural(n, "hosted credit", "hosted credits"),
             RecurringCredits::Counted(CountedRecurring::HostedCounters) => "a hosted credit for each counter on it".to_string(),
             RecurringCredits::Counted(CountedRecurring::IceProtecting(server)) => format!("a hosted credit for each piece of ice protecting {}", describe_server(server)),
+            RecurringCredits::Counted(CountedRecurring::RemoteServers) => "a hosted credit for each remote server".to_string(),
         };
         lines.push(format!("• [recurring] → when this becomes active, and before your turn begins, refill to {up_to}"));
     }
@@ -912,6 +915,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::TrashCosts(filter) => format!("to pay the trash cost of a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
+        PaysFor::RezzingIceProtectingThisServer => "to rez ice protecting this server".to_string(),
         PaysFor::TraceAttempts => "during trace attempts".to_string(),
         PaysFor::Using(CardFilter::Icebreaker) => "to pay for using icebreakers".to_string(),
         PaysFor::Using(filter) => format!("to use a card matching {}", humanize(format!("{filter:?}"))),
@@ -949,6 +953,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
+        Scope::OpponentPlaying(filter) => format!("a card the other player plays ({})", lower(format!("{filter:?}"))),
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
         Scope::StealingFromThisServer => "an agenda the Runner steals from this server".to_string(),
         Scope::Accessing(CardFilter::Any) => "each card the Runner accesses".to_string(),

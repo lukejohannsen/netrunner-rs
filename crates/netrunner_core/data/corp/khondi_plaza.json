@@ -1,0 +1,17 @@
+{
+  "id": "khondi_plaza",
+  "title": "Khondi Plaza",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "unique": true,
+  "trash_cost": 2,
+  "counter_kind": "Credit",
+  "recurring_credits": "RemoteServers",
+  "pays_for": [
+    "RezzingIceProtectingThisServer"
+  ],
+  "triggers": [],
+  "built_from": 12019,
+  "is_playable": true
+}
