@@ -238,6 +238,19 @@ fn an_ai_opponent_is_added_tested_and_its_key_never_reaches_the_settings_file() 
     tap(&mut app, edit);
     let field = app.world_mut().query::<&TextField>().iter(app.world()).next().expect("Edit opened the key field").clone();
     assert!(field.masked && field.text.is_empty());
+    // Ctrl+V with no clipboard to read says why on the field — it used
+    // to do nothing at all — and the next key clears the reason.
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+    press(&mut app, KeyCode::KeyV, Key::Character("v".into()));
+    app.update();
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Released, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+    let field = app.world_mut().query::<&TextField>().iter(app.world()).next().unwrap().clone();
+    assert!(field.text.is_empty(), "nothing was pasted and no \"v\" typed");
+    assert_eq!(field.note.as_deref(), Some("There is no clipboard to read here"));
+    let drawn = app.world_mut().query::<&Text>().iter(app.world()).any(|t| t.0 == "|   There is no clipboard to read here");
+    assert!(drawn, "the reason is drawn after the cursor");
     for c in "not-a-real-key".chars() {
         press(&mut app, KeyCode::KeyA, Key::Character(c.to_string().into()));
         app.update();

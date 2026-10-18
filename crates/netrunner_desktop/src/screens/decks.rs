@@ -59,7 +59,7 @@ use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::netrunnerdb::Decklists;
 use crate::screens::deck_editor::EditDeck;
 use crate::screens::deck_picker::NewDeckFor;
-use crate::screens::online::read_clipboard;
+use crate::widgets::text_field::read_clipboard;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_face, FaceSize};
