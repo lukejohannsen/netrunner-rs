@@ -110,7 +110,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
 pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("pushing_the_envelope", "Pushing the Envelope"),
     ("maw", "Maw"),
     ("bio_modeled_network", "Bio-Modeled Network"),
     ("network_exchange", "Network Exchange"),
@@ -161,7 +160,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leave_no_trace", "Leave No Trace"),
     ("rip_deal", "Rip Deal"),
-    ("lean_and_mean", "Lean and Mean"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
     ("open_forum", "Open Forum"),
@@ -186,11 +184,9 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_outage", "System Outage"),
     ("null_whistleblower", "Null: Whistleblower"),
     ("gpi_net_tap", "GPI Net Tap"),
-    ("hernando_cortez", "Hernando Cortez"),
     ("mirror", "Mirror"),
     ("dai_v", "Dai V"),
     ("another_day_another_paycheck", "Another Day, Another Paycheck"),
-    ("injection_attack", "Injection Attack"),
     ("sherlock_2_0", "Sherlock 2.0"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),

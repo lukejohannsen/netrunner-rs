@@ -106,6 +106,13 @@ pub struct ResolutionContext<'a> {
     /// (`play_operation_card`, a fired trigger) builds a context with this
     /// `None`, so a prompt parked by a card Plutus replays is that card's.
     pub prompting_card: Option<&'a CardId>,
+    /// The Corp install a standing effect is being asked about, when it is
+    /// one — the ice whose rez cost Hernando Cortez raises "by the number
+    /// of subroutines on that ice" (`Amount::PricedIceSubroutines`). Set by
+    /// `continuous`'s scan, which builds the context from the effect's
+    /// source and would otherwise have no word for the card it prices. On
+    /// the context because the number is read inside that one scan.
+    pub priced: Option<InstallId>,
     /// The install of the card whose decision this is a continuation of,
     /// when that differs from `acting_install` — `prompting_card`'s
     /// install. Read only by a duration that lasts while that card stays
@@ -503,6 +510,14 @@ pub fn evaluate_effect(
                 let card_id = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
                 let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
                 state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Server(server), until, source: card_id });
+                return Ok(Vec::new());
+            }
+            // "All icebreakers … during this run" (Lean and Mean): every
+            // icebreaker the Runner has, asked at every read.
+            if *which == crate::dsl::StrengthOf::EachIcebreaker {
+                let card_id = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+                let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+                state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Icebreakers, until, source: card_id });
                 return Ok(Vec::new());
             }
             // "Each piece of ice … for the remainder of this run" (ezaM):
@@ -1468,7 +1483,7 @@ pub fn evaluate_effect(
             state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until, source });
             Ok(Vec::new())
         }
-        Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce | crate::dsl::StrengthOf::ProtectingThisServer, .. } => Err(RulesError::UnresolvedCardTarget),
+        Effect::GainIceSubtype { ice: crate::dsl::StrengthOf::EachIce | crate::dsl::StrengthOf::ProtectingThisServer | crate::dsl::StrengthOf::EachIcebreaker, .. } => Err(RulesError::UnresolvedCardTarget),
         // "That ice gains … until the end of the turn" (Tinkering): the ice
         // chosen, faceup or not, credited to the card whose text it is.
         Effect::GainIceSubtype { subtype, ice: crate::dsl::StrengthOf::This, for_the_turn: true, .. } => {
@@ -1933,9 +1948,16 @@ pub fn evaluate_effect(
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             // A boost for the turn is no break's: Living Mural's "When you
             // install this program, it gets +3 strength for the remainder
-            // of the turn" happens at its install.
-            if *duration != EffectDuration::Turn {
-                require_encounter(state)?;
+            // of the turn" happens at its install. One for the run needs
+            // only the run: Injection Attack's "during that run, the
+            // chosen icebreaker gets +2 strength" is made as the run
+            // begins, before any ice.
+            match duration {
+                EffectDuration::Turn => {}
+                EffectDuration::Run => {
+                    state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+                }
+                _ => require_encounter(state)?,
             }
             let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
@@ -5905,6 +5927,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
         // "The greatest score of any player" (CR 1.17.1a), never below 0.
+        Amount::PricedIceSubroutines => ctx.priced.map_or(0, |install| crate::rules::continuous::subroutine_count(state, registry, install)),
         Amount::EncounteredIceSubroutines => state
             .active_run
             .as_ref()

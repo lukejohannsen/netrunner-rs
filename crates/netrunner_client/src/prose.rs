@@ -139,6 +139,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
         Amount::HostIceStrength => "the strength of host ice".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
+        Amount::PricedIceSubroutines => "the subroutines on that ice".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
         Amount::InZone { zone, filter } => format!("the cards in {} ({})", describe_zone(zone), humanize(format!("{filter:?}")).to_lowercase()),
@@ -311,6 +312,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::StrengthOf::EachIce => "each piece of ice gets",
                 netrunner_core::dsl::StrengthOf::This => "this ice gets",
                 netrunner_core::dsl::StrengthOf::ProtectingThisServer => "each piece of ice protecting this server gets",
+                netrunner_core::dsl::StrengthOf::EachIcebreaker => "each icebreaker gets",
             };
             let sign = if *delta >= 0 { "+" } else { "" };
             let until = match duration {
@@ -612,6 +614,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             netrunner_core::dsl::StrengthOf::EachIce => format!("each piece of ice gains {}", crate::board::facts::ice_type_words(&[*subtype])),
             netrunner_core::dsl::StrengthOf::This => format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*subtype])),
             netrunner_core::dsl::StrengthOf::ProtectingThisServer => format!("each piece of ice protecting this server gains {}", crate::board::facts::ice_type_words(&[*subtype])),
+            netrunner_core::dsl::StrengthOf::EachIcebreaker => format!("each icebreaker gains {}", crate::board::facts::ice_type_words(&[*subtype])),
         },
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })

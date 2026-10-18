@@ -1,0 +1,45 @@
+{
+  "id": "pushing_the_envelope",
+  "title": "Pushing the Envelope",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "EffectIf": {
+                "condition": {
+                  "Not": {
+                    "AmountAtLeast": [
+                      {
+                        "CardsInHand": "Runner"
+                      },
+                      3
+                    ]
+                  }
+                },
+                "effect": {
+                  "ModifyStrength": {
+                    "delta": 2,
+                    "ice": "EachIcebreaker",
+                    "duration": "Run"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12001,
+  "is_playable": true
+}

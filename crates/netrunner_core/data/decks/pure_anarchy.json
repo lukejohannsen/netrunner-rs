@@ -3,7 +3,7 @@
   "name": "Pure Anarchy",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Freedom Khumalo: Crypto-Anarchist, Kitara's Anarch identity, who trashes the non-agenda card being accessed once per turn for virus counters equal to its rez or play cost, taken from any card. Pay As You Go's list, whose viruses (Hemorrhage, Darwin, Datasucker, Musaazi, Yusuf, Crypt) and Knobkierie hold the counters she spends, with two Imp for its two Reboot: a second way to trash on access paid in virus counters. Eternal-legal only: Kitara is in neither Startup nor Standard. FFG F3 Kitara Stage 11c. Kitara Stage 12b: two Plague for two Wyrm, a virus that takes two counters on each successful run on the server chosen as it was installed, for Freedom to spend; Pay As You Go keeps Wyrm. Kitara Stage 22 takes two Trypano for two Hantu. Kitara Stage 24: two Hippo for two Xanadu, a breaker rig that fully breaks the outermost ice once a turn. Kitara Stage 27: two Contaminate for two Finality, three virus counters on any rig card for Freedom to spend. Red Sand Stage 9: two Clan Vengeance for two District 99. Red Sand Stage 11",
+  "description": "Not a published list: built so the sweeps reach Freedom Khumalo: Crypto-Anarchist, Kitara's Anarch identity, who trashes the non-agenda card being accessed once per turn for virus counters equal to its rez or play cost, taken from any card. Pay As You Go's list, whose viruses (Hemorrhage, Darwin, Datasucker, Musaazi, Yusuf, Crypt) and Knobkierie hold the counters she spends, with two Imp for its two Reboot: a second way to trash on access paid in virus counters. Eternal-legal only: Kitara is in neither Startup nor Standard. FFG F3 Kitara Stage 11c. Kitara Stage 12b: two Plague for two Wyrm, a virus that takes two counters on each successful run on the server chosen as it was installed, for Freedom to spend; Pay As You Go keeps Wyrm. Kitara Stage 22 takes two Trypano for two Hantu. Kitara Stage 24: two Hippo for two Xanadu, a breaker rig that fully breaks the outermost ice once a turn. Kitara Stage 27: two Contaminate for two Finality, three virus counters on any rig card for Freedom to spend. Red Sand Stage 9: two Clan Vengeance for two District 99. Red Sand Stage 11 Red Sand Stage 12",
   "style": [
     "rig",
     "dismantle"
@@ -16,10 +16,6 @@
     },
     {
       "card": "darwin",
-      "count": 2
-    },
-    {
-      "card": "the_nihilist",
       "count": 2
     },
     {
@@ -113,6 +109,10 @@
     {
       "card": "the_archivist",
       "count": 1
+    },
+    {
+      "card": "pushing_the_envelope",
+      "count": 2
     }
   ]
 }

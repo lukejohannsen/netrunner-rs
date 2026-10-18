@@ -147,10 +147,11 @@ fn for_each_applying<'a>(
         if source.install.is_some_and(|install| lost.contains(&install)) {
             return;
         }
-        let ctx = match source.install {
+        let mut ctx = match source.install {
             Some(install) => ResolutionContext::for_install(install, source.card),
             None => ResolutionContext::for_card(Some(source.card)),
         };
+        ctx.priced = target.install();
         for effect in &definition.continuous {
             if !asked(&effect.kind) {
                 continue;
@@ -502,7 +503,8 @@ pub fn memory_cost(state: &GameState, registry: &CardRegistry, card: &InstalledR
 pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> i32 {
     let stored = lingering::rig_strength(state, card);
     let Some(definition) = registry.get(&card.card) else { return stored };
-    stored + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, strength)
+    let all = if crate::dsl::card_matches_filter(definition, &crate::dsl::CardFilter::Icebreaker) { lingering::icebreakers_strength(state) } else { 0 };
+    stored + all + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, strength)
 }
 
 /// The strength of a piece of ice in the run right now: what it prints,
@@ -634,6 +636,20 @@ pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, instal
         }
     });
     own
+}
+
+/// How many subroutines the ice `install` has: printed, less what it has
+/// lost, plus what it gains by a static ability (`own_subroutines`). What a
+/// run's copy of the ice holds is the same list built for an encounter;
+/// this is the number asked of ice outside one.
+pub(crate) fn subroutine_count(state: &GameState, registry: &CardRegistry, install: InstallId) -> u32 {
+    let printed = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)).map_or(0, |card| card.subroutines.len());
+    let own = own_subroutines(state, registry, install);
+    let lost: usize = own.keep.iter().map(|(subroutine, kept)| {
+        let copies = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)).map_or(0, |card| card.subroutines.iter().filter(|printed| *printed == subroutine).count());
+        copies.saturating_sub(*kept)
+    }).sum();
+    (printed.saturating_sub(lost) + own.before.len() + own.after.len() + own.granted_before.len() + own.granted_after.len()) as u32
 }
 
 /// Whether a Runner card's abilities may break subroutines on the ice
