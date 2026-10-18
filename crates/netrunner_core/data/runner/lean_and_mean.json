@@ -1,0 +1,50 @@
+{
+  "id": "lean_and_mean",
+  "title": "Lean and Mean",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "EffectIf": {
+                "condition": {
+                  "Not": {
+                    "AmountAtLeast": [
+                      {
+                        "InZone": {
+                          "zone": "OwnInstalled",
+                          "filter": {
+                            "CardType": "Program"
+                          }
+                        }
+                      },
+                      4
+                    ]
+                  }
+                },
+                "effect": {
+                  "ModifyStrength": {
+                    "delta": 2,
+                    "ice": "EachIcebreaker",
+                    "duration": "Run"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12086,
+  "is_playable": true
+}

@@ -39132,3 +39132,95 @@ mod red_sand_stage_11 {
         assert!(done.pending_decision.is_none() && done.runner.heap.contains(&id("deuces_wild")), "two, then done");
     }
 }
+
+mod red_sand_stage_12 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    #[test]
+    fn hernando_cortez_taxes_a_rez_by_the_ices_subroutines_while_the_corp_has_10() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("hernando_cortez"), install_id: InstallId(900), ..Default::default() }];
+        state.corp.installed = vec![installed("ice_wall", 10, ServerId::Hq, InstallSlot::Ice, false), installed("enigma", 11, ServerId::RnD, InstallSlot::Ice, false), installed("pad_campaign", 12, ServerId::Remote(0), InstallSlot::Root, false)];
+        let delta = |state: &GameState, install: u32| crate::rules::continuous::rez_cost_delta(state, &registry, InstallId(install));
+        state.corp.resources.credits = Credits(10);
+        assert_eq!(delta(&state, 10), 1, "Ice Wall has 1 subroutine");
+        assert_eq!(delta(&state, 11), 2, "Enigma has 2");
+        assert_eq!(delta(&state, 12), 0, "only ice");
+        state.corp.resources.credits = Credits(9);
+        assert_eq!(delta(&state, 11), 0, "if the Corp has at least 10[credit]");
+    }
+
+    fn breaker(card: &str, install: u32, strength: i32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), base_strength: strength, ..Default::default() }
+    }
+
+    fn running(state: &GameState, registry: &CardRegistry, event: &str) -> GameState {
+        let mut state = state.clone();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip.push(id(event));
+        let (asked, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id(event) }).expect("play");
+        apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ").0
+    }
+
+    fn strength_of(state: &GameState, registry: &CardRegistry, index: usize) -> i32 {
+        crate::rules::continuous::breaker_strength(state, registry, &state.runner.rig[index])
+    }
+
+    #[test]
+    fn lean_and_mean_gives_all_icebreakers_2_strength_with_3_or_fewer_programs() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![breaker("corroder", 900, 2), breaker("gordian_blade", 901, 2)];
+        let run = running(&state, &registry, "lean_and_mean");
+        assert_eq!((strength_of(&run, &registry, 0), strength_of(&run, &registry, 1)), (4, 4), "all icebreakers have +2 strength");
+        let mut later = run.clone();
+        later.runner.rig.push(breaker("ninja", 902, 0));
+        assert_eq!(strength_of(&later, &registry, 2), 2, "one installed during the run too");
+        let mut ended = run;
+        ended.active_run = None;
+        assert_eq!(strength_of(&ended, &registry, 0), 2, "during this run");
+
+        state.runner.rig.extend([breaker("ninja", 902, 0), breaker("datasucker", 903, 0)]);
+        let crowded = running(&state, &registry, "lean_and_mean");
+        assert_eq!(strength_of(&crowded, &registry, 0), 2, "not with 4 programs installed");
+    }
+
+    #[test]
+    fn pushing_the_envelope_gives_icebreakers_2_strength_with_2_or_fewer_cards_in_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![breaker("corroder", 900, 2)];
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        assert_eq!(strength_of(&running(&state, &registry, "pushing_the_envelope"), &registry, 0), 4);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        assert_eq!(strength_of(&running(&state, &registry, "pushing_the_envelope"), &registry, 0), 2, "not with 3 cards in grip");
+    }
+
+    #[test]
+    fn injection_attack_gives_the_chosen_icebreaker_2_strength_for_the_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![breaker("corroder", 900, 2), breaker("gordian_blade", 901, 2)];
+        let run = running(&state, &registry, "injection_attack");
+        let (run, _) = apply_action(&run, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Gordian Blade");
+        let run = match &run.pending_decision {
+            Some(_) => apply_action(&run, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0,
+            None => run,
+        };
+        assert!(run.active_run.is_some());
+        assert_eq!((strength_of(&run, &registry, 0), strength_of(&run, &registry, 1)), (2, 4), "the chosen icebreaker gets +2 strength");
+        let mut ended = run;
+        ended.active_run = None;
+        assert_eq!(strength_of(&ended, &registry, 1), 2, "during that run");
+    }
+}

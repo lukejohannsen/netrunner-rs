@@ -2614,6 +2614,13 @@ pub enum Amount {
     /// subroutine it has", `Cost::CreditsAmount`'s number. 0 outside an
     /// encounter. No amount counted subroutines.
     EncounteredIceSubroutines,
+    /// Subroutines on the piece of ice a standing effect is pricing,
+    /// printed and gained — Hernando Cortez's "the Corp must spend credits
+    /// equal to the number of subroutines on that ice" as each one is
+    /// rezzed (`ResolutionContext::priced`). 0 for anything else.
+    /// Composition didn't work: `EncounteredIceSubroutines` is the ice of
+    /// an encounter, and a rez is asked of ice no one is encountering.
+    PricedIceSubroutines,
     /// The Corp's installed cards the filter admits — Pulse's "The Runner
     /// loses 1[credit] for each **rezzed piece of harmonic ice**", `All([
     /// Ice, Rezzed, HasSubtype(Harmonic)])`. Counted as a selection over
@@ -2935,6 +2942,14 @@ pub enum StrengthOf {
     /// too (`lingering::On::Server`). Composition didn't work: `EachIce`
     /// is every server's, and `This` is the upgrade's own.
     ProtectingThisServer,
+    /// Each of the Runner's icebreakers, the ones installed later too — Lean
+    /// and Mean's "all icebreakers have +2 strength during this run"
+    /// (`lingering::On::Icebreakers`). Not ice: the word was always about
+    /// ice because nothing else had needed a strength for a duration that
+    /// no break of its own made. Composition didn't work: `BoostStrength`
+    /// is one program's own boost, and one entry per breaker would miss a
+    /// breaker installed during the run.
+    EachIcebreaker,
 }
 
 impl StrengthOf {

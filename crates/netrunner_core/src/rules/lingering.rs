@@ -136,6 +136,10 @@ pub enum On {
     /// A strength about a server is about the ice protecting it, read at
     /// every ask (Helheim Servers, `ice_strength_terms`).
     Server(ServerId),
+    /// Each of the Runner's icebreakers, read at every ask (Lean and Mean,
+    /// `continuous::breaker_strength`), so one installed after the effect
+    /// was made has it too.
+    Icebreakers,
 }
 
 /// What changes. Only what a card in the pool does for a duration.
@@ -367,6 +371,21 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .sum()
 }
 
+/// What the lingering effects about every icebreaker add to one
+/// (`On::Icebreakers`); `continuous::breaker_strength` asks it of a card
+/// that is one.
+pub fn icebreakers_strength(state: &GameState) -> i32 {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| effect.on == On::Icebreakers && effect.holds(state))
+        .map(|effect| match effect.what {
+            Lingering::Strength(delta) => delta,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// What the lingering effects that still hold add to the strength of the
 /// piece of ice `on`: its own, and what each piece of ice gets (ezaM).
 /// Apart from `strength`, which a rig card asks too, because `EachIce` is
@@ -436,7 +455,7 @@ fn reaches(state: &GameState, on: &On, install: InstallId) -> bool {
     match on {
         On::Install(about) => *about == install,
         On::RootOfAttackedServer => in_attacked_root(state).any(|card| card == install),
-        On::EachIce | On::Player(_) | On::CopiesOf(_) | On::Server(_) => false,
+        On::EachIce | On::Player(_) | On::CopiesOf(_) | On::Server(_) | On::Icebreakers => false,
     }
 }
 

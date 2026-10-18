@@ -1,0 +1,28 @@
+{
+  "id": "hernando_cortez",
+  "title": "Hernando Cortez",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 1,
+          "of": "PricedIceSubroutines"
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "while": {
+        "CorpCreditsAtLeast": 10
+      },
+      "text": "If the Corp has at least 10[credit], as an additional cost to rez each piece of ice, the Corp must spend credits equal to the number of subroutines on that ice."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11004,
+  "is_playable": true
+}
