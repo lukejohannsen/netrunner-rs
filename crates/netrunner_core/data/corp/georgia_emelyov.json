@@ -1,0 +1,39 @@
+{
+  "id": "georgia_emelyov",
+  "title": "Georgia Emelyov",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "unique": true,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "This",
+      "requirement": {
+        "Not": "LastRunSuccessful"
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner makes an unsuccessful run on this server, do 1 net damage."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": "PromptMoveThisCardToAnotherRoot",
+      "text": "2[credit]: Move Georgia Emelyov to another server."
+    }
+  ],
+  "built_from": 11014,
+  "is_playable": true
+}
