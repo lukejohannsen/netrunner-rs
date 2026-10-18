@@ -251,6 +251,13 @@ fn an_ai_opponent_is_added_tested_and_its_key_never_reaches_the_settings_file() 
     assert_eq!(field.note.as_deref(), Some("There is no clipboard to read here"));
     let drawn = app.world_mut().query::<&Text>().iter(app.world()).any(|t| t.0 == "|   There is no clipboard to read here");
     assert!(drawn, "the reason is drawn after the cursor");
+    // The Paste button beside the field reads the clipboard with no chord.
+    press(&mut app, KeyCode::Backspace, Key::Backspace);
+    app.update();
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).next().unwrap().note, None, "the next key clears the reason");
+    let paste = find::<Control>(&mut app, |c| *c == Control::Paste).expect("the open field has a Paste button");
+    tap(&mut app, paste);
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).next().unwrap().note.as_deref(), Some("There is no clipboard to read here"));
     for c in "not-a-real-key".chars() {
         press(&mut app, KeyCode::KeyA, Key::Character(c.to_string().into()));
         app.update();

@@ -413,6 +413,9 @@ pub fn field_node(width: Val) -> Node {
         align_items: AlignItems::Center,
         border: UiRect::all(px(1)),
         border_radius: BorderRadius::MAX,
+        // A field is one line: what does not fit is cut, never a taller
+        // pill (`text_field::TextField::line` keeps it short besides).
+        overflow: Overflow::clip(),
         ..default()
     }
 }

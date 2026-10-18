@@ -154,9 +154,13 @@ pub fn read(protocol: Protocol, status: u16, body: &str) -> Result<Reply, Provid
         Err(error) => return Err(ProviderError::Malformed(error.to_string())),
     };
     if !(200..300).contains(&status) {
+        // Google's OpenAI-compatible endpoint wraps its error object in a
+        // one-element array; read as an object, its message was lost and
+        // the person was shown the body's first line, "[{".
+        let error = value.as_array().and_then(|errors| errors.first()).unwrap_or(&value);
         let message = match protocol {
-            Protocol::Ollama => value.get("error").and_then(Value::as_str).map(str::to_string),
-            Protocol::Anthropic | Protocol::OpenAi => value.pointer("/error/message").and_then(Value::as_str).map(str::to_string),
+            Protocol::Ollama => error.get("error").and_then(Value::as_str).map(str::to_string),
+            Protocol::Anthropic | Protocol::OpenAi => error.pointer("/error/message").and_then(Value::as_str).map(str::to_string),
         };
         return Err(ProviderError::Http { status, message: message.unwrap_or_else(|| snippet(body)) });
     }
@@ -320,6 +324,11 @@ mod tests {
             ProviderError::Http { status: 429, message: "Rate limit reached".to_string() }
         );
         assert_eq!(read(Protocol::Ollama, 404, r#"{"error":"model 'x' not found"}"#).unwrap_err(), ProviderError::Http { status: 404, message: "model 'x' not found".to_string() });
+        // Google's shape: the error object in an array, over several lines.
+        assert_eq!(
+            read(Protocol::OpenAi, 404, "[{\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/x is no longer available to new users.\",\n    \"status\": \"NOT_FOUND\"\n  }\n}\n]").unwrap_err(),
+            ProviderError::Http { status: 404, message: "This model models/x is no longer available to new users.".to_string() }
+        );
         assert_eq!(read(Protocol::Ollama, 502, "<html>Bad gateway</html>").unwrap_err(), ProviderError::Http { status: 502, message: "<html>Bad gateway</html>".to_string() });
         assert!(matches!(read(Protocol::OpenAi, 200, "not json").unwrap_err(), ProviderError::Malformed(_)));
         assert_eq!(ProviderError::Http { status: 401, message: "bad key".to_string() }.to_string(), "HTTP 401: bad key");
