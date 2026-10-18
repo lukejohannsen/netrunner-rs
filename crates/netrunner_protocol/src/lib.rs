@@ -206,6 +206,14 @@ pub enum ClientMessage {
     /// The organizer ends the tournament after a round is complete: the
     /// standings are final. Answered and pushed as `BeginRound` is.
     FinishTournament { tournament: String },
+    /// The organizer, or an operator (`AdminRequest`), calls a
+    /// tournament off at any point before it finishes (Phase 4 §12): it
+    /// is `Cancelled` from now, its standings as they stood, no seat is
+    /// given at a table and a game under way plays on with its result
+    /// recorded nowhere. An operator may, because otherwise a
+    /// tournament its organizer abandoned could only be ended by editing
+    /// the store. Answered and pushed as `BeginRound` is.
+    CancelTournament { tournament: String },
     /// Take the seat at this round's table: the game starts when the
     /// opponent sits too, dealt from the two registered lists on the
     /// sides the pairing gave, and shuffled from a seed no one party
@@ -259,6 +267,63 @@ pub enum ClientMessage {
     /// stays earned. A person who only wants to stop looking cancels the
     /// seek. Answered with `Event` or `EventRefused`.
     QuitEvent { event: String },
+    /// An operator's request (Phase 4 §12), answered with `Admin` or
+    /// `AdminRefused`.
+    Admin(AdminRequest),
+}
+
+/// What an operator asks of a server (Phase 4 §12). **Only a key the
+/// daemon's configuration names is answered** — `--operator`, or a line
+/// of `operators.txt` in its data directory — over the attached
+/// connection it proved; anyone else is refused with the reason, so a
+/// client learns from the first `Status` whether its key operates here.
+/// The organizer of a tournament keeps the scope it always had, and an
+/// operator's call on a tournament is `ClientMessage::CancelTournament`
+/// beside the organizer's own, not a request here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdminRequest {
+    /// How the server stands. Answered with `AdminAnswer::Status`.
+    Status,
+    /// Grants `award` to `key`, as an event's milestone would, filed
+    /// under the granting operator's key (`Award::source`, its
+    /// `key:<base32>`). Refused for a key
+    /// the server has never seen attach, which is a key mistyped far
+    /// more often than one about to arrive. Answered with
+    /// `AdminAnswer::Awards`.
+    Grant { key: PublicKey, award: AwardSpec },
+    /// Takes `award` back from `key`, whatever granted it; worn, it is
+    /// taken off. Answered with `AdminAnswer::Awards`.
+    Revoke { key: PublicKey, award: AwardSpec },
+}
+
+/// The answer to an `AdminRequest`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AdminAnswer {
+    Status(ServerStatus),
+    /// `key`'s awards as they now stand, after a grant or a revoke.
+    Awards { key: PublicKey, titles: Vec<Award>, badges: Vec<Award> },
+}
+
+/// A server as its operator sees it: what it runs, and what it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerStatus {
+    /// The build, as a receipt names it.
+    pub engine: String,
+    /// Seconds since the daemon bound.
+    pub up_secs: u64,
+    /// Whether it has a data directory: one that keeps nothing rates
+    /// nothing and holds no tournament or event.
+    pub keeps: bool,
+    pub matches: usize,
+    /// Seeks waiting in every lobby.
+    pub waiting: usize,
+    /// Connections attached, in a game or not.
+    pub attached: usize,
+    /// Tournaments neither finished nor cancelled.
+    pub tournaments: usize,
+    /// Events open.
+    pub events: usize,
+    pub operators: usize,
 }
 
 /// What an operator holds an event as (Phase 4 §11): the words a player
@@ -793,6 +858,12 @@ pub enum ServerMessage {
     /// operator, a server that keeps nothing, no such event, an event
     /// closed, entered already or not entered.
     EventRefused { reason: String },
+    /// The answer to `ClientMessage::Admin`.
+    Admin(AdminAnswer),
+    /// An `Admin` request refused, with the reason: not an operator's
+    /// key, a server that keeps nothing, a key never seen, an award not
+    /// held.
+    AdminRefused { reason: String },
 }
 
 /// A tournament as the server reports it (Phase 4 §7 stage 6). The
@@ -876,7 +947,7 @@ impl TournamentInfo {
     pub fn current_round(&self) -> Option<&swiss::Round<PublicKey>> {
         match self.state {
             TournamentState::Playing { round } => self.rounds.get(round as usize - 1),
-            TournamentState::Registering | TournamentState::Finished => None,
+            TournamentState::Registering | TournamentState::Finished | TournamentState::Cancelled => None,
         }
     }
 }
@@ -892,6 +963,9 @@ pub enum TournamentState {
     Playing { round: u32 },
     /// The organizer ended it: the standings are final.
     Finished,
+    /// Called off before it finished, by the organizer or an operator
+    /// (Phase 4 §12): the standings are as they stood, and final.
+    Cancelled,
 }
 
 /// One entrant: who, and the commitment to the two decks the server holds

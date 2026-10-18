@@ -1083,7 +1083,9 @@ impl Feed {
             | ServerMessage::TournamentRefused { .. }
             | ServerMessage::Events { .. }
             | ServerMessage::Event { .. }
-            | ServerMessage::EventRefused { .. } => {}
+            | ServerMessage::EventRefused { .. }
+            | ServerMessage::Admin(_)
+            | ServerMessage::AdminRefused { .. } => {}
         }
     }
 

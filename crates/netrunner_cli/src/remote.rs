@@ -109,6 +109,51 @@ pub async fn admin_event(config: &crate::config::Config, action: crate::config::
     }
 }
 
+/// `netrunner_cli admin status|award|tournament` (Phase 4 §12): one
+/// request at `--server` on this player's key, over an attached
+/// connection closed once the answer is printed.
+pub async fn admin(config: &crate::config::Config, action: crate::config::AdminAction) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::config::{AdminAction, AwardAction, TournamentAdminAction};
+    use netrunner_client::remote::AttachedEvent;
+    use netrunner_server::protocol::{AdminAnswer, AdminRequest, AwardSpec};
+    let credentials = netrunner_client::identity::Credentials::load()?;
+    let attached = attach(&config.server, &crate::record::player_name(config), credentials).await?;
+    match action {
+        AdminAction::Event { .. } => unreachable!("`admin event` is `admin_event`'s"),
+        AdminAction::Status => attached.admin(AdminRequest::Status),
+        AdminAction::Award { action: AwardAction::Grant { key, kind, name } } => attached.admin(AdminRequest::Grant { key, award: AwardSpec { kind: kind.into(), name } }),
+        AdminAction::Award { action: AwardAction::Revoke { key, kind, name } } => attached.admin(AdminRequest::Revoke { key, award: AwardSpec { kind: kind.into(), name } }),
+        AdminAction::Tournament { action: TournamentAdminAction::Cancel { code } } => attached.cancel_tournament(code),
+    }
+    let mut attached = attached;
+    loop {
+        match attached.next().await {
+            Some(AttachedEvent::Admin(AdminAnswer::Status(status))) => {
+                println!("{} at {}", status.engine, config.server);
+                for line in netrunner_client::admin::status_lines(&status) {
+                    println!("  {line}");
+                }
+                return Ok(());
+            }
+            Some(AttachedEvent::Admin(AdminAnswer::Awards { key, titles, badges })) => {
+                println!("{} now holds", key);
+                for line in netrunner_client::admin::award_lines(&titles, &badges) {
+                    println!("  {line}");
+                }
+                return Ok(());
+            }
+            Some(AttachedEvent::Tournament(info)) => {
+                println!("{}", netrunner_client::tournament::line(&info));
+                return Ok(());
+            }
+            Some(AttachedEvent::AdminRefused(reason) | AttachedEvent::TournamentRefused(reason)) => return Err(reason.into()),
+            Some(AttachedEvent::Link(netrunner_client::connection::Link::Down(error))) => return Err(error.into()),
+            Some(_) => {}
+            None => return Err("the connection closed before the server answered".into()),
+        }
+    }
+}
+
 /// Enters event `code` at `url` on `credentials`' key, over a connection
 /// of its own, and says where the key stands in it; entered already is
 /// no error, since the point is to be in. For `--event` in remote mode.

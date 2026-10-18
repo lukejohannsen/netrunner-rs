@@ -379,9 +379,21 @@ impl Store {
         Ok(())
     }
 
-    pub async fn revoke(&self, key: &str, kind: &str, name: &str) -> Result<()> {
-        sqlx::query("DELETE FROM awards WHERE player = $1 AND kind = $2 AND name = $3").bind(key).bind(kind).bind(name).execute(&self.pool).await?;
-        Ok(())
+    /// Takes `name` of `kind` back from `key`, and off them if they wear
+    /// it, in one transaction: a profile never wears what it no longer
+    /// holds (Phase 4 §12). Returns whether `key` held it.
+    pub async fn revoke(&self, key: &str, kind: &str, name: &str) -> Result<bool> {
+        // The column is chosen here, never bound from the caller's text.
+        let unwear = match kind {
+            "title" => "UPDATE players SET title = NULL WHERE player = $1 AND title = $2",
+            "badge" => "UPDATE players SET badge = NULL WHERE player = $1 AND badge = $2",
+            other => return Err(Error(format!("no award of kind {other:?}"))),
+        };
+        let mut tx = self.pool.begin().await?;
+        let deleted = sqlx::query("DELETE FROM awards WHERE player = $1 AND kind = $2 AND name = $3").bind(key).bind(kind).bind(name).execute(&mut *tx).await?.rows_affected();
+        sqlx::query(unwear).bind(key).bind(name).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(deleted > 0)
     }
 
     /// `key`'s awards, oldest first.
@@ -751,8 +763,12 @@ mod tests {
             store.grant(&badge).await.unwrap();
             store.grant(&Award { earned_at: 999, ..badge.clone() }).await.unwrap();
             assert_eq!(store.awards_of("key:ann").await.unwrap(), vec![badge.clone()], "granted once, kept as first granted");
-            store.revoke("key:ann", "badge", "first-gauntlet").await.unwrap();
+            store.saw_player("key:ann", "Ann", 100).await.unwrap();
+            store.set_worn("key:ann", None, Some("first-gauntlet")).await.unwrap();
+            assert!(store.revoke("key:ann", "badge", "first-gauntlet").await.unwrap());
             assert!(store.awards_of("key:ann").await.unwrap().is_empty());
+            assert_eq!(store.player("key:ann").await.unwrap().unwrap().badge, None, "a badge taken back is taken off");
+            assert!(!store.revoke("key:ann", "badge", "first-gauntlet").await.unwrap(), "nothing held, nothing taken");
 
             store.put_pairing("key:ann", "key:bo", 100).await.unwrap();
             store.put_pairing("key:bo", "key:ann", 200).await.unwrap();

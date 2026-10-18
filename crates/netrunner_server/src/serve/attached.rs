@@ -232,6 +232,10 @@ impl Attached {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
             },
+            ClientMessage::CancelTournament { tournament } => match self.cancel_tournament(&tournament) {
+                Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
+                Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
+            },
             ClientMessage::OfferDraw { tournament } => match self.offer_draw(&tournament) {
                 Ok(tournament) => self.send(ServerMessage::Tournament { tournament }),
                 Err(reason) => self.send(ServerMessage::TournamentRefused { reason }),
@@ -271,6 +275,14 @@ impl Attached {
                 Ok(event) => self.send(ServerMessage::Event { event }),
                 Err(reason) => self.send(ServerMessage::EventRefused { reason }),
             },
+            // An operator's tools (Phase 4 §12).
+            ClientMessage::Admin(request) => {
+                let answer = match self.admin(request).await {
+                    Ok(answer) => ServerMessage::Admin(answer),
+                    Err(reason) => ServerMessage::AdminRefused { reason },
+                };
+                self.send(answer);
+            }
             // A key is proved before attaching, never after.
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }
@@ -575,7 +587,7 @@ impl Attached {
         let registering = tournament.state == TournamentState::Registering;
         let forfeit = match tournament.state {
             TournamentState::Registering => None,
-            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Finished | TournamentState::Cancelled => return Err("the tournament is over".into()),
             TournamentState::Playing { .. } => {
                 if tournament.dropped.contains(&key) {
                     return Err("you have dropped already".into());
@@ -659,7 +671,7 @@ impl Attached {
                     return Err("fewer than two players remain: end the tournament".into());
                 }
             }
-            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Finished | TournamentState::Cancelled => return Err("the tournament is over".into()),
         }
         let next = swiss::pair(&tournament.seeding, &tournament.rounds, &tournament.dropped);
         // Each table's secret, made now and committed to in the info the
@@ -688,7 +700,7 @@ impl Attached {
         let tournament = self.held(&mut registry, &id)?;
         match tournament.state {
             TournamentState::Registering => return Err("nothing has been played yet: begin a round, or leave it".into()),
-            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Finished | TournamentState::Cancelled => return Err("the tournament is over".into()),
             TournamentState::Playing { .. } => {
                 let (_, current) = tournament.current().ok_or("the round being played is missing")?;
                 if !current.complete() {
@@ -697,6 +709,43 @@ impl Attached {
             }
         }
         tournament.state = TournamentState::Finished;
+        let info = tournament.info(&id);
+        self.shared.save_tournament(&registry, &id);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
+    }
+
+    /// The organizer, or an operator, calls the tournament off before it
+    /// finishes (Phase 4 §12). Every seat waiting at one of its tables is
+    /// stood up, told why; a game under way plays on, and `table_ended`
+    /// records its result nowhere, since the standings are final as they
+    /// stood. Ending such a game here was rejected: the two players are
+    /// mid-game with each other, and the operator's quarrel is with the
+    /// tournament, not with them.
+    fn cancel_tournament(&self, id: &str) -> Result<TournamentInfo, String> {
+        let key = self.key.ok_or("a tournament is run by a key: prove one before attaching")?;
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
+        if tournament.organizer != key && !self.shared.is_operator(Some(key)) {
+            return Err("only the organizer or this server's operator may call a tournament off".into());
+        }
+        match tournament.state {
+            TournamentState::Finished => return Err("the tournament is over".into()),
+            TournamentState::Cancelled => return Err("the tournament was called off already".into()),
+            TournamentState::Registering | TournamentState::Playing { .. } => {}
+        }
+        let waiting: Vec<TableRef> = registry.tables.iter().filter(|(table, state)| table.tournament == id && matches!(state, TableState::Waiting(_))).map(|(table, _)| table.clone()).collect();
+        for table in waiting {
+            if let Some(TableState::Waiting(seated)) = registry.tables.remove(&table) {
+                refuse(&seated.tx, "the tournament was called off");
+            }
+        }
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        tournament.state = TournamentState::Cancelled;
+        tournament.draw_offers.clear();
+        tournament.clock = None;
+        tracing::info!(tournament = %id, by = %key.fingerprint(), "a tournament was called off");
         let info = tournament.info(&id);
         self.shared.save_tournament(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
@@ -908,8 +957,8 @@ impl Attached {
         ServerMessage::Events { events, operator: self.shared.is_operator(self.key) }
     }
 
-    /// The operator's own check: a proved key named by `--operator`, on
-    /// a daemon that keeps things.
+    /// The operator's own check for an event: a proved operator's key
+    /// (`ServeOptions::operators`), on a daemon that keeps things.
     fn operating(&self) -> Result<PublicKey, String> {
         let key = self.key.ok_or("an event is held by a key: prove one before attaching")?;
         if self.shared.options.data_dir.is_none() {
@@ -1011,6 +1060,22 @@ impl Attached {
             return Err("enter the event first".into());
         }
         Ok(event.spec.rule.clone())
+    }
+}
+
+impl Attached {
+    /// An operator's request (`ClientMessage::Admin`): a proved key the
+    /// configuration names, or nothing is answered but the refusal.
+    async fn admin(&self, request: AdminRequest) -> Result<AdminAnswer, String> {
+        let operator = self.key.ok_or("an operator is a key: prove one before attaching")?;
+        if !self.shared.is_operator(Some(operator)) {
+            return Err("your key does not operate this server".into());
+        }
+        match request {
+            AdminRequest::Status => Ok(AdminAnswer::Status(self.shared.status())),
+            AdminRequest::Grant { key, award } => self.shared.change_award(operator, key, award, true).await,
+            AdminRequest::Revoke { key, award } => self.shared.change_award(operator, key, award, false).await,
+        }
     }
 }
 

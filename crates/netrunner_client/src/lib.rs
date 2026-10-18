@@ -38,6 +38,7 @@
 //! host, so a board plays a game online as it plays one at home.
 
 pub mod access;
+pub mod admin;
 pub mod backdrop;
 pub mod actions;
 pub mod art;

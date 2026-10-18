@@ -855,3 +855,115 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
     }
     found
 }
+
+/// Calling a tournament off (Phase 4 §12): an entrant who is neither its
+/// organizer nor the server's operator is refused; the operator calls it
+/// off mid-round, and a seat waiting at a table is stood up and told while
+/// a game under way plays on with its result recorded nowhere; the
+/// tournament reads `Cancelled` everywhere, with nothing more begun, sat
+/// at or called off again.
+#[tokio::test]
+async fn an_operator_calls_a_tournament_off_mid_round() {
+    let dir = scratch("cancel");
+    let operator = player(9);
+    let (url, server_key) = start_with(ServeOptions { seed: Some(1), data_dir: Some(dir.clone()), operators: vec![operator.public_key()], ..ServeOptions::default() }).await;
+    let people = [player(1), player(2), player(3), player(4)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo", "cy", "di"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "Called off").await;
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+    }
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = loop {
+        let info = next_tournament(&mut sockets[0]).await;
+        if info.state == (TournamentState::Playing { round: 1 }) {
+            break info;
+        }
+    };
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    let [playing, waiting] = [&first.rounds[0].tables[0], &first.rounds[0].tables[1]];
+
+    // One table's game under way, the other's Runner seated and waiting.
+    for key in [playing.corp, playing.runner] {
+        sit(&url, &mut sockets[index_of(&key)], &made.id, &key).await;
+    }
+    next_joined(&mut sockets[index_of(&playing.corp)]).await;
+    next_joined(&mut sockets[index_of(&playing.runner)]).await;
+    let waiter = index_of(&waiting.runner);
+    sit(&url, &mut sockets[waiter], &made.id, &waiting.runner).await;
+    loop {
+        if let ServerMessage::Queued { .. } = next(&mut sockets[waiter]).await {
+            break;
+        }
+    }
+
+    // An entrant who is not the organizer may not; the operator may.
+    let outsider = index_of(&waiting.corp);
+    let outsider = if outsider == 0 { index_of(&waiting.runner) } else { outsider };
+    send(&mut sockets[outsider], ClientMessage::CancelTournament { tournament: made.id.clone() }).await;
+    { let reason = refusal(&mut sockets[outsider]).await; assert!(reason.contains("organizer or this server's operator"), "{reason}"); }
+    let mut op = attach(&url, Some(&operator), "op").await;
+    send(&mut op, ClientMessage::CancelTournament { tournament: made.id.to_lowercase() }).await;
+    let cancelled = next_tournament(&mut op).await;
+    assert_eq!(cancelled.state, TournamentState::Cancelled);
+    assert_eq!(cancelled.clock, None, "no clock runs on a tournament called off");
+
+    // The waiting seat is stood up and told, and pushed the tournament.
+    let (mut told, mut stood_up) = (None, None);
+    while told.is_none() || stood_up.is_none() {
+        match next(&mut sockets[waiter]).await {
+            ServerMessage::Tournament { tournament } => told = Some(tournament),
+            ServerMessage::SeekRefused { reason } => stood_up = Some(reason),
+            _ => {}
+        }
+    }
+    assert_eq!(told.map(|info| info.state), Some(TournamentState::Cancelled));
+    assert!(stood_up.as_deref().is_some_and(|reason| reason.contains("called off")), "{stood_up:?}");
+
+    // The game under way finishes, and its result is written nowhere.
+    send(&mut sockets[index_of(&playing.runner)], ClientMessage::Surrender).await;
+    loop {
+        if let ServerMessage::GameEnded { .. } = next(&mut sockets[index_of(&playing.corp)]).await {
+            break;
+        }
+    }
+    stored(&dir, &made.id, "Cancelled").await;
+    let after = read(&url, &made.id).await;
+    assert_eq!((after.state, after.rounds[0].tables[0].result), (TournamentState::Cancelled, None), "a game under way at the cancel counts for nothing");
+
+    send(&mut op, ClientMessage::CancelTournament { tournament: made.id.clone() }).await;
+    { let reason = refusal(&mut op).await; assert!(reason.contains("called off already"), "{reason}"); }
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    { let reason = refusal(&mut sockets[0]).await; assert!(reason.contains("over"), "{reason}"); }
+    sit(&url, &mut sockets[waiter], &made.id, &waiting.runner).await;
+    { let reason = seek_refused(&mut sockets[waiter]).await; assert!(reason.contains("no round"), "{reason}"); }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An organizer calls their own tournament off while it is still taking
+/// registrations, on a server with no operator at all.
+#[tokio::test]
+async fn an_organizer_calls_their_own_tournament_off() {
+    let dir = scratch("cancel_own");
+    let (url, _) = start(Some(dir.clone())).await;
+    let mut ann = attach(&url, Some(&player(1)), "ann").await;
+    let made = create(&mut ann, "Never mind").await;
+    send(&mut ann, ClientMessage::CancelTournament { tournament: made.id.clone() }).await;
+    assert_eq!(next_tournament(&mut ann).await.state, TournamentState::Cancelled);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The next refusal, past every push this test does not read.
+async fn refusal(socket: &mut Socket) -> String {
+    loop {
+        if let ServerMessage::TournamentRefused { reason } = next(socket).await {
+            return reason;
+        }
+    }
+}
