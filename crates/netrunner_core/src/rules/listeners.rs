@@ -1187,7 +1187,7 @@ mod tests {
         let mut state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
         state.corp.installed = vec![on_the_table("press_office", 1, ServerId::Remote(0), true)];
 
-        let played = GameEvent::OperationPlayed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from_archives: false, x: None };
+        let played = GameEvent::OperationPlayed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from_archives: false, x: None, forfeited: None };
         assert_eq!(who(&plan_for(&state, &registry, &played)), vec![("hedge_fund", Heard::AsSubject), ("press_office", Heard::AsBystander)]);
 
         // Face down it is not active, and the operation is not about it.

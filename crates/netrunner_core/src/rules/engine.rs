@@ -1831,7 +1831,8 @@ pub(crate) fn play_operation_card(
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRun`/`OnInstall` above) from this one event.
-    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives, x };
+    let forfeited = ability::forfeited_by(&cost_events);
+    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives, x, forfeited };
     dispatcher::emit(next, registry, &mut events, played_event)?;
     // The additional cost's own events, after the effect as every payer
     // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
@@ -2791,6 +2792,13 @@ fn activate_ability(
     let effect = match chosen_x {
         Some(x) => ability.effect.clone().with_chosen_number(x),
         None => ability.effect.clone(),
+    };
+    // So is the agenda the cost forfeited (Quarantine System's "for each
+    // printed agenda point on the forfeited agenda"), which a choice parked
+    // ahead of what reads it would otherwise outlive.
+    let effect = match ability::forfeited_by(&cost_events) {
+        Some(agenda) => ability::with_forfeited_agenda(effect, &agenda, registry),
+        None => effect,
     };
     // "When used" abilities meet their condition as the cost is paid (CR
     // 9.5.7b), so the use is heard with the cost's events, after the effect
@@ -5223,7 +5231,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
@@ -5365,7 +5373,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false, x: None, forfeited: None },
                 GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
             ]

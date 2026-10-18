@@ -1,0 +1,121 @@
+{
+  "id": "zugzwang",
+  "name": "Zugzwang",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Jemison Astronautics: Sacrifice. Audacity. Success., Red Sand's Weyland identity, which places advancement counters on an installed card whenever the Corp forfeits an agenda, one more than the agenda's points. On Family Business's list, with its two Hostile Architecture, two Wake Up Call and two Death and Taxes given to the cards that forfeit: two Quarantine System, two Success and two Sacrifice. Eternal-legal only: Red Sand is in neither Startup nor Standard. Red Sand Stage 8.",
+  "style": [
+    "traps"
+  ],
+  "identity": "jemison_astronautics_sacrifice_audacity_success",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 1
+    },
+    {
+      "card": "ice_wall",
+      "count": 1
+    },
+    {
+      "card": "blockchain",
+      "count": 2
+    },
+    {
+      "card": "quarantine_system",
+      "count": 2
+    },
+    {
+      "card": "superdeep_borehole",
+      "count": 2
+    },
+    {
+      "card": "elizabeth_mills",
+      "count": 1
+    },
+    {
+      "card": "grndl_refinery",
+      "count": 1
+    },
+    {
+      "card": "broad_daylight",
+      "count": 2
+    },
+    {
+      "card": "transport_monopoly",
+      "count": 1
+    },
+    {
+      "card": "divested_trust",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_kaguya",
+      "count": 2
+    },
+    {
+      "card": "research_station",
+      "count": 1
+    },
+    {
+      "card": "drudge_work",
+      "count": 2
+    },
+    {
+      "card": "formicary",
+      "count": 2
+    },
+    {
+      "card": "masvingo",
+      "count": 2
+    },
+    {
+      "card": "oduduwa",
+      "count": 1
+    },
+    {
+      "card": "success",
+      "count": 2
+    },
+    {
+      "card": "sacrifice",
+      "count": 2
+    },
+    {
+      "card": "battlement",
+      "count": 2
+    },
+    {
+      "card": "watchtower",
+      "count": 2
+    },
+    {
+      "card": "fractal_threat_matrix",
+      "count": 2
+    },
+    {
+      "card": "meteor_mining",
+      "count": 2
+    },
+    {
+      "card": "priority_construction",
+      "count": 2
+    },
+    {
+      "card": "mass_commercialization",
+      "count": 1
+    }
+  ]
+}

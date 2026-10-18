@@ -118,8 +118,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zed_2_0", "Zed 2.0"),
     ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
-    ("jemison_astronautics_sacrifice_audacity_success", "Jemison Astronautics: Sacrifice. Audacity. Success."),
-    ("quarantine_system", "Quarantine System"),
     ("oberth_protocol", "Oberth Protocol"),
     ("khondi_plaza", "Khondi Plaza"),
     ("signal_jamming", "Signal Jamming"),
@@ -135,7 +133,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bloom", "Bloom"),
     ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
-    ("sacrifice", "Sacrifice"),
 ];
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
@@ -163,7 +160,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("miraju", "Mirāju"),
     ("reeducation", "Reeducation"),
     ("standoff", "Standoff"),
-    ("success", "Success"),
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.

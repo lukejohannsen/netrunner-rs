@@ -28801,7 +28801,7 @@ mod reprints {
         assert!(asked.pending_payment.is_some(), "X is chosen before paying");
         assert!(apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).is_err(), "no more than the Runner's tags");
         let (played, events) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
-        assert!(events.contains(&GameEvent::OperationPlayed { side: Side::Corp, card: id("psychographics"), from_archives: false, x: Some(2) }), "{events:?}");
+        assert!(events.contains(&GameEvent::OperationPlayed { side: Side::Corp, card: id("psychographics"), from_archives: false, x: Some(2), forfeited: None }), "{events:?}");
         assert_eq!(played.corp.resources.credits, Credits(10 - 2));
         let placed = pick(&played, &registry, &[crate::rules::test_support::position_of(&played, "hostile_takeover")]);
         assert_eq!(placed.corp.installed[0].advancement_tokens, 2);
@@ -38698,5 +38698,112 @@ mod red_sand_stage_7 {
         let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes");
         let broke = use_ability(&pumped, &registry, 50, 0).expect("a hosted virus counter: break 1 subroutine");
         assert_eq!(broke.runner.rig[0].counters, 1);
+    }
+}
+
+mod red_sand_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn corp_turn(hq: &[&str], scored: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.scored_agendas = scored.iter().map(|card| crate::rules::ScoredAgenda::plain(id(card))).collect();
+        state
+    }
+
+    /// Answers a forfeit's "which agenda?" with the first, when it is asked.
+    fn forfeit_first(state: GameState, registry: &CardRegistry) -> GameState {
+        match &state.pending_payment {
+            Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Card(_), .. }) => {
+                apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("forfeit the first agenda").0
+            }
+            _ => state,
+        }
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (played, _) = apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).unwrap_or_else(|e| panic!("play {card}: {e:?}"));
+        forfeit_first(played, registry)
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).unwrap_or_else(|e| panic!("select {position}: {e:?}")).0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn sacrifice_removes_bad_publicity_by_the_forfeited_points_and_pays_for_each_removed() {
+        let registry = registry();
+        let mut state = corp_turn(&["sacrifice"], &[]);
+        state.corp.bad_publicity = 3;
+        let sacrifice = PlayerAction::PlayOperation { card_id: id("sacrifice") };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&sacrifice), "forfeit 1 agenda: none to forfeit");
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("offworld_office"))];
+        let done = play(&state, &registry, "sacrifice");
+        assert!(done.corp.scored_agendas.is_empty() && done.corp.removed_from_game.contains(&id("offworld_office")));
+        assert_eq!(done.corp.bad_publicity, 1, "X is the 2 points of Offworld Office");
+        assert_eq!(done.corp.resources.credits, Credits(10 + 2), "1[credit] for each removed");
+
+        state.corp.bad_publicity = 1;
+        let done = play(&state, &registry, "sacrifice");
+        assert_eq!(done.corp.bad_publicity, 0);
+        assert_eq!(done.corp.resources.credits, Credits(10 + 1), "only the 1 bad publicity removed is paid for");
+    }
+
+    #[test]
+    fn success_spends_three_clicks_and_advances_a_card_by_the_forfeited_requirement() {
+        let registry = registry();
+        let mut state = corp_turn(&["success"], &["offworld_office"]);
+        state.corp.installed = vec![installed("hostile_takeover", 10, ServerId::Remote(0), InstallSlot::Root, false)];
+        let asked = play(&state, &registry, "success");
+        assert_eq!(asked.corp.resources.clicks, Clicks(0), "the play's [click] and [click][click] more");
+        let done = select(&asked, &registry, &[0]);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 4, "Offworld Office's advancement requirement");
+    }
+
+    #[test]
+    fn jemison_places_points_plus_one_counters_whenever_the_corp_forfeits() {
+        let registry = registry();
+        let mut state = corp_turn(&["sacrifice"], &["offworld_office"]);
+        state.corp.identity = Some(id("jemison_astronautics_sacrifice_audacity_success"));
+        state.corp.installed = vec![installed("hostile_takeover", 10, ServerId::Remote(0), InstallSlot::Root, false)];
+        let asked = play(&state, &registry, "sacrifice");
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })), "1 installed card: {:?}", asked.pending_decision);
+        let done = select(&asked, &registry, &[0]);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 3, "2 points plus 1");
+    }
+
+    #[test]
+    fn quarantine_system_rezzes_up_to_three_ice_two_credits_cheaper_per_forfeited_point() {
+        let registry = registry();
+        let mut state = corp_turn(&[], &["offworld_office"]);
+        state.corp.installed = vec![
+            installed("quarantine_system", 10, ServerId::Remote(0), InstallSlot::Root, true),
+            installed("ice_wall", 11, ServerId::Hq, InstallSlot::Ice, false),
+            installed("enigma", 12, ServerId::RnD, InstallSlot::Ice, false),
+        ];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("forfeit an agenda");
+        let first = forfeit_first(used, &registry);
+        assert!(first.corp.scored_agendas.is_empty());
+        let second = select(&first, &registry, &[1]);
+        let third = select(&second, &registry, &[2]);
+        let done = match third.pending_decision {
+            Some(_) => apply_action(&third, &registry, PlayerAction::ConfirmCardSelection).expect("no third").0,
+            None => third,
+        };
+        assert!(done.corp.installed[1].rezzed && done.corp.installed[2].rezzed, "both pieces of ice rezzed");
+        assert_eq!(done.corp.resources.credits, Credits(10), "4[credit] off each: Ice Wall's 1 and Enigma's 3 cost nothing");
     }
 }

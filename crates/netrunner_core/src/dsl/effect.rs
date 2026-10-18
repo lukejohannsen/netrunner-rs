@@ -247,7 +247,10 @@ pub enum Effect {
     /// the counters on the card, as `GiveTags` became one for Vicsek.
     GiveBadPublicity(Amount),
     /// Deliberately no `Side` param, same rationale as `GiveBadPublicity`.
-    RemoveBadPublicity(u32),
+    /// An `Amount` since Sacrifice's "remove X bad publicity", X the
+    /// forfeited agenda's points (`Amount::ForfeitedAgendaPoints`); a bare
+    /// number is still read as `Fixed`, as every other card writes one.
+    RemoveBadPublicity(#[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")] Amount),
     TrashCard(CardTarget),
     /// `TrashCard`'s removal from the game — Malandragem's "When it is
     /// empty, remove it from the game". Only `CardTarget::ThisCard` is
@@ -2481,6 +2484,24 @@ pub enum Amount {
     /// didn't work: no amount reads a card the moment is about by its
     /// definition but the trashed card's costs.
     TriggeringAgendaAdvancementRequirement,
+    /// The printed agenda points of the agenda just forfeited — by the
+    /// cost of what is resolving (Sacrifice's "X is equal to the agenda
+    /// point value of the forfeited agenda", from
+    /// `GameEvent::OperationPlayed::forfeited`; Quarantine System's
+    /// ability, from its cost's events), or by the forfeit the trigger
+    /// heard (Jemison Astronautics' "the agenda point value of the
+    /// forfeited agenda plus 1"). Written in as `Fixed` where it is known
+    /// (`ability::with_forfeited_agenda`), so it outlives a choice parked
+    /// ahead of it; read off a triggering forfeit anywhere else, 0
+    /// otherwise. Printed, as `TriggeringAgendaAdvancementRequirement` is:
+    /// the agenda has left the score area. Composition didn't work: no
+    /// amount reads the card a cost took but `PaidCardPrintedCost`, whose
+    /// number is a cost.
+    ForfeitedAgendaPoints,
+    /// The printed advancement requirement of the agenda just forfeited —
+    /// Success's "X equals the advancement requirement of the agenda just
+    /// forfeited". Read and written in as `ForfeitedAgendaPoints` is.
+    ForfeitedAgendaAdvancementRequirement,
     /// Cards in the Runner's heap that print the subtype — Rising Tide's
     /// "+1 strength for each fracter in your heap", which was
     /// `StrengthModifier::PerFracterInHeap` until a continuous effect's
@@ -3468,6 +3489,8 @@ impl Effect {
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
+            Effect::GiveBadPublicity(a) => Effect::GiveBadPublicity(amount(a)),
+            Effect::RemoveBadPublicity(a) => Effect::RemoveBadPublicity(amount(a)),
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },

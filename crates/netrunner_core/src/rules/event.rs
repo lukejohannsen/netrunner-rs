@@ -308,6 +308,15 @@ pub enum GameEvent {
     /// event because the play resolves by a dispatch, which rebuilds its
     /// context from the event it heard; X is credits spent in the open, so
     /// it is public.
+    ///
+    /// `forfeited`: the agenda the operation's additional cost forfeited
+    /// (Sacrifice's "the agenda point value of the forfeited agenda",
+    /// Success's "the advancement requirement of the agenda just
+    /// forfeited"), read by `Amount::ForfeitedAgendaPoints` and
+    /// `ForfeitedAgendaAdvancementRequirement` in the card's own `OnPlay`.
+    /// On the event for X's reason; a scored agenda is public. Only the
+    /// forfeit, and not `EventPlayed::paid_with`'s every card the cost
+    /// took: a Corp cost's trash out of HQ is facedown.
     OperationPlayed {
         side: Side,
         card: CardId,
@@ -315,6 +324,8 @@ pub enum GameEvent {
         from_archives: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         x: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        forfeited: Option<CardId>,
     },
     /// `credits_paid` is what the install actually cost after every
     /// discount — Bling's "whenever you install a card without spending

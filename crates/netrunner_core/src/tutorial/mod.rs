@@ -520,7 +520,7 @@ mod tests {
         assert_eq!(progress.step_index(), 0);
         // One action's events can complete two consecutive steps, in order.
         let played = vec![
-            GameEvent::OperationPlayed { side: Side::Corp, card: id("hedge_fund"), from_archives: false, x: None },
+            GameEvent::OperationPlayed { side: Side::Corp, card: id("hedge_fund"), from_archives: false, x: None, forfeited: None },
             GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
         ];
         assert!(progress.observe(&played));
