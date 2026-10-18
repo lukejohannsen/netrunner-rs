@@ -2886,7 +2886,18 @@ pub enum Preventable {
     /// it as is left: nobody prevents less than they paid for, and a
     /// number to choose would need a decision the engine does not have
     /// (Rules Audit backlog item 6).
-    Damage { kind: Option<DamageType>, up_to: u32 },
+    ///
+    /// `leaving` is how much of it a use must leave: Bio-Modeled Network's
+    /// "prevent all but 1 net damage" is `up_to: ALL, leaving: 1`, which
+    /// prevents nothing of a single point. Composition didn't work: "up
+    /// to" is a number fixed on the card, and this one is the damage less
+    /// one.
+    Damage {
+        kind: Option<DamageType>,
+        up_to: u32,
+        #[serde(default, skip_serializing_if = "is_zero_u32")]
+        leaving: u32,
+    },
     /// "Prevent 1 tag."
     Tags(u32),
     /// "Prevent a player from trashing 1 installed program or piece of

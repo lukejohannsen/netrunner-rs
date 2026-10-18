@@ -905,6 +905,9 @@ fn determinize_run(
         last_encountered: None,
         // The engine's, as `last_encountered` is (`RunState::passed`).
         passed: Vec::new(),
+        // The engine's too (`RunState::rezzed`): a sample taken mid-run
+        // forgets which ice Leave No Trace would derez at its end.
+        rezzed: Vec::new(),
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.

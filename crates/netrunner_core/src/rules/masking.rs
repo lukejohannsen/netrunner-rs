@@ -1095,6 +1095,12 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // in the log beside this; which card asked is withheld from whoever
         // its own view conceals it from, as its trigger is.
         GameEvent::AbilityTookCredits { card, .. } if concealed(card) => None,
+        // A rezzed card's gain is public when it happens, but the entry is
+        // masked against the state the action produced: Leave No Trace
+        // derezzes Tree Line in the entry where Tree Line's own credit
+        // landed (the view sweep at 256 seeds, seed 46), so the card's name
+        // goes the way its trigger's does. The credits stay in the log.
+        GameEvent::AbilityGainedCredits { card, .. } if concealed(card) => None,
         // Accessed in HQ or R&D, as `TriggerFired`'s access is: the Runner
         // saw it, a spectator did not (Esca, seed 28).
         GameEvent::AbilityTookCredits { card, .. }

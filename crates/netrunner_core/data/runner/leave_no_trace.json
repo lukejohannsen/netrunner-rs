@@ -1,0 +1,43 @@
+{
+  "id": "leave_no_trace",
+  "title": "Leave No Trace",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "ForEach": {
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "All": [
+                      "Ice",
+                      "Rezzed",
+                      "RezzedDuringLastRun"
+                    ]
+                  },
+                  "effect": {
+                    "DerezCard": {
+                      "Install": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12083,
+  "is_playable": true
+}

@@ -62,7 +62,7 @@ use crate::rules::state::{DeferredTrigger, GameState, InstallId, InstallSlot, Pe
 /// Whether `word` — what a card says it prevents — is about `what`.
 pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState, registry: &CardRegistry) -> bool {
     match (word, what) {
-        (Preventable::Damage { kind, .. }, WouldHappen::Damage { kind: dealt, .. }) => kind.is_none_or(|kind| kind == *dealt),
+        (Preventable::Damage { kind, leaving, .. }, WouldHappen::Damage { kind: dealt, .. }) => kind.is_none_or(|kind| kind == *dealt) && what.amount() > *leaving,
         (Preventable::Tags(_), WouldHappen::Tags { .. }) => true,
         (Preventable::Trash(filter), WouldHappen::Trash { owner, install, .. }) => {
             let card = match owner {
@@ -435,7 +435,15 @@ pub(crate) fn prevent(state: &mut GameState, registry: &CardRegistry, word: &Pre
     if left == 0 || !matches(word, &pending.what, state, registry) {
         return Err(RulesError::NothingToPrevent);
     }
-    let now = prevents_up_to(word).min(left);
+    let leaving = match word {
+        Preventable::Damage { leaving, .. } => *leaving,
+        _ => 0,
+    };
+    let reach = left.saturating_sub(leaving);
+    if reach == 0 {
+        return Err(RulesError::NothingToPrevent);
+    }
+    let now = prevents_up_to(word).min(reach);
     let mut events = Vec::new();
     if let Some(pending) = state.pending_prevention.as_mut() {
         pending.prevented += now;
@@ -719,7 +727,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), up_to: 1 }),
+            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), up_to: 1, leaving: 0 }),
         );
         // The wrong kind of damage.
         let (state, registry) = table(Effect::DealDamage(DamageType::Meat, 1), paid.clone());
@@ -766,7 +774,7 @@ mod tests {
     #[test]
     fn the_window_it_opens_over_comes_back_when_it_closes() {
         let (mut state, registry) = table(Effect::DealDamage(DamageType::Net, 1), {
-            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, up_to: 1 }))
+            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0 }))
         });
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(crate::rules::run::RunState { phase: crate::rules::run::RunPhase::Success, ..Default::default() });
@@ -856,7 +864,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: None, up_to: 1 }),
+            Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0 }),
         ));
         state.runner.resources.credits = Credits(1);
         let (state, _) = act(&state, &registry, use_ability(SOURCE));
