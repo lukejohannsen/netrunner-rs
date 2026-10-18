@@ -39291,3 +39291,93 @@ mod red_sand_stage_13 {
         assert!(rezzed(12), "not ice rezzed before it");
     }
 }
+
+// ---- Red Sand Stage 14: Bloom, Network Exchange ----
+mod red_sand_stage_14 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let position = state.corp.hq.iter().position(|c| c.0 == card).expect("in HQ");
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    /// A run on HQ with Bloom its only ice, up to the subroutines firing.
+    fn blooming(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.hq = vec![id("ice_wall"), id("enigma")];
+        state.corp.installed = vec![ice("bloom", 11, ServerId::Hq)];
+        state.corp.resources.credits = Credits(0);
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach Bloom");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("subroutines fire").0
+    }
+
+    #[test]
+    fn bloom_installs_ice_from_hq_on_another_server_then_directly_inward_free() {
+        let registry = registry();
+        let state = blooming(&registry);
+        let state = select(&state, &registry, "ice_wall");
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }), "protecting another server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("on R&D");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "ice_wall" && c.server == ServerId::RnD));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install inward");
+        let state = select(&state, &registry, "enigma");
+        let hq: Vec<&str> = state.corp.installed.iter().filter(|c| c.server == ServerId::Hq).map(|c| c.card.0.as_str()).collect();
+        assert_eq!(hq, ["bloom", "enigma"], "directly inward from this ice");
+        assert_eq!(state.corp.resources.credits, Credits(0), "ignoring all costs");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.ice.len(), 2, "the Runner meets the new ice next");
+    }
+
+    #[test]
+    fn bloom_may_install_nothing() {
+        let registry = registry();
+        let state = blooming(&registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("none");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("none again");
+        assert_eq!(state.corp.installed.len(), 1);
+        assert_eq!(state.corp.hq.len(), 2);
+    }
+
+    #[test]
+    fn network_exchange_raises_the_install_cost_of_ice_outward_of_another() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("ice_wall"), id("ice_wall"), id("ice_wall")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("network_exchange"), install_id: InstallId(900), ..Default::default() }];
+        let install = |zone| PlayerAction::InstallCard { card_id: id("ice_wall"), zone, slot: InstallSlot::Ice, trash_first: false };
+        let (state, _) = apply_action(&state, &registry, install(ServerId::Hq)).expect("innermost");
+        assert_eq!(state.corp.resources.credits, Credits(10), "nothing protects HQ: innermost, no increase");
+        let (state, _) = apply_action(&state, &registry, install(ServerId::Hq)).expect("outward of it");
+        assert_eq!(state.corp.resources.credits, Credits(8), "1 for the ice there, 1 more");
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.outer_ice_install_surcharge, 1);
+
+        let mut poor = state.clone();
+        poor.corp.resources.credits = Credits(2);
+        assert!(apply_action(&poor, &registry, install(ServerId::Hq)).is_err(), "2 ice there and 1 more: 3");
+        assert!(apply_action(&poor, &registry, install(ServerId::RnD)).is_ok());
+
+        let mut without = state.clone();
+        without.runner.rig.clear();
+        let (without, _) = apply_action(&without, &registry, install(ServerId::Hq)).expect("no exchange");
+        assert_eq!(without.corp.resources.credits, Credits(6), "2 for the ice there");
+    }
+}

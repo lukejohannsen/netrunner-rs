@@ -506,6 +506,16 @@ pub enum Scope {
     /// install"); a whose on the filter would have been a second way to
     /// say the first's side, and `CardFilter` names no player.
     OpponentInstalling(CardFilter),
+    /// A piece of ice the Corp is installing outward of another — Network
+    /// Exchange's "the install cost of each piece of ice that is not
+    /// installed in the innermost position is increased by 1", on a Runner
+    /// resource. A paid ice install lands outermost, so it is innermost
+    /// only where nothing protects the server yet; the position is part
+    /// of the destination (CR 6.2.2) and only the install knows it
+    /// (`continuous::Target::InstallingIce`). Composition didn't work:
+    /// `OpponentInstalling` is asked of a card with no destination, and a
+    /// Corp ice install was never priced by the scan at all.
+    IceNotInnermost,
     /// An event or operation the *other* player is playing, matching the
     /// filter — Rolling Brownout's "the play cost of each operation and
     /// event is increased by 1", a Corp current about the Runner's events

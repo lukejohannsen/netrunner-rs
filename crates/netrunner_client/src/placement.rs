@@ -127,7 +127,10 @@ impl<'a> Placement<'a> {
                 return "Install protecting a new remote server".to_string();
             }
             let ice = self.server(server).map_or(0, |s| s.ice.len() as u32);
-            let tax = if self.pay_cost { ice.saturating_sub(self.discount) } else { 0 };
+            // Outward of another, the table may add to it (Network
+            // Exchange): the engine's number, never counted here.
+            let surcharge = if ice > 0 { self.view.outer_ice_install_surcharge } else { 0 };
+            let tax = if self.pay_cost { (ice + surcharge).saturating_sub(self.discount) } else { 0 };
             let cost = match tax {
                 0 => String::new(),
                 1 => " — costs 1 credit".to_string(),
@@ -172,6 +175,9 @@ impl<'a> Placement<'a> {
             lines.push("It is installed ignoring all costs.");
         } else if self.is_ice() {
             lines.push("Ice costs 1 credit for each piece already protecting the server.");
+            if self.view.outer_ice_install_surcharge > 0 {
+                lines.push("A card in play makes ice installed outward of another cost more.");
+            }
         }
         if !self.is_ice() && self.takes_the_remote() != Some(false) && self.allowed.is_some_and(|allowed| allowed.iter().any(|s| self.occupant(*s).is_some())) {
             lines.push("A remote holds one agenda or asset: installing one where one already is trashes it.");
@@ -288,6 +294,13 @@ mod tests {
         assert_eq!(offered(&view), vec![ServerId::Hq, ServerId::RnD, ServerId::Archives, ServerId::Remote(0), ServerId::Remote(1)]);
         let placement = Placement::of(&view, &registry).unwrap();
         assert_eq!(placement.label(ServerId::Hq), "Install protecting HQ — costs 1 credit");
+        assert_eq!(placement.label(ServerId::Remote(0)), "Install protecting Remote 0");
+        // Network Exchange's 1 more outward of another, which the engine
+        // carries: not on a server with no ice.
+        let mut taxed = view.clone();
+        taxed.outer_ice_install_surcharge = 1;
+        let placement = Placement::of(&taxed, &registry).unwrap();
+        assert_eq!(placement.label(ServerId::Hq), "Install protecting HQ — costs 2 credits");
         assert_eq!(placement.label(ServerId::Remote(0)), "Install protecting Remote 0");
         assert_eq!(placement.label(ServerId::Remote(1)), "Install protecting a new remote server");
 

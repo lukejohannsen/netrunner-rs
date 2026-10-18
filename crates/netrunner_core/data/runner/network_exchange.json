@@ -1,0 +1,21 @@
+{
+  "id": "network_exchange",
+  "title": "Network Exchange",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 1
+        }
+      },
+      "applies_to": "IceNotInnermost",
+      "text": "The install cost of each piece of ice that is not installed in the innermost position is increased by 1."
+    }
+  ],
+  "built_from": 12007,
+  "is_playable": true
+}
