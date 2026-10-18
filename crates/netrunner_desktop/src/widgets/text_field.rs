@@ -56,17 +56,31 @@ impl TextField {
     }
 
     /// The line drawn in the field: what [`shown`](Self::shown) says, the
-    /// cursor, and a failed paste's reason after it.
+    /// cursor, and a failed paste's reason after it — **bounded**, so the
+    /// field never grows with what is in it. A secret is at most
+    /// [`MASK_DOTS`] dots and then its length in words (a row of fifty
+    /// dots says nothing a count does not, and pushed the field off the
+    /// window); a long plain value shows its end, where the cursor is.
     pub fn line(&self) -> String {
+        let count = self.text.chars().count();
+        let body = if self.masked {
+            let dots = "•".repeat(count.min(MASK_DOTS));
+            if count > MASK_DOTS { format!("{dots}|   {count} characters") } else { format!("{dots}|") }
+        } else if count > PLAIN_TAIL {
+            let tail: String = self.text.chars().skip(count - (PLAIN_TAIL - 1)).collect();
+            format!("…{tail}|")
+        } else {
+            format!("{}|", self.text)
+        };
         match &self.note {
-            Some(note) => format!("{}|   {note}", self.shown()),
-            None => format!("{}|", self.shown()),
+            Some(note) => format!("{body}   {note}"),
+            None => body,
         }
     }
 
     /// Pastes `text` as one line: its line breaks dropped, each line
     /// trimmed, control characters left out, cut at `max_len`.
-    fn paste(&mut self, text: &str) {
+    pub fn paste(&mut self, text: &str) {
         let line: String = text.lines().map(str::trim).collect();
         if line.is_empty() {
             self.note = Some("The clipboard holds no text to paste".to_string());
@@ -77,6 +91,13 @@ impl TextField {
         }
     }
 }
+
+/// The most dots a secret is drawn with ([`TextField::line`]).
+pub const MASK_DOTS: usize = 16;
+
+/// The most characters of a plain value drawn, its end kept
+/// ([`TextField::line`]).
+pub const PLAIN_TAIL: usize = 48;
 
 /// The clipboard's text, or why there is none to read. The clipboard is
 /// for what nobody types — a ticket pasted in and copied out on the Online
@@ -116,16 +137,28 @@ pub fn edit_text_fields(
     held: Option<Res<ButtonInput<KeyCode>>>,
     mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
 ) {
-    let command = held.is_some_and(|held| held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]));
+    let command = held.as_ref().is_some_and(|held| held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]));
+    let shift = held.as_ref().is_some_and(|held| held.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]));
     let escape_taken = captured.0;
     if !fields.is_empty() {
         captured.0 = true;
     }
-    let presses: Vec<Key> = keys.read().filter(|key| key.state == ButtonState::Pressed).map(|key| key.logical_key.clone()).collect();
+    let presses: Vec<(KeyCode, Key)> = keys.read().filter(|key| key.state == ButtonState::Pressed).map(|key| (key.key_code, key.logical_key.clone())).collect();
     for (entity, mut field, children) in &mut fields {
-        for key in &presses {
+        for (code, key) in &presses {
             if !matches!(key, Key::Control | Key::Super | Key::Shift | Key::Alt) {
                 field.note = None;
+            }
+            // Ctrl+V by the letter it types or by the key it is, so a
+            // layout that reports something else for V still pastes; and
+            // Shift+Insert, the other paste chord on Linux.
+            let paste = (command && (*code == KeyCode::KeyV || matches!(key, Key::Character(chars) if chars.eq_ignore_ascii_case("v")))) || (shift && *code == KeyCode::Insert);
+            if paste {
+                match read_clipboard(clipboard.as_deref_mut()) {
+                    Ok(text) => field.paste(&text),
+                    Err(reason) => field.note = Some(reason),
+                }
+                continue;
             }
             match key {
                 Key::Enter if escape_taken => {}
@@ -140,12 +173,6 @@ pub fn edit_text_fields(
                     field.text.pop();
                 }
                 Key::Space => push(&mut field, ' '),
-                Key::Character(chars) if command && chars.eq_ignore_ascii_case("v") => {
-                    match read_clipboard(clipboard.as_deref_mut()) {
-                        Ok(text) => field.paste(&text),
-                        Err(reason) => field.note = Some(reason),
-                    }
-                }
                 // Another shortcut, not text.
                 Key::Character(_) if command => {}
                 Key::Character(chars) => {
@@ -194,5 +221,15 @@ mod tests {
         field.note = None;
         field.paste("sk-ant");
         assert_eq!(field.line(), "••••••|", "the key never shows");
+    }
+
+    #[test]
+    fn a_long_value_is_drawn_bounded() {
+        let key = TextField::masked("x".repeat(53), 400);
+        assert_eq!(key.line(), format!("{}|   53 characters", "•".repeat(MASK_DOTS)));
+        let url = TextField::new(format!("https://{}", "a".repeat(60)), 300);
+        let line = url.line();
+        assert!(line.starts_with('…') && line.ends_with("aaa|"), "{line}");
+        assert_eq!(line.chars().count(), PLAIN_TAIL + 1, "the tail and the cursor");
     }
 }

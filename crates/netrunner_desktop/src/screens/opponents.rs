@@ -28,7 +28,7 @@ use crate::models::opponents::{self as model, Field, Intent, Opponents};
 use crate::nav::{back, screen_root, Navigate, Return};
 use crate::screens::AppScreen;
 use crate::theme::Theme;
-use crate::widgets::text_field::{TextField, TextFieldEvent};
+use crate::widgets::text_field::{read_clipboard, TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct OpponentsPlugin;
@@ -46,6 +46,10 @@ impl Plugin for OpponentsPlugin {
 pub enum Control {
     Intent(Intent),
     Back,
+    /// Pastes the clipboard into the open field: a way in that needs no
+    /// key chord, for a key that nobody types and a Ctrl+V that a
+    /// person's setup may not deliver.
+    Paste,
 }
 
 /// The form's state, for the screen's lifetime.
@@ -68,6 +72,17 @@ struct EditRequested(Option<Field>);
 
 #[derive(Component, Clone, Copy)]
 struct Editing(Field);
+
+/// The row a field's value is shown on, so the open field is drawn
+/// directly under it rather than at the foot of the form, which is below
+/// the window's edge.
+#[derive(Component, Clone, Copy, PartialEq)]
+struct RowOf(Field);
+
+/// The open field and its hint, together: the pill holds one line, the
+/// hint sits under it, and both go when the edit ends.
+#[derive(Component)]
+struct FieldBox;
 
 /// A probe's answer, in a line for the person.
 pub type Answer = Result<String, String>;
@@ -126,7 +141,7 @@ impl Probes {
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, mut notices: ResMut<Notices>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, mut notices: ResMut<Notices>, dev: Option<Res<crate::dev::Dev>>) {
     commands.init_resource::<Dirty>();
     commands.init_resource::<EditRequested>();
     let secrets = match core.load_secrets() {
@@ -136,7 +151,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, mut n
             Default::default()
         }
     };
-    let form = Opponents::new(core.settings.opponents.clone(), secrets);
+    let mut form = Opponents::new(core.settings.opponents.clone(), secrets);
+    if dev.as_ref().and_then(|dev| dev.opponent_key).is_some() {
+        form.apply(Intent::Add(Preset::Gemini));
+        commands.insert_resource(EditRequested(Some(Field::Key)));
+    }
     let list = commands.spawn((ProfileList, widgets::roomy_panel(&theme, px(320)))).id();
     let editor = commands.spawn((Editor, widgets::roomy_panel(&theme, px(640)))).id();
     let columns = commands
@@ -194,8 +213,8 @@ fn pills(parent: &mut ChildSpawnerCommands, theme: &Theme, choices: Vec<(String,
 }
 
 /// One labelled row: the label, the value, and the controls after it.
-fn row(parent: &mut ChildSpawnerCommands, theme: &Theme, label: &str, value: String, controls: impl FnOnce(&mut ChildSpawnerCommands)) {
-    let mut node = parent.spawn((widgets::row(12.0), children![
+fn row(parent: &mut ChildSpawnerCommands, theme: &Theme, label: &str, value: String, marker: impl Bundle, controls: impl FnOnce(&mut ChildSpawnerCommands)) {
+    let mut node = parent.spawn((widgets::row(12.0), marker, children![
         (widgets::label(theme, label.to_string()), Node { width: px(150), flex_shrink: 0.0, ..default() }),
         (widgets::label(theme, value), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
     ]));
@@ -218,7 +237,7 @@ fn spawn_editor(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Opponen
     parent.spawn(widgets::overline(theme, "Protocol"));
     pills(parent, theme, Protocol::ALL.into_iter().map(|p| (p.label().to_string(), profile.protocol == p, Intent::Protocol(p))).collect());
     for field in [Field::Name, Field::Url, Field::Model] {
-        row(parent, theme, field.label(), form.value(field), |controls| {
+        row(parent, theme, field.label(), form.value(field), RowOf(field), |controls| {
             controls.spawn(widgets::button(theme, "Edit", Val::Auto, Control::Intent(Intent::Edit(field))));
         });
     }
@@ -228,7 +247,7 @@ fn spawn_editor(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Opponen
     let key_value = form.value(Field::Key);
     let has_key = form.has_key(&profile.name);
     let wants_key = preset.is_none_or(Preset::needs_key);
-    row(parent, theme, Field::Key.label(), key_value, |controls| {
+    row(parent, theme, Field::Key.label(), key_value, RowOf(Field::Key), |controls| {
         controls.spawn(widgets::button(theme, if has_key { "Replace" } else { "Edit" }, Val::Auto, Control::Intent(Intent::Edit(Field::Key))));
         if has_key {
             controls.spawn(widgets::button(theme, "Clear", Val::Auto, Control::Intent(Intent::ClearKey)));
@@ -237,17 +256,17 @@ fn spawn_editor(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Opponen
     if !wants_key && !has_key {
         parent.spawn((widgets::dim(theme, "A local server takes no key; one behind a proxy may."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
-    row(parent, theme, "Timeout", form.timeout_label(), |controls| {
+    row(parent, theme, "Timeout", form.timeout_label(), (), |controls| {
         controls.spawn(widgets::round_button(theme, "<", Control::Intent(Intent::StepTimeout(-1))));
         controls.spawn(widgets::round_button(theme, ">", Control::Intent(Intent::StepTimeout(1))));
     });
     parent.spawn(widgets::overline(theme, "Asked about"));
     pills(parent, theme, Asks::ALL.into_iter().map(|a| (a.label().to_string(), profile.asks == a, Intent::Asks(a))).collect());
     parent.spawn((widgets::dim(theme, profile.asks.note()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    row(parent, theme, "Explains its moves", if profile.explain { "on".to_string() } else { "off".to_string() }, |controls| {
+    row(parent, theme, "Explains its moves", if profile.explain { "on".to_string() } else { "off".to_string() }, (), |controls| {
         controls.spawn(widgets::button(theme, "Toggle", Val::Auto, (Control::Intent(Intent::ToggleExplain), ButtonSound(Sfx::Toggle))));
     });
-    row(parent, theme, "Budget per game", form.budget_label(), |controls| {
+    row(parent, theme, "Budget per game", form.budget_label(), (), |controls| {
         controls.spawn(widgets::round_button(theme, "<", Control::Intent(Intent::StepBudget(-1))));
         controls.spawn(widgets::round_button(theme, ">", Control::Intent(Intent::StepBudget(1))));
     });
@@ -282,9 +301,20 @@ fn controls(
     mut notices: ResMut<Notices>,
     detour: Res<Return>,
     mut navigate: MessageWriter<Navigate>,
+    mut fields: Query<&mut TextField>,
+    mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
 ) {
     for Pressed(entity) in pressed.read() {
         match marks.get(*entity) {
+            Ok(Control::Paste) => {
+                let read = read_clipboard(clipboard.as_deref_mut());
+                for mut field in &mut fields {
+                    match &read {
+                        Ok(text) => field.paste(text),
+                        Err(reason) => field.note = Some(reason.clone()),
+                    }
+                }
+            }
             Ok(Control::Back) => {
                 navigate.write(Navigate(back(AppScreen::Opponents, &detour).unwrap_or(AppScreen::Settings)));
             }
@@ -324,30 +354,55 @@ fn settle(outcome: &model::Outcome, form: &mut Opponents, core: &mut ClientCore,
 }
 
 /// Spawns the field for the value Edit was pressed on, under the editor.
-fn open_field(mut commands: Commands, mut edit: ResMut<EditRequested>, fields: Query<Entity, With<TextField>>, editor: Query<Entity, With<Editor>>, theme: Res<Theme>, form: Res<Model>) {
+fn open_field(
+    mut commands: Commands,
+    mut edit: ResMut<EditRequested>,
+    fields: Query<Entity, With<TextField>>,
+    editor: Query<(Entity, &Children), With<Editor>>,
+    rows: Query<&RowOf>,
+    theme: Res<Theme>,
+    form: Res<Model>,
+    dev: Option<Res<crate::dev::Dev>>,
+) {
     let Some(field) = edit.0.take() else { return };
     if !fields.is_empty() {
         return;
     }
-    let Ok(editor) = editor.single() else { return };
-    let current = form.0.editable(field);
-    let (text_field, hint) = match field {
-        Field::Key => (TextField::masked(current.clone(), field.max_len()), "  Type or paste the key. It is kept in secrets.toml, readable by you alone, and never shown again. Enter saves, Escape cancels"),
-        Field::Url => (TextField::new(current.clone(), field.max_len()), "  The server's base URL, http:// or https://, without the path. Enter saves, Escape cancels"),
-        Field::Model => (TextField::new(current.clone(), field.max_len()), "  The model's id as the provider names it. Enter saves, Escape cancels"),
-        Field::Name => (TextField::new(current.clone(), field.max_len()), "  Enter saves, Escape cancels"),
+    let Ok((editor, children)) = editor.single() else { return };
+    let current = match dev.as_ref().and_then(|dev| dev.opponent_key) {
+        Some(n) if field == Field::Key => "x".repeat(n),
+        _ => form.0.editable(field),
     };
-    let shown = text_field.shown();
-    commands.entity(editor).with_children(|parent| {
-        parent.spawn((
-            text_field,
-            Editing(field),
-            widgets::field_node(Val::Auto),
-            BackgroundColor(theme.glass_strong),
-            BorderColor::all(theme.accent),
-            children![widgets::label(&theme, format!("{shown}|")), (widgets::dim(&theme, hint), TextLayout::new(Justify::Left, LineBreak::WordBoundary))],
-        ));
-    });
+    let (text_field, hint) = match field {
+        Field::Key => (TextField::masked(current.clone(), field.max_len()), "Type or paste the key. It is kept in secrets.toml, readable by you alone, and never shown again. Enter saves, Escape cancels"),
+        Field::Url => (TextField::new(current.clone(), field.max_len()), "The server's base URL, http:// or https://, without the path. Enter saves, Escape cancels"),
+        Field::Model => (TextField::new(current.clone(), field.max_len()), "The model's id as the provider names it. Enter saves, Escape cancels"),
+        Field::Name => (TextField::new(current.clone(), field.max_len()), "Enter saves, Escape cancels"),
+    };
+    let line = text_field.line();
+    let field_box = commands
+        .spawn((
+            FieldBox,
+            Node { width: percent(100), flex_direction: FlexDirection::Column, row_gap: px(6), ..default() },
+            children![
+                (
+                    text_field,
+                    Editing(field),
+                    widgets::field_node(percent(100)),
+                    BackgroundColor(theme.glass_strong),
+                    BorderColor::all(theme.accent),
+                    children![
+                        (widgets::label(&theme, line), Node { flex_grow: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::NoWrap)),
+                        widgets::button(&theme, "Paste", Val::Auto, Control::Paste),
+                    ],
+                ),
+                (widgets::dim(&theme, hint), TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
+            ],
+        ))
+        .id();
+    // Directly under the row it edits; at the foot when there is no row.
+    let at = children.iter().position(|child| rows.get(child).is_ok_and(|row| *row == RowOf(field))).map_or(children.len(), |index| index + 1);
+    commands.entity(editor).insert_children(at, &[field_box]);
 }
 
 fn field_edits(
@@ -359,6 +414,8 @@ fn field_edits(
     runtime: Option<Res<TokioRuntime>>,
     mut dirty: ResMut<Dirty>,
     mut notices: ResMut<Notices>,
+    parents: Query<&ChildOf>,
+    boxes: Query<(), With<FieldBox>>,
 ) {
     for (entity, event, Editing(field)) in &fields {
         let intent = match event {
@@ -367,7 +424,11 @@ fn field_edits(
         };
         let outcome = form.0.apply(intent);
         settle(&outcome, &mut form.0, &mut core, &mut probes, runtime.as_deref(), &mut notices);
-        commands.entity(entity).despawn();
+        // The pill's box, hint and all.
+        match parents.get(entity).ok().filter(|parent| boxes.contains(parent.parent())) {
+            Some(parent) => commands.entity(parent.parent()).despawn(),
+            None => commands.entity(entity).despawn(),
+        }
         dirty.0 = true;
     }
 }

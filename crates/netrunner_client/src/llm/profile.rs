@@ -182,12 +182,14 @@ impl Preset {
 
     /// The profile the preset fills in under `name`. The model ids are
     /// the providers' current ones at the time of writing (1 October
-    /// 2026); the person types another in the model field.
+    /// 2026; Gemini's 18 October 2026, when Google had retired
+    /// `gemini-2.5-flash` for new keys and every Test from one failed);
+    /// the person types another in the model field.
     pub fn profile(self, name: &str) -> LlmProfile {
         let (url, model, effort) = match self {
             Preset::Anthropic => ("https://api.anthropic.com", "claude-opus-5-5", Some("low")),
             Preset::OpenAi => ("https://api.openai.com/v1", "gpt-5", Some("low")),
-            Preset::Gemini => ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash", None),
+            Preset::Gemini => ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash", None),
             Preset::Ollama => ("http://localhost:11434", "llama3.1", None),
             Preset::Custom => ("", "", None),
         };

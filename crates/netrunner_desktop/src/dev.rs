@@ -85,6 +85,9 @@
 //! - `NETRUNNER_FETCH=<text>` — with `NETRUNNER_SCREEN=decks`, the Import
 //!   from NetrunnerDB… pop-up is opened with `text` in its field, so the
 //!   pop-up can be looked at; nothing is fetched.
+//! - `NETRUNNER_OPPONENT_KEY=<n>` — with `NETRUNNER_SCREEN=opponents`, a
+//!   Gemini profile is added and its Key field opened holding `n`
+//!   placeholder characters, so a long key in the field can be looked at.
 //! - `NETRUNNER_SEARCH=<name>` — with `NETRUNNER_SCREEN=decks`, the Search
 //!   NetrunnerDB… pop-up is opened with `name` in its field and the
 //!   search is sent, and the screenshot waits for the answer, so the
@@ -314,6 +317,9 @@ pub struct Dev {
     pub fetch: Option<String>,
     /// `NETRUNNER_SEARCH`: the name to search NetrunnerDB for.
     pub search: Option<String>,
+    /// `NETRUNNER_OPPONENT_KEY`: open a Gemini profile's Key field with
+    /// this many placeholder characters in it.
+    pub opponent_key: Option<usize>,
     /// Whether the search has been answered, which the screenshot waits
     /// for.
     pub searched: bool,
@@ -411,6 +417,7 @@ impl Dev {
             deck_picker: std::env::var_os("NETRUNNER_DECK_PICKER").is_some_and(|v| !v.is_empty()),
             fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
             search: std::env::var("NETRUNNER_SEARCH").ok().filter(|text| !text.trim().is_empty()),
+            opponent_key: std::env::var("NETRUNNER_OPPONENT_KEY").ok().and_then(|n| n.trim().parse().ok()),
             searched: false,
             held: false,
             online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
