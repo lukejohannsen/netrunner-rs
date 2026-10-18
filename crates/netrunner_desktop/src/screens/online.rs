@@ -92,7 +92,7 @@ use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::screens::deck_picker::{DeckPicked, OpenDeckPicker, Purpose};
-use crate::widgets::text_field::{TextField, TextFieldEvent};
+use crate::widgets::text_field::{read_clipboard, TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct OnlinePlugin;
@@ -665,19 +665,6 @@ fn controls(
         let outcome = model.0.apply(intent);
         dirty.0 = true;
         carry_out(outcome, &mut model.0, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
-    }
-}
-
-/// The clipboard's text, or why there is none to read. The clipboard is
-/// for what nobody types — a ticket pasted in and copied out here, a
-/// NetrunnerDB link pasted on the Decks screen — and a deck is a file
-/// (`files`); that is what the `system_clipboard` feature is kept for.
-pub(crate) fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Result<String, String> {
-    let Some(clipboard) = clipboard else { return Err("There is no clipboard to read here".to_string()) };
-    match clipboard.fetch_text() {
-        bevy::clipboard::ClipboardRead::Ready(Ok(text)) => Ok(text),
-        bevy::clipboard::ClipboardRead::Ready(Err(error)) => Err(format!("The clipboard could not be read: {error}")),
-        _ => Err("The clipboard is not ready; try again".to_string()),
     }
 }
 
