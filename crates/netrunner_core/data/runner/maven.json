@@ -1,0 +1,45 @@
+{
+  "id": "maven",
+  "title": "Maven",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 0,
+  "memory_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": {
+            "RunnerInstalls": {
+              "CardType": "Program"
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each installed program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 subroutine.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "triggers": [],
+  "built_from": 12087,
+  "is_playable": true
+}

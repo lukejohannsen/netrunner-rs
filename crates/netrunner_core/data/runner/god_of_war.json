@@ -1,0 +1,66 @@
+{
+  "id": "god_of_war",
+  "title": "God of War",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": {
+              "AddCounters": 2
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may take 1 tag to place 2 virus counters on this program"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may take 1 tag to place 2 virus counters on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Hosted virus counter: Break 1 subroutine.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 12082,
+  "is_playable": true
+}

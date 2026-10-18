@@ -1,0 +1,49 @@
+{
+  "id": "berserker",
+  "title": "Berserker",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "IceOfType": "Barrier"
+        }
+      },
+      "effects": [
+        {
+          "BoostStrengthAmount": {
+            "amount": "EncounteredIceSubroutines",
+            "duration": "Encounter"
+          }
+        }
+      ],
+      "text": "Whenever you encounter a barrier, for the remainder of that encounter this program gets +1 strength for each subroutine on that barrier."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 barrier subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 12041,
+  "is_playable": true
+}

@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
+            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -38576,5 +38576,127 @@ mod red_sand_stage_6 {
         let (spent, _) = close_all_windows(spent, &registry);
         assert!(spent.runner.rig.is_empty(), "trash Dadiana Chacon");
         assert_eq!(spent.runner.grip.len(), 5 - 3, "and take 3 meat damage");
+    }
+}
+
+mod red_sand_stage_7 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    /// Installed with its printed strength, as an install seeds it.
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        let base_strength = registry().get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), base_strength, ..Default::default() }
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, install: u32) -> i32 {
+        let card = state.runner.rig.iter().find(|card| card.install_id == InstallId(install)).expect("installed");
+        crate::rules::continuous::breaker_strength(state, registry, card)
+    }
+
+    /// A run on HQ up to the encounter with its outermost ice, the Runner
+    /// with priority.
+    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, install: u32, ability_index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index }).map(|(state, _)| state)
+    }
+
+    #[test]
+    fn maven_is_as_strong_as_the_programs_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("maven", 10)];
+        assert_eq!(strength(&state, &registry, 10), 1, "itself");
+        state.runner.rig.push(rig("corroder", 11));
+        state.runner.rig.push(rig("daily_casts", 12));
+        assert_eq!(strength(&state, &registry, 10), 2, "a resource is not a program");
+    }
+
+    #[test]
+    fn nanotk_counts_the_ice_protecting_the_attacked_server_during_runs() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("nanotk", 20)];
+        state.corp.installed = vec![ice("ice_wall", 21, ServerId::Hq), ice("ice_wall", 22, ServerId::Hq), ice("ice_wall", 23, ServerId::RnD)];
+        assert_eq!(strength(&state, &registry, 20), 1, "not during a run");
+        let running = encounter(&state, &registry);
+        assert_eq!(strength(&running, &registry, 20), 3, "+1 for each piece of ice protecting HQ");
+        let pumped = use_ability(&running, &registry, 20, 1).expect("3[credit]: +2 strength");
+        assert_eq!(strength(&pumped, &registry, 20), 5);
+    }
+
+    #[test]
+    fn berserker_grows_by_the_subroutines_on_a_barrier_and_breaks_two_at_a_time() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("berserker", 30)];
+        state.corp.installed = vec![ice("ice_wall", 31, ServerId::Hq)];
+        let at_wall = encounter(&state, &registry);
+        assert_eq!(strength(&at_wall, &registry, 30), 2 + 1, "Ice Wall has one subroutine");
+        let broke = use_ability(&at_wall, &registry, 30, 0);
+        assert!(broke.is_ok(), "{broke:?}");
+        let mut sentry = state.clone();
+        sentry.corp.installed = vec![ice("rototurret", 32, ServerId::Hq)];
+        let at_sentry = encounter(&sentry, &registry);
+        assert_eq!(strength(&at_sentry, &registry, 30), 2, "only a barrier");
+    }
+
+    #[test]
+    fn flashbang_derezzes_the_sentry_it_is_encountering_for_six() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("flashbang", 40)];
+        state.corp.installed = vec![ice("rototurret", 41, ServerId::Hq)];
+        let at_sentry = encounter(&state, &registry);
+        let derezzed = use_ability(&at_sentry, &registry, 40, 0).expect("6[credit]: derez");
+        assert!(!derezzed.corp.installed[0].rezzed);
+        assert_eq!(derezzed.runner.resources.credits, Credits(20 - 6));
+        let mut wall = state.clone();
+        wall.corp.installed = vec![ice("ice_wall", 42, ServerId::Hq)];
+        assert!(use_ability(&encounter(&wall, &registry), &registry, 40, 0).is_err(), "only a sentry");
+    }
+
+    #[test]
+    fn god_of_war_takes_a_tag_for_two_counters_and_breaks_with_them() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("god_of_war", 50)];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.pending_paid_choice.is_some());
+        let (took, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take a tag");
+        let took = close_all_windows(took, &registry).0;
+        assert_eq!((took.runner.tags, took.runner.rig[0].counters), (1, 2));
+        let mut took = took;
+        took.corp.installed = vec![ice("enigma", 51, ServerId::Hq)];
+        took.phase = GamePhase::Action(Side::Runner);
+        let at_gate = encounter(&took, &registry);
+        let once = use_ability(&at_gate, &registry, 50, 1).expect("2[credit]: +1 strength");
+        let (once, _) = apply_action(&once, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes");
+        let pumped = use_ability(&once, &registry, 50, 1).expect("and again");
+        let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes");
+        let broke = use_ability(&pumped, &registry, 50, 0).expect("a hosted virus counter: break 1 subroutine");
+        assert_eq!(broke.runner.rig[0].counters, 1);
     }
 }

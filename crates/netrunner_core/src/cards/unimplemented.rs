@@ -140,7 +140,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("berserker", "Berserker"),
     ("persephone", "Persephone"),
     ("rubicon_switch", "Rubicon Switch"),
     ("aeneas_informant", "Aeneas Informant"),
@@ -169,13 +168,9 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("god_of_war", "God of War"),
     ("leave_no_trace", "Leave No Trace"),
     ("rip_deal", "Rip Deal"),
-    ("flashbang", "Flashbang"),
     ("lean_and_mean", "Lean and Mean"),
-    ("maven", "Maven"),
-    ("nanotk", "Na'Not'K"),
     ("helheim_servers", "Helheim Servers"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
