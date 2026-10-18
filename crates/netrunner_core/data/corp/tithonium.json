@@ -1,0 +1,87 @@
+{
+  "id": "tithonium",
+  "title": "Tithonium",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 9,
+  "strength": 5,
+  "triggers": [],
+  "rez_alternatives": [
+    {
+      "cost": {
+        "Forfeit": 1
+      },
+      "discount": 9
+    },
+    {}
+  ],
+  "continuous": [
+    {
+      "kind": "CannotHost",
+      "applies_to": "This",
+      "text": "Tithonium cannot host cards."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 resource and end the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Resource"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          },
+          "EndTheRun"
+        ]
+      }
+    }
+  ],
+  "built_from": 12098,
+  "is_playable": true
+}

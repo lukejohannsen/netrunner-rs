@@ -1053,6 +1053,10 @@ pub(crate) fn creates_server(state: &GameState, zone: TargetZone) -> bool {
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
 pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegistry, card_def: &crate::dsl::CardDefinition, ignore_costs: bool, discount: u32) -> Vec<ServerId> {
+    // Signal Jamming's "cards cannot be installed": nowhere to offer.
+    if continuous::cannot(state, registry, Prohibition::CorpInstall) {
+        return Vec::new();
+    }
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
     if super::legal_actions::may_add_remote(state, registry) {
@@ -1898,6 +1902,12 @@ fn install_into_rig(
     // paid before it changes what it asks, and a refusal unwinds the action.
     if !install_requirement_met(state, registry, card_id) {
         return Err(RulesError::InstallRequirementUnmet { card: card_id.clone() });
+    }
+    // Tithonium's "cannot host cards".
+    if let Some(host) = host
+        && continuous::cannot_host(state, registry, host)
+    {
+        return Err(RulesError::HostCannotHost(host));
     }
     let mut rig_card = seed_rig_card(state, registry, card_id.clone())?;
     rig_card.hosted_on_ice = host;

@@ -379,6 +379,15 @@ pub enum ContinuousKind {
     /// work: a `Strength` of the opposite sign would be a raise, not a
     /// floor, and the strength still moves up.
     StrengthCannotBeLowered,
+    /// This piece of ice cannot host cards — Tithonium's "Tithonium cannot
+    /// host cards". About `This`, and so only while it is rezzed (CR
+    /// 3.2.3a): an unrezzed Tithonium hosts as any ice does. Asked by
+    /// `continuous::cannot_host` where a card is put onto ice — a Trojan's
+    /// install (`engine::install_into_rig`), a rig card moved onto it
+    /// (`Effect::HostRigCardOnInstall`) and a condition hosted on it
+    /// (`Effect::HostThisAsCondition`). Composition didn't work: `MayHost`
+    /// grants what a card could not otherwise host, and ice hosts anything.
+    CannotHost,
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card

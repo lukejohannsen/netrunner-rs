@@ -1,0 +1,40 @@
+{
+  "id": "clan_vengeance",
+  "title": "Clan Vengeance",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnDamageSuffered",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you suffer any amount of damage, place 1 power counter on Clan Vengeance."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Repeat": {
+          "times": "HostedCounters",
+          "effect": {
+            "TrashCard": {
+              "RandomFromHand": "Corp"
+            }
+          }
+        }
+      },
+      "text": "[trash]: Trash 1 card from HQ at random for each power counter on Clan Vengeance."
+    }
+  ],
+  "built_from": 12022,
+  "is_playable": true
+}

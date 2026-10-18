@@ -91,6 +91,11 @@ pub enum RulesError {
     #[error("card {0:?} is not an installed piece of ICE and cannot host a Trojan Program")]
     HostIsNotIce(CardId),
 
+    /// The piece of ice says it cannot host cards (`ContinuousKind::
+    /// CannotHost`, Tithonium).
+    #[error("install {0:?} cannot host cards")]
+    HostCannotHost(InstallId),
+
     #[error("install {0:?} is not rezzed, and this Trojan installs only on a rezzed piece of ice")]
     HostIsNotRezzed(InstallId),
 

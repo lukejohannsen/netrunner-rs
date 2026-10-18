@@ -3156,6 +3156,14 @@ pub enum Prohibition {
     /// ask, so the basic actions, a card's text and the action list refuse
     /// alike; and by a selection that would install facedown (Reboot).
     Install,
+    /// The Corp cannot install cards — Signal Jamming's "Cards cannot be
+    /// installed until the end of the run", which is this and `Install`
+    /// made together. Asked by `engine::corp_install_destinations`, which
+    /// every install a card's text offers asks, so no server is offered;
+    /// the Corp's install action is never taken during a run. A
+    /// prohibition of its own because each binds one player
+    /// (`Prohibition::binds`).
+    CorpInstall,
 }
 
 impl Prohibition {
@@ -3188,7 +3196,7 @@ impl Prohibition {
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install => Side::Runner,
         }
     }
@@ -3200,7 +3208,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install | Prohibition::CorpInstall => None,
         }
     }
 }

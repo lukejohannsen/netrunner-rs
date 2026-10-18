@@ -38807,3 +38807,102 @@ mod red_sand_stage_8 {
         assert_eq!(done.corp.resources.credits, Credits(10), "4[credit] off each: Ice Wall's 1 and Enigma's 3 cost nothing");
     }
 }
+
+mod red_sand_stage_9 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    #[test]
+    fn tithonium_cannot_host_a_trojan_while_rezzed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("botulus")];
+        state.corp.installed = vec![installed("tithonium", 10, ServerId::Hq, InstallSlot::Ice, true), installed("ice_wall", 11, ServerId::RnD, InstallSlot::Ice, true)];
+        let onto = |host: u32| PlayerAction::InstallProgramOnIce { card_id: id("botulus"), host: InstallId(host), trash_first: false };
+        assert!(matches!(apply_action(&state, &registry, onto(10)), Err(RulesError::HostCannotHost(InstallId(10)))), "Tithonium cannot host cards");
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&onto(10)));
+        assert!(apply_action(&state, &registry, onto(11)).is_ok(), "other ice hosts it");
+    }
+
+    #[test]
+    fn tithonium_may_be_rezzed_by_forfeiting_an_agenda_instead_of_its_cost() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(0);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("offworld_office"))];
+        state.corp.installed = vec![installed("tithonium", 10, ServerId::Hq, InstallSlot::Ice, false)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(10) }).expect("forfeit to rez");
+        let rezzed = match &rezzed.pending_payment {
+            Some(_) => apply_action(&rezzed, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the agenda").0,
+            None => rezzed,
+        };
+        assert!(rezzed.corp.installed[0].rezzed);
+        assert!(rezzed.corp.scored_agendas.is_empty() && rezzed.corp.resources.credits == Credits(0));
+    }
+
+    #[test]
+    fn signal_jamming_stops_both_players_installing_until_the_run_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![installed("signal_jamming", 10, ServerId::Remote(0), InstallSlot::Root, true)];
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).is_err(), "only during a run on this server");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (running, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes");
+        let (jammed, _) = apply_action(&running, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("[trash]");
+        assert!(jammed.corp.installed.is_empty(), "trashed to pay");
+        assert!(crate::rules::continuous::cannot(&jammed, &registry, crate::dsl::Prohibition::Install));
+        assert!(crate::rules::continuous::cannot(&jammed, &registry, crate::dsl::Prohibition::CorpInstall));
+        let mut ended = jammed;
+        ended.active_run = None;
+        assert!(!crate::rules::continuous::cannot(&ended, &registry, crate::dsl::Prohibition::Install), "until the end of the run");
+    }
+
+    #[test]
+    fn clan_vengeance_counts_damage_and_trashes_that_many_cards_from_hq() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund"); 4];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("clan_vengeance"), install_id: InstallId(50), ..Default::default() }];
+        state.runner.grip.push(id("ghosttongue"));
+        state.runner.resources.credits = Credits(5);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("ghosttongue"), host: None }).expect("suffer 1 core damage");
+        assert_eq!(state.runner.rig[0].counters, 1, "a power counter for the damage");
+        let mut state = state;
+        state.runner.rig[0].counters = 3;
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(50), ability_index: 0 }).expect("[trash]");
+        assert!(!done.runner.rig.iter().any(|card| card.card == id("clan_vengeance")));
+        assert_eq!(done.corp.hq.len(), 1, "1 card for each of 3 power counters");
+    }
+
+    #[test]
+    fn net_analytics_may_draw_when_the_runner_removes_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.tags = 1;
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![installed("net_analytics", 10, ServerId::Remote(0), InstallSlot::Root, true)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::RemoveTag).expect("remove a tag");
+        assert_eq!(asked.runner.tags, 0);
+        let hq = asked.corp.hq.len();
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw");
+        assert_eq!(done.corp.hq.len(), hq + 1, "you may draw 1 card");
+    }
+}
