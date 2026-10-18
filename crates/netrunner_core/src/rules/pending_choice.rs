@@ -2017,7 +2017,7 @@ fn install_parked(
     // What of a "total" discount the install takes (CR 1.16.2f), read
     // before the card lands and changes the count.
     let install_takes = match (pending_install.pay_cost, slot) {
-        (true, InstallSlot::Ice) => crate::rules::engine::ice_protecting(state, server).min(pending_install.discount),
+        (true, InstallSlot::Ice) => crate::rules::continuous::ice_install_cost(state, registry, server).min(pending_install.discount),
         _ => 0,
     };
     let mut events = Vec::new();

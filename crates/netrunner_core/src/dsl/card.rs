@@ -2025,9 +2025,10 @@ impl CardDefinition {
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
                     return misfit("InstallingOntoThis", "only a Runner's installed card has cards installed onto it");
                 }
-                (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_) | Scope::OpponentInstalling(_)) => {}
+                (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_) | Scope::OpponentInstalling(_) | Scope::IceNotInnermost) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
                 (_, Scope::OpponentInstalling(_)) => return misfit("OpponentInstalling", "only an install cost is asked of a card the other player is installing"),
+                (_, Scope::IceNotInnermost) => return misfit("IceNotInnermost", "only an install cost is asked of a piece of ice being installed"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice(_) | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_) | Scope::Accessing(_)) => {}

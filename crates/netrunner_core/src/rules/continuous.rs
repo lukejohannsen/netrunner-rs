@@ -39,6 +39,11 @@ pub(crate) enum Target<'a> {
     /// `Target::Card` is asked too, and also what a host's
     /// `Scope::InstallingOntoThis` reaches.
     InstallingOnto { card: &'a CardDefinition, host: InstallId },
+    /// A piece of ice the Corp is installing, `innermost` when nothing
+    /// protects the server yet — the destination a price of ice is about
+    /// (Network Exchange, `Scope::IceNotInnermost`). No card: no card in
+    /// the pool prices ice by what it is, and its own text is not asked.
+    InstallingIce { innermost: bool },
     /// A card in the rig.
     Rig { card: &'a CardDefinition, install: InstallId },
     /// A Corp install, in the root of `server` or protecting it.
@@ -68,7 +73,7 @@ pub(crate) enum Target<'a> {
 impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
-            Target::Player(_) | Target::Run { .. } | Target::Bound(_) => None,
+            Target::Player(_) | Target::Run { .. } | Target::Bound(_) | Target::InstallingIce { .. } => None,
             Target::Card(card)
             | Target::InstallingOnto { card, .. }
             | Target::Rig { card, .. }
@@ -83,7 +88,7 @@ impl<'a> Target<'a> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } | Target::Trashing { install, .. } => Some(*install),
             Target::Scored { install, .. } => *install,
-            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Run { .. } | Target::Bound(_) => None,
+            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::InstallingIce { .. } | Target::Run { .. } | Target::Bound(_) => None,
         }
     }
 
@@ -251,6 +256,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::OpponentInstalling(filter), Target::Card(card) | Target::InstallingOnto { card, .. }) => {
             card.side != source.side && card_matches_filter(card, filter)
         }
+        (Scope::IceNotInnermost, Target::InstallingIce { innermost, .. }) => !innermost,
         (Scope::InstallingOntoThis(filter), Target::InstallingOnto { card, host }) => {
             source.install == Some(*host) && card.side == source.side && card_matches_filter(card, filter)
         }
@@ -770,6 +776,25 @@ pub(crate) fn install_cost_onto(state: &GameState, registry: &CardRegistry, card
         None => Target::Card(card),
     };
     (card.cost as i32 + sum(state, registry, target, install_cost)).max(0) as u32
+}
+
+/// What the Corp pays to install a piece of ice protecting
+/// `server`: 1[credit] for each piece already protecting it (CR 8.5.16d's
+/// install cost of ice), and what the table adds to an install outward of
+/// another (Network Exchange). The one question, for the install, the
+/// servers offered and a parked install's discount. Before the discount:
+/// a "total" discount is taken off this (CR 1.16.2f).
+pub(crate) fn ice_install_cost(state: &GameState, registry: &CardRegistry, server: ServerId) -> u32 {
+    let protecting = crate::rules::engine::ice_protecting(state, server);
+    (protecting as i32 + sum(state, registry, Target::InstallingIce { innermost: protecting == 0 }, install_cost)).max(0) as u32
+}
+
+/// What the table adds to installing a piece of ice outward of another —
+/// the part of `ice_install_cost` a client cannot count from the board,
+/// carried in the view (`ClientView::outer_ice_install_surcharge`) so the
+/// placement prompt names the price the install will take.
+pub fn outer_ice_install_surcharge(state: &GameState, registry: &CardRegistry) -> u32 {
+    sum(state, registry, Target::InstallingIce { innermost: false }, install_cost).max(0) as u32
 }
 
 /// Whether `card` may be installed onto the rig card `host` — a host that

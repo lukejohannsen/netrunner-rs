@@ -111,7 +111,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
 pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maw", "Maw"),
-    ("network_exchange", "Network Exchange"),
     ("zed_2_0", "Zed 2.0"),
     ("sync_bre", "SYNC BRE"),
     ("oberth_protocol", "Oberth Protocol"),
@@ -123,7 +122,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
-    ("bloom", "Bloom"),
     ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
 ];

@@ -967,7 +967,7 @@ pub(crate) fn place_corp_card(
     // double and the escalating ICE tax did not exist (ROADMAP Rules
     // Audit T3).
     let install_cost = match (pay_cost, slot) {
-        (true, InstallSlot::Ice) => ice_protecting(next, zone).saturating_sub(discount),
+        (true, InstallSlot::Ice) => continuous::ice_install_cost(next, registry, zone).saturating_sub(discount),
         _ => 0,
     };
     if install_cost > 0 {
@@ -1078,7 +1078,7 @@ pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegist
             // was Mercia B4LL4RD's 1[credit], and a server that discount
             // made affordable was not offered.
             if !ignore_costs {
-                zones.retain(|zone| ice_protecting(state, *zone).saturating_sub(discount) <= state.corp.resources.credits.0);
+                zones.retain(|zone| continuous::ice_install_cost(state, registry, *zone).saturating_sub(discount) <= state.corp.resources.credits.0);
             }
             zones
         }

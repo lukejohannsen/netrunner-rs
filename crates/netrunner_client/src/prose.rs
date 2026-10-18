@@ -952,6 +952,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::OpponentInstalling(filter) => format!("a card the other player installs ({})", lower(format!("{filter:?}"))),
+        Scope::IceNotInnermost => "each piece of ice not installed in the innermost position".to_string(),
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice(CardFilter::Any) => "each piece of ice".to_string(),
         Scope::Ice(filter) => format!("each piece of ice ({})", lower(format!("{filter:?}"))),

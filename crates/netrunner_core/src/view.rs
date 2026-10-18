@@ -280,6 +280,15 @@ pub struct ClientView {
     /// which face is up. Only servers that cost something are listed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub run_costs: Vec<(crate::rules::ServerId, crate::dsl::Cost)>,
+    /// What the table adds to the Corp's install of a piece of ice outward
+    /// of another, beyond the 1[c] for each piece already there — Network
+    /// Exchange's "the install cost of each piece of ice that is not
+    /// installed in the innermost position is increased by 1"
+    /// (`continuous::outer_ice_install_surcharge`). The engine's answer, as
+    /// `run_costs` is, so the placement prompt names the price the install
+    /// will take; the card is a faceup Runner install both players see.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub outer_ice_install_surcharge: u32,
     /// `PublicGameState::revealed` verbatim — the cards revealed in a hand
     /// that an ability still resolving has not moved yet (Burner's).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -521,6 +530,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
             })
             .collect(),
         run_costs: run_costs(state, registry),
+        outer_ice_install_surcharge: crate::rules::continuous::outer_ice_install_surcharge(state, registry),
         revealed: public.revealed,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
@@ -548,6 +558,10 @@ fn run_costs(state: &GameState, registry: &CardRegistry) -> Vec<(crate::rules::S
             }
         })
         .collect()
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 #[cfg(test)]
