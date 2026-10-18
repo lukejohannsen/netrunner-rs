@@ -1787,6 +1787,9 @@ pub fn evaluate_effect(
         // piece of ice protecting the attacked server", a trojan moved from
         // the ice it was on.
         Effect::HostRigCardOnInstall { card, host } if state.corp.installed.iter().any(|c| c.install_id == *host && c.slot == crate::rules::state::InstallSlot::Ice) => {
+            if crate::rules::continuous::cannot_host(state, registry, *host) {
+                return Err(RulesError::HostCannotHost(*host));
+            }
             let host_card = state.corp.installed.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).expect("checked above");
             let hosted = state.runner.rig.iter_mut().find(|c| c.install_id == *card).ok_or(RulesError::InstallNotFound(*card))?;
             hosted.hosted_on_ice = Some(*host);
@@ -1822,6 +1825,12 @@ pub fn evaluate_effect(
             };
             let position = state.corp.play_area.iter().position(|played| played.handle == *condition).ok_or(RulesError::InstallNotFound(*condition))?;
             let played = state.corp.play_area.remove(position);
+            // A host that cannot host cards (Tithonium): the condition has
+            // nowhere to be, and is trashed as it finishes resolving.
+            if crate::rules::continuous::cannot_host(state, registry, *host) {
+                crate::rules::turn_log::file_in_archives(state, crate::rules::state::ArchivedCard::faceup(played.card));
+                return Ok(Vec::new());
+            }
             state.corp.conditions.push(crate::rules::state::HostedCondition { card: played.card.clone(), handle: played.handle, host: *host });
             Ok(vec![GameEvent::CardHosted { card: played.card, host: Some(host_card) }])
         }

@@ -1,0 +1,67 @@
+{
+  "id": "net_analytics",
+  "title": "Net Analytics",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTagRemoved",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner avoids or removes 1 or more tags, you may draw 1 card."
+    },
+    {
+      "trigger": "OnTagsAvoided",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner avoids or removes 1 or more tags, you may draw 1 card."
+    }
+  ],
+  "built_from": 12014,
+  "is_playable": true
+}

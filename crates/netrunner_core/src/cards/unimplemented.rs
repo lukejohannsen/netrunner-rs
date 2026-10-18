@@ -116,17 +116,14 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bio_modeled_network", "Bio-Modeled Network"),
     ("network_exchange", "Network Exchange"),
     ("zed_2_0", "Zed 2.0"),
-    ("net_analytics", "Net Analytics"),
     ("sync_bre", "SYNC BRE"),
     ("oberth_protocol", "Oberth Protocol"),
     ("khondi_plaza", "Khondi Plaza"),
-    ("signal_jamming", "Signal Jamming"),
 ];
 
 /// *Station One* (`station_one`): tranche F4 of the FFG plan.
 pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("severnius_stim_implant", "Severnius Stim Implant"),
-    ("clan_vengeance", "Clan Vengeance"),
     ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
@@ -171,7 +168,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
     ("open_forum", "Open Forum"),
-    ("tithonium", "Tithonium"),
     ("transparency_initiative", "Transparency Initiative"),
     ("rover_algorithm", "Rover Algorithm"),
 ];

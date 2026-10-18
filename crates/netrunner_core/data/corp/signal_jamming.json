@@ -1,0 +1,35 @@
+{
+  "id": "signal_jamming",
+  "title": "Signal Jamming",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunAgainstThisServer",
+      "effect": {
+        "Sequence": [
+          {
+            "Prohibit": {
+              "what": "Install",
+              "until": "Run"
+            }
+          },
+          {
+            "Prohibit": {
+              "what": "CorpInstall",
+              "until": "Run"
+            }
+          }
+        ]
+      },
+      "text": "[trash]: Cards cannot be installed until the end of the run. Use this ability only during a run on this server."
+    }
+  ],
+  "built_from": 12020,
+  "is_playable": true
+}

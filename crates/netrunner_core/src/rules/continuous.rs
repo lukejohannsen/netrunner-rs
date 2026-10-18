@@ -1066,6 +1066,13 @@ pub fn cannot_install(state: &GameState, registry: &CardRegistry, what: Prohibit
             }))
 }
 
+/// Whether the Corp install `install` cannot host cards
+/// (`ContinuousKind::CannotHost`, Tithonium) — asked wherever a card is put
+/// onto a piece of ice.
+pub(crate) fn cannot_host(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    Target::corp_install(state, registry, install).is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::CannotHost))
+}
+
 /// What the table adds to the cost of trashing the accessed Corp card
 /// `card`: what is said about the install, when it is one (`install` —
 /// Mahkota Langit Grid's root), and what is said about any card accessed

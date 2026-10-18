@@ -648,6 +648,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
                 (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
+                (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
             };
             format!("{what} {}", duration(until))
         }
@@ -1014,6 +1015,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ),
         ContinuousKind::CannotBeBrokenUsing(subtype) => format!("its subroutines cannot be broken using {} programs", subtype.printed()),
         ContinuousKind::StrengthCannotBeLowered => "its strength cannot be lowered".to_string(),
+        ContinuousKind::CannotHost => "cannot host cards".to_string(),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",
@@ -1038,7 +1040,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::JackOut => "cannot jack out",
             Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
             Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
-            Prohibition::Install => "cannot install cards",
+            Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(
