@@ -510,6 +510,22 @@ native Gemini protocol if the OpenAI-compatible endpoint ever falls
 short, and the model's own memory of the opponent's moves beyond the
 view (it sees the board, not the log).
 
+**Found from the new-game form (18 October 2026).** The person looked
+for the AI opponent where a game is started, found nothing, and took
+the feature not to exist: the Opponent pane was drawn only once a
+profile did, so the one door was Settings. The form now always draws
+the Opponent section; with no profile it is the built-in bot, **Set up
+an AI model…** and a line saying what that is. The button is a
+`nav::Detour` — the screen it opens Backs (and Escapes) to the form,
+which then offers the model, while a way in from Settings still Backs
+to Settings — the first screen with two ways in, so the rule is
+`nav::back`, which Escape, the Back button and the Back sound all ask.
+The Opponents screen's empty state says where a key is made and that
+Ollama takes none, and the terminal's form names the desktop screen
+and the `--corp-model` / `--runner-model` flags. The same report's
+"Ctrl+V doesn't work anywhere" was a paste that failed in silence; a
+failed paste now says why on the field (`widgets::text_field`).
+
 ## 14. The online dashboard, and the profile and connections manager — OPEN (11 October 2026)
 
 The person's notes of 11 October 2026 ([`docs/online-play-design-2026-10-11.md`](../online-play-design-2026-10-11.md)) draw Play Online as a dashboard: the **active decks** always in view (one Corp, one Runner — §16), three doors — **Ranked**, **Casual**, **Tournaments & Events** — and a profile tag; a door opens a form rather than a page — the format as pills, greyed where the active decks are not legal with the reason, and the role preference (Any, Prefer Corp, Prefer Runner) — then the queue state (what is being looked for, the time waited, Abort), then the board. Casual's form adds "Play a friend": make a friend queue, or join one by its code (Phase 4 §9). The tournament pages (Phase 4 §7 stage 6b) keep their place behind the third door, with events beside them (Phase 4 §11). A **server profile page** shows the titles and badges earned, the active title and badge, and Save (Phase 4 §10).

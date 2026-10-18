@@ -37,7 +37,7 @@ use crate::core::TokioRuntime;
 use netrunner_core::rules::Side;
 
 use crate::core::ClientCore;
-use crate::nav::{screen_root, Navigate};
+use crate::nav::{screen_root, Detour, Navigate};
 use crate::screens::AppScreen;
 use crate::skin::{Drawn, Slot};
 use crate::theme::{size, Theme};
@@ -88,6 +88,9 @@ pub struct LastGame(pub StartChoice);
 enum Control {
     Start,
     Back,
+    /// No model is set up: opens the AI opponents screen, whose Back
+    /// comes back here (`nav::Detour`).
+    SetUpModel,
 }
 
 /// A deck slot's Change… button: which of the two deck panes it opens
@@ -324,14 +327,26 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     });
     let suggested = menu.suggested();
     let level = menu.level();
-    // The model opponents the settings hold, when there are any: a row
-    // of pills after the chair, the built-in bot first.
+    // The model opponents the settings hold: a row of pills after the
+    // chair, the built-in bot first. With none, the built-in bot alone
+    // and the way to set one up — this form is where a person looks for
+    // an AI opponent, and a section drawn only once one existed hid the
+    // whole feature behind Settings.
     let rows = menu.opponent_rows();
-    if rows.len() > 1 {
-        section(parent, theme, format!("Opponent · the {bot:?}"), |section| {
+    section(parent, theme, format!("Opponent · the {bot:?}"), |section| {
+        if rows.len() > 1 {
             pills(section, theme, Pane::Opponent, rows, menu.cursor(Pane::Opponent));
-        });
-    }
+        } else {
+            section.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, rows[0].clone(), Val::Auto, (PaneChoice { pane: Pane::Opponent, index: 0 }, ButtonSound(Sfx::Toggle))));
+                row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Set up an AI model…", Val::Auto, Control::SetUpModel));
+            });
+            section.spawn((
+                widgets::dim(theme, "A language model can play the other chair on your own API key (Anthropic, OpenAI, Gemini) or locally through Ollama."),
+                TextLayout::new(Justify::Left, LineBreak::WordBoundary),
+            ));
+        }
+    });
     if let OpponentChoice::Model(name) = menu.opponent() {
         section(parent, theme, "Opponent level", |section| {
             section.spawn((
@@ -467,6 +482,7 @@ fn controls(
     mut core: ResMut<ClientCore>,
     runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
+    mut detour: MessageWriter<Detour>,
     mut open_picker: MessageWriter<OpenDeckPicker>,
 ) {
     // A deck chosen in the picker: the pane's cursor goes to it. The
@@ -497,6 +513,9 @@ fn controls(
         match marks.get(*entity) {
             Ok(Control::Back) => {
                 navigate.write(Navigate(AppScreen::MainMenu));
+            }
+            Ok(Control::SetUpModel) => {
+                detour.write(Detour { to: AppScreen::Opponents, back: AppScreen::NewGame });
             }
             Ok(Control::Start) => {
                 let Some(choice) = menu.0.choice() else {

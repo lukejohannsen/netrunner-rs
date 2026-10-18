@@ -286,6 +286,59 @@ fn an_ai_opponent_is_added_tested_and_its_key_never_reaches_the_settings_file() 
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The new-game form is where a person looks for an AI opponent, so with
+/// none set up it says so and opens the AI opponents screen, whose Back
+/// and Escape come back to the form — now offering the model. Opened from
+/// Settings afterwards, Back leads to Settings again: the detour was one
+/// way in, not the screen's new home.
+#[test]
+fn the_new_game_form_opens_the_ai_opponents_screen_and_back_returns_to_it() {
+    use netrunner_desktop::screens::opponents::Control;
+    use netrunner_desktop::models::opponents::Intent;
+    let (mut app, dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::NewGame));
+    app.update();
+    app.update();
+    let labelled = |app: &mut App, label: &str| {
+        app.world_mut()
+            .query::<(Entity, &Children)>()
+            .iter(app.world())
+            .find(|(_, children)| children.iter().any(|child| app.world().get::<Text>(child).is_some_and(|t| t.0 == label)))
+            .map(|(entity, _)| entity)
+    };
+    let set_up = labelled(&mut app, "Set up an AI model…").expect("with no model, the form offers to set one up");
+    tap(&mut app, set_up);
+    assert_eq!(screen(&app), AppScreen::Opponents);
+    let add = find::<Control>(&mut app, |c| *c == Control::Intent(Intent::Add(netrunner_client::llm::Preset::Ollama))).unwrap();
+    tap(&mut app, add);
+    let back = find::<Control>(&mut app, |c| *c == Control::Back).unwrap();
+    tap(&mut app, back);
+    assert_eq!(screen(&app), AppScreen::NewGame, "Back returns to the form it was opened from");
+    assert!(labelled(&mut app, "ollama (AI model)").is_some(), "the form now offers the model");
+    assert!(labelled(&mut app, "Set up an AI model…").is_none(), "and no longer asks");
+    // Escape takes the same way back.
+    app.world_mut().write_message(netrunner_desktop::nav::Detour { to: AppScreen::Opponents, back: AppScreen::NewGame });
+    app.update();
+    app.update();
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::NewGame);
+    // From Settings, Back is Settings'.
+    app.world_mut().write_message(Navigate(AppScreen::Settings));
+    app.update();
+    app.update();
+    let door = find::<netrunner_desktop::screens::settings::Control>(&mut app, |c| *c == netrunner_desktop::screens::settings::Control::Opponents).unwrap();
+    tap(&mut app, door);
+    assert_eq!(screen(&app), AppScreen::Opponents);
+    let back = find::<Control>(&mut app, |c| *c == Control::Back).unwrap();
+    tap(&mut app, back);
+    assert_eq!(screen(&app), AppScreen::Settings);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The card browser: every card is a face, a face opens in the
 /// inspector, the arrows move the open card, typing narrows the grid,
 /// and Escape clears, closes, then leaves — three presses, because the

@@ -25,7 +25,7 @@ use netrunner_client::llm::{self, ApiKey, Asks, LlmProfile, Preset, Protocol};
 use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::models::opponents::{self as model, Field, Intent, Opponents};
-use crate::nav::{screen_root, Navigate};
+use crate::nav::{back, screen_root, Navigate, Return};
 use crate::screens::AppScreen;
 use crate::theme::Theme;
 use crate::widgets::text_field::{TextField, TextFieldEvent};
@@ -166,6 +166,10 @@ fn spawn_list(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Opponents
     parent.spawn(widgets::label(theme, "Opponents"));
     if form.profiles.is_empty() {
         parent.spawn((widgets::dim(theme, "None yet. Add one from a preset."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        parent.spawn((
+            widgets::dim(theme, "A key is made in the provider's own console — Anthropic's at console.anthropic.com, OpenAI's at platform.openai.com — and pasted into the Key row with Ctrl+V after pressing its Edit. Ollama runs the model on this machine and needs no key."),
+            TextLayout::new(Justify::Left, LineBreak::WordBoundary),
+        ));
     }
     for (index, row) in form.rows().into_iter().enumerate() {
         let kind = if form.selected == Some(index) { ButtonKind::Primary } else { ButtonKind::Secondary };
@@ -276,12 +280,13 @@ fn controls(
     mut dirty: ResMut<Dirty>,
     mut edit: ResMut<EditRequested>,
     mut notices: ResMut<Notices>,
+    detour: Res<Return>,
     mut navigate: MessageWriter<Navigate>,
 ) {
     for Pressed(entity) in pressed.read() {
         match marks.get(*entity) {
             Ok(Control::Back) => {
-                navigate.write(Navigate(AppScreen::Settings));
+                navigate.write(Navigate(back(AppScreen::Opponents, &detour).unwrap_or(AppScreen::Settings)));
             }
             Ok(Control::Intent(Intent::Edit(field))) => {
                 if form.0.apply(Intent::Edit(*field)).redraw {
