@@ -1,0 +1,55 @@
+{
+  "id": "the_archivist",
+  "title": "The Archivist",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "AnyOf": [
+            {
+              "HasSubtype": "Initiative"
+            },
+            {
+              "HasSubtype": "Security"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "Trace": {
+            "base": 1,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "GiveBadPublicity": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Corp scores an initiative or security agenda, they must trace[1]. If unsuccessful, give them 1 bad publicity."
+    }
+  ],
+  "built_from": 12003,
+  "is_playable": true
+}

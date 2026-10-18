@@ -39008,3 +39008,127 @@ mod red_sand_stage_10 {
         assert_eq!(second.corp.resources.credits, Credits(11), "not the second");
     }
 }
+
+mod red_sand_stage_11 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    /// Run `server` and pass every window until the run is over or something
+    /// is asked.
+    fn run_on(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..24 {
+            if run.active_run.is_none() || run.pending_paid_choice.is_some() || run.pending_decision.is_some() {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        run
+    }
+
+    #[test]
+    fn fairchild_1_0_makes_the_runner_pay_or_trash_an_installed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(1);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(900), ..Default::default() }];
+        state.corp.installed = vec![installed("fairchild_1_0", 10, ServerId::Hq, InstallSlot::Ice, true)];
+        let run = run_on(&state, &registry, ServerId::Hq);
+        assert!(run.pending_paid_choice.is_some(), "pay 1[credit] or trash");
+        let (paid, _) = apply_action(&run, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+        assert_eq!(paid.runner.resources.credits, Credits(0));
+        assert!(paid.pending_paid_choice.is_some(), "the second subroutine");
+        let (declined, _) = apply_action(&paid, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let (state, _) = apply_action(&declined, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Daily Casts");
+        let state = match &state.pending_decision {
+            Some(_) => apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0,
+            None => state,
+        };
+        assert!(state.runner.rig.is_empty() && state.runner.heap.contains(&id("daily_casts")), "trash 1 of their installed cards");
+    }
+
+    #[test]
+    fn georgia_emelyov_does_net_damage_after_an_unsuccessful_run_on_its_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![installed("georgia_emelyov", 10, ServerId::Remote(0), InstallSlot::Root, true), installed("ice_wall", 11, ServerId::Remote(0), InstallSlot::Ice, true)];
+        let ended = run_on(&state, &registry, ServerId::Remote(0));
+        assert!(ended.active_run.is_none(), "Ice Wall ends the run");
+        assert_eq!(ended.runner.grip.len(), 2, "1 net damage");
+
+        let mut elsewhere = runner_turn();
+        elsewhere.corp.installed = vec![installed("georgia_emelyov", 10, ServerId::Remote(0), InstallSlot::Root, true), installed("ice_wall", 11, ServerId::Hq, InstallSlot::Ice, true)];
+        let ended = run_on(&elsewhere, &registry, ServerId::Hq);
+        assert_eq!(ended.runner.grip.len(), 3, "only runs on this server");
+    }
+
+    #[test]
+    fn georgia_emelyov_moves_to_another_server_for_2_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![installed("georgia_emelyov", 10, ServerId::Remote(0), InstallSlot::Root, true)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("2[credit]");
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseServer { .. })), "another server");
+        let (moved, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("move");
+        assert_eq!(moved.corp.installed[0].server, ServerId::RnD);
+        assert_eq!(moved.corp.resources.credits, Credits(8));
+    }
+
+    #[test]
+    fn the_archivist_traces_an_initiative_or_security_agenda_and_gives_bad_publicity() {
+        let registry = registry();
+        for (agenda, traced) in [("water_monopoly", true), ("hostile_takeover", false)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Corp);
+            state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("the_archivist"), install_id: InstallId(900), ..Default::default() }];
+            let mut card = installed(agenda, 10, ServerId::Remote(0), InstallSlot::Root, false);
+            card.advancement_tokens = 5;
+            state.corp.installed = vec![card];
+            let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score");
+            assert_eq!(scored.active_trace.as_ref().map(|trace| trace.base_strength), traced.then_some(1), "{agenda}: trace[1]");
+            if !traced {
+                continue;
+            }
+            let (bid, _) = apply_action(&scored, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+            let (avoided, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("+1[link] matches it");
+            assert_eq!(avoided.corp.bad_publicity, 1, "if unsuccessful, give them 1 bad publicity");
+        }
+    }
+
+    #[test]
+    fn deuces_wild_resolves_two_of_its_four() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.runner.tags = 1;
+        state.runner.grip = vec![id("deuces_wild")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("deuces_wild") }).expect("play");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("gain 3");
+        let (done, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove a tag");
+        let done = close_all_windows(done, &registry).0;
+        assert_eq!(done.runner.resources.credits, Credits(5 - 2 + 3));
+        assert_eq!(done.runner.tags, 0);
+        assert!(done.pending_decision.is_none() && done.runner.heap.contains(&id("deuces_wild")), "two, then done");
+    }
+}
