@@ -1,0 +1,40 @@
+{
+  "id": "sacrifice",
+  "title": "Sacrifice",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "Forfeit": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Reduced": {
+                "amount": "ForfeitedAgendaPoints",
+                "by": {
+                  "Reduced": {
+                    "amount": "ForfeitedAgendaPoints",
+                    "by": "BadPublicity"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "RemoveBadPublicity": "ForfeitedAgendaPoints"
+        }
+      ],
+      "text": "Remove X bad publicity. X is equal to the agenda point value of the forfeited agenda. Gain 1[credit] for each bad publicity removed this way."
+    }
+  ],
+  "built_from": 12039,
+  "is_playable": true
+}

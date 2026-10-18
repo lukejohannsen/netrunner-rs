@@ -604,6 +604,9 @@ mod tests {
             // pool.
             ("zealotry", &neither),
             ("zero_day_heist", &neither),
+            // Red Sand Stage 8: Jemison Astronautics' deck, on Family
+            // Business's list; Red Sand is in neither pool.
+            ("zugzwang", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

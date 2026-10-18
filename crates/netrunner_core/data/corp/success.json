@@ -1,0 +1,42 @@
+{
+  "id": "success",
+  "title": "Success",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "AllOf": [
+      {
+        "Forfeit": 1
+      },
+      {
+        "Clicks": 2
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": "ForfeitedAgendaAdvancementRequirement"
+            }
+          }
+        }
+      ],
+      "text": "Advance a card X times. X equals the advancement requirement of the agenda just forfeited."
+    }
+  ],
+  "built_from": 12078,
+  "is_playable": true
+}

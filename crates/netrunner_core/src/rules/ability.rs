@@ -615,8 +615,9 @@ pub fn evaluate_effect(
         }
 
         Effect::RemoveBadPublicity(amount) => {
-            state.corp.bad_publicity = state.corp.bad_publicity.saturating_sub(*amount);
-            Ok(vec![GameEvent::BadPublicityRemoved { amount: *amount }])
+            let amount = resolve_amount(amount, ctx, state, registry);
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_sub(amount);
+            Ok(vec![GameEvent::BadPublicityRemoved { amount }])
         }
 
         Effect::RemoveFromGame(CardTarget::ThisCard) => remove_this_card_from_game(state, registry, ctx),
@@ -3279,6 +3280,21 @@ pub(crate) fn fire_card_triggers(
             }
             None => &triggered.effects,
         };
+        // The agenda a forfeit took: the one the play's own cost forfeited
+        // (Sacrifice), or the one the moment is (Jemison Astronautics).
+        let forfeited = match triggering_event {
+            Some(GameEvent::OperationPlayed { card, forfeited: Some(agenda), .. }) if trigger == Trigger::OnPlay && card == card_id => Some(agenda),
+            Some(GameEvent::AgendaForfeited { card: agenda, .. }) => Some(agenda),
+            _ => None,
+        };
+        let with_forfeited: Vec<Effect>;
+        let triggered_effects: &[Effect] = match forfeited {
+            Some(agenda) => {
+                with_forfeited = triggered_effects.iter().cloned().map(|effect| with_forfeited_agenda(effect, agenda, registry)).collect();
+                &with_forfeited
+            }
+            None => triggered_effects,
+        };
         // Asa Group's "install 1 non-agenda card from HQ in the root of or
         // protecting **the same server**": an install heard as it happened
         // writes its server over the install's `only_server` placeholder,
@@ -4848,6 +4864,31 @@ pub(crate) fn dispatch_trashes(state: &mut GameState, registry: &CardRegistry, e
 /// (`announcement_ends`). The debug audit refused the second dispatch the
 /// first time a cost trash (Anvil's, Parhelion Stage 8) met Luana Campos in
 /// a deck.
+/// The agenda a cost forfeited, among the events paying it made — Sacrifice's
+/// and Success's additional cost, Quarantine System's ability.
+pub(crate) fn forfeited_by(cost_events: &[GameEvent]) -> Option<CardId> {
+    cost_events.iter().find_map(|event| match event {
+        GameEvent::AgendaForfeited { card, .. } => Some(card.clone()),
+        _ => None,
+    })
+}
+
+/// `effect` with `Amount::ForfeitedAgendaPoints` and
+/// `ForfeitedAgendaAdvancementRequirement` written in as `Fixed`, from the
+/// printed card `agenda`, as a chosen number is (`Effect::filled`): the
+/// forfeit is gone from every context once a choice parked ahead of what
+/// reads it is answered.
+pub(crate) fn with_forfeited_agenda(effect: Effect, agenda: &CardId, registry: &CardRegistry) -> Effect {
+    let printed = registry.get(agenda);
+    let points = printed.and_then(|def| def.agenda_points).unwrap_or(0);
+    let requirement = printed.and_then(|def| def.advancement_requirement).unwrap_or(0);
+    effect.filled(&|amount| match amount {
+        Amount::ForfeitedAgendaPoints => Some(points),
+        Amount::ForfeitedAgendaAdvancementRequirement => Some(requirement),
+        _ => None,
+    })
+}
+
 pub(crate) fn dispatch_cost_events(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -5669,6 +5710,18 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // A placeholder `Effect::with_chosen_number` writes over before a
         // `then` resolves; read anywhere else it is nothing.
         Amount::ChosenNumber | Amount::TraceMargin => 0,
+        Amount::ForfeitedAgendaPoints => match ctx.triggering_event {
+            Some(GameEvent::AgendaForfeited { card, .. }) | Some(GameEvent::OperationPlayed { forfeited: Some(card), .. }) => {
+                registry.get(card).and_then(|def| def.agenda_points).unwrap_or(0)
+            }
+            _ => 0,
+        },
+        Amount::ForfeitedAgendaAdvancementRequirement => match ctx.triggering_event {
+            Some(GameEvent::AgendaForfeited { card, .. }) | Some(GameEvent::OperationPlayed { forfeited: Some(card), .. }) => {
+                registry.get(card).and_then(|def| def.advancement_requirement).unwrap_or(0)
+            }
+            _ => 0,
+        },
         Amount::TriggeringAgendaAdvancementRequirement => match ctx.triggering_event {
             Some(GameEvent::AgendaScored { card, .. } | GameEvent::AgendaStolen { card, .. }) => registry.get(card).and_then(|def| def.advancement_requirement).unwrap_or(0),
             _ => 0,
@@ -6349,7 +6402,7 @@ mod tests {
     fn remove_bad_publicity_saturates_at_zero() {
         let mut state = game_state();
         state.corp.bad_publicity = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(Amount::Fixed(5)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 0);
         assert_eq!(events, vec![GameEvent::BadPublicityRemoved { amount: 5 }]);

@@ -1,0 +1,40 @@
+{
+  "id": "jemison_astronautics_sacrifice_audacity_success",
+  "title": "Jemison Astronautics: Sacrifice. Audacity. Success.",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnForfeit",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Increased": {
+                  "amount": "ForfeitedAgendaPoints",
+                  "by": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you forfeit an agenda, place X advancement counters on 1 installed card. X is equal to the agenda point value of the forfeited agenda plus 1."
+    }
+  ],
+  "built_from": 12016,
+  "is_playable": true
+}
