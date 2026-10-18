@@ -88,12 +88,15 @@ pub fn key(menu: &mut StartMenu, key: KeyCode) -> StartKey {
 pub fn draw(frame: &mut Frame, area: Rect, menu: &StartMenu) {
     let [header, body] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
         .areas(area);
     frame.render_widget(
         Paragraph::new(vec![
             Line::from("Play vs Computer — Tab/arrows move between panes, Up/Down choose, Enter plays, Esc goes back"),
             Line::from("A casual game: a move can always be taken back, and the result only moves the suggested rung"),
+            // This form lists no model opponents, so it says where they are:
+            // the desktop's form is where one is set up, and here a flag.
+            Line::from("An AI model in the other chair: set one up in the desktop client (Settings → AI opponents), then --corp-model or --runner-model <name>"),
         ]),
         header,
     );

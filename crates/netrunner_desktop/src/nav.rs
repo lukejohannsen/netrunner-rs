@@ -18,7 +18,9 @@ pub struct NavPlugin;
 impl Plugin for NavPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Navigate>()
+            .add_message::<Detour>()
             .init_resource::<InputCaptured>()
+            .init_resource::<Return>()
             .configure_sets(Update, Captures.after(reset_captured).before(escape_goes_back))
             .add_systems(Update, (reset_captured, escape_goes_back, apply_navigation).chain());
     }
@@ -35,6 +37,34 @@ pub struct Captures;
 /// "Go to this screen." Applied at the end of the frame it is written in.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Navigate(pub AppScreen);
+
+/// "Go to this screen, and let its Back lead here." For a screen with
+/// two ways in: the AI opponents screen is a page of Settings, and is
+/// also opened from the new-game form when no model is set up yet, where
+/// Back leading into Settings would strand the person a screen away from
+/// the game they were starting.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Detour {
+    pub to: AppScreen,
+    pub back: AppScreen,
+}
+
+/// The detour taken, if any: the screen it opened and where that
+/// screen's Back leads. Kept after the screen is left, so the Back sound
+/// read in the same frame still hears it, and dropped by the next plain
+/// [`Navigate`] to that screen, which is a way in with no detour.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Return(pub Option<(AppScreen, AppScreen)>);
+
+/// Where Back leads from `screen`: the detour's return when the screen
+/// was opened by one, else [`back_from`]. Escape, a Back button and the
+/// Back sound all ask this, so a detour is still one rule.
+pub fn back(screen: AppScreen, detour: &Return) -> Option<AppScreen> {
+    match detour.0 {
+        Some((opened, back)) if opened == screen => Some(back),
+        _ => back_from(screen),
+    }
+}
 
 /// Set by a widget that is consuming keys itself this frame, so Escape
 /// does not also leave the screen. Reset at the start of every frame
@@ -118,18 +148,28 @@ fn escape_goes_back(
     keys: Res<ButtonInput<KeyCode>>,
     captured: Res<InputCaptured>,
     screen: Res<State<AppScreen>>,
+    detour: Res<Return>,
     mut navigate: MessageWriter<Navigate>,
 ) {
     if captured.0 || !keys.just_pressed(KeyCode::Escape) {
         return;
     }
-    if let Some(back) = back_from(*screen.get()) {
+    if let Some(back) = back(*screen.get(), &detour) {
         navigate.write(Navigate(back));
     }
 }
 
-pub fn apply_navigation(mut messages: MessageReader<Navigate>, mut next: ResMut<NextState<AppScreen>>) {
-    if let Some(Navigate(screen)) = messages.read().last() {
-        next.set(*screen);
+/// A detour written in the same frame as a plain navigation wins: it is
+/// the more specific ask.
+pub fn apply_navigation(mut messages: MessageReader<Navigate>, mut detours: MessageReader<Detour>, mut detour: ResMut<Return>, mut next: ResMut<NextState<AppScreen>>) {
+    let plain = messages.read().last().copied();
+    if let Some(Detour { to, back }) = detours.read().last().copied() {
+        detour.0 = Some((to, back));
+        next.set(to);
+    } else if let Some(Navigate(screen)) = plain {
+        if detour.0.is_some_and(|(opened, _)| opened == screen) {
+            detour.0 = None;
+        }
+        next.set(screen);
     }
 }

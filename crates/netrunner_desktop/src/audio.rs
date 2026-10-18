@@ -254,18 +254,19 @@ fn popup_sounds(dropdowns: Query<&Dropdown>, reading: Option<Res<Reading>>, mut 
 }
 
 /// A screen left for another: Back when it is the screen this one goes
-/// back to (`nav::back_from`, Escape's rule), a switch otherwise. Read
+/// back to (`nav::back`, Escape's rule), a switch otherwise. Read
 /// after `nav::apply_navigation`, in the frame it reads the same message,
 /// so the screen being left is still the current one. The boot and the
 /// splash change screens by themselves, and nobody selected that.
-fn navigation_sounds(mut navigate: MessageReader<Navigate>, screen: Option<Res<State<AppScreen>>>, mut out: MessageWriter<PlaySfx>) {
+fn navigation_sounds(mut navigate: MessageReader<Navigate>, screen: Option<Res<State<AppScreen>>>, detour: Option<Res<nav::Return>>, mut out: MessageWriter<PlaySfx>) {
     let last = navigate.read().last().copied();
     let (Some(Navigate(to)), Some(screen)) = (last, screen) else { return };
     let here = *screen.get();
     if to == here || matches!(here, AppScreen::Boot | AppScreen::Splash | AppScreen::FirstLaunch) {
         return;
     }
-    out.write(PlaySfx::now(if nav::back_from(here) == Some(to) { Sfx::Back } else { Sfx::Switch }));
+    let back = nav::back(here, &detour.map(|detour| *detour).unwrap_or_default());
+    out.write(PlaySfx::now(if back == Some(to) { Sfx::Back } else { Sfx::Switch }));
 }
 
 fn play(
