@@ -89,7 +89,7 @@ use netrunner_core::decks::{DeckFile, FactionRule};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::protocol::swiss::Outcome as TableOutcome;
-use netrunner_server::protocol::{event_lobby_id, queue_id, AwardSpec, Chair, EventInfo, EventSpec, LadderRow, Level, LobbyInfo, Milestone, Opponent, Presence, Profile, QueueMode, TournamentInfo, TournamentState};
+use netrunner_server::protocol::{event_lobby_id, queue_id, AdminAnswer, AdminRequest, AwardSpec, GameResult, ServerStatus, Chair, EventInfo, EventSpec, LadderRow, Level, LobbyInfo, Milestone, Opponent, Presence, Profile, QueueMode, TournamentInfo, TournamentState};
 pub use netrunner_server::protocol::AwardKind;
 use netrunner_server::MatchSummary;
 
@@ -143,6 +143,10 @@ pub enum Page {
     /// format, the titles and badges earned and the ones worn, chosen
     /// here — and its ladder (Phase 4 §10).
     Profile,
+    /// Attached on an operator's key (Phase 4 §12): the server's status
+    /// and its drain, an award granted or revoked, a key's rated games
+    /// and a void.
+    Admin,
 }
 
 /// A line the person types into.
@@ -169,6 +173,11 @@ pub enum Field {
     EventName,
     EventWins,
     Milestone(u32),
+    /// The admin page's: the key an award or the results are for, the
+    /// award's name, and why a game is voided.
+    AdminKey,
+    AwardName,
+    VoidReason,
 }
 
 impl Field {
@@ -182,6 +191,9 @@ impl Field {
             Field::Port => 5,
             Field::LobbyName | Field::TournamentName | Field::EventName | Field::Milestone(_) => 40,
             Field::EventWins => 2,
+            Field::AdminKey => 128,
+            Field::AwardName => 40,
+            Field::VoidReason => 200,
             Field::ServerName => netrunner_client::servers::MAX_NAME,
             Field::PeerName => netrunner_client::peers::MAX_NAME,
         }
@@ -263,6 +275,24 @@ pub enum Intent {
     /// pushed when a game of this key's in it ends.
     Events { events: Vec<EventInfo>, operator: bool },
     Event(EventInfo),
+    /// The admin page's (Phase 4 §12): the status asked again, the drain
+    /// and its undoing, the award's kind, Grant and Revoke for the key
+    /// typed, that key's rated games, and the `n`th of them voided.
+    AdminRefresh,
+    Drain,
+    Undrain,
+    SetAwardKind(AwardKind),
+    Grant,
+    Revoke,
+    ListResults,
+    Void(usize),
+    /// A tournament's page: called off, by its organizer or an operator.
+    CancelTournament,
+    /// The server's answer to an operator's request — the first of them
+    /// the status the screen asks for on attaching, which is how the
+    /// dashboard learns the key operates here — and a refusal.
+    Admin(AdminAnswer),
+    AdminRefused(String),
     Disconnect,
     /// The screen has started what `Go` or `Watch` asked for; this is its
     /// first line.
@@ -419,6 +449,9 @@ pub enum Outcome {
     /// Wear these, of what was earned.
     SetProfile { title: Option<String>, badge: Option<String> },
     Ladder(NsgFormat),
+    /// An operator's request (Phase 4 §12).
+    Admin(AdminRequest),
+    CancelTournament { tournament: String },
 }
 
 /// The connection, as the page draws it.
@@ -482,6 +515,14 @@ pub struct ServerState {
     /// The ladder shown, once answered.
     pub ladder_format: NsgFormat,
     pub ladder: Option<Vec<LadderRow>>,
+    /// Whether this key operates the server (Phase 4 §12), as its answer
+    /// to the status asked on attaching said; the status, as last
+    /// answered; the awards of the key the admin page last changed, as
+    /// lines; and the rated games last listed, with the key they are of.
+    pub operator: bool,
+    pub status: Option<ServerStatus>,
+    pub award_lines: Vec<String>,
+    pub results: Option<(PublicKey, Vec<GameResult>)>,
 }
 
 impl ServerState {
@@ -514,6 +555,10 @@ impl ServerState {
             choosing: None,
             ladder_format: netrunner_client::settings::DEFAULT_FORMAT,
             ladder: None,
+            operator: false,
+            status: None,
+            award_lines: Vec::new(),
+            results: None,
         }
     }
 
@@ -566,6 +611,12 @@ impl ServerState {
     /// Whether this key holds the open tournament.
     pub fn is_organizer(&self) -> bool {
         self.open_tournament().is_some_and(|info| tournament::is_organizer(info, self.key.as_ref()))
+    }
+
+    /// Whether this key may call the open tournament off (Phase 4 §12):
+    /// its organizer, or an operator, before it is over.
+    pub fn may_cancel(&self) -> bool {
+        (self.is_organizer() || self.operator) && self.open_tournament().is_some_and(|info| matches!(info.state, TournamentState::Registering | TournamentState::Playing { .. }))
     }
 
     /// Whether this key may drop from the open tournament: entered, in
@@ -756,6 +807,32 @@ pub struct MakeTournament {
 /// The most wins a track the form makes may take: a milestone line each.
 pub const MAX_WINS: u32 = 20;
 
+/// The admin page's fields (Phase 4 §12): the key, the award and its
+/// kind, and a void's reason. Kept across servers, as every form is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminForm {
+    pub key: String,
+    pub kind: AwardKind,
+    pub award: String,
+    pub reason: String,
+}
+
+impl Default for AdminForm {
+    fn default() -> Self {
+        AdminForm { key: String::new(), kind: AwardKind::Title, award: String::new(), reason: String::new() }
+    }
+}
+
+impl AdminForm {
+    /// The key typed, or why it is not one.
+    fn key(&self) -> Result<PublicKey, String> {
+        if self.key.is_empty() {
+            return Err("Type the key, as `netrunner_cli identity` prints it (key:…)".to_string());
+        }
+        self.key.parse::<PublicKey>().map_err(|error| format!("That is not a key: {error}"))
+    }
+}
+
 /// The event being held (Phase 4 §11), on the operator's form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MakeEvent {
@@ -826,6 +903,8 @@ pub struct OnlineForm {
     pub make: MakeLobby,
     pub make_tournament: MakeTournament,
     pub make_event: MakeEvent,
+    /// What the admin page's fields hold (Phase 4 §12).
+    pub admin: AdminForm,
     pub watch_from: Side,
     pub matches: Vec<MatchSummary>,
     /// Whether Watch's list is an answer from the address shown, so an
@@ -870,6 +949,7 @@ impl OnlineForm {
             make: MakeLobby { name: String::new(), format, password: String::new(), bots: false },
             make_tournament: MakeTournament { name: String::new(), format },
             make_event: MakeEvent::new(format),
+            admin: AdminForm::default(),
             watch_from: Side::Corp,
             matches: Vec::new(),
             listed: false,
@@ -1101,6 +1181,18 @@ impl OnlineForm {
                 self.make_event.format = server.lobby.as_ref().map_or(self.make_event.format, |lobby| lobby.format);
                 Outcome::Redraw
             }
+            // An operator's alone: the button is drawn for an operator's
+            // key, and the status is asked afresh each time it opens.
+            Intent::Open(Page::Admin) => {
+                let Some(server) = &self.server else { return Outcome::Nothing };
+                if !server.operator {
+                    self.notice = Some("Only this server's operator administers it".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                self.page = Page::Admin;
+                Outcome::Admin(AdminRequest::Status)
+            }
             Intent::Open(Page::MakeTournament) => {
                 let Some(server) = &self.server else { return Outcome::Nothing };
                 if server.key.is_none() {
@@ -1212,7 +1304,7 @@ impl OnlineForm {
                     self.notice = None;
                     Outcome::Stop
                 }
-                Page::MakeLobby | Page::Tournaments => {
+                Page::MakeLobby | Page::Tournaments | Page::Admin => {
                     self.page = Page::Dashboard;
                     self.notice = None;
                     Outcome::Redraw
@@ -1295,6 +1387,9 @@ impl OnlineForm {
                             line.1 = text;
                         }
                     }
+                    Field::AdminKey => self.admin.key = text,
+                    Field::AwardName => self.admin.award = text,
+                    Field::VoidReason => self.admin.reason = text,
                 }
                 Outcome::Redraw
             }
@@ -1592,6 +1687,96 @@ impl OnlineForm {
                 }
                 _ => Outcome::Nothing,
             },
+            Intent::AdminRefresh | Intent::Drain | Intent::Undrain | Intent::Grant | Intent::Revoke | Intent::ListResults | Intent::Void(_) | Intent::SetAwardKind(_) if self.page != Page::Admin => Outcome::Nothing,
+            Intent::AdminRefresh => Outcome::Admin(AdminRequest::Status),
+            Intent::Drain => Outcome::Admin(AdminRequest::Drain),
+            Intent::Undrain => Outcome::Admin(AdminRequest::Undrain),
+            Intent::SetAwardKind(kind) => {
+                self.admin.kind = kind;
+                Outcome::Redraw
+            }
+            Intent::Grant | Intent::Revoke => {
+                let key = match self.admin.key() {
+                    Ok(key) => key,
+                    Err(reason) => {
+                        self.notice = Some(reason);
+                        return Outcome::Redraw;
+                    }
+                };
+                if self.admin.award.is_empty() {
+                    self.notice = Some(format!("Name the {}", self.admin.kind.name().to_lowercase()));
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                let award = AwardSpec { kind: self.admin.kind, name: self.admin.award.clone() };
+                Outcome::Admin(if intent == Intent::Grant { AdminRequest::Grant { key, award } } else { AdminRequest::Revoke { key, award } })
+            }
+            Intent::ListResults => match self.admin.key() {
+                Ok(key) => {
+                    self.notice = None;
+                    Outcome::Admin(AdminRequest::Results { key })
+                }
+                Err(reason) => {
+                    self.notice = Some(reason);
+                    Outcome::Redraw
+                }
+            },
+            // A void says why: the reason is kept beside the results log.
+            Intent::Void(index) => {
+                let Some(game) = self.server.as_ref().and_then(|server| server.results.as_ref()).and_then(|(_, games)| games.get(index)) else { return Outcome::Nothing };
+                if self.admin.reason.is_empty() {
+                    self.notice = Some("Say why the game is voided, in the reason above the games".to_string());
+                    return Outcome::Redraw;
+                }
+                self.notice = None;
+                Outcome::Admin(AdminRequest::Void { match_id: game.match_id, reason: self.admin.reason.clone() })
+            }
+            Intent::CancelTournament => match &self.server {
+                Some(server) if self.page == Page::Tournament && server.may_cancel() => {
+                    self.notice = None;
+                    Outcome::CancelTournament { tournament: server.tournament.clone().expect("the open tournament") }
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::Admin(answer) => {
+                let Some(server) = &mut self.server else { return Outcome::Nothing };
+                match answer {
+                    AdminAnswer::Status(status) => {
+                        server.operator = true;
+                        server.status = Some(status);
+                    }
+                    AdminAnswer::Awards { key, titles, badges } => {
+                        server.award_lines = std::iter::once(format!("{} now holds:", key.fingerprint())).chain(netrunner_client::admin::award_lines(&titles, &badges)).collect();
+                    }
+                    AdminAnswer::Tournament(info) => match server.tournaments.iter_mut().find(|listed| listed.id == info.id) {
+                        Some(listed) => *listed = info,
+                        None => server.tournaments.push(info),
+                    },
+                    AdminAnswer::Results { key, games } => server.results = Some((key, games)),
+                    // The list again, without the game, and the reason
+                    // cleared for the next.
+                    AdminAnswer::Voided { match_id, games } => {
+                        self.notice = Some(format!("Voided {match_id}: the ratings are folded again from {games} rated {}", if games == 1 { "game" } else { "games" }));
+                        self.admin.reason.clear();
+                        if let Some((key, _)) = &server.results {
+                            return Outcome::Admin(AdminRequest::Results { key: *key });
+                        }
+                    }
+                }
+                Outcome::Redraw
+            }
+            // The status asked on attaching is refused for any key that
+            // is not an operator's: that is how the dashboard learns not
+            // to offer the page, and says nothing. On the page, a refusal
+            // is the server's reason.
+            Intent::AdminRefused(reason) => {
+                if self.page == Page::Admin {
+                    self.notice = Some(reason);
+                } else if let Some(server) = &mut self.server {
+                    server.operator = false;
+                }
+                Outcome::Redraw
+            }
             Intent::Disconnect => self.disconnect(),
             Intent::Waiting(status) => {
                 if self.page != Page::Waiting {
@@ -1607,7 +1792,7 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Intent::Failed(reason) => {
-                if matches!(self.page, Page::Waiting | Page::Dashboard | Page::Room | Page::MakeLobby | Page::FriendLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Profile) {
+                if matches!(self.page, Page::Waiting | Page::Dashboard | Page::Room | Page::MakeLobby | Page::FriendLobby | Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Profile | Page::Admin) {
                     self.page = self.came_from;
                 }
                 self.server = None;
@@ -2222,7 +2407,7 @@ impl OnlineForm {
                 Outcome::HoldEvent(spec)
             }
             Page::EditServer => self.apply(Intent::SaveServer),
-            Page::Hub | Page::Room | Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Event | Page::Profile => Outcome::Nothing,
+            Page::Hub | Page::Room | Page::Dashboard | Page::FriendLobby | Page::Watch | Page::Waiting | Page::Tournaments | Page::Tournament | Page::Event | Page::Profile | Page::Admin => Outcome::Nothing,
         }
     }
 }
@@ -2785,6 +2970,58 @@ mod tests {
         assert_eq!(form.notice.as_deref(), Some(problem.as_str()));
     }
 
+    /// The admin page (Phase 4 §12): the status the screen asks on
+    /// attaching says the key operates here, and only then is the page
+    /// offered; a refusal off the page says nothing and offers nothing.
+    /// On the page a key is checked before anything is asked, a void
+    /// says why, a void's answer lists the games again, and a refusal is
+    /// the server's reason.
+    #[test]
+    fn an_operator_administers_the_server_from_its_page() {
+        use netrunner_server::protocol::{GameResult, ResultSeat};
+        let status = ServerStatus { engine: "netrunner_server 0.1.0".into(), up_secs: 60, keeps: true, matches: 0, waiting: 0, attached: 1, tournaments: 0, events: 0, operators: 1, draining: false };
+        let mut form = attached();
+        form.apply(Intent::AdminRefused("your key does not operate this server".into()));
+        assert_eq!((form.notice.as_deref(), form.server.as_ref().unwrap().operator), (None, false), "said nowhere");
+        form.apply(Intent::Open(Page::Admin));
+        assert_ne!(form.page, Page::Admin);
+        form.apply(Intent::Admin(AdminAnswer::Status(status.clone())));
+        assert!(form.server.as_ref().unwrap().operator);
+        assert_eq!(form.apply(Intent::Open(Page::Admin)), Outcome::Admin(AdminRequest::Status), "asked afresh");
+        assert_eq!(form.page, Page::Admin);
+
+        assert_eq!(form.apply(Intent::Grant), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.starts_with("Type the key")));
+        form.apply(Intent::Typed(Field::AdminKey, "nonsense".into()));
+        form.apply(Intent::Grant);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.starts_with("That is not a key")));
+        let ann = key(1);
+        form.apply(Intent::Typed(Field::AdminKey, ann.to_string()));
+        assert_eq!(form.apply(Intent::Grant), Outcome::Redraw);
+        assert_eq!(form.notice.as_deref(), Some("Name the title"));
+        form.apply(Intent::SetAwardKind(AwardKind::Badge));
+        form.apply(Intent::Typed(Field::AwardName, " founder ".into()));
+        assert_eq!(form.apply(Intent::Revoke), Outcome::Admin(AdminRequest::Revoke { key: ann, award: AwardSpec { kind: AwardKind::Badge, name: "founder".into() } }));
+
+        assert_eq!(form.apply(Intent::ListResults), Outcome::Admin(AdminRequest::Results { key: ann }));
+        let game = GameResult { match_id: uuid::Uuid::from_u128(7), ended_at: 1, format: NsgFormat::Startup, corp: ResultSeat { name: "ann".into(), key: ann }, runner: ResultSeat { name: "bo".into(), key: key(2) }, winner: Side::Corp };
+        form.apply(Intent::Admin(AdminAnswer::Results { key: ann, games: vec![game.clone()] }));
+        assert_eq!(form.apply(Intent::Void(0)), Outcome::Redraw);
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.starts_with("Say why")));
+        form.apply(Intent::Typed(Field::VoidReason, "a misread disconnect".into()));
+        assert_eq!(form.apply(Intent::Void(0)), Outcome::Admin(AdminRequest::Void { match_id: game.match_id, reason: "a misread disconnect".into() }));
+        assert_eq!(form.apply(Intent::Admin(AdminAnswer::Voided { match_id: game.match_id, games: 0 })), Outcome::Admin(AdminRequest::Results { key: ann }), "listed again");
+        assert!(form.admin.reason.is_empty(), "the reason is the last void's");
+
+        form.apply(Intent::AdminRefused("that key holds no badge \"founder\"".into()));
+        assert_eq!(form.notice.as_deref(), Some("that key holds no badge \"founder\""));
+        assert!(form.server.as_ref().unwrap().operator, "a refusal on the page is a reason, not a demotion");
+        assert_eq!(form.apply(Intent::Drain), Outcome::Admin(AdminRequest::Drain));
+        assert_eq!(form.apply(Intent::Back), Outcome::Redraw);
+        assert_eq!(form.page, Page::Dashboard);
+        assert_eq!(form.apply(Intent::Drain), Outcome::Nothing, "only on the page");
+    }
+
     /// The operator's form (Phase 4 §11): offered to an operator's key
     /// alone, the track's milestone lines follow the wins typed, a faction
     /// pill narrows a side, and Open the event is the spec the server
@@ -3029,6 +3266,30 @@ mod tests {
     fn entrant(byte: u8) -> netrunner_server::protocol::Entrant {
         let identity = netrunner_identity::Identity::from_secret([byte; 32]);
         netrunner_server::protocol::Entrant { name: format!("p{byte}"), key: identity.public_key(), corp_hash: "c".into(), runner_hash: "r".into(), commitment: identity.sign(b"t", "{}".into()) }
+    }
+
+    /// Call it off (Phase 4 §12): offered to neither an entrant nor a
+    /// stranger, to the organizer, and to an operator who did not make
+    /// it; never once it is over.
+    #[test]
+    fn a_tournament_is_called_off_by_its_organizer_or_an_operator() {
+        let mut form = attached();
+        form.apply(Intent::Profile { key: Some(key(2)), profile: ProfileHere::Unkept });
+        form.apply(Intent::Open(Page::Tournaments));
+        form.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", key(1), vec![])]));
+        form.apply(Intent::OpenTournament(0));
+        assert_eq!(form.apply(Intent::CancelTournament), Outcome::Nothing, "not theirs");
+        form.apply(Intent::Admin(AdminAnswer::Status(ServerStatus { engine: String::new(), up_secs: 0, keeps: true, matches: 0, waiting: 0, attached: 1, tournaments: 1, events: 0, operators: 1, draining: false })));
+        assert_eq!(form.apply(Intent::CancelTournament), Outcome::CancelTournament { tournament: "K7M2QX".into() }, "an operator's");
+        form.apply(Intent::Tournament(TournamentInfo { state: TournamentState::Cancelled, ..tournament_info("K7M2QX", key(1), vec![]) }));
+        assert_eq!(form.apply(Intent::CancelTournament), Outcome::Nothing, "over");
+
+        let mut organizer = attached();
+        organizer.apply(Intent::Profile { key: Some(key(1)), profile: ProfileHere::Unkept });
+        organizer.apply(Intent::Open(Page::Tournaments));
+        organizer.apply(Intent::Tournaments(vec![tournament_info("K7M2QX", key(1), vec![])]));
+        organizer.apply(Intent::OpenTournament(0));
+        assert_eq!(organizer.apply(Intent::CancelTournament), Outcome::CancelTournament { tournament: "K7M2QX".into() });
     }
 
     /// Opening the tournaments page asks the server for the list; a row

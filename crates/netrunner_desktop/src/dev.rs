@@ -167,7 +167,7 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
-//! - `NETRUNNER_ONLINE=hub|host|join|room|room-guest|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby|events|event|event-entered|make-event`
+//! - `NETRUNNER_ONLINE=hub|host|join|room|room-guest|servers|watch|hosting|ticket|profile|dashboard|queue|queue-ranked|searching|make-lobby|friend-lobby|events|event|event-entered|make-event|admin`
 //!   — with `NETRUNNER_SCREEN=online`, that page is opened once (`join`
 //!   is `servers`, the page it became); `profile` waits for the Default
 //!   the screen connects to and opens the profile page there, and
@@ -178,7 +178,10 @@
 //!   `searching` presses Find match there, so the screenshot catches the
 //!   search with nobody else looking; `make-lobby` opens the form that
 //!   makes a friend lobby, and `friend-lobby` makes one that lets bots in
-//!   and opens its page; `hosting` hosts
+//!   and opens its page; `admin` waits for the Default to say the key
+//!   operates it (a daemon run with `--operator` naming the scratch
+//!   key) and opens the admin page with the key's own rated games
+//!   listed; `hosting` hosts
 //!   a game for the network on a free port and shows what to give out,
 //!   and `ticket` the same with a ticket naming this machine's own
 //!   addresses — no relay and no router asked. `spectate` hosts a game

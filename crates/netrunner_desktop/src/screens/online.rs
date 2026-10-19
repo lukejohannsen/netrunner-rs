@@ -312,6 +312,16 @@ pub enum Control {
     Pick(Option<usize>),
     CloseChooser,
     Ladder(NsgFormat),
+    /// The admin page's (Phase 4 §12), and a tournament's Call it off.
+    AdminRefresh,
+    Drain,
+    Undrain,
+    AwardKind(AwardKind),
+    Grant,
+    Revoke,
+    ListResults,
+    Void(usize),
+    CancelTournament,
 }
 
 /// The wash the award pop-up sits on; a press on it closes the pop-up.
@@ -464,7 +474,7 @@ fn opening(
     // A dev hook that opened a page of its own this frame (`dev_page`,
     // before this) is left on it; the hooks that need the Default — the
     // dashboard, its forms, the profile — are what this connects for.
-    let needs_default = |page: &str| page == "dashboard" || page.starts_with("profile") || matches!(page, "queue" | "queue-ranked" | "searching" | "make-lobby" | "friend-lobby" | "events" | "event" | "event-entered" | "make-event");
+    let needs_default = |page: &str| page == "dashboard" || page.starts_with("profile") || matches!(page, "queue" | "queue-ranked" | "searching" | "make-lobby" | "friend-lobby" | "events" | "event" | "event-entered" | "make-event" | "admin");
     if dev.as_ref().and_then(|dev| dev.online.as_deref()).is_some_and(|page| !needs_default(page)) {
         return;
     }
@@ -632,6 +642,15 @@ fn controls(
             Control::Pick(index) => Intent::Pick(index),
             Control::CloseChooser => Intent::CloseChooser,
             Control::Ladder(format) => Intent::ShowLadder(format),
+            Control::AdminRefresh => Intent::AdminRefresh,
+            Control::Drain => Intent::Drain,
+            Control::Undrain => Intent::Undrain,
+            Control::AwardKind(kind) => Intent::SetAwardKind(kind),
+            Control::Grant => Intent::Grant,
+            Control::Revoke => Intent::Revoke,
+            Control::ListResults => Intent::ListResults,
+            Control::Void(index) => Intent::Void(index),
+            Control::CancelTournament => Intent::CancelTournament,
             Control::Edit(field) => {
                 // The box becomes the editor, in place; the form is not
                 // redrawn until it is committed or let go.
@@ -643,7 +662,10 @@ fn controls(
             }
             Control::Paste(field) => match read_clipboard(clipboard.as_deref_mut()) {
                 Ok(text) => Intent::Typed(field, text.lines().map(str::trim).collect::<String>()),
-                Err(reason) => Intent::Failed(reason),
+                // A notice, not `Failed`: that lets the connection go, and
+                // a paste that reads nothing on the admin page would have
+                // dropped the operator from their own server.
+                Err(reason) => Intent::Refused(reason),
             },
             Control::Copy(index) => {
                 if let Some(Way::Give { what, .. }) = net.shown.get(index) {
@@ -739,7 +761,9 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, commands: &
             | Outcome::QuitEvent(_)
             | Outcome::CloseEvent(_)
             | Outcome::SetProfile { .. }
-            | Outcome::Ladder(_) => {
+            | Outcome::Ladder(_)
+            | Outcome::Admin(_)
+            | Outcome::CancelTournament { .. } => {
                 commands.queue(move |world: &mut World| ask(world, outcome));
             }
             Outcome::EditServers(edit) => {
@@ -886,6 +910,8 @@ fn ask(world: &mut World, outcome: Outcome) {
         Outcome::OfferDraw { tournament } => connected.attached.offer_draw(tournament),
         Outcome::SetProfile { title, badge } => connected.attached.set_profile(title, badge),
         Outcome::Ladder(format) => connected.attached.ladder(format),
+        Outcome::Admin(request) => connected.attached.admin(request),
+        Outcome::CancelTournament { tournament } => connected.attached.cancel_tournament(tournament),
         _ => {}
     }
 }
@@ -949,6 +975,31 @@ fn dev_page(
             Err(reason) => {
                 form.apply(Intent::Failed(reason));
             }
+        }
+        return;
+    }
+    // The admin page (Phase 4 §12) needs the Default to have said this
+    // key operates it; it opens with the key's own rated games listed,
+    // and the shot waits for the list.
+    if page == "admin" {
+        if !*done && let Some(dev) = dev.as_mut() {
+            dev.held = true;
+        }
+        let Some(server) = form.server.as_ref() else { return };
+        if !*done {
+            let (Some(key), true) = (server.key, server.operator) else { return };
+            *done = true;
+            dirty.0 = true;
+            form.apply(Intent::Open(Page::Admin));
+            form.apply(Intent::Typed(Field::AdminKey, key.rating_id()));
+            let outcome = form.apply(Intent::ListResults);
+            carry_out(outcome, form, &mut net, &mut commands, &mut core, runtime.as_deref(), &mut navigate);
+            return;
+        }
+        if server.status.is_some() && server.results.is_some()
+            && let Some(dev) = dev.as_mut()
+        {
+            dev.held = false;
         }
         return;
     }
@@ -1300,16 +1351,20 @@ fn net(
                 // so the page shows the number the game just moved.
                 AttachedEvent::Attached(lobbies) => {
                     connected.attached.profile();
+                    // Whether this key operates the server (Phase 4 §12):
+                    // a refusal says it does not, and is shown nowhere.
+                    if !hosting {
+                        connected.attached.admin(netrunner_server::protocol::AdminRequest::Status);
+                    }
                     Intent::Attached { lobbies, hosting }
                 }
                 AttachedEvent::Profile { key, profile } => Intent::Profile { key, profile: ProfileHere::from_reply(key, profile) },
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
                 AttachedEvent::Tournament(info) => Intent::Tournament(info),
-                AttachedEvent::TournamentRefused(reason) | AttachedEvent::EventRefused(reason) | AttachedEvent::AdminRefused(reason) => Intent::Refused(reason),
-                // No page asks an operator's question yet (Phase 4 §12's
-                // desktop stage); `netrunner_cli admin` does.
-                AttachedEvent::Admin(_) => continue,
+                AttachedEvent::TournamentRefused(reason) | AttachedEvent::EventRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::Admin(answer) => Intent::Admin(answer),
+                AttachedEvent::AdminRefused(reason) => Intent::AdminRefused(reason),
                 AttachedEvent::Events { events, operator } => Intent::Events { events, operator },
                 AttachedEvent::Event(info) => Intent::Event(info),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
@@ -1415,6 +1470,9 @@ fn text_of(form: &OnlineForm, field: Field) -> &str {
         Field::EventName => &form.make_event.name,
         Field::EventWins => &form.make_event.wins,
         Field::Milestone(win) => form.make_event.milestones.get(win.saturating_sub(1) as usize).map_or("", |line| line.1.as_str()),
+        Field::AdminKey => &form.admin.key,
+        Field::AwardName => &form.admin.award,
+        Field::VoidReason => &form.admin.reason,
     }
 }
 
@@ -1529,7 +1587,7 @@ fn refresh(
         // The hub's peers list scrolls inside the panel rather than
         // pushing Back off the window: the panel may shrink below its
         // content there, and its column is capped by the window.
-        node.min_height = if matches!(model.0.page, Page::Hub | Page::Event | Page::MakeEvent) { px(0) } else { Val::Auto };
+        node.min_height = if matches!(model.0.page, Page::Hub | Page::Event | Page::MakeEvent | Page::Admin) { px(0) } else { Val::Auto };
     }
     // Every badge the page may draw, looked up once a name.
     let basic = core.settings.desktop.basic_graphics;
@@ -1592,6 +1650,10 @@ fn spawn_page(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
         Page::MakeLobby => spawn_make_lobby(parent, theme, form),
         Page::Profile => match &form.server {
             Some(server) => spawn_profile(parent, theme, form, server, pictures),
+            None => spawn_waiting(parent, theme, form),
+        },
+        Page::Admin => match &form.server {
+            Some(server) => spawn_admin(parent, theme, form, server),
             None => spawn_waiting(parent, theme, form),
         },
         Page::Tournaments | Page::Tournament | Page::MakeTournament | Page::Event | Page::MakeEvent => match &form.server {
@@ -1660,6 +1722,9 @@ fn spawn_dashboard(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onli
                 ways.push(("Server profile", Control::Open(Page::Profile)));
             }
             ways.push(("Watch a game", Control::Open(Page::Watch)));
+            if server.operator {
+                ways.push(("Administer this server", Control::Open(Page::Admin)));
+            }
             if !server.hosting {
                 ways.push(("Local / P2P play", Control::Open(Page::Hub)));
             }
@@ -2736,6 +2801,15 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
             section.spawn(widgets::dim(theme, if info.state == TournamentState::Registering { "Beginning the first round closes registration and pairs everyone entered." } else { "The next round pairs by the standings; ending it makes them final." }));
         });
     }
+    // Its organizer's, or an operator's (Phase 4 §12).
+    if server.may_cancel() {
+        section(parent, theme, "Call it off", |section| {
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Call the tournament off", Val::Auto, Control::CancelTournament));
+                row.spawn(widgets::dim(theme, "No seat is given from now; a game under way plays on and counts for nothing."));
+            });
+        });
+    }
     if server.may_register() {
         section(parent, theme, "Your entry", |section| {
             section.spawn((widgets::dim(theme, "The two decks you play for the whole event. The server checks them against the format and publishes a commitment to them, never the lists."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -2872,6 +2946,78 @@ fn spawn_event(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
 /// The operator's form (Phase 4 §11): the name, the format, which
 /// factions each side's identity may be from, the wins to clear, and a
 /// line per win for what it grants.
+/// The admin page (Phase 4 §12), for an operator's key: the server's
+/// status with its drain; a title or a badge granted or revoked; a key's
+/// rated games, each with a Void. The words are `netrunner_client::admin`'s,
+/// as the terminal's `admin` prints them.
+fn spawn_admin(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, server: &ServerState) {
+    parent.spawn(widgets::heading(theme, format!("Administer {}", shortened(&form.server_name(&server.address)))));
+    scrolling_body(parent, theme, |parent| {
+        section(parent, theme, "Status", |section| {
+            match &server.status {
+                Some(status) => {
+                    section.spawn(widgets::label(theme, status.engine.clone()));
+                    for line in netrunner_client::admin::status_lines(status) {
+                        section.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
+                }
+                None => {
+                    section.spawn(widgets::dim(theme, "Asking the server…"));
+                }
+            }
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Read it again", Val::Auto, Control::AdminRefresh));
+                if server.status.as_ref().is_some_and(|status| status.draining) {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Take the drain back", Val::Auto, Control::Undrain));
+                } else {
+                    row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Drain for a shutdown", Val::Auto, Control::Drain));
+                }
+            });
+            section.spawn((widgets::dim(theme, "A drain takes no new game, lets the games under way finish and be recorded, and then the server exits."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        });
+        section(parent, theme, "A key", |section| {
+            field_box(section, theme, Field::AdminKey, &form.admin.key, "key:… as the player's profile shows it", true);
+        });
+        section(parent, theme, "A title or a badge", |section| {
+            section.spawn(widgets::row(10.0)).with_children(|row| {
+                for kind in [AwardKind::Title, AwardKind::Badge] {
+                    row.spawn(widgets::small_button(theme, if form.admin.kind == kind { ButtonKind::Primary } else { ButtonKind::Secondary }, kind.name(), Control::AwardKind(kind)));
+                }
+            });
+            field_box(section, theme, Field::AwardName, &form.admin.award, "its name: a badge's picture is the asset of that name", false);
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Grant", Val::Auto, Control::Grant));
+                row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "Revoke", Val::Auto, Control::Revoke));
+            });
+            for line in &server.award_lines {
+                section.spawn(widgets::dim(theme, line.clone()));
+            }
+        });
+        section(parent, theme, "Rated games", |section| {
+            section.spawn(widgets::row(12.0)).with_children(|row| {
+                row.spawn(widgets::styled_button(theme, ButtonKind::Secondary, "List the key's rated games", Val::Auto, Control::ListResults));
+            });
+            if let Some((key, games)) = &server.results {
+                section.spawn(widgets::dim(theme, format!("{}'s, newest first: a void takes a game off every rating, which is folded again without it.", key.fingerprint())));
+                field_box(section, theme, Field::VoidReason, &form.admin.reason, "why a game is voided", false);
+                if games.is_empty() {
+                    section.spawn(widgets::dim(theme, "No rated game counts for that key."));
+                }
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
+                for (index, game) in games.iter().enumerate() {
+                    section.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Void", Control::Void(index)));
+                        row.spawn((widgets::dim(theme, netrunner_client::admin::result_line(game, now)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    });
+                }
+            }
+        });
+    });
+    buttons(parent, |row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
+    });
+}
+
 fn spawn_make_event(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
     let make = &form.make_event;
     parent.spawn(widgets::heading(theme, "Hold an event"));
@@ -2979,7 +3125,11 @@ fn format_section(parent: &mut ChildSpawnerCommands, theme: &Theme, chosen: NsgF
 fn field_box(parent: &mut ChildSpawnerCommands, theme: &Theme, field: Field, value: &str, placeholder: &str, paste: bool) {
     parent.spawn(widgets::row(12.0)).with_children(|row| {
         row.spawn((FieldSlot(field), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() })).with_children(|slot| {
-            let (shown, colour) = if value.is_empty() { (placeholder.to_string(), theme.text_dim) } else { (shortened(value), theme.text) };
+            // A key is shown whole — it fits, and an operator reads it
+            // against the one they were given — where an address as long
+            // is a ticket and is shortened.
+            let shown_value = if field == Field::AdminKey { value.to_string() } else { shortened(value) };
+            let (shown, colour) = if value.is_empty() { (placeholder.to_string(), theme.text_dim) } else { (shown_value, theme.text) };
             slot.spawn((
                 Button,
                 widgets::Themed,
