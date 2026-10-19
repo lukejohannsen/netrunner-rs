@@ -118,6 +118,14 @@ pub enum GameEvent {
         /// encounter. Public: both players watched each subroutine resolve.
         #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
         subroutines_resolved: u32,
+        /// The object that fully broke the ice in the encounter the pass
+        /// ends, when one did (CR 6.5.7b, `IceFullyBroken::by`) —
+        /// Inversificator's "you pass a piece of ice after an encounter
+        /// during which **this program** fully broke that ice", heard
+        /// through `EventFilter::ByThis`. Carried for `subroutines_resolved`'s
+        /// reason. Public, as each break was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fully_broken_by: Option<crate::rules::state::InstallId>,
     },
     /// The Runner fully broke the ice being encountered: the first time
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).

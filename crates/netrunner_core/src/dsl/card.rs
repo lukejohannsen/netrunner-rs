@@ -1445,7 +1445,7 @@ impl CardDefinition {
             // Only a moment that names a player can be made one's.
             EventFilter::Whose(_) | EventFilter::Anyone => triggered.trigger.states_whose(),
             EventFilter::OwnedBy { .. } => about == TriggerAbout::Card && triggered.trigger.states_whose(),
-            EventFilter::ByThis => triggered.trigger == Trigger::OnIceFullyBroken,
+            EventFilter::ByThis => matches!(triggered.trigger, Trigger::OnIceFullyBroken | Trigger::OnIcePassed),
             // Only a card that is hosted has a host to be about: one that
             // installs on ice, or a condition, which is hosted as it
             // becomes a counter (CR 1.13.6d).

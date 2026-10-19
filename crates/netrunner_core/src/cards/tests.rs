@@ -1831,7 +1831,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0 }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0, fully_broken_by: None }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5129,7 +5129,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0 }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0, fully_broken_by: None }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -19431,7 +19431,7 @@ mod parhelion {
     fn a_first_time_by_this_card_is_refused_where_the_copy_does_not_count_it() {
         let mut card: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/runner/abaasy.json")).expect("the card");
         assert_eq!(card.validate(), Ok(()));
-        card.triggers[0].trigger = crate::dsl::Trigger::OnIcePassed;
+        card.triggers[0].trigger = crate::dsl::Trigger::OnSubroutineBroken;
         assert!(card.validate().is_err());
     }
 
@@ -39817,10 +39817,82 @@ mod red_sand_stage_19 {
         let registry = registry();
         let state = base_state();
         let sentry = crate::dsl::EffectRequirement::PassedIceWas(crate::dsl::IceType::Sentry);
-        let pass = |rezzed_as| GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as, printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 2 };
+        let pass = |rezzed_as| GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as, printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 2, fully_broken_by: None };
         let asks = |event: &GameEvent| crate::rules::check_requirement(&state, &sentry, Side::Runner, &crate::rules::ResolutionContext::for_trigger(Some(&id("persephone")), Some(event)), &registry).is_ok();
         assert!(asks(&pass(vec![crate::dsl::IceType::Sentry])));
         assert!(!asks(&pass(vec![crate::dsl::IceType::Barrier])), "a barrier");
         assert!(!asks(&pass(vec![])), "unrezzed, so never encountered");
+    }
+}
+
+mod red_sand_stage_20 {
+    use super::*;
+    use super::reprints::{ice_at_hq, runner_turn};
+    use super::system_gateway::corp_ice;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, ability_index: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id("inversificator"), ability_index }).expect("use it");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state)
+    }
+
+    /// Inversificator alone fully breaks Enigma at HQ, and the run goes on
+    /// until it passes it.
+    fn passed_enigma(registry: &CardRegistry, helper: bool) -> (GameState, Vec<GameEvent>) {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("enigma"), corp_ice("ice_wall", ServerId::RnD)];
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: fixture_install_id("inversificator"), card: id("inversificator"), base_strength: 2, ..Default::default() },
+            crate::rules::InstalledRunnerCard { install_id: fixture_install_id("gordian_blade"), card: id("gordian_blade"), base_strength: 2, ..Default::default() },
+        ];
+        state.runner.resources.credits = Credits(20);
+        let state = super::reprints::encounter(&state, registry);
+        let state = use_ability(&state, registry, 0);
+        let state = if helper {
+            let (state, _) = apply_action(&state, registry, PlayerAction::ActivateAbility { target: fixture_install_id("gordian_blade"), ability_index: 1 }).expect("Gordian Blade breaks the other");
+            apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state)
+        } else {
+            use_ability(&state, registry, 0)
+        };
+        pass_until_settled(state, registry)
+    }
+
+    use crate::rules::GameEvent;
+
+    #[test]
+    fn inversificator_swaps_the_ice_it_alone_fully_broke_once_it_is_passed() {
+        let registry = registry();
+        let (asked, events) = passed_enigma(&registry, false);
+        let by = fixture_install_id("inversificator");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IcePassed { fully_broken_by: Some(install), .. } if *install == by)), "{events:?}");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { .. })), "you may: {:?}", asked.pending_decision);
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("swap it");
+        let toggles: Vec<usize> = crate::rules::legal_actions_for(&choosing, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(toggles, vec![1], "another installed piece of ice: Ice Wall");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Ice Wall");
+        let (swapped, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("swap");
+        let server_of = |card: &str| swapped.corp.installed.iter().find(|installed| installed.card == id(card)).expect("installed").server;
+        assert_eq!(server_of("enigma"), ServerId::RnD);
+        assert_eq!(server_of("ice_wall"), ServerId::Hq);
+        let copy = swapped.runner.rig.iter().find(|card| card.card == id("inversificator")).expect("installed");
+        assert_eq!(copy.this_turn.count(swapped.turn, crate::dsl::Trigger::OnIcePassed), 1, "counted on the copy that broke it");
+    }
+
+    #[test]
+    fn inversificator_is_silent_when_another_breaker_helped() {
+        let registry = registry();
+        let (settled, events) = passed_enigma(&registry, true);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IcePassed { after_fully_breaking: true, fully_broken_by: None, .. })), "{events:?}");
+        assert!(settled.pending_decision.is_none(), "{:?}", settled.pending_decision);
     }
 }
