@@ -147,10 +147,12 @@ struct Config {
 
     /// (serve mode) Rebuild the store's ratings and results from
     /// `results.jsonl` in the data directory before serving. The results
-    /// log is the truth and the store its index: a corrupt store, a
-    /// change to the rating system, or a game voided by deleting its line
-    /// is put right by this, and every receipt is checked against the
-    /// daemon's key as it is folded. The players, the awards, the pairing
+    /// log is the truth and the store its index: a corrupt store or a
+    /// change to the rating system is put right by this, every game an
+    /// operator voided (`voided.jsonl`, `netrunner_cli admin game void`)
+    /// is left out, and every receipt is checked against the daemon's
+    /// key as it is folded. Never delete a line to void a game: each is a
+    /// receipt the players hold too. The players, the awards, the pairing
     /// memory and the tournaments are not the log's and are kept.
     #[arg(long, requires = "data_dir")]
     rebuild: bool,

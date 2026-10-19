@@ -723,3 +723,89 @@ async fn the_store_is_rebuilt_exactly_from_the_results_log() {
         keeping.remove().await;
     }
 }
+
+/// The answer to one admin request: `Ok` the answer, `Err` the refusal.
+async fn admin(socket: &mut Socket, request: netrunner_server::protocol::AdminRequest) -> Result<netrunner_server::protocol::AdminAnswer, String> {
+    send(socket, ClientMessage::Admin(request)).await;
+    next_where(socket, |message| match message {
+        ServerMessage::Admin(answer) => Some(Ok(answer)),
+        ServerMessage::AdminRefused { reason } => Some(Err(reason)),
+        _ => None,
+    })
+    .await
+}
+
+/// A game voided (Phase 4 §12 stage 3): an operator lists a key's rated
+/// games, voids one, and the ratings are folded again without it while
+/// the daemon runs — the ladder, the store's rows and its results index
+/// as though it was never played — with the receipt still in the log and
+/// the void beside it, which a rebuild honours. A void with no reason, a
+/// game the log has no rated receipt of and one voided already are
+/// refused.
+#[tokio::test]
+async fn an_operator_voids_a_rated_game_and_the_ratings_fold_again() {
+    use netrunner_server::protocol::{AdminAnswer, AdminRequest};
+    let dir = scratch("void");
+    let operator = player(9);
+    let options = ServeOptions { seed: Some(1), data_dir: Some(dir.clone()), operators: vec![operator.public_key()], ..ServeOptions::default() };
+    let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
+    let url = format!("ws://{}", server.local_addr().unwrap());
+    tokio::spawn(server.run());
+    let (ann, bo) = (player(1), player(2));
+    play_rated(&url, &ann, &bo, true).await;
+    let store = Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+    let ann_id = ann.public_key().rating_id();
+    let one_game = wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == 1)).await;
+    play_rated(&url, &ann, &bo, true).await;
+    wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == 2)).await;
+
+    let mut op = attach_as(&url, &operator).await;
+    let Ok(AdminAnswer::Results { key, games }) = admin(&mut op, AdminRequest::Results { key: ann.public_key() }).await else { panic!("listed") };
+    assert_eq!((key, games.len()), (ann.public_key(), 2));
+    assert!(games[0].ended_at >= games[1].ended_at, "newest first");
+    assert!(games.iter().all(|game| game.corp.key == ann.public_key() && game.runner.key == bo.public_key() && game.winner == Side::Corp && game.corp.name == "ann"));
+    let (newest, oldest) = (games[0].match_id, games[1].match_id);
+
+    assert_eq!(admin(&mut op, AdminRequest::Void { match_id: newest, reason: "  ".into() }).await, Err("a void says why".into()));
+    let nothing = uuid::Uuid::new_v4();
+    assert_eq!(admin(&mut op, AdminRequest::Void { match_id: nothing, reason: "typo".into() }).await, Err(format!("the results log holds no rated game {nothing}")));
+    assert_eq!(admin(&mut op, AdminRequest::Void { match_id: newest, reason: "a disconnect the server misread".into() }).await, Ok(AdminAnswer::Voided { match_id: newest, games: 1 }));
+    assert_eq!(admin(&mut op, AdminRequest::Void { match_id: newest, reason: "again".into() }).await, Err(format!("game {newest} was voided already")));
+
+    // The store holds what one game makes, and the results index the one.
+    let after = wait_for_rows(&store, |rows| row(rows, &ann_id, "startup", "corp").is_some_and(|row| row.wins == 1)).await;
+    assert_eq!(after, one_game, "as though the voided game was never played");
+    let Ok(AdminAnswer::Results { games, .. }) = admin(&mut op, AdminRequest::Results { key: ann.public_key() }).await else { panic!("listed") };
+    assert_eq!(games.iter().map(|game| game.match_id).collect::<Vec<_>>(), [oldest]);
+    // The book in memory moved too: the ladder reads one game.
+    send(&mut op, ClientMessage::Ladder { format: NsgFormat::Startup }).await;
+    let rows = next_where(&mut op, |message| match message {
+        ServerMessage::Ladder { rows, .. } => Some(rows),
+        _ => None,
+    })
+    .await;
+    if let Some(ann_row) = rows.iter().find(|row| row.key == ann.public_key()) {
+        assert_eq!(ann_row.standing.corp.games(), 1);
+    }
+
+    // The receipt stays in the log, and a rebuild leaves the void out.
+    assert_eq!(std::fs::read_to_string(dir.join("results.jsonl")).unwrap().lines().count(), 2, "the log is never edited");
+    assert!(std::fs::read_to_string(dir.join("voided.jsonl")).unwrap().contains("a disconnect the server misread"));
+    store.replace_rebuilt(&[], &[]).await.unwrap();
+    assert_eq!(netrunner_server::serve::rebuild(&dir, None).await.unwrap(), 1);
+    assert_eq!(store.ratings().await.unwrap(), one_game);
+    store.close().await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Attached under `identity`, proving it.
+async fn attach_as(url: &str, identity: &Identity) -> Socket {
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    send(&mut socket, ClientMessage::Identify { key: identity.public_key() }).await;
+    let ServerMessage::Challenge { nonce, server_key, .. } = next(&mut socket).await else { panic!("expected Challenge") };
+    send(&mut socket, ClientMessage::Prove { signature: identity.prove(&server_key, &nonce) }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Identified { .. }));
+    send(&mut socket, ClientMessage::Attach { player_name: "op".into() }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
+    socket
+}

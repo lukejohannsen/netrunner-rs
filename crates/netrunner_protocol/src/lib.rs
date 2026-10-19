@@ -302,7 +302,26 @@ pub enum AdminRequest {
     /// Answered with `AdminAnswer::Tournament`, and pushed to its
     /// entrants and organizer as a `Tournament`.
     SetPrizes { tournament: String, prizes: Vec<Prize> },
+    /// `key`'s rated games, newest first and at most `RESULTS_LIMIT`, as
+    /// the store holds them — the ones that count, so a voided game is
+    /// not among them. How an operator finds the game to void. Answered
+    /// with `AdminAnswer::Results`.
+    Results { key: PublicKey },
+    /// Voids rated game `match_id` (Phase 4 §12 stage 3): it counts for
+    /// nothing from now, and every rating is folded again from the
+    /// results log without it, while the server runs. **The log is never
+    /// edited** — every line is a receipt the server signed, and a
+    /// player holds the same receipt — so the void is a line of its own
+    /// beside it, with who voided it, when and why, which `--rebuild`
+    /// honours too. A tournament's table or an event's track the game
+    /// moved is not touched: those are their own records. Refused for a
+    /// game the log holds no rated receipt of, and one voided already.
+    /// Answered with `AdminAnswer::Voided`.
+    Void { match_id: Uuid, reason: String },
 }
+
+/// The most games `AdminRequest::Results` answers with.
+pub const RESULTS_LIMIT: usize = 20;
 
 /// The answer to an `AdminRequest`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,6 +331,30 @@ pub enum AdminAnswer {
     Awards { key: PublicKey, titles: Vec<Award>, badges: Vec<Award> },
     /// A tournament as it now stands, after `SetPrizes`.
     Tournament(TournamentInfo),
+    /// The answer to `Results`.
+    Results { key: PublicKey, games: Vec<GameResult> },
+    /// Game `match_id` voided, and the ratings folded again from
+    /// `games` rated games that still count.
+    Voided { match_id: Uuid, games: usize },
+}
+
+/// One rated game, as its receipt says it ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameResult {
+    pub match_id: Uuid,
+    pub ended_at: u64,
+    pub format: NsgFormat,
+    pub corp: ResultSeat,
+    pub runner: ResultSeat,
+    /// A rated game always has one: a stall is nobody's and unrated.
+    pub winner: Side,
+}
+
+/// A rated game's seat: the name it played under and its key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResultSeat {
+    pub name: String,
+    pub key: PublicKey,
 }
 
 /// A server as its operator sees it: what it runs, and what it holds.
