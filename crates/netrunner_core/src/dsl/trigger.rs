@@ -511,6 +511,15 @@ pub enum Trigger {
     /// trace's own "if successful" is the only effect its success reached,
     /// and that belongs to the card that began it.
     OnTraceSuccessful,
+    /// "The first time each turn **the Runner spends [click] to gain
+    /// 1[credit]** (not through a card effect)" (CPC Generator) —
+    /// `GameEvent::BasicCreditActionTaken`, fired by the basic action
+    /// alone, as `OnBasicDrawAction` is by the basic draw. Heard by both
+    /// players, since the card that prints it is the other side's; whose
+    /// action it was is the `when`'s to say (`EventFilter::Whose`).
+    /// Composition didn't work: the basic credit action raised only a
+    /// `CreditsGained`, which every other gain raises too.
+    OnBasicCreditAction,
     /// Not a moment: a conditional ability with a *static* condition (CR
     /// 9.6.7) — Parasite's "When the strength of host ice is 0 or less,
     /// trash it". The condition is the entry's `requirement`, and no event
@@ -1034,7 +1043,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 63] = [
+    pub const ALL: [Trigger; 64] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -1097,6 +1106,7 @@ impl Trigger {
         Trigger::OnExposeAboutToResolve,
         Trigger::OnServerCreated,
         Trigger::OnTraceSuccessful,
+        Trigger::OnBasicCreditAction,
         Trigger::WhileTrue,
     ];
 
@@ -1161,6 +1171,7 @@ impl Trigger {
             | Trigger::OnActionPhaseEnd
             | Trigger::OnDiscardPhaseEnd
             | Trigger::OnBasicDrawAction
+            | Trigger::OnBasicCreditAction
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
             | Trigger::OnTagsAvoided
@@ -1206,7 +1217,7 @@ impl Trigger {
     /// about the game carry a player (a run is the Runner's) that no card
     /// asks for, and a `Whose` on one would read as a restriction it is not.
     pub fn states_whose(self) -> bool {
-        self.hears() == Hears::OwnSide || self == Trigger::OnTagRemoved
+        self.hears() == Hears::OwnSide || matches!(self, Trigger::OnTagRemoved | Trigger::OnBasicCreditAction)
     }
 
     /// Whose moment this trigger hears. Read off how the pool's cards print
@@ -1283,6 +1294,7 @@ impl Trigger {
             | Trigger::OnVirusCountersPurged
             | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::OnTraceSuccessful
+            | Trigger::OnBasicCreditAction
             | Trigger::WhileTrue
             | Trigger::OnCardExposed
             | Trigger::Paid => Hears::Everyone,
@@ -1315,7 +1327,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnTagsAvoided | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved | Trigger::OnDamageSuffered | Trigger::OnCreditsSpentFromInstalledCard | Trigger::OnCardsTrashedFromGripOrStack | Trigger::OnAbilityUsed | Trigger::OnAbilityTookCredits | Trigger::OnCardRevealed | Trigger::OnCardDrawn | Trigger::OnCardExposed | Trigger::OnAgendaAddedToScoreArea | Trigger::OnDrawAboutToResolve | Trigger::OnExposeAboutToResolve | Trigger::OnServerCreated | Trigger::OnTraceSuccessful | Trigger::OnBasicCreditAction | Trigger::WhileTrue => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

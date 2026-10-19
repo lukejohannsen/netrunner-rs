@@ -39596,3 +39596,85 @@ mod red_sand_stage_16 {
         assert_eq!(state.corp.installed.len(), 1);
     }
 }
+
+mod red_sand_stage_17 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The basic action, and only the first each turn: a card's gain is
+    /// not it, and neither is the Corp's own click.
+    #[test]
+    fn cpc_generator_gains_1_the_first_time_each_turn_the_runner_clicks_for_a_credit() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(11),
+            card: id("cpc_generator"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("click for a credit");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(1), "the first time");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("again");
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(1), "only the first time each turn");
+
+        // The Corp's own click is not the Runner's.
+        state.phase = GamePhase::Action(Side::Corp);
+        state.turn += 1;
+        crate::rules::turn_log::rotate(&mut state);
+        state.corp.resources.clicks = Clicks(3);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).expect("the Corp clicks");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(2), "1 from the click and nothing from CPC Generator");
+    }
+}
+
+mod red_sand_stage_17_respirocytes {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The meat damage on install, a draw the first time each turn the grip
+    /// is empty, and the trash at the third counter.
+    #[test]
+    fn respirocytes_draws_the_first_time_each_turn_the_grip_is_empty_and_is_trashed_at_3_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("respirocytes"), id("sure_gamble")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("respirocytes"), host: None }).expect("install it");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.runner.heap.contains(&id("sure_gamble")), "1 meat damage took the grip's one card");
+        let respirocytes = state.runner.rig.iter().find(|card| card.card.0 == "respirocytes").expect("installed");
+        assert_eq!(respirocytes.counters, 1, "the grip emptied: a power counter");
+        assert_eq!(state.runner.grip.len(), 1, "and a card drawn");
+
+        // Emptied again this turn: nothing more.
+        let mut emptied = state.clone();
+        emptied.runner.grip.clear();
+        let (emptied, _) = apply_action(&emptied, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click");
+        let (emptied, _) = close_all_windows(emptied, &registry);
+        assert!(emptied.runner.grip.is_empty(), "only the first time each turn");
+
+        // The third counter trashes it.
+        let mut full = state.clone();
+        full.runner.rig.iter_mut().find(|card| card.card.0 == "respirocytes").unwrap().counters = 3;
+        let (full, _) = apply_action(&full, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click");
+        let (full, _) = close_all_windows(full, &registry);
+        assert!(full.runner.heap.contains(&id("respirocytes")));
+    }
+}

@@ -814,6 +814,10 @@ pub enum GameEvent {
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
     BasicDrawActionTaken { side: Side },
+    /// Fired only by `engine::gain_credit_click`, the basic action to gain
+    /// 1[credit], after the credit is gained. Feeds `Trigger::
+    /// OnBasicCreditAction` (CPC Generator).
+    BasicCreditActionTaken { side: Side },
     /// A player chose one of `Effect::PresentChoice`'s options
     /// (`state::PendingDecision::ChooseEffect`) is now awaiting
     /// `PlayerAction::ResolvePendingChoice`.
@@ -932,7 +936,7 @@ impl GameEvent {
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
-            | GameEvent::BasicDrawActionTaken { .. }
+            | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }

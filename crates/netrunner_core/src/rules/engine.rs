@@ -371,7 +371,7 @@ fn apply_action_once(
         return Err(RulesError::ActionBlockedByActiveRun);
     }
     let resolved = match action {
-        PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
+        PlayerAction::GainCreditClick { side } => gain_credit_click(state, registry, side),
         PlayerAction::DrawCardClick { side } => draw_card_click(state, registry, side),
         PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
             install_card(state, registry, card_id, zone, slot, trash_first)
@@ -810,6 +810,7 @@ fn spend_click(state: &mut GameState, side: Side) -> Result<(), RulesError> {
 
 fn gain_credit_click(
     state: &GameState,
+    registry: &CardRegistry,
     side: Side,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(side))?;
@@ -818,13 +819,11 @@ fn gain_credit_click(
     spend_click(&mut next, side)?;
     next.resources_mut(side).credits = next.resources(side).credits.gain(1);
 
-    Ok((
-        next,
-        vec![
-            GameEvent::ClickSpent { side },
-            GameEvent::CreditsGained { side, amount: 1 },
-        ],
-    ))
+    let mut events = vec![GameEvent::ClickSpent { side }, GameEvent::CreditsGained { side, amount: 1 }];
+    // CPC Generator's "spends [click] to gain 1[credit] (not through a
+    // card effect)": the basic action's own moment, as the draw has one.
+    dispatcher::emit(&mut next, registry, &mut events, GameEvent::BasicCreditActionTaken { side })?;
+    Ok((next, events))
 }
 
 fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Result<(GameState, Vec<GameEvent>), RulesError> {
@@ -3781,6 +3780,7 @@ mod tests {
                     side: Side::Corp,
                     amount: 1
                 },
+                GameEvent::BasicCreditActionTaken { side: Side::Corp },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::GainCredit },
             ]
         );
