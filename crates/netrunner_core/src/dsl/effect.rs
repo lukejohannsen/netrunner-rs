@@ -2409,6 +2409,16 @@ pub enum Amount {
     /// any other event. Composition didn't work: `TriggeringCardPrintedCost`
     /// is the play or install cost, and `CardTrashed` carries no trash cost.
     TriggeringCardTrashCost,
+    /// How many of the passed ice's subroutines resolved during the
+    /// encounter the triggering pass ended — Persephone's "for each
+    /// subroutine on that **sentry** that resolved during that encounter",
+    /// read off `GameEvent::IcePassed::subroutines_resolved`. 0 for any
+    /// other event. Written into a trigger's choice as it parks
+    /// (`Effect::filled`), since the pass is gone once it is answered.
+    /// Composition didn't work: the encounter's list of subroutines is the
+    /// next encounter's by the time the pass is heard, and the turn log
+    /// counts resolutions by the turn, not by the encounter.
+    PassedIceSubroutinesResolved,
     /// The printed agenda points of the acting card — Drudge Work's
     /// "Reveal an agenda in HQ or Archives. Gain credits equal to its agenda
     /// points", read in the reveal's `then`, which resolves as the card

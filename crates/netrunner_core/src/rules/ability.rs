@@ -2308,6 +2308,7 @@ pub fn evaluate_effect(
                     let fill = |amount: &Amount| match amount {
                         Amount::TriggeringCardPrintedCost
                         | Amount::TriggeringCardTrashCost
+                        | Amount::PassedIceSubroutinesResolved
                         | Amount::TriggeringAgendaAdvancementRequirement
                         | Amount::TimesThisActionThisTurn
                         | Amount::AboutToResolve
@@ -5459,6 +5460,10 @@ pub fn check_requirement(
             let broke = matches!(ctx.triggering_event, Some(GameEvent::IcePassed { printed_broken_with, .. }) if printed_broken_with.includes(*subtype));
             if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::PassedIceWas(ice_type) => {
+            let was = matches!(ctx.triggering_event, Some(GameEvent::IcePassed { rezzed_as, .. }) if rezzed_as.contains(ice_type));
+            if was { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::CorpCreditsAtLeast(amount) => {
             if state.corp.resources.credits.0 >= *amount { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -5769,6 +5774,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::PaidCardPrintedCost => ctx.paid_with.first().and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::TriggeringCardPrintedCost => match ctx.triggering_event {
             Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
+            _ => 0,
+        },
+        Amount::PassedIceSubroutinesResolved => match ctx.triggering_event {
+            Some(GameEvent::IcePassed { subroutines_resolved, .. }) => *subroutines_resolved,
             _ => 0,
         },
         Amount::TriggeringCardTrashCost => match ctx.triggering_event {
@@ -6148,6 +6157,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::HadNoTags
         | EffectRequirement::BrokePrintedSubroutineWith(_)
+        | EffectRequirement::PassedIceWas(_)
         | EffectRequirement::BrokeASubroutineThatEncounter
         | EffectRequirement::IceFullyBrokenThatEncounter
         | EffectRequirement::CorpCreditsAtLeast(_)

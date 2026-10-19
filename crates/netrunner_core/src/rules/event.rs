@@ -109,6 +109,15 @@ pub enum GameEvent {
         /// list, since it lists ice types. Public, as the rezzed ice is.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_bioroid: bool,
+        /// How many of the ice's subroutines resolved during the encounter
+        /// the pass ends — Persephone's "trash 1 card from the top of R&D
+        /// for each subroutine on that **sentry** that resolved during that
+        /// encounter" (`Amount::PassedIceSubroutinesResolved`). Carried for
+        /// `printed_broken_with`'s reason: the encounter's list is the next
+        /// encounter's by the time the pass is heard. 0 for a pass with no
+        /// encounter. Public: both players watched each subroutine resolve.
+        #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+        subroutines_resolved: u32,
     },
     /// The Runner fully broke the ice being encountered: the first time
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).

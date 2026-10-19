@@ -542,6 +542,12 @@ fn instance_matches_filter(
             let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_ice);
             host.is_none() || zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != host
         }
+        // Dedicated Processor's "host icebreaker": the rig card or the
+        // piece of ice the parking card sits on, and nothing else.
+        CardFilter::ThisCardsHost => {
+            let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_rig_card.or(card.hosted_on_ice));
+            host.is_some() && zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) == host
+        }
         // Only a heap card can have been discarded; the list is the
         // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
         // be the heap at all.
