@@ -91,7 +91,7 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{event_code, event_lobby_id, queue_id, AdminAnswer, AdminRequest, Award, AwardKind, AwardSpec, ServerStatus, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{event_code, event_lobby_id, queue_id, AdminAnswer, AdminRequest, Award, AwardKind, AwardSpec, Prize, ServerStatus, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::queue::{self, Wants};
 use crate::{fixtures, net};
@@ -505,6 +505,9 @@ struct Tournament {
     /// seeded with once it starts. Only the secret's hash leaves the
     /// server until the table has a result (`info`).
     seeds: Vec<TableSecret>,
+    /// What the final standings win, set by an operator (Phase 4 §12)
+    /// and granted at the finish (`Shared::grant_prizes`).
+    prizes: Vec<Prize>,
 }
 
 /// One table's half of the seed the server holds: its secret, never sent
@@ -584,6 +587,7 @@ impl Tournament {
             dropped: self.dropped.clone(),
             draw_offers: self.draw_offers.clone(),
             clock: self.clock,
+            prizes: self.prizes.clone(),
             seeds: self
                 .seeds
                 .iter()
@@ -1213,6 +1217,23 @@ impl Shared {
         let (Some(writer), Some(tournament)) = (&self.store, registry.tournaments.0.get(id)) else { return };
         let row = TournamentRow { id: id.to_string(), document: serde_json::to_string(tournament).expect("a tournament serializes"), updated_at: unix_now() as i64 };
         writer.write("a tournament", move |store| async move { store.put_tournament(&row).await });
+    }
+
+    /// The prizes of tournament `id`, which has just finished, granted
+    /// to the places of its final standings — every entrant ranked,
+    /// a drop included, since a drop keeps the standing they earned —
+    /// each filed under `tournament:<id>`. A place past the entrants goes
+    /// to nobody. Under the caller's lock; the rows go through the writer.
+    fn grant_prizes(&self, registry: &Registry, id: &str) {
+        let (Some(writer), Some(tournament)) = (&self.store, registry.tournaments.0.get(id)) else { return };
+        let standings = swiss::standings(&tournament.seeding, &tournament.rounds);
+        let now = unix_now() as i64;
+        for prize in &tournament.prizes {
+            let Some(standing) = standings.get(prize.place as usize - 1) else { continue };
+            tracing::info!(tournament = id, place = prize.place, key = %standing.key.fingerprint(), award = prize.award.name, kind = ?prize.award.kind, "a tournament's prize granted");
+            let row = StoredAward { key: standing.key.rating_id(), kind: prize.award.kind.key().to_string(), name: prize.award.name.clone(), earned_at: now, source: format!("tournament:{id}") };
+            writer.write("a prize", move |store| async move { store.grant(&row).await });
+        }
     }
 
     /// Whether `key` is an operator's (`ServeOptions::operators`).

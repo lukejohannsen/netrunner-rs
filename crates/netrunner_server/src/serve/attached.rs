@@ -510,7 +510,7 @@ impl Attached {
                 break id;
             }
         };
-        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() };
+        let tournament = Tournament { name, format, organizer, created_at: unix_now(), state: TournamentState::Registering, entrants: Vec::new(), seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new(), prizes: Vec::new() };
         let info = tournament.info(&id);
         registry.tournaments.0.insert(id.clone(), tournament);
         self.shared.save_tournament(&registry, &id);
@@ -711,6 +711,7 @@ impl Attached {
         tournament.state = TournamentState::Finished;
         let info = tournament.info(&id);
         self.shared.save_tournament(&registry, &id);
+        self.shared.grant_prizes(&registry, &id);
         self.shared.announce(&registry, &id, Some(self.link));
         Ok(info)
     }
@@ -1075,7 +1076,31 @@ impl Attached {
             AdminRequest::Status => Ok(AdminAnswer::Status(self.shared.status())),
             AdminRequest::Grant { key, award } => self.shared.change_award(operator, key, award, true).await,
             AdminRequest::Revoke { key, award } => self.shared.change_award(operator, key, award, false).await,
+            AdminRequest::SetPrizes { tournament, prizes } => self.set_prizes(&tournament, prizes).map(AdminAnswer::Tournament),
         }
+    }
+
+    /// An operator sets what a tournament's final standings win: each
+    /// award's name trimmed and capped as a milestone's is, by place.
+    fn set_prizes(&self, id: &str, mut prizes: Vec<Prize>) -> Result<TournamentInfo, String> {
+        for prize in &mut prizes {
+            prize.award.name = prize.award.name.trim().chars().take(MAX_LOBBY_NAME).collect();
+        }
+        if let Some(problem) = Prize::problem(&prizes) {
+            return Err(problem);
+        }
+        prizes.sort_by_key(|prize| prize.place);
+        let id = id.trim().to_uppercase();
+        let mut registry = self.shared.lock();
+        let tournament = registry.tournaments.0.get_mut(&id).ok_or("no such tournament")?;
+        if matches!(tournament.state, TournamentState::Finished | TournamentState::Cancelled) {
+            return Err("the tournament is over".into());
+        }
+        tournament.prizes = prizes;
+        let info = tournament.info(&id);
+        self.shared.save_tournament(&registry, &id);
+        self.shared.announce(&registry, &id, Some(self.link));
+        Ok(info)
     }
 }
 

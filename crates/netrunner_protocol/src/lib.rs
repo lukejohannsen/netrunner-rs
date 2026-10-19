@@ -294,6 +294,14 @@ pub enum AdminRequest {
     /// Takes `award` back from `key`, whatever granted it; worn, it is
     /// taken off. Answered with `AdminAnswer::Awards`.
     Revoke { key: PublicKey, award: AwardSpec },
+    /// Sets what tournament `tournament`'s final standings win, replacing
+    /// what was set (`TournamentInfo::prizes`); empty clears them. An
+    /// operator's and not the organizer's, as an event is, because a
+    /// prize is an award the profile wears everywhere on this server and
+    /// any key may organize. Refused once the tournament is over.
+    /// Answered with `AdminAnswer::Tournament`, and pushed to its
+    /// entrants and organizer as a `Tournament`.
+    SetPrizes { tournament: String, prizes: Vec<Prize> },
 }
 
 /// The answer to an `AdminRequest`.
@@ -302,6 +310,8 @@ pub enum AdminAnswer {
     Status(ServerStatus),
     /// `key`'s awards as they now stand, after a grant or a revoke.
     Awards { key: PublicKey, titles: Vec<Award>, badges: Vec<Award> },
+    /// A tournament as it now stands, after `SetPrizes`.
+    Tournament(TournamentInfo),
 }
 
 /// A server as its operator sees it: what it runs, and what it holds.
@@ -558,7 +568,8 @@ impl Profile {
 }
 
 /// A title or a badge a key has earned at a server: its name, when, and
-/// what granted it — `event:<code>` (§11) or an operator's key (§12). A
+/// what granted it — `event:<code>` (§11), `tournament:<code>` or an
+/// operator's key (§12). A
 /// badge's picture is an asset slot named by its name (AGENTS.md §5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Award {
@@ -910,6 +921,40 @@ pub struct TournamentInfo {
     /// server is what refuses a seat once time is called and runs the
     /// end-of-round rule inside each game.
     pub clock: Option<RoundClock>,
+    /// What the final standings win (Phase 4 §12): a title or a badge
+    /// per place, set by an operator and granted when the organizer
+    /// finishes the tournament. By place, best first; empty, nothing
+    /// but the standings.
+    pub prizes: Vec<Prize>,
+}
+
+/// A title or a badge for the entrant who finishes `place`th (from 1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Prize {
+    pub place: u32,
+    pub award: AwardSpec,
+}
+
+impl Prize {
+    /// Why the server would not take these: a place 0, two at one place,
+    /// an award with no name. A place past the entrants is no problem —
+    /// they are not known until registration closes — and goes to nobody.
+    pub fn problem(prizes: &[Prize]) -> Option<String> {
+        let mut seen = Vec::new();
+        for prize in prizes {
+            if prize.place == 0 {
+                return Some("places count from 1".into());
+            }
+            if seen.contains(&prize.place) {
+                return Some(format!("two prizes for place {}", prize.place));
+            }
+            if prize.award.name.trim().is_empty() {
+                return Some(format!("the prize for place {} names no {}", prize.place, prize.award.kind.name().to_lowercase()));
+            }
+            seen.push(prize.place);
+        }
+        None
+    }
 }
 
 /// When a round began and how long it runs, in seconds since the Unix
