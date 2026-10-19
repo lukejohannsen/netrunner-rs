@@ -39968,3 +39968,59 @@ mod red_sand_stage_21 {
         assert!(state.active_run.is_none());
     }
 }
+
+mod red_sand_stage_22 {
+    use super::*;
+    use crate::rules::ArchivedCard;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection").0
+    }
+
+    /// Restore out of HQ, and the card at `position` in Archives chosen
+    /// and installed in a new remote.
+    fn restore(archives: &[&str], position: usize, credits: u32) -> GameState {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(credits);
+        state.corp.hq = vec![id("restore")];
+        state.corp.archives = archives.iter().map(|card| ArchivedCard::faceup(id(card))).collect();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("restore") }).expect("play");
+        let state = pick(&state, &registry, position);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("install");
+        // The other copies: every one is chosen, and the Corp chooses them.
+        let mut state = state;
+        while let Some(crate::rules::PendingDecision::ChooseCards { selected, .. }) = &state.pending_decision {
+            let selected = selected.clone();
+            let toggle = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+                .into_iter()
+                .find(|action| matches!(action, PlayerAction::ToggleCardSelection { position } if !selected.contains(position)))
+                .unwrap_or(PlayerAction::ConfirmCardSelection);
+            state = apply_action(&state, &registry, toggle).expect("every other copy").0;
+        }
+        state
+    }
+
+    #[test]
+    fn restore_installs_and_rezzes_from_archives_and_removes_the_other_copies() {
+        let state = restore(&["pad_campaign", "hedge_fund", "pad_campaign", "pad_campaign"], 0, 10);
+        let installed = state.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed");
+        assert!(installed.rezzed, "rezzed, paying its cost");
+        assert_eq!(state.corp.resources.credits, Credits(10 - 1 - 2), "1 to play, 2 to rez");
+        assert_eq!(state.corp.archives.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("hedge_fund"), id("restore")]);
+        assert_eq!(state.corp.removed_from_game, vec![id("pad_campaign"), id("pad_campaign")]);
+    }
+
+    #[test]
+    fn restore_leaves_a_card_it_cannot_afford_to_rez_installed() {
+        let state = restore(&["pad_campaign"], 0, 2);
+        let installed = state.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed");
+        assert!(!installed.rezzed, "1 to play leaves 1, short of the rez");
+        assert!(state.corp.removed_from_game.is_empty(), "no other copy");
+    }
+}
