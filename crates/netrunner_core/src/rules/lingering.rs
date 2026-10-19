@@ -294,6 +294,11 @@ pub enum Until {
     /// Mnemonics). `NextTurnOf` is not it — that holds until something
     /// takes it off, which only `AllottedClicks` ever does.
     BeforeTurn(u32),
+    /// Through the run's encounter numbered so (`RunState::encounters`
+    /// counts the one under way): `EffectDuration::NextEncounter`,
+    /// Mass-Driver's. It holds from the encounter that made it, and what it
+    /// is about is asked of that encounter alone (`withholds_subroutine`).
+    ThroughEncounter(u32),
     /// Until the card that made it chooses again
     /// (`EffectDuration::UntilChosenAgain`): it always holds, and
     /// `Effect::Remember` drops it as it keeps the next choice.
@@ -315,6 +320,7 @@ impl LingeringEffect {
             Until::EndOfTurn(turn) => state.turn <= turn,
             Until::BeforeTurn(turn) => state.turn < turn,
             Until::ChosenAgain => true,
+            Until::ThroughEncounter(encounter) => state.active_run.as_ref().is_some_and(|run| run.encounters <= encounter),
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
             Until::WhileInstalled(install) => {
@@ -355,7 +361,21 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
         EffectDuration::NextBreach => Ok(Until::ThroughNextBreach { turn: state.turn, begun: state.this_turn.times(crate::dsl::Trigger::OnBreach) }),
         EffectDuration::NextAction => Ok(Until::ActionsFinished { turn: state.turn, count: state.this_turn.actions_finished() + 1 }),
         EffectDuration::UntilChosenAgain => Ok(Until::ChosenAgain),
+        EffectDuration::NextEncounter => run.map(|run| Until::ThroughEncounter(run.encounters + 1)).ok_or(RulesError::NoActiveRun),
     }
+}
+
+/// Whether the subroutine numbered `id` on the ice being encountered
+/// resolves nothing: Mass-Driver's first 3 of the encounter it named
+/// (`Prohibition::ResolveFirstThreeSubroutines`, `Until::ThroughEncounter`).
+/// The entry holds from the encounter that made it, so the encounter it
+/// names is read off it here.
+pub(crate) fn withholds_subroutine(state: &GameState, id: usize) -> bool {
+    let Some(run) = state.active_run.as_ref() else { return false };
+    id < 3
+        && state.lingering.iter().any(|effect| {
+            effect.what == Lingering::Cannot(Prohibition::ResolveFirstThreeSubroutines) && effect.until == Until::ThroughEncounter(run.encounters)
+        })
 }
 
 /// What the lingering effects that still hold add to the strength of `on`.

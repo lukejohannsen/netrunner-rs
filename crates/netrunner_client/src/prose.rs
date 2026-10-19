@@ -287,6 +287,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::NextBreach => "during the next breach",
         EffectDuration::UntilYourNextTurnBegins => "until your next turn begins",
         EffectDuration::UntilChosenAgain => "until you choose again",
+        EffectDuration::NextEncounter => "during the next encounter this run",
     }
 }
 
@@ -328,6 +329,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::NextBreach => "the next breach",
                 EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
                 EffectDuration::UntilChosenAgain => "the time until you choose again",
+                EffectDuration::NextEncounter => "the next encounter this run",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -603,6 +605,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::NextBreach => "the next breach",
                 netrunner_core::dsl::EffectDuration::UntilYourNextTurnBegins => "the turns before your next",
                 netrunner_core::dsl::EffectDuration::UntilChosenAgain => "as long as it is not chosen again",
+                netrunner_core::dsl::EffectDuration::NextEncounter => "the next encounter this run",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -659,6 +662,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
                 (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
+                (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
             };
             format!("{what} {}", duration(until))
@@ -1061,6 +1065,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
             Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
+            Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

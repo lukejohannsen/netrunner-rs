@@ -1507,7 +1507,11 @@ pub(crate) fn transition_subroutine(
     // "[subroutine] Do 1 net damage."" (Tsakhia, `Lingering::
     // SubroutinesReplaced`): the subroutine resolving is the one the card
     // that said so prints. Here, where both sites that resolve one take it.
-    if to == SubroutineStatus::Resolved
+    // Mass-Driver's "the first 3 subroutines of the next encounter this
+    // run do not resolve": resolving one resolves nothing.
+    if to == SubroutineStatus::Resolved && crate::rules::lingering::withholds_subroutine(state, index) {
+        effect = crate::dsl::Effect::Sequence(Vec::new());
+    } else if to == SubroutineStatus::Resolved
         && let Some(instead) = crate::rules::lingering::subroutines_replaced_by(state, install)
             .and_then(|card| registry.get(card))
             .and_then(|card| card.subroutines.first())
