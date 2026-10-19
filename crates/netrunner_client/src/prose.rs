@@ -263,6 +263,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::RandomFromHand(Side::Runner) => "a random card from the grip".to_string(),
         CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
         CardTarget::SetAside => "every card still set aside".to_string(),
+        CardTarget::DrawnCard => "the card drawn".to_string(),
     }
 }
 
@@ -345,6 +346,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveBadPublicity(Amount::Fixed(n)) => format!("remove {}", plural(*n, "bad publicity", "bad publicity")),
         Effect::RemoveBadPublicity(amount) => format!("remove bad publicity equal to {}", describe_amount(amount)),
         Effect::RemoveFromGame(target) => format!("remove {} from the game", describe_target(target, registry)),
+        Effect::Reveal(target) => format!("reveal {}", describe_target(target, registry)),
         Effect::TrashCard(target) => format!("trash {}", describe_target(target, registry)),
         Effect::DerezCard(target) => format!("derez {}", describe_target(target, registry)),
         Effect::BoostStrength { amount, duration: d } => format!("+{amount} strength {}", duration(d)),

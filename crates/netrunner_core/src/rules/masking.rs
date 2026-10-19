@@ -965,6 +965,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::CardsLookedAt { side, .. } => viewer.is(*side).then(visible).flatten(),
         // So is which card was drawn; that one was is `CardDrawn`'s.
         GameEvent::DrewCard { side, .. } => viewer.is(*side).then(visible).flatten(),
+        // The basic action is public, the card it drew the drawer's.
+        GameEvent::BasicDrawActionTaken { side, card: Some(_) } if !viewer.is(*side) => Some(GameEvent::BasicDrawActionTaken { side: *side, card: None }),
         // Shown to both, as its reveal was.
         GameEvent::CardExposed { .. } => visible(),
         // So is a secret number (Méliès U's copy).

@@ -856,7 +856,14 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
         }
     }
 
-    let basic_draw_event = GameEvent::BasicDrawActionTaken { side };
+    // The card drawn, when the draw finished here: the one the hand
+    // gained, which every draw puts last.
+    let hand = |state: &GameState| match side {
+        Side::Corp => state.corp.hq.clone(),
+        Side::Runner => state.runner.grip.clone(),
+    };
+    let card = (hand(&next).len() == hand(state).len() + 1).then(|| hand(&next).last().cloned()).flatten();
+    let basic_draw_event = GameEvent::BasicDrawActionTaken { side, card };
     dispatcher::emit(&mut next, registry, &mut events, basic_draw_event)?;
 
     Ok((next, events))
@@ -3749,7 +3756,7 @@ mod tests {
                 GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Corp },
                 GameEvent::DrewCard { side: Side::Corp, card: CardId("top".to_string()) },
-                GameEvent::BasicDrawActionTaken { side: Side::Corp },
+                GameEvent::BasicDrawActionTaken { side: Side::Corp, card: Some(CardId("top".to_string())) },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Draw },
             ]
         );
@@ -3806,7 +3813,7 @@ mod tests {
                 GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Draw { side: Side::Runner, amount: 1 } },
                 GameEvent::CardDrawn { side: Side::Runner },
                 GameEvent::DrewCard { side: Side::Runner, card: CardId("stack_card_9".to_string()) },
-                GameEvent::BasicDrawActionTaken { side: Side::Runner },
+                GameEvent::BasicDrawActionTaken { side: Side::Runner, card: Some(CardId("stack_card_9".to_string())) },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
             ]
         );
@@ -3854,7 +3861,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
-                GameEvent::BasicDrawActionTaken { side: Side::Runner },
+                GameEvent::BasicDrawActionTaken { side: Side::Runner, card: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
             ]
         );

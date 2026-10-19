@@ -121,6 +121,10 @@ pub enum Trigger {
     /// BasicDrawActionTaken`) — not `Effect::DrawCards`, which never
     /// dispatches this. e.g. Verbal Plasticity's "the first time each turn
     /// you take the basic action to draw 1 card, instead draw 2 cards."
+    /// Heard by both players, as `OnBasicCreditAction` is, since Corporate
+    /// Defector's "whenever **the Corp** draws a card with the basic
+    /// action" is the Runner's card; whose draw it was is the `when`'s to
+    /// say (`EventFilter::Whose`).
     OnBasicDrawAction,
     /// Fires against the Corp's identity whenever the Runner gains a tag
     /// (`GameEvent::TagsGiven { side: Side::Runner, .. }`) — e.g. NBN:
@@ -1220,7 +1224,7 @@ impl Trigger {
     /// about the game carry a player (a run is the Runner's) that no card
     /// asks for, and a `Whose` on one would read as a restriction it is not.
     pub fn states_whose(self) -> bool {
-        self.hears() == Hears::OwnSide || matches!(self, Trigger::OnTagRemoved | Trigger::OnBasicCreditAction)
+        self.hears() == Hears::OwnSide || matches!(self, Trigger::OnTagRemoved | Trigger::OnBasicCreditAction | Trigger::OnBasicDrawAction)
     }
 
     /// Whose moment this trigger hears. Read off how the pool's cards print
@@ -1230,7 +1234,6 @@ impl Trigger {
             Trigger::OnTurnStart
             | Trigger::OnActionPhaseEnd
             | Trigger::OnDiscardPhaseEnd
-            | Trigger::OnBasicDrawAction
             | Trigger::OnInstall
             | Trigger::OnCardInstalled
             | Trigger::OnCardPlayed
@@ -1298,6 +1301,7 @@ impl Trigger {
             | Trigger::OnCardsTrashedFromGripOrStack
             | Trigger::OnTraceSuccessful
             | Trigger::OnBasicCreditAction
+            | Trigger::OnBasicDrawAction
             | Trigger::WhileTrue
             | Trigger::OnCardExposed
             | Trigger::Paid => Hears::Everyone,

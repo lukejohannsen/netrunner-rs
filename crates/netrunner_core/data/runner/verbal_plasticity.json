@@ -7,6 +7,9 @@
   "triggers": [
     {
       "trigger": "OnBasicDrawAction",
+      "when": {
+        "Whose": "Runner"
+      },
       "first_each_turn": true,
       "effects": [
         {

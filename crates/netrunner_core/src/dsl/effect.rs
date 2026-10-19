@@ -132,6 +132,16 @@ pub enum CardTarget {
     /// `ThisCard` is the acting card, whose side is who carries out the
     /// trash.
     Install(crate::rules::InstallId),
+    /// The card the basic action to draw just drew, read off the moment
+    /// the trigger heard (`GameEvent::BasicDrawActionTaken::card`) —
+    /// Corporate Defector's "Whenever the Corp draws a card with the basic
+    /// action, reveal **that card**". Only meaningful for `Effect::Reveal`;
+    /// nothing happens when the draw is not known, or the card has left
+    /// the hand. Composition didn't work: a selection's `ThatCard` is a
+    /// card the moment is about, and the basic action's moment is about
+    /// nothing, so that Verbal Plasticity's "you take the basic action"
+    /// stays a word about a player.
+    DrawnCard,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -262,6 +272,14 @@ pub enum Effect {
     /// Composition didn't work: `TrashCard` sends a card to its owner's
     /// discard pile, where Scrounge finds it again.
     RemoveFromGame(CardTarget),
+    /// Reveals the card in its owner's hand (CR 1.21.3), where it stays,
+    /// shown until the ability is finished (CR 1.21.6, `GameState::revealed`) —
+    /// Corporate Defector's "reveal that card", of `CardTarget::DrawnCard`.
+    /// Any other target is `RulesError::UnresolvedCardTarget`. Composition
+    /// didn't work: `RevealHand` reveals every card, `RevealAtRandom` a
+    /// random one, and a selection's `reveal` records a choice, which
+    /// nobody makes here.
+    Reveal(CardTarget),
     /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
     /// which always targets whatever ICE is currently being encountered,
     /// this always targets whichever rig card activated the ability (see
@@ -3784,6 +3802,7 @@ impl Effect {
             | Effect::RemoveBadPublicity(..)
             | Effect::TrashCard(..)
             | Effect::RemoveFromGame(..)
+            | Effect::Reveal(..)
             | Effect::BoostStrength { .. }
             | Effect::BreakSubroutines { .. }
             | Effect::BreakSubroutinesUnconditionally { .. }
