@@ -131,13 +131,11 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("persephone", "Persephone"),
     ("rubicon_switch", "Rubicon Switch"),
     ("aeneas_informant", "Aeneas Informant"),
-    ("rosetta_2_0", "Rosetta 2.0"),
     ("adjusted_matrix", "Adjusted Matrix"),
     ("dedicated_processor", "Dedicated Processor"),
     ("inversificator", "Inversificator"),
     ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
-    ("red_planet_couriers", "Red Planet Couriers"),
 ];
 
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.

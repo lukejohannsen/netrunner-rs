@@ -1835,6 +1835,15 @@ pub enum Effect {
     /// it, and this is some other card's counter. A no-op on a card that
     /// has left the table.
     RemoveAdvancementCounters(Amount),
+    /// Moves every advancement counter on every other installed card onto
+    /// the acting install — Red Planet Couriers' "Move all advancement
+    /// tokens from all installed cards to 1 card that can be advanced", as
+    /// the `then` of a selection of that card. Moving is not advancing (CR
+    /// 1.18.2). Composition didn't work: `RemoveAdvancementCounters` acts
+    /// on the acting install, and a `ForEach` resolves as the card whose
+    /// text it is, so nothing could take counters off each other card and
+    /// count them onto the chosen one.
+    MoveAllAdvancementCountersHere,
     /// `Effect::DealDamage` with `amount` resolved dynamically via
     /// `Amount` instead of authored as a flat `usize` — e.g. Neurospike's
     /// "X net damage, X = agenda points scored this turn." Delegates to the
@@ -3807,6 +3816,7 @@ impl Effect {
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)
             | Effect::RemoveAdvancementCounters(..)
+            | Effect::MoveAllAdvancementCountersHere
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }

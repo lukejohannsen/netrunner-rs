@@ -1944,6 +1944,24 @@ pub fn evaluate_effect(
             }])
         }
 
+        Effect::MoveAllAdvancementCountersHere => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            let here = acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?.install_id;
+            let mut events = Vec::new();
+            let mut moved = 0;
+            for installed in state.corp.installed.iter_mut().filter(|c| c.install_id != here && c.advancement_tokens > 0) {
+                moved += installed.advancement_tokens;
+                installed.advancement_tokens = 0;
+                events.push(GameEvent::AdvancementCountersRemoved { install: installed.install_id, card: Some(installed.card.clone()), advancement_tokens: 0 });
+            }
+            if moved > 0 {
+                let installed = acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+                installed.advancement_tokens = installed.advancement_tokens.saturating_add(moved);
+                events.push(GameEvent::AdvancementCountersPlaced { install: here, card: Some(card_id.clone()), advancement_tokens: installed.advancement_tokens });
+            }
+            Ok(events)
+        }
+
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             // A boost for the turn is no break's: Living Mural's "When you
@@ -2450,7 +2468,12 @@ pub fn evaluate_effect(
             };
             // So is what a cost was paid with (Rejig's X).
             let then = match then {
-                Some(then) if !ctx.paid_with.is_empty() => Some(Box::new(then.with_paid_card_cost(resolve_amount(&Amount::PaidCardPrintedCost, ctx, state, registry)))),
+                Some(then) if !ctx.paid_with.is_empty() => {
+                    let cost = resolve_amount(&Amount::PaidCardPrintedCost, ctx, state, registry);
+                    // Rosetta 2.0's install from the stack carries it as an
+                    // `Amount`, which the walk every amount takes writes in.
+                    Some(Box::new(then.with_paid_card_cost(cost).filled(&|amount| matches!(amount, Amount::PaidCardPrintedCost).then_some(cost))))
+                }
                 then => then,
             };
             state.pending_decision = Some(PendingDecision::ChooseCards {
@@ -4294,7 +4317,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
-        Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } => {
+        Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::RemoveInstalledFromGame { filter, count } => {
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
             crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
@@ -4635,6 +4658,30 @@ pub(crate) fn pay_cost_ctx(
                 Side::Runner => crate::dsl::CardZoneRef::OwnStack,
             };
             crate::rules::pending_choice::shuffle_decks(state, side, &deck, None);
+            Ok(events)
+        }
+
+        // Out of the game, picked as `AddInstalledToHand` picks.
+        Cost::RemoveInstalledFromGame { filter, count } => {
+            let zone = crate::dsl::CardZoneRef::OwnInstalled;
+            let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, &zone, filter, ctx.acting_install, ctx.acting_card);
+            if eligible.len() < *count as usize {
+                return Err(RulesError::CardNotEligibleForSelection(eligible.len()));
+            }
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, ctx.acting_install)?;
+            let installs = crate::rules::pending_choice::zone_install_ids(state, side, &zone).unwrap_or_default();
+            let handles: Vec<InstallId> = picked.iter().filter_map(|position| installs.get(*position).copied()).collect();
+            let mut events = Vec::new();
+            for install in handles {
+                let Some(removed) = crate::rules::pending_choice::remove_installed_card(state, registry, side, &zone, install)? else { continue };
+                events.extend(removed.announced);
+                match side {
+                    Side::Corp => state.corp.removed_from_game.push(removed.card.clone()),
+                    Side::Runner => state.runner.removed_from_game.push(removed.card.clone()),
+                }
+                events.push(GameEvent::CardRemovedFromGame { side, card: removed.card });
+                events.extend(removed.cascade);
+            }
             Ok(events)
         }
 

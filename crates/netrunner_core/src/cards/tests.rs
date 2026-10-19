@@ -39381,3 +39381,95 @@ mod red_sand_stage_14 {
         assert_eq!(without.corp.resources.credits, Credits(6), "2 for the ice there");
     }
 }
+
+// ---- Red Sand Stage 15: Rosetta 2.0, Red Planet Couriers ----
+mod red_sand_stage_15 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// The program removed from the game is what the payment was made
+    /// with: its cost comes off the install found in the stack, and a
+    /// virus program is not offered.
+    #[test]
+    fn rosetta_2_0_removes_a_program_from_the_game_to_install_a_non_virus_program_from_the_stack_for_less() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![rig("rosetta_2_0", 900), rig("corroder", 901)];
+        state.runner.stack = vec![id("gordian_blade"), id("datasucker"), id("sure_gamble")];
+        let corroder = registry.get(&id("corroder")).unwrap().cost;
+        let gordian = registry.get(&id("gordian_blade")).unwrap().cost;
+        assert!(corroder > 0 && gordian > corroder);
+        // Exactly the lowered price: Gordian Blade is offered only because
+        // Corroder's cost comes off it.
+        state.runner.resources.credits = Credits(gordian - corroder);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 }).expect("use Rosetta");
+        assert!(state.runner.removed_from_game.contains(&id("corroder")), "remove an installed program from the game");
+        assert!(state.runner.rig.iter().all(|card| card.card.0 != "corroder"));
+        let offered: Vec<&str> = match &state.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseCards { .. }) => {
+                let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+                view.selection.iter().filter_map(|card| card.card.as_ref()).map(|card| card.0.clone()).collect::<Vec<_>>().leak().iter().map(String::as_str).collect()
+            }
+            other => panic!("searching the stack: {other:?}"),
+        };
+        assert!(!offered.contains(&"datasucker"), "a non-virus program: {offered:?}");
+        let position = state.runner.stack.iter().position(|card| card.0 == "gordian_blade").expect("in the stack");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("Gordian Blade");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(state.runner.rig.iter().any(|card| card.card.0 == "gordian_blade"));
+        assert_eq!(state.runner.resources.credits, Credits(0), "lowered by the removed program's cost");
+    }
+
+    #[test]
+    fn rosetta_2_0_needs_an_installed_program() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("rosetta_2_0", 900)];
+        state.runner.stack = vec![id("gordian_blade")];
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 }).is_err());
+    }
+
+    #[test]
+    fn red_planet_couriers_moves_every_advancement_token_onto_one_card_that_can_be_advanced() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("red_planet_couriers")];
+        let root = |card: &str, install: u32, server: u32, tokens: u32| crate::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: id(card),
+            server: ServerId::Remote(server),
+            slot: InstallSlot::Root,
+            advancement_tokens: tokens,
+            ..Default::default()
+        };
+        state.corp.installed = vec![
+            root("hostile_takeover", 11, 0, 1),
+            root("project_vitruvius", 12, 1, 2),
+            crate::rules::InstalledCard { slot: InstallSlot::Ice, rezzed: true, ..root("ice_wall", 13, 1, 3) },
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("red_planet_couriers") }).expect("play it");
+        assert_eq!(state.corp.resources.clicks, Clicks(0), "[click], [click] as well as the play's own");
+        let vitruvius = crate::rules::pending_choice::zone_install_ids(&state, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled)
+            .unwrap()
+            .iter()
+            .position(|install| *install == InstallId(12))
+            .unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: vitruvius }).expect("Project Vitruvius");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("move them");
+        let tokens = |install: u32| state.corp.installed.iter().find(|c| c.install_id == InstallId(install)).unwrap().advancement_tokens;
+        assert_eq!((tokens(11), tokens(12), tokens(13)), (0, 6, 0), "from all installed cards");
+    }
+}

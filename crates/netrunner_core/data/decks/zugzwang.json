@@ -3,7 +3,7 @@
   "name": "Zugzwang",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jemison Astronautics: Sacrifice. Audacity. Success., Red Sand's Weyland identity, which places advancement counters on an installed card whenever the Corp forfeits an agenda, one more than the agenda's points. On Family Business's list, with its two Hostile Architecture, two Wake Up Call and two Death and Taxes given to the cards that forfeit: two Quarantine System, two Success and two Sacrifice. Eternal-legal only: Red Sand is in neither Startup nor Standard. Red Sand Stage 8. Red Sand Stage 9: two Tithonium for two Battlement, two Signal Jamming for two Fractal Threat Matrix, and two Net Analytics for the GRNDL Refinery and the Elizabeth Mills. Red Sand Stage 10",
+  "description": "Not a published list: built so the sweeps reach Jemison Astronautics: Sacrifice. Audacity. Success., Red Sand's Weyland identity, which places advancement counters on an installed card whenever the Corp forfeits an agenda, one more than the agenda's points. On Family Business's list, with its two Hostile Architecture, two Wake Up Call and two Death and Taxes given to the cards that forfeit: two Quarantine System, two Success and two Sacrifice. Eternal-legal only: Red Sand is in neither Startup nor Standard. Red Sand Stage 8. Red Sand Stage 9: two Tithonium for two Battlement, two Signal Jamming for two Fractal Threat Matrix, and two Net Analytics for the GRNDL Refinery and the Elizabeth Mills. Red Sand Stage 10 Red Planet Couriers (Red Sand Stage 15)",
   "style": [
     "traps"
   ],
@@ -28,10 +28,6 @@
     {
       "card": "ice_wall",
       "count": 1
-    },
-    {
-      "card": "blockchain",
-      "count": 2
     },
     {
       "card": "quarantine_system",
@@ -112,6 +108,10 @@
     {
       "card": "khondi_plaza",
       "count": 1
+    },
+    {
+      "card": "red_planet_couriers",
+      "count": 2
     }
   ]
 }

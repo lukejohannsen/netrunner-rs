@@ -1,0 +1,76 @@
+{
+  "id": "rosetta_2_0",
+  "title": "Rosetta 2.0",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveInstalledFromGame": {
+              "filter": {
+                "CardType": "Program"
+              },
+              "count": 1
+            }
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "Not": {
+                  "HasSubtype": "Virus"
+                }
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Amount": "PaidCardPrintedCost"
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": true,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnStack",
+                  "discount": {
+                    "Amount": "PaidCardPrintedCost"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "Search your stack for a non-virus program, shuffle your stack, then install that program, lowering the install cost by the cost of the program removed from the game."
+    }
+  ],
+  "built_from": 12045,
+  "is_playable": true
+}

@@ -2826,7 +2826,19 @@ fn activate_ability(
     let activated = GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index, install: (!is_identity).then_some(target), action: ability.is_action() };
     events.push(activated.clone());
     cost_events.push(activated);
-    let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, ..ability_ctx(is_identity, target, &card_id) };
+    // What the cost took besides the card itself (Rosetta 2.0's program
+    // removed from the game), so the effect can read its printed cost, as
+    // an event's additional cost is read (`EventPlayed::paid_with`).
+    let paid_with: Vec<CardId> = cost_events
+        .iter()
+        .filter_map(|event| match event {
+            GameEvent::CardTrashed { card, .. } | GameEvent::CardAddedToHand { card: Some(card), .. } | GameEvent::CardRemovedFromGame { card, .. } => Some(card),
+            _ => None,
+        })
+        .filter(|card| **card != card_id)
+        .cloned()
+        .collect();
+    let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, paid_with, ..ability_ctx(is_identity, target, &card_id) };
     events.extend(ability::evaluate_effect(&mut next, &effect, &mut effect_ctx, registry)?);
     // What the effect left set aside is trashed (CR 9.5.5, at the next
     // checkpoint): only a rig card hosts cards, and only its owner's.
