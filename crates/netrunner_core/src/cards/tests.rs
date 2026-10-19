@@ -39473,3 +39473,126 @@ mod red_sand_stage_15 {
         assert_eq!((tokens(11), tokens(12), tokens(13)), (0, 6, 0), "from all installed cards");
     }
 }
+
+mod red_sand_stage_16 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// Above the Law's "trash 1 installed resource", or a Runner card's
+    /// "trash 1 installed piece of ice": a selection that trashes.
+    fn trash_one(side: Side, filter: serde_json::Value) -> crate::dsl::Effect {
+        serde_json::from_value(serde_json::json!({
+            "PromptChooseCards": {
+                "side": side,
+                "source": "OpponentInstalled",
+                "filter": filter,
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard"
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn jarogniew_mercs_takes_a_tag_and_loads_the_tags_plus_3_power_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.tags = 1;
+        state.runner.grip = vec![id("jarogniew_mercs")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("jarogniew_mercs"), host: None }).expect("install it");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.tags, 2, "take 1 tag");
+        let mercs = state.runner.rig.iter().find(|card| card.card.0 == "jarogniew_mercs").expect("installed");
+        assert_eq!(mercs.counters, 5, "the tags it has, 2, plus 3");
+    }
+
+    #[test]
+    fn the_corp_cannot_trash_jarogniew_mercs_while_another_resource_is_installed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.runner.tags = 1;
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 4, ..rig("jarogniew_mercs", 900) }, rig("daily_casts", 901)];
+        let legal = crate::rules::legal_actions(&state, &registry);
+        assert!(!legal.contains(&PlayerAction::TrashResource { target: InstallId(900) }), "the basic action is refused");
+        assert!(legal.contains(&PlayerAction::TrashResource { target: InstallId(901) }));
+        assert!(matches!(
+            apply_action(&state, &registry, PlayerAction::TrashResource { target: InstallId(900) }),
+            Err(crate::rules::RulesError::CannotBeTrashed(InstallId(900)))
+        ));
+
+        // A selection that trashes offers only the other resource.
+        let mut chosen = state.clone();
+        let source = id("above_the_law");
+        let trash = trash_one(Side::Corp, serde_json::json!({ "CardType": "Resource" }));
+        crate::rules::evaluate_effect(&mut chosen, &trash, &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("park");
+        let view = crate::view::build_client_view(&chosen, &registry, Side::Corp);
+        let offered: Vec<String> = view.selection.iter().filter_map(|card| card.card.as_ref()).map(|card| card.0.clone()).collect();
+        assert_eq!(offered, vec!["daily_casts".to_string()]);
+
+        // With Mercs the only resource, it may be trashed.
+        state.runner.rig.truncate(1);
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::TrashResource { target: InstallId(900) }));
+        let (trashed, _) = apply_action(&state, &registry, PlayerAction::TrashResource { target: InstallId(900) }).expect("trash it");
+        assert!(trashed.runner.heap.contains(&id("jarogniew_mercs")));
+    }
+
+    #[test]
+    fn jarogniew_mercs_spends_a_power_counter_to_prevent_1_meat_damage_and_is_trashed_empty() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 1, ..rig("jarogniew_mercs", 900) }];
+        state.runner.grip = (0..4).map(|i| id(&format!("card_{i}"))).collect();
+        let source = id("a_corp_card");
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Meat, 2), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry)
+            .expect("damage");
+        assert_eq!(state.runner.grip.len(), 4, "the Runner is asked first");
+        let (after, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 }).expect("spend a counter");
+        let (after, _) = close_all_windows(after, &registry);
+        assert_eq!(after.runner.grip.len(), 3, "1 of the 2 prevented");
+        assert!(after.runner.heap.contains(&id("jarogniew_mercs")), "empty, so trashed");
+    }
+
+    #[test]
+    fn the_runner_cannot_trash_a_rezzed_kessleroid() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        let ice = |rezzed: bool| crate::rules::InstalledCard {
+            install_id: InstallId(11),
+            card: id("kessleroid"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        };
+        let source = id("a_runner_card");
+        let trash = trash_one(Side::Runner, serde_json::json!("Ice"));
+        for (rezzed, offered) in [(true, false), (false, true)] {
+            let mut state = state.clone();
+            state.corp.installed = vec![ice(rezzed)];
+            crate::rules::evaluate_effect(&mut state, &trash, &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("resolve");
+            assert_eq!(state.pending_decision.is_some(), offered, "rezzed: {rezzed}");
+        }
+        // Nor does a card's text that names it do anything.
+        state.corp.installed = vec![ice(true)];
+        let named = crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::Install(InstallId(11)));
+        crate::rules::evaluate_effect(&mut state, &named, &mut crate::rules::ResolutionContext::for_card(Some(&id("en_passant"))), &registry).expect("resolve");
+        assert_eq!(state.corp.installed.len(), 1);
+    }
+}

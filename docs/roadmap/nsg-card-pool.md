@@ -497,7 +497,7 @@ PR that made this list (29 September 2026).
 - **Nanisivik Grid** (PH 5b): a subroutine it resolves reads "this server" as unresolved, where CR 4.6.6i's example makes it Archives; no subroutine in the pool says "this server".
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
-- **Kessleroid**: "cannot trash" is unenforced.
+- ~~**Kessleroid**: "cannot trash" is unenforced.~~ Built in FFG Red Sand Stage 16 (`ContinuousKind::CannotBeTrashedBy`, beside Jarogniew Mercs).
 - **Environmental Testing** (MS 2): "when there are 4 or more hosted power counters" is asked as its own install trigger places a counter; a charge (Orca, Flux Capacitor) that brings it to 4 is not heard until its next program or hardware install, because no trigger hears counters placed.
 - **Embedded Reporting**: does not shuffle. **Next Big Thing** from the Runner's score area is unmodelled. **Detente**'s access outside a run is unmodelled.
 - **Luana Campos** (VP 7a): "uninstalled" is announced for a Corp card only, and no Runner card in the pool interrupts its own uninstalling. The interrupt resolves in the dispatch that announced it.

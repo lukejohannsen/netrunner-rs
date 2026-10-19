@@ -1031,6 +1031,10 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::CannotBeBrokenUsing(subtype) => format!("its subroutines cannot be broken using {} programs", subtype.printed()),
         ContinuousKind::StrengthCannotBeLowered => "its strength cannot be lowered".to_string(),
         ContinuousKind::CannotHost => "cannot host cards".to_string(),
+        ContinuousKind::CannotBeTrashedBy(by) => format!("the {} cannot trash it", match by {
+            Side::Corp => "Corp",
+            Side::Runner => "Runner",
+        }),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",

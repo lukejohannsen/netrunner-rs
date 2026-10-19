@@ -689,6 +689,19 @@ pub(crate) fn may_trash_with(state: &GameState, registry: &CardRegistry, install
     !any(state, registry, target, |kind| matches!(kind, ContinuousKind::TrashLimit(at_most) if trashed >= *at_most))
 }
 
+/// Whether `by` may trash the installed card `install`, Corp or Runner
+/// (`ContinuousKind::CannotBeTrashedBy`): Jarogniew Mercs while another
+/// resource is installed, a rezzed Kessleroid. Asked by the basic action,
+/// by a card's text that names the card, and by every selection that
+/// trashes (`CardFilter::TrashableBy`), so none of them can disagree.
+pub(crate) fn may_trash(state: &GameState, registry: &CardRegistry, install: InstallId, by: Side) -> bool {
+    let target = match state.find_rig_install(install) {
+        Some(rig) => registry.get(&rig.card).map(|card| Target::Rig { card, install }),
+        None => Target::corp_install(state, registry, install),
+    };
+    target.is_none_or(|target| !any(state, registry, target, |kind| *kind == ContinuousKind::CannotBeTrashedBy(by)))
+}
+
 /// Counts an installed Runner card trashed by the text of `install`, when
 /// that is the ice being encountered — what `may_trash_with` reads.
 pub(crate) fn note_runner_card_trashed_by(state: &mut GameState, install: Option<InstallId>) {

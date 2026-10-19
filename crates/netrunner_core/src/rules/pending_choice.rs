@@ -532,6 +532,9 @@ fn instance_matches_filter(
             let relayed = source.is_some_and(|source| chain.iter().skip(1).any(|install| *install == source));
             !relayed || zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_none_or(|install| !chain.contains(&install))
         }
+        CardFilter::TrashableBy(by) => zone_install_ids(state, chooser, zone)
+            .and_then(|ids| ids.get(position).copied())
+            .is_none_or(|install| crate::rules::continuous::may_trash(state, registry, install, *by)),
         // Hush's "another installed piece of ice": not the one the parking
         // Trojan is hosted on.
         CardFilter::NotThisCardsHost => {

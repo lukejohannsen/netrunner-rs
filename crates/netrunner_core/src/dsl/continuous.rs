@@ -388,6 +388,16 @@ pub enum ContinuousKind {
     /// (`Effect::HostThisAsCondition`). Composition didn't work: `MayHost`
     /// grants what a card could not otherwise host, and ice hosts anything.
     CannotHost,
+    /// `by` cannot trash this card — Jarogniew Mercs's "The Corp cannot
+    /// trash this resource while there is another resource installed" and
+    /// Kessleroid's "The Runner cannot trash this ice (while it is
+    /// rezzed)". About `This`, an installed card, with the `while` its
+    /// sentence prints. The "cannot" takes precedence (CR 1.2.2): a selection that trashes offers nothing it covers
+    /// (`CardFilter::TrashableBy`), a card's text naming it does nothing,
+    /// and the basic action refuses (`continuous::may_trash`). Composition
+    /// didn't work: `TrashLimit` counts an encounter's trashes by one
+    /// piece of ice, and `Cannot` binds a player rather than a card.
+    CannotBeTrashedBy(Side),
     /// The Corp cannot trash more than this many installed Runner cards
     /// with this ice during each encounter — Sorocaban Blade. Once it has,
     /// a selection this ice's text makes to trash an installed Runner card

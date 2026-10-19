@@ -3269,6 +3269,11 @@ fn trash_resource(
     if card_def.card_type != CardType::Resource {
         return Err(RulesError::CardNotResource { card: card_id });
     }
+    // Jarogniew Mercs while another resource is installed: refused, which
+    // is what keeps it off the action list.
+    if !continuous::may_trash(state, registry, target, side) {
+        return Err(RulesError::CannotBeTrashed(target));
+    }
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
