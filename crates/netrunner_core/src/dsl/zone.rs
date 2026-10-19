@@ -280,6 +280,14 @@ pub enum CardFilter {
     /// compared by install. Composition didn't work: `NotSourceCard` knows
     /// only the parking card, and two Ravanas each chose the other forever.
     NotRelaying,
+    /// An installed card the side named may trash — not one that says it
+    /// cannot be (`ContinuousKind::CannotBeTrashedBy`, Jarogniew Mercs).
+    /// Never written in a card file: every selection that trashes an
+    /// installed card is narrowed by it as it parks (`Effect::
+    /// PromptChooseCards`), so no card has to remember to say it.
+    /// Instance-level, by install. Composition didn't work: the standing
+    /// effect is the trashed card's, and no filter read one.
+    TrashableBy(crate::rules::Side),
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
     InstallableRunnerCardWithDiscount(crate::dsl::Discount),
@@ -761,6 +769,7 @@ impl CardFilter {
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
                 | CardFilter::NotRelaying
+                | CardFilter::TrashableBy(_)
                 | CardFilter::InChosenServer
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
@@ -904,6 +913,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
         CardFilter::NotRelaying => true,
+        CardFilter::TrashableBy(_) => true,
         CardFilter::InChosenServer => true,
         // Written over before it is read; unresolved, nothing was chosen.
         CardFilter::OfChosenCardType => false,

@@ -7,6 +7,18 @@
   },
   "cost": 2,
   "strength": 1,
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeTrashedBy": "Runner"
+      },
+      "applies_to": "This",
+      "while": {
+        "ActingCardMatches": "Rezzed"
+      },
+      "text": "The Runner cannot trash this ice (while it is rezzed)."
+    }
+  ],
   "triggers": [],
   "subroutines": [
     {

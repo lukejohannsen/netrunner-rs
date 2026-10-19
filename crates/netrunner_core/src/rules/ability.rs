@@ -738,6 +738,9 @@ pub fn evaluate_effect(
             // then is it resolved to a handle first: with nobody to ask,
             // the target is trashed the way it always was.
             match installed_target(state, registry, target, ctx) {
+                // A card its trasher cannot trash (CR 1.2.2, Jarogniew
+                // Mercs): the text does nothing to it.
+                Some(WouldHappen::Trash { install, by: Some(by), .. }) if !continuous::may_trash(state, registry, install, by) => Ok(Vec::new()),
                 Some(what) if prevention::could_prevent(state, registry, &what) => prevention::would(state, registry, what, ctx),
                 _ => {
                     let mut events = trash_card(state, registry, target, ctx)?;
@@ -2433,6 +2436,18 @@ pub fn evaluate_effect(
                 .with_chosen_server(acting_card.and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install)))
                 .with_chosen_card_type(ctx.acting_install.and_then(|this| crate::rules::lingering::chosen_card_type(state, this)))
                 .with_resolution(&|amount| resolve_amount(amount, ctx, state, registry), paid.as_ref());
+            // A selection that trashes installed cards offers none its
+            // chooser cannot trash (Jarogniew Mercs), whatever the card
+            // file's filter says.
+            let trashes = matches!(source, crate::dsl::CardZoneRef::OpponentInstalled | crate::dsl::CardZoneRef::OwnInstalled)
+                && matches!(destination, Some(crate::dsl::CardZoneRef::OpponentDiscard | crate::dsl::CardZoneRef::OwnHeap | crate::dsl::CardZoneRef::OwnArchives));
+            let narrowed;
+            let filter = if trashes {
+                narrowed = CardFilter::All(vec![filter.clone(), CardFilter::TrashableBy(*side)]);
+                &narrowed
+            } else {
+                filter
+            };
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
             // "That many" when fewer qualify is as many as there are
             // (CR 1.2.4): Aggressive Secretary's "trash 1 program for each

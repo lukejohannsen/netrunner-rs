@@ -95,6 +95,10 @@ pub enum RulesError {
     /// CannotHost`, Tithonium).
     #[error("install {0:?} cannot host cards")]
     HostCannotHost(InstallId),
+    /// The trasher cannot trash this card (`ContinuousKind::
+    /// CannotBeTrashedBy`, Jarogniew Mercs).
+    #[error("{0:?} cannot be trashed by this player")]
+    CannotBeTrashed(InstallId),
 
     #[error("install {0:?} is not rezzed, and this Trojan installs only on a rezzed piece of ice")]
     HostIsNotRezzed(InstallId),

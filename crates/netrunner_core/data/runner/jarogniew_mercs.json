@@ -1,0 +1,85 @@
+{
+  "id": "jarogniew_mercs",
+  "title": "Jarogniew Mercs",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "CannotBeTrashedBy": "Corp"
+      },
+      "applies_to": "This",
+      "while": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "count": 2,
+          "filter": {
+            "CardType": "Resource"
+          }
+        }
+      },
+      "text": "The Corp cannot trash this resource while there is another resource installed."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        },
+        {
+          "AddCounters": 3
+        },
+        {
+          "Repeat": {
+            "times": "RunnerTags",
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you install this resource, take 1 tag. Load X power counters onto this resource, where X is equal to the number of tags you have plus 3. When this resource is empty, trash it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Hosted power counter: Prevent 1 meat damage.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": {
+              "Damage": {
+                "kind": "Meat",
+                "up_to": 1
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 12062,
+  "is_playable": true
+}

@@ -2121,6 +2121,10 @@ impl CardDefinition {
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered | ContinuousKind::CannotHost, _) => {
                     return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
                 }
+                (ContinuousKind::CannotBeTrashedBy(by), Scope::This) if *by != self.side && !matches!(self.card_type, CardType::Agenda | CardType::Operation | CardType::Event | CardType::Identity) => {}
+                (ContinuousKind::CannotBeTrashedBy(_), _) => {
+                    return misfit("CannotBeTrashedBy", "an installed card says of itself (`This`) that the other player cannot trash it");
+                }
                 (ContinuousKind::RezzedAsNonIce, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 (ContinuousKind::RezzedAsNonIce, _) => {
                     return misfit("RezzedAsNonIce", "when a piece of ice may be rezzed is said by the ice of itself (`This`)");
