@@ -1077,6 +1077,8 @@ impl Attached {
             AdminRequest::Grant { key, award } => self.shared.change_award(operator, key, award, true).await,
             AdminRequest::Revoke { key, award } => self.shared.change_award(operator, key, award, false).await,
             AdminRequest::SetPrizes { tournament, prizes } => self.set_prizes(&tournament, prizes).map(AdminAnswer::Tournament),
+            AdminRequest::Results { key } => self.shared.results_of(key).await,
+            AdminRequest::Void { match_id, reason } => self.shared.void(operator, match_id, reason),
         }
     }
 

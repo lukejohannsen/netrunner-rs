@@ -2,7 +2,10 @@
 //! status and a key's awards, for the terminal's `admin` commands and the
 //! desktop's admin page after it, so the two say the same thing.
 
-use netrunner_protocol::{Award, ServerStatus};
+use netrunner_core::rules::Side;
+use netrunner_protocol::{Award, GameResult, ServerStatus};
+
+use crate::settings::format_label;
 
 /// How long a server has run, to the largest unit that says it: "3 days",
 /// "5 hours", "12 minutes", "40 seconds".
@@ -52,6 +55,17 @@ pub fn source(source: &str) -> String {
     }
 }
 
+/// One rated game as a line, with the id a void takes: "3f2a… · Startup
+/// · ann (Corp) beat bo (Runner) · 2 hours ago". `now` is the reader's
+/// clock, in seconds since the Unix epoch.
+pub fn result_line(game: &GameResult, now: u64) -> String {
+    let (winner, loser) = match game.winner {
+        Side::Corp => (format!("{} (Corp)", game.corp.name), format!("{} (Runner)", game.runner.name)),
+        Side::Runner => (format!("{} (Runner)", game.runner.name), format!("{} (Corp)", game.corp.name)),
+    };
+    format!("{} · {} · {winner} beat {loser} · {} ago", game.match_id, format_label(game.format), uptime(now.saturating_sub(game.ended_at)))
+}
+
 fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
     if count == 1 { one } else { many }
 }
@@ -86,5 +100,20 @@ mod tests {
         );
         assert_eq!(award_lines(&[], &[]), ["no title and no badge"]);
         assert_eq!(source("tournament:K7M2QX"), "tournament K7M2QX");
+    }
+
+    #[test]
+    fn a_result_names_the_game_and_who_beat_whom() {
+        use netrunner_protocol::ResultSeat;
+        let key = netrunner_identity::Identity::from_secret([1; 32]).public_key();
+        let game = GameResult {
+            match_id: uuid::Uuid::nil(),
+            ended_at: 1_000,
+            format: netrunner_core::format::NsgFormat::Startup,
+            corp: ResultSeat { name: "ann".into(), key },
+            runner: ResultSeat { name: "bo".into(), key },
+            winner: Side::Runner,
+        };
+        assert_eq!(result_line(&game, 1_000 + 7_200), format!("{} · {} · bo (Runner) beat ann (Corp) · 2 hours ago", uuid::Uuid::nil(), format_label(game.format)));
     }
 }

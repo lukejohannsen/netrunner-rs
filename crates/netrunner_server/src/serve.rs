@@ -91,7 +91,7 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{event_code, event_lobby_id, queue_id, AdminAnswer, AdminRequest, Award, AwardKind, AwardSpec, Prize, ServerStatus, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{event_code, event_lobby_id, queue_id, AdminAnswer, AdminRequest, Award, AwardKind, AwardSpec, GameResult, Prize, ResultSeat, ServerStatus, RESULTS_LIMIT, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::queue::{self, Wants};
 use crate::{fixtures, net};
@@ -1236,6 +1236,81 @@ impl Shared {
         }
     }
 
+    /// `key`'s rated games that count, newest first, off the store's
+    /// results index (`AdminRequest::Results`), each read from its
+    /// receipt.
+    async fn results_of(&self, key: PublicKey) -> Result<AdminAnswer, String> {
+        let writer = self.store.as_ref().ok_or("this server keeps nothing, so it rated nothing")?;
+        writer.settled().await;
+        let rows = writer.store().results_of(&key.rating_id()).await.map_err(|error| {
+            tracing::warn!(key = %key.fingerprint(), %error, "could not read a key's results");
+            "the server could not read the results".to_string()
+        })?;
+        let server_key = self.identity.public_key();
+        let games = rows
+            .iter()
+            .filter_map(|row| serde_json::from_str::<Signed>(&row.receipt).ok())
+            .filter_map(|signed| Receipt::read(&signed, &server_key).ok())
+            .filter_map(|receipt| {
+                let seat = |seat: &ReceiptSeat| seat.key.map(|key| ResultSeat { name: seat.name.clone(), key });
+                Some(GameResult { match_id: receipt.match_id, ended_at: receipt.ended_at, format: receipt.format, corp: seat(&receipt.corp)?, runner: seat(&receipt.runner)?, winner: receipt.winner? })
+            })
+            .take(RESULTS_LIMIT)
+            .collect();
+        Ok(AdminAnswer::Results { key, games })
+    }
+
+    /// `operator` voids rated game `match_id` (`AdminRequest::Void`): the
+    /// void is appended to `voided.jsonl`, the log folded again without
+    /// every voided game, and the book swapped for the fold — all under
+    /// the registry lock, so no game ending meanwhile is folded into a
+    /// book that is then thrown away, or appended to the log after the
+    /// read and left out of the swap. The store's ratings and results are
+    /// replaced through the writer, in order after every write before.
+    /// The fold reads the whole log, which a game's end waits on for the
+    /// length of it: a void is rare and a log is small beside a
+    /// `GameState::setup`'s worth of work per line it would take to
+    /// matter.
+    fn void(&self, operator: PublicKey, match_id: Uuid, reason: String) -> Result<AdminAnswer, String> {
+        let dir = self.options.data_dir.as_ref().ok_or("this server keeps nothing, so it rated nothing")?;
+        let reason: String = reason.trim().chars().take(MAX_VOID_REASON).collect();
+        if reason.is_empty() {
+            return Err("a void says why".into());
+        }
+        let failed = |error: std::io::Error| {
+            tracing::warn!(%match_id, %error, "could not void a game");
+            format!("the server could not void it: {error}")
+        };
+        let mut registry = self.lock();
+        let mut skip = voided_in(dir).map_err(failed)?;
+        if skip.contains(&match_id) {
+            return Err(format!("game {match_id} was voided already"));
+        }
+        skip.insert(match_id);
+        let (book, rows, found) = fold_results(dir, &self.identity.public_key(), &skip).map_err(failed)?;
+        if !found.contains(&match_id) {
+            return Err(format!("the results log holds no rated game {match_id}"));
+        }
+        let line = serde_json::to_string(&Voided { match_id, by: operator, at: unix_now(), reason: reason.clone() }).expect("a void serializes");
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join(VOIDED_FILE))
+            .and_then(|mut file| {
+                use std::io::Write;
+                writeln!(file, "{line}")
+            })
+            .map_err(failed)?;
+        let games = rows.len();
+        if let Some(writer) = &self.store {
+            let ratings: Vec<netrunner_store::RatingRow> = book.entries().flat_map(|(track, key, standing)| store::rows_of(track, key, standing)).collect();
+            writer.write("a void", move |store| async move { store.replace_rebuilt(&ratings, &rows).await });
+        }
+        registry.ratings = book;
+        tracing::info!(%match_id, operator = %operator.fingerprint(), reason, games, "a game was voided and the ratings folded again");
+        Ok(AdminAnswer::Voided { match_id, games })
+    }
+
     /// Whether `key` is an operator's (`ServeOptions::operators`).
     fn is_operator(&self, key: Option<PublicKey>) -> bool {
         key.is_some_and(|key| self.options.operators.contains(&key))
@@ -1390,8 +1465,13 @@ const IDENTITY_FILE: &str = "identity.key";
 pub const OPERATORS_FILE: &str = "operators.txt";
 /// The longest name an award may have, as a milestone's (`attached`).
 const MAX_AWARD_NAME: usize = 40;
+/// The longest reason a void keeps.
+const MAX_VOID_REASON: usize = 200;
 const MATCHES_DIR: &str = "matches";
 const RESULTS_FILE: &str = "results.jsonl";
+/// The games an operator voided (Phase 4 §12 stage 3), a `Voided` a line,
+/// appended beside the results log and never in it.
+const VOIDED_FILE: &str = "voided.jsonl";
 
 /// What a receipt names the server's build by.
 const ENGINE: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
@@ -1410,31 +1490,53 @@ fn card_pool_hash(cards: &CardRegistry) -> String {
     netrunner_identity::sha256_hex(text.as_bytes())
 }
 
-/// Rebuilds the store's ratings and results from `results.jsonl` in
-/// `data_dir`, folding every rated receipt through `RatingBook::record` in
-/// the order it was appended — the store is an index of the log, and this
-/// is how a corrupt store, a change to the rating system's parameters, or
-/// a voided game (its line deleted) is put right. Every receipt must be
-/// this daemon's key's; one that is not, or that does not verify, stops
-/// the rebuild and names its line, rather than fold a result nobody
-/// signed. The players, the awards, the pairings and the tournaments are
-/// not the log's and are left as they are. Returns how many games were
-/// folded. `database` is `ServeOptions::database`.
-pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result<usize> {
+/// One game voided by an operator (`AdminRequest::Void`): a line of
+/// `voided.jsonl`, beside the results log the game's receipt stays in.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Voided {
+    match_id: Uuid,
+    by: PublicKey,
+    at: u64,
+    reason: String,
+}
+
+/// Every game voided in `data_dir`; none when nothing has been.
+fn voided_in(data_dir: &Path) -> std::io::Result<std::collections::HashSet<Uuid>> {
+    let path = data_dir.join(VOIDED_FILE);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Default::default()),
+        Err(error) => return Err(error),
+    };
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(index, line)| serde_json::from_str::<Voided>(line).map(|voided| voided.match_id).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{VOIDED_FILE} line {}: {error}", index + 1))))
+        .collect()
+}
+
+/// The book and the results index the results log in `data_dir` folds
+/// into, every rated receipt through `RatingBook::record` in the order it
+/// was appended, leaving out the games in `skip`; and which of `skip`
+/// the log holds a rated receipt of. Every receipt must be `server_key`'s;
+/// one that is not, or that does not verify, stops the fold and names its
+/// line, rather than fold a result nobody signed.
+fn fold_results(data_dir: &Path, server_key: &PublicKey, skip: &std::collections::HashSet<Uuid>) -> std::io::Result<(RatingBook, Vec<ResultRow>, std::collections::HashSet<Uuid>)> {
     let invalid = |line: usize, error: String| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{RESULTS_FILE} line {line}: {error}"));
-    let identity_path = data_dir.join(IDENTITY_FILE);
-    let identity = Identity::from_file_text(&std::fs::read_to_string(&identity_path)?)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: {error}", identity_path.display())))?;
-    let server_key = identity.public_key();
     let results = data_dir.join(RESULTS_FILE);
     let text = if results.exists() { std::fs::read_to_string(&results)? } else { String::new() };
     let mut book = RatingBook::default();
     let mut rows = Vec::new();
+    let mut skipped = std::collections::HashSet::new();
     for (index, line) in text.lines().enumerate().filter(|(_, line)| !line.trim().is_empty()) {
         let signed: Signed = serde_json::from_str(line).map_err(|error| invalid(index + 1, error.to_string()))?;
-        let receipt = Receipt::read(&signed, &server_key).map_err(|error| invalid(index + 1, error))?;
+        let receipt = Receipt::read(&signed, server_key).map_err(|error| invalid(index + 1, error))?;
         let (Some(corp), Some(runner), Some(winner)) = (receipt.corp.key, receipt.runner.key, receipt.winner) else { continue };
         if !receipt.rated {
+            continue;
+        }
+        if skip.contains(&receipt.match_id) {
+            skipped.insert(receipt.match_id);
             continue;
         }
         let outcome = match winner {
@@ -1456,6 +1558,23 @@ pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result
             receipt: line.to_string(),
         });
     }
+    Ok((book, rows, skipped))
+}
+
+/// Rebuilds the store's ratings and results from `results.jsonl` in
+/// `data_dir`, less every game voided in `voided.jsonl` (`fold_results`)
+/// — the store is an index of the log, and this is how a corrupt store
+/// or a change to the rating system's parameters is put right. A game is
+/// voided by an operator's `AdminRequest::Void`, never by deleting its
+/// line: the line is a receipt the server signed. The players, the
+/// awards, the pairings and the tournaments are not the log's and are
+/// left as they are. Returns how many games were folded. `database` is
+/// `ServeOptions::database`.
+pub async fn rebuild(data_dir: &Path, database: Option<&str>) -> std::io::Result<usize> {
+    let identity_path = data_dir.join(IDENTITY_FILE);
+    let identity = Identity::from_file_text(&std::fs::read_to_string(&identity_path)?)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: {error}", identity_path.display())))?;
+    let (book, rows, _) = fold_results(data_dir, &identity.public_key(), &voided_in(data_dir)?)?;
     let store = open_store(data_dir, database).await?;
     let ratings: Vec<netrunner_store::RatingRow> = book.entries().flat_map(|(track, key, standing)| store::rows_of(track, key, standing)).collect();
     let written = store.replace_rebuilt(&ratings, &rows).await;

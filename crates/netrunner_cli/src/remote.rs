@@ -113,7 +113,7 @@ pub async fn admin_event(config: &crate::config::Config, action: crate::config::
 /// request at `--server` on this player's key, over an attached
 /// connection closed once the answer is printed.
 pub async fn admin(config: &crate::config::Config, action: crate::config::AdminAction) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::config::{AdminAction, AwardAction, TournamentAdminAction};
+    use crate::config::{AdminAction, AwardAction, GameAdminAction, TournamentAdminAction};
     use netrunner_client::remote::AttachedEvent;
     use netrunner_server::protocol::{AdminAnswer, AdminRequest, AwardSpec};
     let credentials = netrunner_client::identity::Credentials::load()?;
@@ -123,6 +123,8 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
         AdminAction::Status => attached.admin(AdminRequest::Status),
         AdminAction::Award { action: AwardAction::Grant { key, kind, name } } => attached.admin(AdminRequest::Grant { key, award: AwardSpec { kind: kind.into(), name } }),
         AdminAction::Award { action: AwardAction::Revoke { key, kind, name } } => attached.admin(AdminRequest::Revoke { key, award: AwardSpec { kind: kind.into(), name } }),
+        AdminAction::Results { key } => attached.admin(AdminRequest::Results { key }),
+        AdminAction::Game { action: GameAdminAction::Void { match_id, reason } } => attached.admin(AdminRequest::Void { match_id, reason }),
         AdminAction::Tournament { action: TournamentAdminAction::Cancel { code } } => attached.cancel_tournament(code),
         AdminAction::Tournament { action: TournamentAdminAction::Prizes { code, prizes } } => {
             if let Some(problem) = netrunner_server::protocol::Prize::problem(&prizes) {
@@ -153,6 +155,21 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
                 for line in netrunner_client::tournament::prize_lines(&info) {
                     println!("  {line}");
                 }
+                return Ok(());
+            }
+            Some(AttachedEvent::Admin(AdminAnswer::Results { key, games })) => {
+                println!("{key}'s rated games, newest first");
+                if games.is_empty() {
+                    println!("  none");
+                }
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs());
+                for game in &games {
+                    println!("  {}", netrunner_client::admin::result_line(game, now));
+                }
+                return Ok(());
+            }
+            Some(AttachedEvent::Admin(AdminAnswer::Voided { match_id, games })) => {
+                println!("Voided {match_id}; the ratings are folded again from {games} rated {}", if games == 1 { "game" } else { "games" });
                 return Ok(());
             }
             Some(AttachedEvent::AdminRefused(reason) | AttachedEvent::TournamentRefused(reason)) => return Err(reason.into()),

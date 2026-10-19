@@ -626,6 +626,18 @@ pub enum AdminAction {
         #[command(subcommand)]
         action: AwardAction,
     },
+    /// A key's rated games that count, newest first, with the ids
+    /// `admin game void` takes (Phase 4 §12).
+    Results {
+        #[arg(value_parser = parse_public_key)]
+        key: netrunner_client::identity::PublicKey,
+    },
+    /// Void a rated game: it counts for nothing, and every rating is
+    /// folded again from the results log without it (Phase 4 §12).
+    Game {
+        #[command(subcommand)]
+        action: GameAdminAction,
+    },
     /// Call off a tournament, as its organizer or the server's operator
     /// (Phase 4 §12).
     Tournament {
@@ -653,6 +665,17 @@ pub enum AwardAction {
         #[arg(value_enum)]
         kind: AwardKindArg,
         name: String,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GameAdminAction {
+    /// Void one, saying why: the reason is kept beside the results log.
+    Void {
+        /// Its id, as `admin results` prints it.
+        match_id: uuid::Uuid,
+        #[arg(long)]
+        reason: String,
     },
 }
 
