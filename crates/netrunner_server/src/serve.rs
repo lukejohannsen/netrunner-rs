@@ -91,7 +91,7 @@ use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, T
 use crate::protocol::statements::{self, Receipt, ReceiptSeat, RegistrationStatement, SeatStatement, SeedReveal, TableSeat, TableSeed, RECEIPT_TAG, REGISTRATION_TAG, SEAT_TAG};
 use crate::protocol::swiss::{self, Outcome as TableOutcome, Role as TableRole};
 use crate::protocol::{DrawOffer, RoundClock};
-use crate::protocol::{event_code, event_lobby_id, queue_id, Award, AwardSpec, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
+use crate::protocol::{event_code, event_lobby_id, queue_id, AdminAnswer, AdminRequest, Award, AwardKind, AwardSpec, ServerStatus, Chair, ClientMessage, Entrant, EventInfo, EventSpec, FormatStanding, LadderRow, LobbyInfo, MatchSummary, Opponent, Presence, Profile, QueueMode, ServerMessage, TournamentInfo, TournamentState, LADDER_LIMIT, LADDER_MIN_GAMES};
 use crate::fixtures::DealtMatchup;
 use crate::queue::{self, Wants};
 use crate::{fixtures, net};
@@ -169,11 +169,14 @@ pub struct ServeOptions {
     /// unidentified seat plays unrated: a rating is filed under a key the
     /// player proved, never under the name they typed.
     pub data_dir: Option<PathBuf>,
-    /// The keys that may hold and close an event (Phase 4 §11,
-    /// `--operator`): the one piece of §12's administration brought
-    /// forward, because an event grants titles and badges the profile
-    /// wears everywhere on this server. Empty, nobody may. Meaningful
-    /// only with a data directory, since nothing else holds an event.
+    /// The operators' keys (Phase 4 §11–§12, `--operator`): who may
+    /// hold and close an event — an event grants titles and badges the
+    /// profile wears everywhere on this server — call off any
+    /// tournament, and ask `ClientMessage::Admin` anything. Joined at
+    /// bind by every key in `operators.txt` in the data directory
+    /// (`OPERATORS_FILE`), so a server's operators can be kept with the
+    /// rest of what it keeps rather than on its command line. Empty,
+    /// nobody may.
     pub operators: Vec<PublicKey>,
     /// The store's database, as a URL (`postgres://…`, or a
     /// `sqlite://…` elsewhere than the data directory). `None` with a
@@ -563,7 +566,7 @@ impl Tournament {
                 let index = round as usize - 1;
                 self.rounds.get(index).map(|current| (index, current))
             }
-            TournamentState::Registering | TournamentState::Finished => None,
+            TournamentState::Registering | TournamentState::Finished | TournamentState::Cancelled => None,
         }
     }
 
@@ -883,6 +886,8 @@ struct Shared {
     /// The store behind its one writer; `None` for a daemon that keeps
     /// nothing (no data directory).
     store: Option<Writer>,
+    /// When the daemon bound, for its status (Phase 4 §12).
+    started: Instant,
 }
 
 impl Shared {
@@ -1184,11 +1189,12 @@ impl Shared {
     /// table let go, the file rewritten and the change pushed. A result
     /// the organizer already recorded (a game that ran past a recorded
     /// no-show cannot happen, since recording refuses a playing table)
-    /// is kept; a table whose tournament has gone is nobody's.
+    /// is kept; a table whose tournament has gone, or was called off,
+    /// is nobody's.
     fn table_ended(&self, table: TableRef, outcome: TableOutcome) {
         let mut registry = self.lock();
         registry.tables.remove(&table);
-        let Some(tournament) = registry.tournaments.0.get_mut(&table.tournament) else { return };
+        let Some(tournament) = registry.tournaments.0.get_mut(&table.tournament).filter(|tournament| tournament.state != TournamentState::Cancelled) else { return };
         let Some(slot) = tournament.rounds.get_mut(table.round).and_then(|round| round.tables.get_mut(table.table)) else { return };
         if slot.result.is_none() {
             slot.result = Some(outcome);
@@ -1209,7 +1215,7 @@ impl Shared {
         writer.write("a tournament", move |store| async move { store.put_tournament(&row).await });
     }
 
-    /// Whether `key` may hold and close an event (`ServeOptions::operators`).
+    /// Whether `key` is an operator's (`ServeOptions::operators`).
     fn is_operator(&self, key: Option<PublicKey>) -> bool {
         key.is_some_and(|key| self.options.operators.contains(&key))
     }
@@ -1282,6 +1288,62 @@ impl Shared {
         }
     }
 
+    /// The server as its operator sees it (`AdminRequest::Status`).
+    fn status(&self) -> ServerStatus {
+        let mut registry = self.lock();
+        registry.sweep_lobby();
+        let tournaments = registry.tournaments.0.values().filter(|tournament| !matches!(tournament.state, TournamentState::Finished | TournamentState::Cancelled)).count();
+        let events = registry.events.0.values().filter(|event| event.is_open()).count();
+        ServerStatus {
+            engine: ENGINE.to_string(),
+            up_secs: self.started.elapsed().as_secs(),
+            keeps: self.options.data_dir.is_some(),
+            matches: registry.matches.len(),
+            waiting: registry.waiting.len(),
+            attached: registry.attached.len(),
+            tournaments,
+            events,
+            operators: self.options.operators.len(),
+        }
+    }
+
+    /// `operator` grants `award` to `key` (`AdminRequest::Grant`), or
+    /// takes it back (`Revoke`), and the answer is the key's awards as
+    /// they now stand. Written directly rather than through the writer,
+    /// as `set_worn` is, so the answer reads back what was written; the
+    /// queue is settled first, so a grant to a key that attached a moment
+    /// ago finds its row.
+    async fn change_award(&self, operator: PublicKey, key: PublicKey, award: AwardSpec, grant: bool) -> Result<AdminAnswer, String> {
+        let writer = self.store.as_ref().ok_or("this server keeps nothing, so it holds no award")?;
+        let name: String = award.name.trim().chars().take(MAX_AWARD_NAME).collect();
+        if name.is_empty() {
+            return Err(format!("a {} needs a name", award.kind.name().to_lowercase()));
+        }
+        let id = key.rating_id();
+        writer.settled().await;
+        let store = writer.store();
+        let failed = |error: netrunner_store::Error| {
+            tracing::warn!(key = %key.fingerprint(), %error, "could not change an award");
+            "the server could not write the award".to_string()
+        };
+        if store.player(&id).await.map_err(failed)?.is_none() {
+            return Err("this server has never seen that key attach".into());
+        }
+        if grant {
+            let row = StoredAward { key: id.clone(), kind: award.kind.key().to_string(), name: name.clone(), earned_at: unix_now() as i64, source: operator.rating_id() };
+            store.grant(&row).await.map_err(failed)?;
+            tracing::info!(key = %key.fingerprint(), operator = %operator.fingerprint(), award = name, kind = ?award.kind, "an operator granted an award");
+        } else {
+            if !store.revoke(&id, award.kind.key(), &name).await.map_err(failed)? {
+                return Err(format!("that key holds no {} {name:?}", award.kind.name().to_lowercase()));
+            }
+            tracing::info!(key = %key.fingerprint(), operator = %operator.fingerprint(), award = name, kind = ?award.kind, "an operator revoked an award");
+        }
+        let awards = store.awards_of(&id).await.map_err(failed)?;
+        let of = |kind: AwardKind| awards.iter().filter(|row| row.kind == kind.key()).map(|row| Award { name: row.name.clone(), earned_at: row.earned_at as u64, source: row.source.clone() }).collect();
+        Ok(AdminAnswer::Awards { key, titles: of(AwardKind::Title), badges: of(AwardKind::Badge) })
+    }
+
     /// Notes that `key` has attached as `name`, in the store's players
     /// table: a first visit makes the row, a later one updates the name
     /// and the time (`Store::saw_player`).
@@ -1299,6 +1361,14 @@ fn receipt_match_id(receipt: &Signed) -> String {
 }
 
 const IDENTITY_FILE: &str = "identity.key";
+/// The operators' keys, one `key:<base32>` a line, `#` for a comment
+/// (Phase 4 §12): read at bind and joined to `--operator`'s, so a change
+/// takes a restart — an operator is trusted with the whole server, and a
+/// file that changed its operators while it ran would be a door nobody
+/// watched open.
+pub const OPERATORS_FILE: &str = "operators.txt";
+/// The longest name an award may have, as a milestone's (`attached`).
+const MAX_AWARD_NAME: usize = 40;
 const MATCHES_DIR: &str = "matches";
 const RESULTS_FILE: &str = "results.jsonl";
 
@@ -1420,12 +1490,14 @@ struct Kept {
     events: Events,
     last_corp: HashMap<(String, String), String>,
     store: Option<Store>,
+    /// `OPERATORS_FILE`'s keys.
+    operators: Vec<PublicKey>,
 }
 
 impl Kept {
     /// A daemon that keeps nothing: a key made at bind, no book, no store.
     fn nothing() -> Kept {
-        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), events: Events::default(), last_corp: HashMap::new(), store: None }
+        Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), tournaments: Tournaments::default(), events: Events::default(), last_corp: HashMap::new(), store: None, operators: Vec::new() }
     }
 }
 
@@ -1453,7 +1525,26 @@ async fn load_kept(data_dir: Option<&Path>, database: Option<&str>) -> std::io::
         .into_iter()
         .map(|pairing| (ordered_pair(&pairing.corp, &pairing.runner), pairing.corp))
         .collect();
-    Ok(Kept { identity, lasting: true, ratings, tournaments, events, last_corp, store: Some(store) })
+    let operators = read_operators(&dir.join(OPERATORS_FILE))?;
+    Ok(Kept { identity, lasting: true, ratings, tournaments, events, last_corp, store: Some(store), operators })
+}
+
+/// The keys in an operators file (`OPERATORS_FILE`); none when there is
+/// no file. A line that is not a key stops the daemon and names the
+/// line, as a bad `--operator` would: a mistyped operator silently
+/// dropped is an operator locked out of their own server.
+fn read_operators(path: &Path) -> std::io::Result<Vec<PublicKey>> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    text.lines()
+        .enumerate()
+        .map(|(index, line)| (index, line.split('#').next().unwrap_or_default().trim()))
+        .filter(|(_, line)| !line.is_empty())
+        .map(|(index, line)| line.parse::<PublicKey>().map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{} line {}: {error}", path.display(), index + 1))))
+        .collect()
 }
 
 /// The daemon's key: read, or made and written with only its owner able
@@ -1533,7 +1624,13 @@ impl Server {
 
     fn with_listener(listener: TcpListener, options: ServeOptions, kept: Kept) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let Kept { identity, lasting, ratings, tournaments, events, last_corp, store } = kept;
+        let Kept { identity, lasting, ratings, tournaments, events, last_corp, store, operators } = kept;
+        let mut options = options;
+        for key in operators {
+            if !options.operators.contains(&key) {
+                options.operators.push(key);
+            }
+        }
         let cards = fixtures::sample_registry();
         // The rotating pool is gated per format, and for a better reason
         // than a pinned deck: an operator who pins a deck names it and
@@ -1570,6 +1667,7 @@ impl Server {
             identity: Arc::new(identity),
             lasting,
             store: store.map(Writer::start),
+            started: Instant::now(),
         };
         Ok(Server { listener, shared })
     }

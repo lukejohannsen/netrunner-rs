@@ -596,7 +596,7 @@ impl TournamentPage {
                     }
                 }
             }
-            TournamentState::Finished => {}
+            TournamentState::Finished | TournamentState::Cancelled => {}
         }
         rows.push(TournamentRow::Refresh);
         rows
@@ -1005,7 +1005,9 @@ impl OnlineScreen {
                 // pushed to the menu is a notice.
                 AttachedEvent::Events { .. } => {}
                 AttachedEvent::Event(info) => self.notice = Some(format!("{}: {}", info.name, netrunner_client::event::standing_line(&info))),
-                AttachedEvent::EventRefused(reason) => self.notice = Some(reason),
+                AttachedEvent::EventRefused(reason) | AttachedEvent::AdminRefused(reason) => self.notice = Some(reason),
+                // The menu asks no operator's question; `netrunner_cli admin` does.
+                AttachedEvent::Admin(_) => {}
                 AttachedEvent::LobbyJoined(lobby) => {
                     let decks = self.deck_choices(lobby.format);
                     let preferred = self.preferred.clone();
@@ -2306,8 +2308,8 @@ impl OnlineScreen {
                 head.push(bold(if info.entrants.is_empty() { "Nobody has entered yet.".to_string() } else { format!("Entered ({}):", info.entrants.len()) }));
                 head.extend(info.entrants.iter().map(|entrant| Line::from(format!("  {}", tournament::entrant_line(entrant)))));
             }
-            TournamentState::Playing { .. } | TournamentState::Finished => {
-                head.push(bold(if info.state == TournamentState::Finished { "Final standings:".to_string() } else { "Standings:".to_string() }));
+            TournamentState::Playing { .. } | TournamentState::Finished | TournamentState::Cancelled => {
+                head.push(bold(format!("{}:", tournament::standings_heading(info.state))));
                 head.extend(info.standings().iter().enumerate().map(|(index, standing)| Line::from(format!("  {}", tournament::standing_row(info, index + 1, standing)))));
                 if let Some(line) = tournament::seeds_line(info) {
                     head.push(Line::from(line));
@@ -2361,6 +2363,7 @@ impl OnlineScreen {
             TournamentState::Registering => "Your entry",
             TournamentState::Playing { .. } => "This round",
             TournamentState::Finished => "Over",
+            TournamentState::Cancelled => "Called off",
         };
         draw_list(frame, list, title, items, Some(tournament.cursor.min(page_rows.len() - 1)));
     }

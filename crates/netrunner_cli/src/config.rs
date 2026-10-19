@@ -616,6 +616,74 @@ pub enum AdminAction {
         #[command(subcommand)]
         action: EventAction,
     },
+    /// How the server stands: its build, how long it has run, the games,
+    /// seeks and connections on it, and what it holds — and, first,
+    /// whether your key operates it (Phase 4 §12).
+    Status,
+    /// Grant or revoke a title or a badge (Phase 4 §12): one granted here
+    /// is the operator's, beside the ones events grant.
+    Award {
+        #[command(subcommand)]
+        action: AwardAction,
+    },
+    /// Call off a tournament, as its organizer or the server's operator
+    /// (Phase 4 §12).
+    Tournament {
+        #[command(subcommand)]
+        action: TournamentAdminAction,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum AwardAction {
+    /// Grant an award to a key that has attached to the server.
+    Grant {
+        /// The key, as `netrunner_cli identity` prints it (`key:…`).
+        #[arg(value_parser = parse_public_key)]
+        key: netrunner_client::identity::PublicKey,
+        #[arg(value_enum)]
+        kind: AwardKindArg,
+        /// What it is called; a badge's picture is the asset of that name.
+        name: String,
+    },
+    /// Take an award back, and off the key if it wears it.
+    Revoke {
+        #[arg(value_parser = parse_public_key)]
+        key: netrunner_client::identity::PublicKey,
+        #[arg(value_enum)]
+        kind: AwardKindArg,
+        name: String,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum TournamentAdminAction {
+    /// Call it off: no seat is given from now, a game under way plays on
+    /// and counts for nothing, and the standings stay as they stood.
+    Cancel {
+        /// Its code, as its page shows it.
+        code: String,
+    },
+}
+
+/// A title or a badge, as a command names it.
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AwardKindArg {
+    Title,
+    Badge,
+}
+
+impl From<AwardKindArg> for netrunner_server::protocol::AwardKind {
+    fn from(arg: AwardKindArg) -> Self {
+        match arg {
+            AwardKindArg::Title => netrunner_server::protocol::AwardKind::Title,
+            AwardKindArg::Badge => netrunner_server::protocol::AwardKind::Badge,
+        }
+    }
+}
+
+fn parse_public_key(text: &str) -> Result<netrunner_client::identity::PublicKey, String> {
+    text.trim().parse::<netrunner_client::identity::PublicKey>().map_err(|error| error.to_string())
 }
 
 #[derive(Subcommand, Debug, Clone)]

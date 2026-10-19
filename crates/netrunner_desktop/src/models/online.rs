@@ -590,7 +590,7 @@ impl ServerState {
         let info = self.open_tournament()?;
         match info.state {
             TournamentState::Registering if info.entrants.len() >= 2 => Some("Begin round 1".to_string()),
-            TournamentState::Registering | TournamentState::Finished => None,
+            TournamentState::Registering | TournamentState::Finished | TournamentState::Cancelled => None,
             TournamentState::Playing { round } => info.current_round().filter(|current| current.complete()).map(|_| format!("Begin round {}", round + 1)),
         }
     }

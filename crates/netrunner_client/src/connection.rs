@@ -249,6 +249,10 @@ pub enum Event {
     Event(EventInfo),
     /// One of those refused, with the reason.
     EventRefused(String),
+    /// The answer to an operator's request (Phase 4 §12).
+    Admin(netrunner_protocol::AdminAnswer),
+    /// An operator's request refused, with the reason.
+    AdminRefused(String),
     /// A server that keeps its key, met for the first time: remember it
     /// for this address.
     ServerKey(PublicKey),
@@ -472,6 +476,12 @@ impl Connection {
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::EventRefused { reason }) => {
                 self.events.push_back(Event::EventRefused(reason));
             }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Admin(answer)) => {
+                self.events.push_back(Event::Admin(answer));
+            }
+            (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::AdminRefused { reason }) => {
+                self.events.push_back(Event::AdminRefused(reason));
+            }
             (Phase::Attached | Phase::Queued | Phase::Joined, ServerMessage::Profile { key, profile }) => {
                 self.events.push_back(Event::Profile { key, profile });
             }
@@ -659,13 +669,15 @@ impl Connection {
             | ClientMessage::Unregister { .. }
             | ClientMessage::BeginRound { .. }
             | ClientMessage::FinishTournament { .. }
+            | ClientMessage::CancelTournament { .. }
             | ClientMessage::RecordResult { .. }
             | ClientMessage::OfferDraw { .. }
             | ClientMessage::ListEvents
             | ClientMessage::HoldEvent { .. }
             | ClientMessage::CloseEvent { .. }
             | ClientMessage::EnterEvent { .. }
-            | ClientMessage::QuitEvent { .. } => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
+            | ClientMessage::QuitEvent { .. }
+            | ClientMessage::Admin(_) => matches!(self.phase, Phase::Attached | Phase::Queued | Phase::Joined),
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => false,
         };
         if !allowed {

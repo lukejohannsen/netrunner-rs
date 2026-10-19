@@ -126,6 +126,11 @@ pub enum AttachedEvent {
     Event(EventInfo),
     /// One of those refused, with the server's reason.
     EventRefused(String),
+    /// The answer to `admin` (Phase 4 §12).
+    Admin(netrunner_protocol::AdminAnswer),
+    /// An `admin` request refused, with the server's reason: not an
+    /// operator's key, among others.
+    AdminRefused(String),
     /// A place at a match, with the channels to play it through.
     Joined(Box<Joined>),
     /// The game is over and the connection is in its lobby again.
@@ -304,6 +309,18 @@ impl Attached {
         self.send(ClientMessage::QuitEvent { event });
     }
 
+    /// Call a tournament off, as its organizer or this server's operator
+    /// (Phase 4 §12). Answered with `Tournament` or `TournamentRefused`.
+    pub fn cancel_tournament(&self, tournament: String) {
+        self.send(ClientMessage::CancelTournament { tournament });
+    }
+
+    /// An operator's request (Phase 4 §12). Answered with `Admin` or
+    /// `AdminRefused`.
+    pub fn admin(&self, request: netrunner_protocol::AdminRequest) {
+        self.send(ClientMessage::Admin(request));
+    }
+
     /// The machine refuses what makes no sense where the connection is
     /// (`connection::Connection::submit`), and the server refuses the
     /// rest with a reason that comes back as an event; a send into a
@@ -424,7 +441,9 @@ impl Connecting {
             | AttachedEvent::TournamentRefused(_)
             | AttachedEvent::Events { .. }
             | AttachedEvent::Event(_)
-            | AttachedEvent::EventRefused(_) => None,
+            | AttachedEvent::EventRefused(_)
+            | AttachedEvent::Admin(_)
+            | AttachedEvent::AdminRefused(_) => None,
         }
     }
 }
@@ -671,6 +690,8 @@ async fn drive(
                 Event::Events { events, operator } => AttachedEvent::Events { events, operator },
                 Event::Event(event) => AttachedEvent::Event(event),
                 Event::EventRefused(reason) => AttachedEvent::EventRefused(reason),
+                Event::Admin(answer) => AttachedEvent::Admin(answer),
+                Event::AdminRefused(reason) => AttachedEvent::AdminRefused(reason),
             };
             let _ = events.send(report);
         }

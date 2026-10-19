@@ -20,6 +20,17 @@ pub fn state_label(state: TournamentState) -> String {
         TournamentState::Registering => "taking registrations".to_string(),
         TournamentState::Playing { round } => format!("round {round}"),
         TournamentState::Finished => "finished".to_string(),
+        TournamentState::Cancelled => "called off".to_string(),
+    }
+}
+
+/// The heading over a tournament's standings: final once it is over,
+/// and "as they stood" when it was called off, since nobody finished it.
+pub fn standings_heading(state: TournamentState) -> &'static str {
+    match state {
+        TournamentState::Registering | TournamentState::Playing { .. } => "Standings",
+        TournamentState::Finished => "Final standings",
+        TournamentState::Cancelled => "Standings when it was called off",
     }
 }
 

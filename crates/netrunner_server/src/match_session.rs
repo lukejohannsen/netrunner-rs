@@ -499,7 +499,9 @@ impl MatchSession {
                         | ClientMessage::HoldEvent { .. }
                         | ClientMessage::CloseEvent { .. }
                         | ClientMessage::EnterEvent { .. }
-                        | ClientMessage::QuitEvent { .. } => continue,
+                        | ClientMessage::QuitEvent { .. }
+                        | ClientMessage::CancelTournament { .. }
+                        | ClientMessage::Admin(_) => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {

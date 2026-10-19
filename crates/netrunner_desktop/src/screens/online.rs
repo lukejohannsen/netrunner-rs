@@ -1306,7 +1306,10 @@ fn net(
                 AttachedEvent::Lobbies(lobbies) => Intent::Lobbies(lobbies),
                 AttachedEvent::Tournaments(tournaments) => Intent::Tournaments(tournaments),
                 AttachedEvent::Tournament(info) => Intent::Tournament(info),
-                AttachedEvent::TournamentRefused(reason) | AttachedEvent::EventRefused(reason) => Intent::Refused(reason),
+                AttachedEvent::TournamentRefused(reason) | AttachedEvent::EventRefused(reason) | AttachedEvent::AdminRefused(reason) => Intent::Refused(reason),
+                // No page asks an operator's question yet (Phase 4 §12's
+                // desktop stage); `netrunner_cli admin` does.
+                AttachedEvent::Admin(_) => continue,
                 AttachedEvent::Events { events, operator } => Intent::Events { events, operator },
                 AttachedEvent::Event(info) => Intent::Event(info),
                 AttachedEvent::LobbyJoined(lobby) => Intent::LobbyJoined(lobby),
@@ -2646,8 +2649,8 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
         // In the rounds the standings stand where the entrants did: they
         // fold off the rounds the server published (`swiss::standings`),
         // so what is drawn here is what anyone holding them would compute.
-        TournamentState::Playing { .. } | TournamentState::Finished => {
-            section(parent, theme, if info.state == TournamentState::Finished { "Final standings" } else { "Standings" }, |section| {
+        TournamentState::Playing { .. } | TournamentState::Finished | TournamentState::Cancelled => {
+            section(parent, theme, tournament::standings_heading(info.state), |section| {
                 for (index, standing) in info.standings().iter().enumerate() {
                     section.spawn(widgets::label(theme, tournament::standing_row(info, index + 1, standing)));
                 }
