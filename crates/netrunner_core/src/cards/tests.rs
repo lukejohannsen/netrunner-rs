@@ -39896,3 +39896,75 @@ mod red_sand_stage_20 {
         assert!(settled.pending_decision.is_none(), "{:?}", settled.pending_decision);
     }
 }
+
+mod red_sand_stage_21 {
+    use super::*;
+    use super::reprints::{ice_at_hq, runner_turn};
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index }).expect("use it");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state)
+    }
+
+    /// Enigma outermost at HQ over Ice Wall: Mass-Driver breaks Enigma's
+    /// subroutines (one of them by Gordian Blade when `helper`), and the
+    /// run goes on into Ice Wall, whose "End the run" the Runner lets fire.
+    fn into_ice_wall(registry: &CardRegistry, helper: bool) -> (GameState, Vec<GameEvent>) {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("enigma"), ice_at_hq("ice_wall")];
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: fixture_install_id("mass_driver"), card: id("mass_driver"), base_strength: 1, ..Default::default() },
+            crate::rules::InstalledRunnerCard { install_id: fixture_install_id("gordian_blade"), card: id("gordian_blade"), base_strength: 2, ..Default::default() },
+        ];
+        state.runner.resources.credits = Credits(20);
+        let state = super::reprints::encounter(&state, registry);
+        assert_eq!(state.active_run.as_ref().and_then(|run| run.last_encountered), Some(fixture_install_id("enigma")), "Enigma is outermost");
+        let state = use_ability(&state, registry, "mass_driver", 1);
+        let state = use_ability(&state, registry, "mass_driver", 0);
+        let state = if helper { use_ability(&state, registry, "gordian_blade", 1) } else { use_ability(&state, registry, "mass_driver", 0) };
+        let mut events = Vec::new();
+        let mut state = state;
+        // Pass Enigma, approach Ice Wall, and let its subroutine fire.
+        for _ in 0..40 {
+            let encountering_wall = state.active_run.as_ref().is_some_and(|run| run.last_encountered == Some(fixture_install_id("ice_wall")) && run.phase == crate::rules::RunPhase::EncounterIce);
+            if encountering_wall && state.paid_ability_window.is_none() {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if state.active_run.is_some() => PlayerAction::ContinueRun,
+                None => break,
+            };
+            // Past Ice Wall the run reaches its success, which the loop
+            // leaves to the breach.
+            let Ok((next, e)) = apply_action(&state, registry, action) else { break };
+            events.extend(e);
+            state = next;
+        }
+        let (state, e) = pass_until_settled(state, registry);
+        events.extend(e);
+        (state, events)
+    }
+
+    #[test]
+    fn mass_driver_withholds_the_next_encounters_subroutines_after_breaking_alone() {
+        let registry = registry();
+        let (state, events) = into_ice_wall(&registry, false);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceEncountered { card_id, .. } if *card_id == id("ice_wall"))), "{events:?}");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::RunEndedByEffect { .. })), "Ice Wall's End the run resolved nothing: {events:?}");
+        assert!(state.active_run.is_some(), "the run goes on past Ice Wall");
+    }
+
+    #[test]
+    fn mass_driver_withholds_nothing_when_another_breaker_helped() {
+        let registry = registry();
+        let (state, events) = into_ice_wall(&registry, true);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunEndedByEffect { .. })), "Ice Wall ended the run: {events:?}");
+        assert!(state.active_run.is_none());
+    }
+}

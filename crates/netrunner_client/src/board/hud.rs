@@ -302,6 +302,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::AccessMoreThanOneCard => "the Runner cannot access more than 1 card",
         Prohibition::AccessRootOfHqOrRnD => "the Runner cannot access cards in the root of HQ or R&D",
         Prohibition::Install => "the Runner cannot install cards",
+        Prohibition::ResolveFirstThreeSubroutines => "the first 3 subroutines of the next encounter do not resolve",
         Prohibition::CorpInstall => "the Corp cannot install cards",
     }
 }
@@ -455,6 +456,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::EndOfEncounter(_) => ", for this encounter",
                 Until::EndOfRun => ", for the rest of this run",
                 Until::ThroughNextBreach { .. } => ", during this breach",
+                Until::ThroughEncounter(_) => ", until the next encounter ends",
                 Until::EndOfTurn(turn) if turn <= view.turn => ", for the rest of this turn",
                 // Klevetnik's "until your next turn ends": the turn of the
                 // player whose card it is.
