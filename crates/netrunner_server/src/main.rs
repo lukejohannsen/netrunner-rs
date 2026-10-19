@@ -274,8 +274,36 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         database: config.database.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
+    // The first Ctrl+C or SIGTERM drains (Phase 4 §12 stage 4): no new
+    // game, and the daemon exits once the last running one has ended and
+    // been recorded. The second stops it at once, for an operator who
+    // will not wait. A service manager's stop is a SIGTERM, so a
+    // `systemctl stop` lets the games finish.
+    let drainer = server.drainer();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        tracing::info!("a shutdown was asked for: draining, and exiting once the games under way end; ask again to stop now");
+        drainer.drain();
+        shutdown_signal().await;
+        tracing::warn!("asked again: stopping now, with the games under way unrecorded");
+        drainer.stop();
+    });
     server.run().await?;
     Ok(())
+}
+
+/// Ctrl+C, or on Unix a SIGTERM too.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("a SIGTERM handler installs");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// `host:port` as `TcpListener::bind` reads it. An IP address goes through

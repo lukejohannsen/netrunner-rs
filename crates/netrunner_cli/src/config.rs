@@ -620,6 +620,12 @@ pub enum AdminAction {
     /// seeks and connections on it, and what it holds — and, first,
     /// whether your key operates it (Phase 4 §12).
     Status,
+    /// Drain the server for a shutdown: it takes no new game, and exits
+    /// once the games under way have ended (Phase 4 §12). The same as
+    /// the daemon's first Ctrl+C.
+    Drain,
+    /// Take a drain back before the server has exited.
+    Undrain,
     /// Grant or revoke a title or a badge (Phase 4 §12): one granted here
     /// is the operator's, beside the ones events grant.
     Award {
