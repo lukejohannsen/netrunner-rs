@@ -575,6 +575,16 @@ pub enum EffectRequirement {
     /// subroutine. `validate` holds it to `OnIcePassed` and to the four
     /// icebreaker subtypes (`run::BrokenWith::KINDS`).
     BrokePrintedSubroutineWith(crate::dsl::CardSubtype),
+    /// The ice the triggering pass was of was rezzed as this type as it
+    /// was passed — Persephone's "whenever you pass a **sentry** after
+    /// encountering it". Read off the pass (`GameEvent::IcePassed::
+    /// rezzed_as`), which lists types only for a rezzed piece of ice, and a
+    /// rezzed piece of ice is encountered before it is passed. Composition
+    /// didn't work: the pass's `IceFacts` hold one type word,
+    /// `rezzed_code_gate_or_sentry`, for the one card that asks it, and a
+    /// bit per ice type would widen every row of the turn log for a fact no
+    /// "first time" counts.
+    PassedIceWas(crate::dsl::IceType),
     /// The Corp has at least this many credits — Fransofia Ward's "if the
     /// Corp has 15[c] or more". `RunnerCreditsAtMost`'s Corp-side sibling.
     CorpCreditsAtLeast(u32),

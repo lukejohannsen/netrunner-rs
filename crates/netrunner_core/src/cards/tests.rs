@@ -1831,7 +1831,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0 }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5129,7 +5129,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 0 }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -39721,5 +39721,106 @@ mod red_sand_stage_18 {
         assert!(state.corp.installed[1].rezzed, "Enigma was rezzed before this turn");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&use_it), "once per turn");
+    }
+}
+
+mod red_sand_stage_19 {
+    use super::*;
+    use crate::rules::GameEvent;
+    use super::reprints::{ice_at_hq, rig, runner_turn};
+    use super::system_gateway::{corp_ice, enter_encounter_with};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn dedicated_processor_goes_only_on_a_non_ai_icebreaker_and_pumps_its_host_by_four() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: InstallId(1), base_strength: 3, ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("crypsis"), install_id: InstallId(2), base_strength: 0, ..Default::default() },
+        ];
+        state.next_install_id = 3;
+        state.runner.grip = vec![id("dedicated_processor")];
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+        let onto = |host| PlayerAction::InstallHardware { card_id: id("dedicated_processor"), host };
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.contains(&onto(Some(InstallId(1)))), "onto Cleaver");
+        assert!(!offered.contains(&onto(Some(InstallId(2)))), "not onto an AI icebreaker");
+        assert!(!offered.contains(&onto(None)), "not into the rig on its own");
+        let (state, _) = apply_action(&state, &registry, onto(Some(InstallId(1)))).expect("install onto Cleaver");
+        assert_eq!(state.runner.resources.credits, Credits(8));
+
+        let pump = PlayerAction::ActivateAbility { target: InstallId(3), ability_index: 0 };
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&pump), "a pump is used during an encounter");
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let before = crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]);
+        let (state, _) = apply_action(&state, &registry, pump).expect("2[credit]: +4 strength");
+        assert_eq!(toggles(&state, &registry), vec![0], "the host, and nothing else");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the host");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("pump it");
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), before + 4);
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[1]), 0, "Crypsis is not the host");
+    }
+
+    fn passed_a_katana(milled: bool) -> GameState {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("persephone", 1)];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.stack = vec![id("sure_gamble"), id("diesel")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.installed = vec![ice_at_hq("neural_katana")];
+        let at_ice = super::reprints::encounter(&state, &registry);
+        let (passed, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        let (fired, mut events) = apply_action(&passed, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("subroutines fire");
+        let (asked, more) = pass_until_settled(fired, &registry);
+        events.extend(more);
+        assert!(
+            events.iter().any(|event| matches!(event, GameEvent::IcePassed { subroutines_resolved: 1, rezzed_as, .. } if rezzed_as.contains(&crate::dsl::IceType::Sentry))),
+            "a sentry passed with its one subroutine resolved: {events:?}"
+        );
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "you may: {:?}", asked.pending_decision);
+        let option_index = if milled { 0 } else { 1 };
+        apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index }).expect("answer").0
+    }
+
+    #[test]
+    fn persephone_trashes_the_top_of_the_stack_to_mill_r_and_d_for_each_subroutine_the_sentry_resolved() {
+        let milled = passed_a_katana(true);
+        assert_eq!(milled.runner.stack, vec![id("sure_gamble")], "the top card of the stack");
+        assert!(milled.runner.heap.contains(&id("diesel")));
+        assert_eq!(milled.corp.r_and_d.len(), 4, "1 from R&D, for Neural Katana's one subroutine");
+
+        let declined = passed_a_katana(false);
+        assert_eq!(declined.runner.stack.len(), 2);
+        assert_eq!(declined.corp.r_and_d.len(), 5);
+    }
+
+    #[test]
+    fn persephone_hears_a_passed_sentry_and_nothing_else() {
+        let registry = registry();
+        let state = base_state();
+        let sentry = crate::dsl::EffectRequirement::PassedIceWas(crate::dsl::IceType::Sentry);
+        let pass = |rezzed_as| GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as, printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 2 };
+        let asks = |event: &GameEvent| crate::rules::check_requirement(&state, &sentry, Side::Runner, &crate::rules::ResolutionContext::for_trigger(Some(&id("persephone")), Some(event)), &registry).is_ok();
+        assert!(asks(&pass(vec![crate::dsl::IceType::Sentry])));
+        assert!(!asks(&pass(vec![crate::dsl::IceType::Barrier])), "a barrier");
+        assert!(!asks(&pass(vec![])), "unrezzed, so never encountered");
     }
 }

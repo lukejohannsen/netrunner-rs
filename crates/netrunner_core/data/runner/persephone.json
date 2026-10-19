@@ -1,0 +1,98 @@
+{
+  "id": "persephone",
+  "title": "Persephone",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 1,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "requirement": {
+        "PassedIceWas": "Sentry"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "EffectIf": {
+                  "condition": {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnStack",
+                      "count": 1,
+                      "filter": "Any"
+                    }
+                  },
+                  "effect": {
+                    "Sequence": [
+                      {
+                        "Mill": {
+                          "deck": "Runner",
+                          "amount": {
+                            "Fixed": 1
+                          }
+                        }
+                      },
+                      {
+                        "Mill": {
+                          "deck": "Corp",
+                          "amount": "PassedIceSubroutinesResolved"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trash the top card of your stack",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you pass a sentry after encountering it, you may trash the top card of your stack. If you do, trash 1 card from the top of R&D for each subroutine on that sentry that resolved during that encounter."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry subroutine.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 12042,
+  "is_playable": true
+}

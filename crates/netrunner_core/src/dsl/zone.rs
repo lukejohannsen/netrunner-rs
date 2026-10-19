@@ -267,6 +267,14 @@ pub enum CardFilter {
     /// the parking card is a Trojan in the rig, so `NotSourceCard` admits
     /// every piece of ice, its host among them.
     NotThisCardsHost,
+    /// Only the card the parking card is hosted on — Dedicated Processor's
+    /// "Host **icebreaker** gains '2[credit]: +4 strength'": the pump is
+    /// the hardware's ability and boosts the selected card, so the one card
+    /// it may select is its host (a rig card, `hosted_on_rig_card`, or a
+    /// piece of ice, `hosted_on_ice`). Instance-level, as `NotThisCardsHost`
+    /// is. Composition didn't work: `BoostStrength` boosts the acting card,
+    /// which in an ability is the hardware, and no filter named the host.
+    ThisCardsHost,
     /// No piece of ice whose subroutine is already resolving through this
     /// one's — Ravana 1.0's "Resolve 1 subroutine on **another** rezzed
     /// bioroid ice", asked by a Ravana whose own subroutine another
@@ -774,6 +782,7 @@ impl CardFilter {
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
+                | CardFilter::ThisCardsHost
                 | CardFilter::NotRelaying
                 | CardFilter::TrashableBy(_)
                 | CardFilter::InChosenServer
@@ -919,6 +928,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
+        CardFilter::ThisCardsHost => true,
         CardFilter::NotRelaying => true,
         CardFilter::TrashableBy(_) => true,
         CardFilter::InChosenServer => true,
