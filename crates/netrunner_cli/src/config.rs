@@ -664,6 +664,21 @@ pub enum TournamentAdminAction {
         /// Its code, as its page shows it.
         code: String,
     },
+    /// Set what the final standings win, replacing what was set: a title
+    /// or a badge per place, granted when the organizer finishes it. No
+    /// `--prize` clears them. An operator's alone.
+    Prizes {
+        code: String,
+        /// `<place>=title:<name>` or `<place>=badge:<name>`
+        /// (`1=title:Champion`), repeatable, at most one per place.
+        #[arg(long = "prize", value_parser = parse_prize)]
+        prizes: Vec<netrunner_server::protocol::Prize>,
+    },
+}
+
+fn parse_prize(text: &str) -> Result<netrunner_server::protocol::Prize, String> {
+    let milestone = parse_milestone(text).map_err(|error| error.replace("milestone", "prize").replace("win count", "place").replace("<win>", "<place>"))?;
+    Ok(netrunner_server::protocol::Prize { place: milestone.wins, award: milestone.award })
 }
 
 /// A title or a badge, as a command names it.

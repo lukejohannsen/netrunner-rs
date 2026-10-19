@@ -2293,6 +2293,11 @@ impl OnlineScreen {
             Line::from(format!("Held by {}", info.organizer.fingerprint())),
             Line::from(tournament::standing_line(info, page.key.as_ref())),
         ];
+        // What the standings win, set by the server's operator (Phase 4 §12).
+        let prizes = tournament::prize_lines(info);
+        if !prizes.is_empty() {
+            head.push(Line::from(format!("Prizes: {}", prizes.join(" · "))));
+        }
         if let Some(line) = tournament::round_line(info, page.key.as_ref()) {
             head.push(Line::from(line));
         }

@@ -24,6 +24,24 @@ pub fn state_label(state: TournamentState) -> String {
     }
 }
 
+/// What each place wins, a line each — "1st: the title "Champion"" —
+/// best first; none when the tournament plays for its standings alone.
+pub fn prize_lines(info: &TournamentInfo) -> Vec<String> {
+    info.prizes.iter().map(|prize| format!("{}: the {} {:?}", ordinal(prize.place), prize.award.kind.name().to_lowercase(), prize.award.name)).collect()
+}
+
+/// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st.
+pub fn ordinal(place: u32) -> String {
+    let suffix = match (place % 10, place % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{place}{suffix}")
+}
+
 /// The heading over a tournament's standings: final once it is over,
 /// and "as they stood" when it was called off, since nobody finished it.
 pub fn standings_heading(state: TournamentState) -> &'static str {
@@ -263,7 +281,7 @@ mod tests {
     use netrunner_identity::Identity;
 
     fn info(entrants: Vec<Entrant>) -> TournamentInfo {
-        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new() }
+        TournamentInfo { id: "K7M2QX".into(), name: "Friday Night".into(), format: NsgFormat::Startup, organizer: Identity::from_secret([1; 32]).public_key(), state: TournamentState::Registering, entrants, seeding: Vec::new(), rounds: Vec::new(), dropped: Vec::new(), draw_offers: Vec::new(), clock: None, seeds: Vec::new(), prizes: Vec::new() }
     }
 
     fn entrant(byte: u8, name: &str) -> Entrant {
@@ -294,6 +312,15 @@ mod tests {
 
     /// The round's words: each table by its names and result, the bye,
     /// a standing's row, and what this key is told about its own table.
+    #[test]
+    fn a_prize_reads_by_its_place() {
+        use netrunner_protocol::{AwardKind, AwardSpec, Prize};
+        let mut with = info(Vec::new());
+        with.prizes = vec![Prize { place: 1, award: AwardSpec { kind: AwardKind::Title, name: "Champion".into() } }, Prize { place: 2, award: AwardSpec { kind: AwardKind::Badge, name: "silver".into() } }];
+        assert_eq!(prize_lines(&with), ["1st: the title \"Champion\"", "2nd: the badge \"silver\""]);
+        assert_eq!([3, 4, 11, 12, 13, 21, 22, 103, 111].map(ordinal), ["3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "103rd", "111th"]);
+    }
+
     #[test]
     fn a_round_is_told_by_names_and_this_key_by_its_table() {
         let (ann, bo, cy) = (Identity::from_secret([2; 32]).public_key(), Identity::from_secret([3; 32]).public_key(), Identity::from_secret([4; 32]).public_key());

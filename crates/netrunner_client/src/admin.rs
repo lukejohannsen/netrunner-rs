@@ -38,9 +38,13 @@ pub fn award_lines(titles: &[Award], badges: &[Award]) -> Vec<String> {
     titles.iter().map(|award| line("Title", award)).chain(badges.iter().map(|award| line("Badge", award))).collect()
 }
 
-/// What an award's `source` says granted it: `event:<code>` an event, a
-/// `key:…` the operator with that key.
+/// What an award's `source` says granted it: `event:<code>` an event,
+/// `tournament:<code>` a tournament's prize, a `key:…` the operator with
+/// that key.
 pub fn source(source: &str) -> String {
+    if let Some(code) = source.strip_prefix("tournament:") {
+        return format!("tournament {code}");
+    }
     match netrunner_protocol::event_code(source) {
         Some(code) => format!("event {code}"),
         None if source.starts_with("key:") => "granted by an operator".to_string(),
@@ -81,5 +85,6 @@ mod tests {
             ["Title \"Net-Slinger\" (event K7M2QX)", "Badge \"founder\" (granted by an operator)"]
         );
         assert_eq!(award_lines(&[], &[]), ["no title and no badge"]);
+        assert_eq!(source("tournament:K7M2QX"), "tournament K7M2QX");
     }
 }

@@ -124,6 +124,12 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
         AdminAction::Award { action: AwardAction::Grant { key, kind, name } } => attached.admin(AdminRequest::Grant { key, award: AwardSpec { kind: kind.into(), name } }),
         AdminAction::Award { action: AwardAction::Revoke { key, kind, name } } => attached.admin(AdminRequest::Revoke { key, award: AwardSpec { kind: kind.into(), name } }),
         AdminAction::Tournament { action: TournamentAdminAction::Cancel { code } } => attached.cancel_tournament(code),
+        AdminAction::Tournament { action: TournamentAdminAction::Prizes { code, prizes } } => {
+            if let Some(problem) = netrunner_server::protocol::Prize::problem(&prizes) {
+                return Err(problem.into());
+            }
+            attached.admin(AdminRequest::SetPrizes { tournament: code, prizes })
+        }
     }
     let mut attached = attached;
     loop {
@@ -142,8 +148,11 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
                 }
                 return Ok(());
             }
-            Some(AttachedEvent::Tournament(info)) => {
+            Some(AttachedEvent::Tournament(info) | AttachedEvent::Admin(AdminAnswer::Tournament(info))) => {
                 println!("{}", netrunner_client::tournament::line(&info));
+                for line in netrunner_client::tournament::prize_lines(&info) {
+                    println!("  {line}");
+                }
                 return Ok(());
             }
             Some(AttachedEvent::AdminRefused(reason) | AttachedEvent::TournamentRefused(reason)) => return Err(reason.into()),

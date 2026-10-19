@@ -967,3 +967,100 @@ async fn refusal(socket: &mut Socket) -> String {
         }
     }
 }
+
+/// The answer to one admin request: `Ok` the answer, `Err` the refusal.
+async fn admin(socket: &mut Socket, request: netrunner_server::protocol::AdminRequest) -> Result<netrunner_server::protocol::AdminAnswer, String> {
+    send(socket, ClientMessage::Admin(request)).await;
+    loop {
+        match next(socket).await {
+            ServerMessage::Admin(answer) => return Ok(answer),
+            ServerMessage::AdminRefused { reason } => return Err(reason),
+            _ => continue,
+        }
+    }
+}
+
+/// A tournament's prizes (Phase 4 §12): the organizer may not set them,
+/// an operator may, and the entrants are told; when the organizer
+/// finishes it, each place of the final standings is granted its prize
+/// under the tournament's code, a place past the entrants goes to
+/// nobody, and nothing is set once it is over.
+#[tokio::test]
+async fn a_tournament_s_prizes_go_to_its_final_standings() {
+    use netrunner_server::protocol::{AdminAnswer, AdminRequest, AwardKind, AwardSpec, Prize};
+    let dir = scratch("prizes");
+    let operator = player(9);
+    let (url, server_key) = start_with(ServeOptions { seed: Some(1), data_dir: Some(dir.clone()), operators: vec![operator.public_key()], ..ServeOptions::default() }).await;
+    let people = [player(1), player(2)];
+    let keys: Vec<PublicKey> = people.iter().map(Identity::public_key).collect();
+    let mut sockets = Vec::new();
+    for (identity, name) in people.iter().zip(["ann", "bo"]) {
+        sockets.push(attach(&url, Some(identity), name).await);
+    }
+    let made = create(&mut sockets[0], "For glory").await;
+    let (corp, runner) = (deck("brick_stack"), deck("dashing_mad"));
+    for (index, identity) in people.iter().enumerate() {
+        let salt = format!("s{index}");
+        send(&mut sockets[index], ClientMessage::Register { tournament: made.id.clone(), corp: corp.clone(), runner: runner.clone(), salt: salt.clone(), statement: statement(identity, server_key, &made.id, &salt, &corp, &runner) }).await;
+    }
+    let prize = |place, kind, name: &str| Prize { place, award: AwardSpec { kind, name: name.into() } };
+    let prizes = vec![prize(3, AwardKind::Badge, "bronze"), prize(1, AwardKind::Title, " Champion "), prize(2, AwardKind::Badge, "silver")];
+    assert_eq!(admin(&mut sockets[0], AdminRequest::SetPrizes { tournament: made.id.clone(), prizes: prizes.clone() }).await, Err("your key does not operate this server".into()), "the organizer may not");
+    let mut op = attach(&url, Some(&operator), "op").await;
+    assert_eq!(admin(&mut op, AdminRequest::SetPrizes { tournament: made.id.clone(), prizes: vec![prize(1, AwardKind::Title, "a"), prize(1, AwardKind::Badge, "b")] }).await, Err("two prizes for place 1".into()));
+    let Ok(AdminAnswer::Tournament(set)) = admin(&mut op, AdminRequest::SetPrizes { tournament: made.id.clone(), prizes }).await else { panic!("set") };
+    assert_eq!(set.prizes.iter().map(|prize| (prize.place, prize.award.name.as_str())).collect::<Vec<_>>(), [(1, "Champion"), (2, "silver"), (3, "bronze")], "by place, trimmed");
+    loop {
+        if next_tournament(&mut sockets[1]).await.prizes == set.prizes {
+            break;
+        }
+    }
+
+    send(&mut sockets[0], ClientMessage::BeginRound { tournament: made.id.clone() }).await;
+    let first = loop {
+        let info = next_tournament(&mut sockets[0]).await;
+        if info.state == (TournamentState::Playing { round: 1 }) {
+            break info;
+        }
+    };
+    let table = first.rounds[0].tables[0].clone();
+    let index_of = |key: &PublicKey| keys.iter().position(|k| k == key).unwrap();
+    for key in [table.corp, table.runner] {
+        sit(&url, &mut sockets[index_of(&key)], &made.id, &key).await;
+    }
+    next_joined(&mut sockets[index_of(&table.corp)]).await;
+    next_joined(&mut sockets[index_of(&table.runner)]).await;
+    // The Runner concedes: the Corp's seat finishes first.
+    send(&mut sockets[index_of(&table.runner)], ClientMessage::Surrender).await;
+    loop {
+        if read(&url, &made.id).await.rounds[0].tables[0].result.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    send(&mut sockets[0], ClientMessage::FinishTournament { tournament: made.id.clone() }).await;
+    loop {
+        if next_tournament(&mut sockets[0]).await.state == TournamentState::Finished {
+            break;
+        }
+    }
+
+    for (key, kind, name) in [(table.corp, "title", "Champion"), (table.runner, "badge", "silver")] {
+        let store = netrunner_store::Store::open(&netrunner_store::sqlite_url(&dir.join(netrunner_store::SQLITE_FILE))).await.unwrap();
+        let awards = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let awards = store.awards_of(&key.rating_id()).await.unwrap();
+                if !awards.is_empty() {
+                    return awards;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("granted within 10s");
+        store.close().await;
+        assert_eq!(awards.iter().map(|award| (award.kind.as_str(), award.name.as_str(), award.source.clone())).collect::<Vec<_>>(), [(kind, name, format!("tournament:{}", made.id))], "the bronze went to nobody");
+    }
+    assert_eq!(admin(&mut op, AdminRequest::SetPrizes { tournament: made.id.clone(), prizes: Vec::new() }).await, Err("the tournament is over".into()));
+    let _ = std::fs::remove_dir_all(&dir);
+}

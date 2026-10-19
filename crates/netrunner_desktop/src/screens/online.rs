@@ -2635,6 +2635,14 @@ fn spawn_tournament(parent: &mut ChildSpawnerCommands, theme: &Theme, server: &S
     parent.spawn(widgets::dim(theme, format!("Code {} · {} · {}", info.id, capitalised(format_name(info.format)), tournament::state_label(info.state))));
     parent.spawn(widgets::dim(theme, format!("Held by {}", info.organizer.fingerprint())));
     parent.spawn((widgets::dim(theme, tournament::standing_line(info, server.key.as_ref())), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    // What the standings win, set by the server's operator (Phase 4 §12).
+    if !info.prizes.is_empty() {
+        section(parent, theme, "Prizes", |section| {
+            for line in tournament::prize_lines(info) {
+                section.spawn(widgets::label(theme, line));
+            }
+        });
+    }
     match info.state {
         TournamentState::Registering => {
             section(parent, theme, if info.entrants.is_empty() { "Entered".to_string() } else { format!("Entered ({})", info.entrants.len()) }, |section| {
