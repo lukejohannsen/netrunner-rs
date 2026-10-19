@@ -128,7 +128,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("persephone", "Persephone"),
-    ("rubicon_switch", "Rubicon Switch"),
     ("aeneas_informant", "Aeneas Informant"),
     ("adjusted_matrix", "Adjusted Matrix"),
     ("dedicated_processor", "Dedicated Processor"),
