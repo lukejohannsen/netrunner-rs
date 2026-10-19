@@ -279,6 +279,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::MarkIdentified { .. } => Vec::new(),
         GameEvent::BasicDrawActionTaken { side, .. } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
         GameEvent::BasicCreditActionTaken { side } => vec![moment(Trigger::OnBasicCreditAction, &About::Nothing, Some(*side))],
+        GameEvent::MandatoryDrawMade { side } => vec![moment(Trigger::OnMandatoryDraw, &About::Nothing, Some(*side))],
 
         GameEvent::RunInitiated { server } => vec![moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner))],
         GameEvent::IceApproached { server, .. } => vec![moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner))],

@@ -1273,6 +1273,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::Prevented { .. }
         | GameEvent::BasicDrawActionTaken { .. }
         | GameEvent::BasicCreditActionTaken { .. }
+        | GameEvent::MandatoryDrawMade { .. }
         | GameEvent::PendingChoicePresented { .. }
         | GameEvent::PendingChoiceResolved { .. }
         | GameEvent::NumberChoiceOffered { .. }

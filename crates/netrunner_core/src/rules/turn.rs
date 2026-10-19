@@ -487,6 +487,11 @@ fn draw_and_open_the_turn(state: &mut GameState, side: Side, registry: &CardRegi
         if state.is_over() {
             return Ok(events);
         }
+        // Open Forum's "after your mandatory draw": heard once the draw is
+        // made, or, when something that heard it about to happen parked
+        // it, queued behind that decision as every trigger heard under a
+        // park is.
+        dispatcher::emit(state, registry, &mut events, GameEvent::MandatoryDrawMade { side })?;
     }
 
     events.push(paid_ability::open_window_for(state, side, WindowCheckpoint::StartOfTurn { side }));

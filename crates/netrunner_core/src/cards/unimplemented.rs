@@ -149,7 +149,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rip_deal", "Rip Deal"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
-    ("open_forum", "Open Forum"),
     ("transparency_initiative", "Transparency Initiative"),
     ("rover_algorithm", "Rover Algorithm"),
 ];
