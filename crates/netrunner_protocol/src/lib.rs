@@ -318,6 +318,16 @@ pub enum AdminRequest {
     /// game the log holds no rated receipt of, and one voided already.
     /// Answered with `AdminAnswer::Voided`.
     Void { match_id: Uuid, reason: String },
+    /// Drains the server for a shutdown (Phase 4 §12 stage 4): it takes
+    /// no new game from now — every seek waiting and every seat waiting
+    /// at a tournament table is told so — lets every game under way
+    /// finish, and exits once the last has, its writes landed. The same
+    /// as the daemon's first Ctrl+C or `SIGTERM`. Answered with
+    /// `AdminAnswer::Status`, `draining` set.
+    Drain,
+    /// Takes a drain back before the server has exited: it takes games
+    /// again. Answered with `AdminAnswer::Status`.
+    Undrain,
 }
 
 /// The most games `AdminRequest::Results` answers with.
@@ -377,6 +387,9 @@ pub struct ServerStatus {
     /// Events open.
     pub events: usize,
     pub operators: usize,
+    /// Taking no new game, and exiting once `matches` is none
+    /// (`AdminRequest::Drain`).
+    pub draining: bool,
 }
 
 /// What an operator holds an event as (Phase 4 §11): the words a player

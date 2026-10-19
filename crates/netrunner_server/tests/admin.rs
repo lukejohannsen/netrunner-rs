@@ -162,3 +162,106 @@ async fn an_operator_grants_and_revokes_an_award() {
     let mut op = attach(&url, Some(&operator), "op").await;
     assert_eq!(admin(&mut op, AdminRequest::Grant { key: ann_key, award: title("Founder") }).await, Err("this server keeps nothing, so it holds no award".into()));
 }
+
+/// Two unproved players paired in a Casual queue: the first seeks, the
+/// second is seated against them. Both sockets are in the game.
+async fn paired(url: &str) -> (Socket, Socket) {
+    let chair = |id: &str| netrunner_server::protocol::Chair::Either { corp: Box::new(netrunner_core::decks::by_id("brick_stack").unwrap()), runner: Box::new(netrunner_core::decks::by_id(id).unwrap()), prefer: None };
+    let lobby = netrunner_server::protocol::queue_id(netrunner_server::protocol::QueueMode::Casual, netrunner_core::format::NsgFormat::Startup);
+    let mut sockets = Vec::new();
+    for name in ["ann", "bo"] {
+        let mut socket = attach(url, None, name).await;
+        send(&mut socket, ClientMessage::JoinLobby { lobby: lobby.clone(), password: None }).await;
+        assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
+        send(&mut socket, ClientMessage::Seek { chair: chair("dashing_mad"), opponent: netrunner_server::protocol::Opponent::Person }).await;
+        sockets.push(socket);
+    }
+    let mut second = sockets.pop().unwrap();
+    let mut first = sockets.pop().unwrap();
+    assert!(matches!(next(&mut first).await, ServerMessage::Queued { .. }));
+    for socket in [&mut first, &mut second] {
+        loop {
+            if let ServerMessage::MatchJoined { .. } = next(socket).await {
+                break;
+            }
+        }
+    }
+    (first, second)
+}
+
+/// A seek's refusal, past the game's traffic.
+async fn seek_refused(socket: &mut Socket) -> String {
+    loop {
+        match next(socket).await {
+            ServerMessage::SeekRefused { reason } => return reason,
+            ServerMessage::MatchJoined { .. } => panic!("seated, not refused"),
+            _ => continue,
+        }
+    }
+}
+
+/// A drain (Phase 4 §12 stage 4): the operator drains a server with a
+/// game under way and a seek waiting; the seek is told and withdrawn, a
+/// new one is refused, the server runs on until the game ends and then
+/// `run` returns. An undrain before then takes games again.
+#[tokio::test]
+async fn a_drained_server_finishes_its_games_and_stops() {
+    let operator = player(9);
+    let server = Server::bind("127.0.0.1:0", ServeOptions { seed: Some(1), operators: vec![operator.public_key()], ..ServeOptions::default() }).await.unwrap();
+    let url = format!("ws://{}", server.local_addr().unwrap());
+    let running = tokio::spawn(server.run());
+    let (mut ann, mut bo) = paired(&url).await;
+
+    // A third waits in a lobby of its own: the drain withdraws it.
+    let lobby = netrunner_server::protocol::queue_id(netrunner_server::protocol::QueueMode::Casual, netrunner_core::format::NsgFormat::Standard);
+    let mut cy = attach(&url, None, "cy").await;
+    send(&mut cy, ClientMessage::JoinLobby { lobby, password: None }).await;
+    assert!(matches!(next(&mut cy).await, ServerMessage::LobbyJoined { .. }));
+    let standard = netrunner_server::protocol::Chair::Either { corp: Box::new(netrunner_core::decks::by_id("brick_stack").unwrap()), runner: Box::new(netrunner_core::decks::by_id("dashing_mad").unwrap()), prefer: None };
+    send(&mut cy, ClientMessage::Seek { chair: standard.clone(), opponent: netrunner_server::protocol::Opponent::Person }).await;
+    assert!(matches!(next(&mut cy).await, ServerMessage::Queued { .. }));
+
+    let mut op = attach(&url, Some(&operator), "op").await;
+    let Ok(AdminAnswer::Status(status)) = admin(&mut op, AdminRequest::Drain).await else { panic!("drained") };
+    assert_eq!((status.draining, status.matches, status.waiting), (true, 1, 0), "{status:?}");
+    assert!(seek_refused(&mut cy).await.contains("shutting down"));
+    send(&mut cy, ClientMessage::Seek { chair: standard.clone(), opponent: netrunner_server::protocol::Opponent::Person }).await;
+    assert!(seek_refused(&mut cy).await.contains("shutting down"), "a new seek is refused too");
+
+    // Taken back and given again, with the game still running.
+    let Ok(AdminAnswer::Status(status)) = admin(&mut op, AdminRequest::Undrain).await else { panic!("undrained") };
+    assert!(!status.draining);
+    let Ok(AdminAnswer::Status(_)) = admin(&mut op, AdminRequest::Drain).await else { panic!("drained") };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!running.is_finished(), "a game is under way");
+
+    send(&mut bo, ClientMessage::Surrender).await;
+    loop {
+        if let ServerMessage::GameEnded { .. } = next(&mut ann).await {
+            break;
+        }
+    }
+    tokio::time::timeout(Duration::from_secs(10), running).await.expect("the server stops once its last game has ended").unwrap().unwrap();
+}
+
+/// A drain with nothing running stops the server at once, and so does a
+/// stop with a game under way.
+#[tokio::test]
+async fn an_idle_drain_and_a_stop_end_the_server_at_once() {
+    let operator = player(9);
+    let server = Server::bind("127.0.0.1:0", ServeOptions { seed: Some(1), operators: vec![operator.public_key()], ..ServeOptions::default() }).await.unwrap();
+    let url = format!("ws://{}", server.local_addr().unwrap());
+    let running = tokio::spawn(server.run());
+    let mut op = attach(&url, Some(&operator), "op").await;
+    let Ok(AdminAnswer::Status(status)) = admin(&mut op, AdminRequest::Drain).await else { panic!("drained") };
+    assert_eq!((status.draining, status.matches), (true, 0));
+    tokio::time::timeout(Duration::from_secs(10), running).await.expect("nothing running: stopped").unwrap().unwrap();
+
+    let server = Server::bind("127.0.0.1:0", ServeOptions { seed: Some(1), ..ServeOptions::default() }).await.unwrap();
+    let url = format!("ws://{}", server.local_addr().unwrap());
+    let drainer = server.drainer();
+    let running = tokio::spawn(server.run());
+    let _game = paired(&url).await;
+    drainer.stop();
+    tokio::time::timeout(Duration::from_secs(10), running).await.expect("stopped at once").unwrap().unwrap();
+}

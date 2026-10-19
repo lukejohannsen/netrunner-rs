@@ -851,6 +851,10 @@ impl Attached {
         }
         let id = id.trim().to_uppercase();
         let mut registry = self.shared.lock();
+        // Not even to wait: a seat waiting is a game promised.
+        if registry.draining {
+            return Err(DRAINING.into());
+        }
         let (round, table, format, mine, theirs, round_end, secret, salts) = {
             let tournament = registry.tournaments.0.get(&id).ok_or("no such tournament")?;
             let (round, current) = tournament.current().ok_or("no round is being played")?;
@@ -906,9 +910,9 @@ impl Attached {
                 Ok(Playing { token, out, into, lobby })
             }
             Some(TableState::Waiting(seated)) => {
-                if registry.at_cap(&self.shared.options) {
+                if let Some(reason) = registry.refuses_games(&self.shared.options) {
                     registry.tables.insert(table_ref, TableState::Waiting(seated));
-                    return Err(AT_CAP.into());
+                    return Err(reason.into());
                 }
                 // The daemon's own seed is not this game's: the table's is
                 // the three parties' (`statements::table_seed`).
@@ -1079,6 +1083,15 @@ impl Attached {
             AdminRequest::SetPrizes { tournament, prizes } => self.set_prizes(&tournament, prizes).map(AdminAnswer::Tournament),
             AdminRequest::Results { key } => self.shared.results_of(key).await,
             AdminRequest::Void { match_id, reason } => self.shared.void(operator, match_id, reason),
+            AdminRequest::Drain => {
+                tracing::info!(operator = %operator.fingerprint(), "an operator drained the server");
+                self.shared.drain();
+                Ok(AdminAnswer::Status(self.shared.status()))
+            }
+            AdminRequest::Undrain => {
+                self.shared.undrain();
+                Ok(AdminAnswer::Status(self.shared.status()))
+            }
         }
     }
 

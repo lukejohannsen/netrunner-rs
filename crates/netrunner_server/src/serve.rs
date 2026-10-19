@@ -754,6 +754,9 @@ struct Registry {
     attached: HashMap<Uuid, AttachedLink>,
     /// A tournament table's seat waiting for its opponent, or its game.
     tables: HashMap<TableRef, TableState>,
+    /// Taking no new game, and exiting once the last running one has
+    /// ended (Phase 4 §12 stage 4, `Shared::drain`).
+    draining: bool,
     /// Claimed by `allocate`, never reused: match `n` plays on
     /// `base_seed + n` whether or not match `n - 1` finished, so a
     /// `--seed` run is reproducible connection for connection.
@@ -770,6 +773,19 @@ impl Registry {
 
     fn at_cap(&self, options: &ServeOptions) -> bool {
         options.max_matches.is_some_and(|cap| self.matches.len() >= cap)
+    }
+
+    /// Why no new game may start now, if one may not: a drain, or the
+    /// match cap. Every place a game starts asks this under the lock it
+    /// starts the game under.
+    fn refuses_games(&self, options: &ServeOptions) -> Option<&'static str> {
+        if self.draining {
+            Some(DRAINING)
+        } else if self.at_cap(options) {
+            Some(AT_CAP)
+        } else {
+            None
+        }
     }
 
     /// Claims the next match id and seed. The caller has checked `at_cap`
@@ -892,6 +908,9 @@ struct Shared {
     store: Option<Writer>,
     /// When the daemon bound, for its status (Phase 4 §12).
     started: Instant,
+    /// Set once a drain has nothing left running (`Shared::stop_if_drained`),
+    /// or at once by a second Ctrl+C: what `Server::run` returns on.
+    stop: Arc<tokio::sync::watch::Sender<bool>>,
 }
 
 impl Shared {
@@ -1400,6 +1419,48 @@ impl Shared {
             tournaments,
             events,
             operators: self.options.operators.len(),
+            draining: registry.draining,
+        }
+    }
+
+    /// Starts a drain (`AdminRequest::Drain`, the first Ctrl+C): no new
+    /// game from now; every seek waiting, in a lobby or at a tournament
+    /// table, withdrawn and told why; and the stop once nothing runs.
+    /// Draining twice is draining.
+    fn drain(&self) {
+        let mut registry = self.lock();
+        if !registry.draining {
+            tracing::info!(matches = registry.matches.len(), "draining: no new game, and exiting when the last ends");
+        }
+        registry.draining = true;
+        for waiter in registry.waiting.drain(..) {
+            refuse(&waiter.tx, DRAINING);
+        }
+        let waiting: Vec<TableRef> = registry.tables.iter().filter(|(_, state)| matches!(state, TableState::Waiting(_))).map(|(table, _)| table.clone()).collect();
+        for table in waiting {
+            if let Some(TableState::Waiting(seated)) = registry.tables.remove(&table) {
+                refuse(&seated.tx, DRAINING);
+            }
+        }
+        self.stop_if_drained(&registry);
+    }
+
+    /// Takes a drain back (`AdminRequest::Undrain`), if the server has
+    /// not stopped already.
+    fn undrain(&self) {
+        let mut registry = self.lock();
+        if registry.draining && !*self.stop.borrow() {
+            tracing::info!("the drain was taken back: taking games again");
+            registry.draining = false;
+        }
+    }
+
+    /// Stops the server if it is draining and nothing runs: at the start
+    /// of a drain, and as each match's task finishes — after its record,
+    /// its receipt and its rating, so nothing a game owes is cut off.
+    fn stop_if_drained(&self, registry: &Registry) {
+        if registry.draining && registry.matches.is_empty() {
+            self.stop.send_replace(true);
         }
     }
 
@@ -1808,6 +1869,7 @@ impl Server {
             lasting,
             store: store.map(Writer::start),
             started: Instant::now(),
+            stop: Arc::new(tokio::sync::watch::channel(false).0),
         };
         Ok(Server { listener, shared })
     }
@@ -1828,11 +1890,23 @@ impl Server {
         Acceptor { shared: self.shared.clone() }
     }
 
-    /// The accept loop. Returns only if `accept` itself fails.
+    /// A handle that drains or stops the server from outside it, as a
+    /// signal handler does (`Drainer`). Take one before `run`.
+    pub fn drainer(&self) -> Drainer {
+        Drainer { shared: self.shared.clone() }
+    }
+
+    /// The accept loop. Returns when a drain has nothing left running, or
+    /// at once on `Drainer::stop`, with every store write queued before
+    /// it landed; or with the error, if `accept` itself fails.
     pub async fn run(self) -> std::io::Result<()> {
         tracing::info!(addr = %self.local_addr()?, bots = ?self.shared.options.bots, "netrunner_server listening");
+        let mut stop = self.shared.stop.subscribe();
         loop {
-            let (stream, peer_addr) = self.listener.accept().await?;
+            let (stream, peer_addr) = tokio::select! {
+                accepted = self.listener.accept() => accepted?,
+                _ = stop.wait_for(|stopped| *stopped) => break,
+            };
             let shared = self.shared.clone();
             tokio::spawn(async move {
                 if let Err(error) = handle_connection(stream, shared).await {
@@ -1840,6 +1914,32 @@ impl Server {
                 }
             });
         }
+        if let Some(writer) = &self.shared.store {
+            writer.settled().await;
+        }
+        tracing::info!("netrunner_server stopped");
+        Ok(())
+    }
+}
+
+/// Drains or stops a running server from outside it (`Server::drainer`):
+/// what the daemon's signal handler holds.
+#[derive(Clone)]
+pub struct Drainer {
+    shared: Shared,
+}
+
+impl Drainer {
+    /// What `AdminRequest::Drain` does: no new game, and `run` returns
+    /// once the last running one has ended.
+    pub fn drain(&self) {
+        self.shared.drain();
+    }
+
+    /// `run` returns now, with the games under way cut off unrecorded:
+    /// the second Ctrl+C, for an operator who will not wait.
+    pub fn stop(&self) {
+        self.shared.stop.send_replace(true);
     }
 }
 
@@ -2034,6 +2134,9 @@ where
 
 const AT_CAP: &str = "the host is at its match limit";
 
+/// Why a drained server takes no game (Phase 4 §12 stage 4).
+const DRAINING: &str = "the server is shutting down: it takes no new game";
+
 /// A seat the daemon cannot give: at its match cap, or a match that failed
 /// to set up. The attached connection that asked turns it into
 /// `SeekRefused` (`attached::Attached::on_match`).
@@ -2058,8 +2161,8 @@ fn seat_vs_bot(
     slot: PlayerSlot,
 ) {
     let mut registry = shared.lock();
-    if registry.at_cap(&shared.options) {
-        refuse(&tx, AT_CAP);
+    if let Some(reason) = registry.refuses_games(&shared.options) {
+        refuse(&tx, reason);
         return;
     }
     let (match_id, seed) = registry.allocate(shared.base_seed);
@@ -2103,8 +2206,8 @@ fn seat_vs_bot(
 fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let mut registry = shared.lock();
     registry.sweep_lobby();
-    if registry.at_cap(&shared.options) {
-        refuse(&newcomer.tx, AT_CAP);
+    if let Some(reason) = registry.refuses_games(&shared.options) {
+        refuse(&newcomer.tx, reason);
         return;
     }
 
@@ -2293,6 +2396,10 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
 
     let shared = shared.clone();
     tokio::spawn(async move {
+        // Declared first, so dropped last: whatever path the task leaves
+        // by, a drain waiting on this match hears of it after everything
+        // below has been written.
+        let _ended = MatchTaskEnded(shared.clone());
         let Finished { history, outcome, .. } = session.run_with_outcome().await;
         let (entry, tickets) = {
             let mut registry = shared.lock();
@@ -2376,6 +2483,16 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             let _ = ticket.tx.send(ServerMessage::Rated { receipt: Box::new(signed.clone()), before, after });
         }
     });
+}
+
+/// A match's task, finishing: on drop, the drain is told (`Shared::stop_if_drained`).
+struct MatchTaskEnded(Shared);
+
+impl Drop for MatchTaskEnded {
+    fn drop(&mut self) {
+        let registry = self.0.lock();
+        self.0.stop_if_drained(&registry);
+    }
 }
 
 /// A bot seat's name with the style it plays, when it plays one:

@@ -23,12 +23,17 @@ pub fn uptime(secs: u64) -> String {
 /// anything, then what is on it now, then what it holds.
 pub fn status_lines(status: &ServerStatus) -> Vec<String> {
     let keeps = if status.keeps { "keeps its players, ratings and results" } else { "keeps nothing between runs: no rating, tournament or event" };
-    vec![
+    let mut lines = Vec::new();
+    if status.draining {
+        lines.push(format!("Draining: no new game, and it exits once the {} running {} ended", status.matches, if status.matches == 1 { "game has" } else { "games have" }));
+    }
+    lines.extend([
         format!("Up {}; {keeps}", uptime(status.up_secs)),
         format!("{} {} running, {} waiting for an opponent, {} connected", status.matches, plural(status.matches, "game", "games"), status.waiting, status.attached),
         format!("{} {} under way, {} {} open", status.tournaments, plural(status.tournaments, "tournament", "tournaments"), status.events, plural(status.events, "event", "events")),
         format!("{} {}", status.operators, plural(status.operators, "operator", "operators")),
-    ]
+    ]);
+    lines
 }
 
 /// A key's titles and badges as lines, each with what granted it: an
@@ -76,7 +81,7 @@ mod tests {
 
     #[test]
     fn a_status_reads_as_lines() {
-        let status = ServerStatus { engine: "netrunner_server 0.1.0".into(), up_secs: 7_300, keeps: true, matches: 1, waiting: 2, attached: 5, tournaments: 0, events: 1, operators: 1 };
+        let status = ServerStatus { engine: "netrunner_server 0.1.0".into(), up_secs: 7_300, keeps: true, matches: 1, waiting: 2, attached: 5, tournaments: 0, events: 1, operators: 1, draining: false };
         assert_eq!(
             status_lines(&status),
             [
@@ -86,6 +91,8 @@ mod tests {
                 "1 operator",
             ]
         );
+        let draining = ServerStatus { draining: true, ..status };
+        assert_eq!(status_lines(&draining)[0], "Draining: no new game, and it exits once the 1 running game has ended");
         assert_eq!(uptime(59), "59 seconds");
         assert_eq!(uptime(60), "1 minute");
         assert_eq!(uptime(86_400 * 3 + 5), "3 days");

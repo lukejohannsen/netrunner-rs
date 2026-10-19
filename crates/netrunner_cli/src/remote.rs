@@ -121,6 +121,8 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
     match action {
         AdminAction::Event { .. } => unreachable!("`admin event` is `admin_event`'s"),
         AdminAction::Status => attached.admin(AdminRequest::Status),
+        AdminAction::Drain => attached.admin(AdminRequest::Drain),
+        AdminAction::Undrain => attached.admin(AdminRequest::Undrain),
         AdminAction::Award { action: AwardAction::Grant { key, kind, name } } => attached.admin(AdminRequest::Grant { key, award: AwardSpec { kind: kind.into(), name } }),
         AdminAction::Award { action: AwardAction::Revoke { key, kind, name } } => attached.admin(AdminRequest::Revoke { key, award: AwardSpec { kind: kind.into(), name } }),
         AdminAction::Results { key } => attached.admin(AdminRequest::Results { key }),
