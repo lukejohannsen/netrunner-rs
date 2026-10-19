@@ -1,0 +1,60 @@
+{
+  "id": "restore",
+  "title": "Restore",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": {
+              "AnyOf": [
+                {
+                  "CardTypeOneOf": [
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                "Ice"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnArchives",
+                "rez": true,
+                "if_installed": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnArchives",
+                    "filter": "CopyOfThisCard",
+                    "min": 0,
+                    "max": 0,
+                    "count": {
+                      "Fixed": 3
+                    },
+                    "reveal": true,
+                    "shuffle_after": false,
+                    "destination": "OwnRemovedFromGame"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 12112,
+  "is_playable": true
+}

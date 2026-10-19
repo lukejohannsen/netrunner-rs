@@ -275,6 +275,14 @@ pub enum CardFilter {
     /// is. Composition didn't work: `BoostStrength` boosts the acting card,
     /// which in an ability is the hardware, and no filter named the host.
     ThisCardsHost,
+    /// Another copy of the parking card — Restore's "Remove all other
+    /// copies of **that card** in Archives from the game", asked as the
+    /// card Restore installed (`PromptInstallCorpCard::if_installed`), which
+    /// has left Archives by then, so every copy still there is another.
+    /// Instance-level: the parking card is an install, read off the state.
+    /// Composition didn't work: `AmongCards` is written in the card file,
+    /// and `ChosenThisWay` names installs, which a card in Archives is not.
+    CopyOfThisCard,
     /// No piece of ice whose subroutine is already resolving through this
     /// one's — Ravana 1.0's "Resolve 1 subroutine on **another** rezzed
     /// bioroid ice", asked by a Ravana whose own subroutine another
@@ -783,6 +791,7 @@ impl CardFilter {
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
                 | CardFilter::ThisCardsHost
+                | CardFilter::CopyOfThisCard
                 | CardFilter::NotRelaying
                 | CardFilter::TrashableBy(_)
                 | CardFilter::InChosenServer
@@ -929,6 +938,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotSourceCard => true,
         CardFilter::NotThisCardsHost => true,
         CardFilter::ThisCardsHost => true,
+        CardFilter::CopyOfThisCard => true,
         CardFilter::NotRelaying => true,
         CardFilter::TrashableBy(_) => true,
         CardFilter::InChosenServer => true,

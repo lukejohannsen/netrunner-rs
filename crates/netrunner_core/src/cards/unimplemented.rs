@@ -161,7 +161,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("dianas_hunt", "Diana's Hunt"),
     ("dummy_box", "Dummy Box"),
     ("corporate_defector", "Corporate Defector"),
-    ("restore", "Restore"),
     ("sand_storm", "Sand Storm"),
 ];
 

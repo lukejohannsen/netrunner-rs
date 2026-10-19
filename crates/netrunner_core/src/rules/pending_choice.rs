@@ -548,6 +548,13 @@ fn instance_matches_filter(
             let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_rig_card.or(card.hosted_on_ice));
             host.is_some() && zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) == host
         }
+        // Restore's "other copies of that card": the parking card is the
+        // install that left the zone, so any card there by its id is
+        // another copy.
+        CardFilter::CopyOfThisCard => {
+            let this = source.and_then(|source| state.find_corp_install(source).map(|card| card.card.clone()).or_else(|| state.find_rig_install(source).map(|card| card.card.clone())));
+            this.is_some_and(|this| zone_card_ids(state, chooser, zone, source).get(position) == Some(&this))
+        }
         // Only a heap card can have been discarded; the list is the
         // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
         // be the heap at all.
