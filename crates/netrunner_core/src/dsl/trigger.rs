@@ -856,8 +856,11 @@ pub enum EventFilter {
     OwnedBy { owner: crate::rules::Side, whose: crate::rules::Side },
     /// The moment was this card's own doing — Lobisomem's "whenever **it**
     /// fully breaks a code gate": the ice fully broken by abilities on this
-    /// install alone (CR 6.5.7b, `GameEvent::IceFullyBroken::by`). Only on
-    /// `OnIceFullyBroken`, the one moment that names an object that did it.
+    /// install alone (CR 6.5.7b, `GameEvent::IceFullyBroken::by`) — and
+    /// Inversificator's pass of ice **this program** fully broke, which the
+    /// pass carries (`GameEvent::IcePassed::fully_broken_by`). Only on
+    /// `OnIceFullyBroken` and `OnIcePassed`, the moments that name an object
+    /// that did it.
     /// Composition didn't work: the moment is about the ice, and nothing
     /// else a filter reads says which breaker broke it.
     ByThis,

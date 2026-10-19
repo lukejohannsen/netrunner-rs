@@ -129,7 +129,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("aeneas_informant", "Aeneas Informant"),
     ("adjusted_matrix", "Adjusted Matrix"),
-    ("inversificator", "Inversificator"),
     ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
 ];

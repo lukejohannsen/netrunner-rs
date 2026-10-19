@@ -788,9 +788,10 @@ impl CopyTurn {
     /// Whether moments of `trigger` are counted on the copy that *did*
     /// them (`Moment::by`, a rig install): fully breaking a piece of ice
     /// (Abaasy's "the first time each turn this program fully breaks a
-    /// piece of ice", CR 6.5.7b), and nothing else a card asks yet.
+    /// piece of ice", CR 6.5.7b), and passing ice this program fully broke
+    /// (Inversificator's), and nothing else a card asks yet.
     pub(crate) fn counts_by(trigger: Trigger) -> bool {
-        matches!(trigger, Trigger::OnIceFullyBroken)
+        matches!(trigger, Trigger::OnIceFullyBroken | Trigger::OnIcePassed)
     }
 
     /// Whether moments of `trigger` about a rig copy are counted on it:

@@ -291,7 +291,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // The run's four moments about the ice itself. The outermost piece
         // of ice is the first in the run's list (CR 4.6.9b; `RunState::ice`
         // is outermost first).
-        GameEvent::IcePassed { position, after_fully_breaking, rezzed_as, rezzed_bioroid, .. } => vec![ice_moment(
+        GameEvent::IcePassed { position, after_fully_breaking, rezzed_as, rezzed_bioroid, fully_broken_by, .. } => vec![Moment { by: *fully_broken_by, ..ice_moment(
             Trigger::OnIcePassed,
             *position,
             IceFacts {
@@ -301,7 +301,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
                 rezzed_bioroid: *rezzed_bioroid,
                 ..IceFacts::default()
             },
-        )],
+        ) }],
         GameEvent::SubroutineBroken { strength, printed, ap, .. } => {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
             vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, printed_subroutine: *printed, ap: *ap, ..IceFacts::default() })]
