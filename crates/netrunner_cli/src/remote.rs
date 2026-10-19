@@ -146,7 +146,7 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
                 return Ok(());
             }
             Some(AttachedEvent::Admin(AdminAnswer::Awards { key, titles, badges })) => {
-                println!("{} now holds", key);
+                println!("{} now holds", key.fingerprint());
                 for line in netrunner_client::admin::award_lines(&titles, &badges) {
                     println!("  {line}");
                 }
@@ -160,7 +160,7 @@ pub async fn admin(config: &crate::config::Config, action: crate::config::AdminA
                 return Ok(());
             }
             Some(AttachedEvent::Admin(AdminAnswer::Results { key, games })) => {
-                println!("{key}'s rated games, newest first");
+                println!("{}'s rated games, newest first", key.fingerprint());
                 if games.is_empty() {
                     println!("  none");
                 }
