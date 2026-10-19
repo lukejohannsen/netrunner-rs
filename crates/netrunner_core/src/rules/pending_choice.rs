@@ -375,6 +375,7 @@ fn instance_matches_filter(
             corp_install.is_some_and(|c| c.installed_this_turn) || scored.is_some_and(|scored| installed_this_turn(state, scored))
         }
         CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
+        CardFilter::RezzedThisTurn => corp_install.is_some_and(|c| c.rezzed && c.this_turn.count(state.turn, crate::dsl::Trigger::OnRez) > 0),
         // An install is advanced by the copy's own record; a scored one by
         // what it kept as it left the table.
         CardFilter::NotAdvancedThisTurn => {
@@ -660,6 +661,7 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // (`ActingCardMatches(Rezzed)`): a rez that could not be paid left
         // it facedown.
         CardFilter::Rezzed => installed.is_some_and(|c| c.rezzed),
+        CardFilter::RezzedThisTurn => installed.is_some_and(|c| c.rezzed && c.this_turn.count(state.turn, crate::dsl::Trigger::OnRez) > 0),
         CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
         // ZATO City Grid's "each piece of ice protecting this server" and
         // Tsakhia's "protecting the chosen server", in a `when`: the place

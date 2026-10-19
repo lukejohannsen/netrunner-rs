@@ -39678,3 +39678,48 @@ mod red_sand_stage_17_respirocytes {
         assert!(full.runner.heap.contains(&id("respirocytes")));
     }
 }
+
+mod red_sand_stage_18 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// X is the printed rez cost, and only ice rezzed this turn is offered.
+    #[test]
+    fn rubicon_switch_derezzes_a_piece_of_ice_rezzed_this_turn_whose_printed_rez_cost_is_x() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("rubicon_switch"), install_id: InstallId(900), ..Default::default() }];
+        // Rezzed by the Corp this turn: the same turn, the Corp's window.
+        let mut corp = state.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.credits = Credits(10);
+        corp.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice("ice_wall", 11) }, ice("enigma", 12)];
+        let rez: crate::dsl::Effect = serde_json::from_value(serde_json::json!({ "RezInstalled": { "install": 11 } })).unwrap();
+        crate::rules::evaluate_effect(&mut corp, &rez, &mut crate::rules::ResolutionContext::for_card(Some(&id("a_corp_card"))), &registry).expect("rez Ice Wall");
+        state.corp.installed = corp.corp.installed.clone();
+        let use_it = PlayerAction::ActivateAbility { target: InstallId(900), ability_index: 0 };
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&use_it));
+        let (state, _) = apply_action(&state, &registry, use_it.clone()).expect("use it");
+        let ice_wall = registry.get(&id("ice_wall")).unwrap().cost;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: ice_wall }).expect("X");
+        let offered: Vec<String> = crate::view::build_client_view(&state, &registry, Side::Runner).selection.iter().filter_map(|card| card.card.clone()).map(|card| card.0).collect();
+        assert_eq!(offered, vec!["ice_wall".to_string()], "rezzed this turn, at that cost");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("derez it");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(!state.corp.installed[0].rezzed, "derezzed");
+        assert!(state.corp.installed[1].rezzed, "Enigma was rezzed before this turn");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&use_it), "once per turn");
+    }
+}

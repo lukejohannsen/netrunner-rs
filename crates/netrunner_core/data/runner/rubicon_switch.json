@@ -1,0 +1,70 @@
+{
+  "id": "rubicon_switch",
+  "title": "Rubicon Switch",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Once per turn → [click], X[credit]: Derez 1 piece of ice with a printed rez cost of X[credit] that was rezzed this turn.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsX": {
+              "max": {
+                "Fixed": 30
+              }
+            }
+          },
+          {
+            "Clicks": 1
+          }
+        ]
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OpponentInstalled",
+              "count": 1,
+              "filter": {
+                "All": [
+                  "Ice",
+                  "RezzedThisTurn"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              "RezzedThisTurn",
+              {
+                "PrintedCostExactly": "ChosenNumber"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "DerezCard": "ThisCard"
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12043,
+  "is_playable": true
+}

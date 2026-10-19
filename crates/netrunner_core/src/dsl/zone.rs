@@ -329,6 +329,12 @@ pub enum CardFilter {
     /// (`ScoredAgenda::installed_on_scoring_turn`, when it was scored this
     /// turn).
     InstalledThisTurn,
+    /// A Corp install rezzed this turn — Rubicon Switch's "1 piece of ice
+    /// … that was rezzed this turn". Instance-level, read off the copy's
+    /// own turn (`InstalledCard::this_turn`, which counts its rez), so a
+    /// second copy rezzed earlier is not it. Composition didn't work:
+    /// `RezzedDuringLastRun` is one run's, and a rez outside a run counts.
+    RezzedThisTurn,
     /// An agenda in a score area that was not advanced on the turn it was
     /// scored — Issuaq Adaptics: Sustaining Diversity's "an agenda that you
     /// did not install or **advance** this turn", in an `OnAgendaScored`
@@ -778,6 +784,7 @@ impl CardFilter {
                 | CardFilter::AccessedDuringLastRun
                 | CardFilter::PassedDuringLastRun
                 | CardFilter::RezzedDuringLastRun
+                | CardFilter::RezzedThisTurn
                 | CardFilter::InAttackedServer
                 | CardFilter::InLastRunServer
                 | CardFilter::InRootOfThisServer
@@ -959,6 +966,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotInstalledThisTurn => true,
         CardFilter::NotAdvancedThisTurn => true,
         CardFilter::InstalledThisTurn => true,
+        CardFilter::RezzedThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay | CardFilter::ThatCard | CardFilter::ChosenName | CardFilter::ChosenThisWay => false,
