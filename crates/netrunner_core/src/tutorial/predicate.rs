@@ -276,6 +276,7 @@ pub fn event_side(event: &GameEvent) -> Option<Side> {
         | GameEvent::ClicksLost { side, .. }
         | GameEvent::ClicksGained { side, .. }
         | GameEvent::BasicDrawActionTaken { side }
+        | GameEvent::BasicCreditActionTaken { side }
         | GameEvent::PendingPaidChoiceOffered { side }
         | GameEvent::PendingPaidChoiceAccepted { side }
         | GameEvent::PendingPaidChoiceDeclined { side } => Some(*side),

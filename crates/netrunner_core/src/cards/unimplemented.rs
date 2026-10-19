@@ -122,7 +122,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
     ("customized_secretary", "Customized Secretary"),
-    ("cpc_generator", "CPC Generator"),
     ("mca_informant", "MCA Informant"),
 ];
 
@@ -162,7 +161,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Crimson Dust* (`crimson_dust`): tranche F4 of the FFG plan.
 pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("respirocytes", "Respirocytes"),
     ("salvaged_vanadis_armory", "Salvaged Vanadis Armory"),
     ("aumakua", "Aumakua"),
     ("dianas_hunt", "Diana's Hunt"),

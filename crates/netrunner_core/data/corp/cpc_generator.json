@@ -1,0 +1,28 @@
+{
+  "id": "cpc_generator",
+  "title": "CPC Generator",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnBasicCreditAction",
+      "when": {
+        "Whose": "Runner"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "The first time the Runner spends [click] to gain 1[credit] each turn (not through a card effect), gain 1[credit]."
+    }
+  ],
+  "built_from": 12034,
+  "is_playable": true
+}

@@ -1,0 +1,65 @@
+{
+  "id": "respirocytes",
+  "title": "Respirocytes",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 1 meat damage."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1
+              }
+            }
+          },
+          "OncePerTurn"
+        ]
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you have no cards in your grip, draw 1 card and place 1 power counter on this hardware."
+    },
+    {
+      "trigger": "WhileTrue",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When this hardware has 3 or more hosted power counters, trash it."
+    }
+  ],
+  "built_from": 12102,
+  "is_playable": true
+}

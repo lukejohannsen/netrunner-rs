@@ -694,7 +694,7 @@ pub fn narrate_event(
         .. } | GameEvent::AccessReplacementSet { .. } | GameEvent::AccessReplaced { .. } |
         GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } | GameEvent::ClicksGained { .. } |
         GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. } |
-        GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } |
+        GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
         GameEvent::PendingPaidChoiceDeclined { .. } | GameEvent::PaymentChoiceOffered { .. } |
