@@ -297,6 +297,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::RunSucceeded { server } => vec![moment(Trigger::OnSuccessfulRun, &About::Server(*server), Some(Side::Runner))],
         GameEvent::BreachBegun { server } => vec![moment(Trigger::OnBreach, &About::Server(*server), Some(Side::Runner))],
+        GameEvent::BreachEnded { server, .. } => vec![moment(Trigger::OnBreachEnded, &About::Server(*server), Some(Side::Runner))],
         // The run's four moments about the ice itself. The outermost piece
         // of ice is the first in the run's list (CR 4.6.9b; `RunState::ice`
         // is outermost first).

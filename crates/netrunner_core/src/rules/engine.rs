@@ -4926,7 +4926,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None, left: false, took: false,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -7735,7 +7735,7 @@ mod tests {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card_b.clone() })
                 .expect("passing the second card should succeed");
-        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b, in_archives: true }, GameEvent::RunCompleted { server: ServerId::Archives }]);
+        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b, in_archives: true }, GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives }]);
         assert_eq!(state.active_run, None);
         assert!(state.paid_ability_window.is_none());
     }

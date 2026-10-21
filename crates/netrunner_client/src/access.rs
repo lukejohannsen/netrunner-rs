@@ -227,6 +227,7 @@ mod tests {
                 pending_install: None,
                 outside_breach: None,
                 left: false,
+                took: false,
                 phase: PublicAccessPhase::PendingChoice {
                     card: Some(CardId(card.to_string())),
                     trash_cost: definition.trash_cost,

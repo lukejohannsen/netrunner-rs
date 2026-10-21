@@ -5504,6 +5504,10 @@ pub fn check_requirement(
             let broke = matches!(ctx.triggering_event, Some(GameEvent::IcePassed { printed_broken_with, .. }) if printed_broken_with.includes(*subtype));
             if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::TookNothingInTheBreach => {
+            let none = matches!(ctx.triggering_event, Some(GameEvent::BreachEnded { took: false, .. }));
+            if none { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::PassedIceWas(ice_type) => {
             let was = matches!(ctx.triggering_event, Some(GameEvent::IcePassed { rezzed_as, .. }) if rezzed_as.contains(ice_type));
             if was { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -6202,6 +6206,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::HadNoTags
         | EffectRequirement::BrokePrintedSubroutineWith(_)
         | EffectRequirement::PassedIceWas(_)
+        | EffectRequirement::TookNothingInTheBreach
         | EffectRequirement::BrokeASubroutineThatEncounter
         | EffectRequirement::IceFullyBrokenThatEncounter
         | EffectRequirement::CorpCreditsAtLeast(_)

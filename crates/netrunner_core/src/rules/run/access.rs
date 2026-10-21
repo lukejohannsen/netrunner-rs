@@ -242,17 +242,24 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
                 }
                 return Ok(events);
             }
+            // The breach is over (Aumakua's "whenever you finish breaching a
+            // server"), heard before the next one or the run's end.
+            let breach = access.outside_breach.is_none().then_some((access.server, access.took));
+            let mut events = Vec::new();
+            if let Some((breached, took)) = breach {
+                dispatcher::emit(state, registry, &mut events, GameEvent::BreachEnded { server: breached, took })?;
+            }
             // Divide and Conquer's next breach, where this one would have
             // ended the run.
-            if access.outside_breach.is_none()
-                && let Some(events) = breach_next(state, registry)?
+            if breach.is_some()
+                && let Some(next) = breach_next(state, registry)?
             {
+                events.extend(next);
                 return Ok(events);
             }
             // A breach with no run ends as nothing a card hears: there was
             // no run to complete. A run that breached another server is
             // still a run on the one it attacked (CR 7.3.1).
-            let mut events = Vec::new();
             if let Some(ended) = super::engine::end_run(state).filter(|run| !run.breach_only) {
                 let completed_event = GameEvent::RunCompleted { server: ended.server };
                 events.push(completed_event.clone());
@@ -844,7 +851,7 @@ pub fn access_server(
         pending_install: None,
         pending_install_rezzed: false,
         outside_breach: None,
-        left: false,
+        left: false, took: false,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
     events.extend(offer_next(state, registry, server)?);
@@ -1137,6 +1144,7 @@ fn steal(
     if agenda_counters > 0 {
         events.push(GameEvent::CountersAdded { card: card_id.clone(), amount: agenda_counters });
     }
+    took_a_card(state);
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.
@@ -1349,6 +1357,7 @@ pub fn trash_currently_accessed_card_without_cost(
     }
 
     let mut events = move_to_archives(state, registry, &card_id, server, install)?;
+    took_a_card(state);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0, install };
     events.push(trashed_event.clone());
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
@@ -1494,12 +1503,22 @@ pub fn resolve_trash(
     }
     let mut events = cost_events.clone();
     events.extend(move_to_archives(state, registry, card_id, pending.server, pending.install)?);
+    took_a_card(state);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
     dispatcher::emit(state, registry, &mut events, trashed_event)?;
     events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
+}
+
+/// The breach in progress stole or trashed a card it accessed
+/// (`AccessState::took`, Aumakua's "if you did not steal or trash any
+/// accessed cards").
+fn took_a_card(state: &mut GameState) {
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        access.took = true;
+    }
 }
 
 /// Resolves `PlayerAction::PassAccessedCard`. See its doc comment for the
@@ -2193,7 +2212,7 @@ mod tests {
         let events = resolve_pass(&mut state, &CardId("first".to_string()), &registry()).unwrap();
         assert_eq!(
             events,
-            vec![GameEvent::AccessPassed { card: CardId("first".to_string()), in_archives: false }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
+            vec![GameEvent::AccessPassed { card: CardId("first".to_string()), in_archives: false }, GameEvent::BreachEnded { server: ServerId::Remote(0), took: false }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
         );
         assert_eq!(state.active_run, None);
     }
@@ -2347,7 +2366,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AgendaStolen { card: card_id, agenda_points: 3 },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: true }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -2683,7 +2702,7 @@ mod tests {
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 4 },
                 GameEvent::AgendaStolen { card: card_id, agenda_points: 2 },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: true }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -2716,7 +2735,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: card_id, in_archives: true },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -2747,7 +2766,7 @@ mod tests {
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
                 GameEvent::CardTrashedFromAccess { card: card_id, cost_paid: 2, install: Some(crate::rules::state::InstallId(0)) },
-                GameEvent::RunCompleted { server: ServerId::Remote(0) },
+                GameEvent::BreachEnded { server: ServerId::Remote(0), took: true }, GameEvent::RunCompleted { server: ServerId::Remote(0) },
             ]
         );
     }
@@ -2794,7 +2813,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: card_id, in_archives: false },
-                GameEvent::RunCompleted { server: ServerId::Hq },
+                GameEvent::BreachEnded { server: ServerId::Hq, took: false }, GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
     }
@@ -2854,7 +2873,7 @@ mod tests {
             last,
             vec![
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
         assert_eq!(state.active_run, None);
@@ -3167,8 +3186,9 @@ mod tests {
         assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: Some(Side::Corp) });
         assert!(matches!(events[5], GameEvent::CardTrashed { side: Side::Runner, from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), .. }));
         assert!(matches!(&events[6], GameEvent::CardsTrashedFromGripOrStack { cards, by: Some(Side::Corp) } if cards.len() == 1), "the batch");
-        assert_eq!(events[7], GameEvent::RunCompleted { server: ServerId::Remote(0) });
-        assert_eq!(events.len(), 8);
+        assert_eq!(events[7], GameEvent::BreachEnded { server: ServerId::Remote(0), took: true });
+        assert_eq!(events[8], GameEvent::RunCompleted { server: ServerId::Remote(0) });
+        assert_eq!(events.len(), 9);
     }
 
     #[test]
@@ -3197,7 +3217,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: card_id, in_archives: true },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -3370,7 +3390,7 @@ mod tests {
             pass_events,
             vec![
                 GameEvent::AccessPassed { card: card_id, in_archives: true },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: false }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -3754,7 +3774,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AgendaStolen { card: card_id, agenda_points: 2 },
-                GameEvent::RunCompleted { server: ServerId::Archives },
+                GameEvent::BreachEnded { server: ServerId::Archives, took: true }, GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
     }
@@ -3834,7 +3854,7 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
                 GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None },
-                GameEvent::RunCompleted { server: ServerId::Hq },
+                GameEvent::BreachEnded { server: ServerId::Hq, took: false }, GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
     }

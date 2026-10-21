@@ -1,0 +1,64 @@
+{
+  "id": "aumakua",
+  "title": "Aumakua",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Virus",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each hosted virus counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardExposed",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you expose a card, place 1 virus counter on this program."
+    },
+    {
+      "trigger": "OnBreachEnded",
+      "subject": "Any",
+      "requirement": "TookNothingInTheBreach",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you finish breaching a server, if you did not steal or trash any accessed cards, place 1 virus counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 12104,
+  "is_playable": true
+}
