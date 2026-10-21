@@ -32894,7 +32894,7 @@ mod reign_and_reverie_stage_14 {
         let state = hosted(&registry);
         assert_eq!(
             state.corp.conditions,
-            vec![crate::rules::HostedCondition { card: id("eavesdrop"), handle: state.corp.conditions[0].handle, host: fixture_install_id("ice_wall") }],
+            vec![crate::rules::HostedCondition { card: id("eavesdrop"), handle: state.corp.conditions[0].handle, counters: 0, host: fixture_install_id("ice_wall") }],
             "hosted on Ice Wall"
         );
         assert!(state.corp.play_area.is_empty() && !state.corp.archives.iter().any(|card| card.card == id("eavesdrop")), "not trashed (CR 8.6.6b)");
@@ -40733,5 +40733,70 @@ mod red_sand_stage_33 {
         let (state, registry) = corroder_about_to_be_trashed();
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 1 }).is_err(), "no hardware in the grip, and a program is parked");
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 2 }).is_err(), "a resource saves a resource, and a program is parked");
+    }
+}
+
+mod red_sand_stage_34 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Rover Algorithm played and hosted on a rezzed Ice Wall protecting HQ.
+    fn hosted(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = vec![id("rover_algorithm")];
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::PlayOperation { card_id: id("rover_algorithm") }).expect("play Rover Algorithm");
+        if state.pending_decision.is_some() {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Ice Wall").0;
+            state = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        }
+        state
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry) -> i32 {
+        crate::rules::continuous::installed_ice_strength(state, registry, &id("ice_wall"), fixture_install_id("ice_wall"))
+    }
+
+    #[test]
+    fn rover_algorithm_counts_each_pass_of_its_host_into_the_hosts_strength() {
+        let registry = registry();
+        let state = hosted(&registry);
+        assert_eq!(state.corp.conditions.len(), 1, "hosted as a condition counter");
+        assert_eq!(state.corp.conditions[0].host, fixture_install_id("ice_wall"));
+        assert_eq!(strength(&state, &registry), 1, "no power counters yet");
+
+        // The Runner passes Ice Wall facedown, so nothing stops the run.
+        let mut runner = state.clone();
+        runner.phase = GamePhase::Action(Side::Runner);
+        runner.corp.installed[0].rezzed = false;
+        let (mut run, _) = apply_action(&runner, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        for _ in 0..16 {
+            if run.corp.conditions[0].counters > 0 || run.active_run.is_none() {
+                break;
+            }
+            run = match &run.paid_ability_window {
+                Some(window) => apply_action(&run, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&run, &registry).expect("continue").0,
+            };
+        }
+        assert_eq!(run.corp.conditions[0].counters, 1, "whenever the Runner passes host ice, 1 power counter");
+        run.corp.installed[0].rezzed = true;
+        assert_eq!(strength(&run, &registry), 2, "+1 strength for each power counter");
+        let view = crate::view::build_client_view(&run, &registry, Side::Runner);
+        assert_eq!(view.corp.conditions[0].counters, 1, "faceup, so the Runner sees its counters");
+    }
+
+    #[test]
+    fn rover_algorithm_needs_a_rezzed_piece_of_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("rover_algorithm")];
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("rover_algorithm") }));
     }
 }

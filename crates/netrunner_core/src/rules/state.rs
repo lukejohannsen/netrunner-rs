@@ -446,6 +446,13 @@ pub struct HostedCondition {
     pub handle: InstallId,
     /// The install it is hosted on.
     pub host: InstallId,
+    /// The counters placed on the condition counter itself — Rover
+    /// Algorithm's power counters, "+1 strength for each power counter on
+    /// Rover Algorithm". A counter is a card with text, and that text can
+    /// count what is placed on it, as an installed card's does
+    /// (`ability::modify_counters`, `counters_of`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub counters: u32,
 }
 
 /// An identity hosted on a rig card — see `RunnerState::hosted_identities`.

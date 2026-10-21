@@ -1893,7 +1893,7 @@ pub fn evaluate_effect(
                 crate::rules::turn_log::file_in_archives(state, crate::rules::state::ArchivedCard::faceup(played.card));
                 return Ok(Vec::new());
             }
-            state.corp.conditions.push(crate::rules::state::HostedCondition { card: played.card.clone(), handle: played.handle, host: *host });
+            state.corp.conditions.push(crate::rules::state::HostedCondition { card: played.card.clone(), handle: played.handle, host: *host, counters: 0 });
             Ok(vec![GameEvent::CardHosted { card: played.card, host: Some(host_card) }])
         }
 
@@ -3803,6 +3803,9 @@ pub(crate) fn modify_counters(
         &mut state.corp.identity_counters
     } else if let Some(run) = state.active_run.as_mut().filter(|run| acting_is_run_event(run, ctx)) {
         &mut run.event_counters
+    } else if let Some(condition) = ctx.acting_install.and_then(|install| state.corp.conditions.iter_mut().find(|condition| condition.handle == install)) {
+        // A condition counter's own (Rover Algorithm's power counters).
+        &mut condition.counters
     } else {
         return Err(RulesError::CardNotEligibleForCounters(card_id));
     };
@@ -5625,6 +5628,7 @@ pub(crate) fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Opt
         .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
         .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| ended_run_event_counters(state, ctx))
+        .or_else(|| ctx.acting_install.and_then(|install| state.corp.conditions.iter().find(|condition| condition.handle == install)).map(|condition| condition.counters))
         .or_else(|| remembered(state, ctx).map(|known| known.counters))
 }
 

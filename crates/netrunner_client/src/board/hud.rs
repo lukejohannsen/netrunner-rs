@@ -552,7 +552,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         // since nothing on the board stands for a counter with text.
         .chain(view.corp.conditions.iter().map(|condition| {
             let on = super::facts::card_of(view, condition.host).map_or_else(|| "a facedown card".to_string(), |card| title(&card));
-            format!("hosted on {on}: {}", title(&condition.card))
+            match condition.counters {
+                0 => format!("hosted on {on}: {}", title(&condition.card)),
+                1 => format!("hosted on {on}: {}, 1 counter", title(&condition.card)),
+                n => format!("hosted on {on}: {}, {n} counters", title(&condition.card)),
+            }
         }))
         // An identity a rig card hosts and has the text of (DJ Fenris's):
         // faceup, and nothing on the board stands for it.

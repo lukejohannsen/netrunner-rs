@@ -235,12 +235,15 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::Host, target) => {
             let Some(host) = target.install() else { return false };
             let Some(install) = source.install else { return false };
-            state
-                .runner
-                .rig
-                .iter()
-                .find(|card| card.install_id == install)
-                .is_some_and(|card| card.hosted_on_rig_card == Some(host) || card.hosted_on_ice == Some(host))
+            // A condition counter's host (Rover Algorithm's "Host ice has
+            // +1 strength"), or a rig card's.
+            state.corp.conditions.iter().any(|condition| condition.handle == install && condition.host == host)
+                || state
+                    .runner
+                    .rig
+                    .iter()
+                    .find(|card| card.install_id == install)
+                    .is_some_and(|card| card.hosted_on_rig_card == Some(host) || card.hosted_on_ice == Some(host))
         }
         // A rig card's word about what it hosts (Dinosaurus's "Hosted
         // icebreaker has +2 strength"). A piece of ice's (Magnet's) is about

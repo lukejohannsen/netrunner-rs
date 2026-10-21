@@ -1,0 +1,76 @@
+{
+  "id": "rover_algorithm",
+  "title": "Rover Algorithm",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "All": [
+          "Ice",
+          "Rezzed"
+        ]
+      }
+    }
+  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice has +1 strength for each power counter on Rover Algorithm."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "HostThisAsCondition": {
+                "condition": 0,
+                "host": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Install Rover Algorithm on a rezzed piece of ice as a hosted condition counter"
+    },
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever the Runner passes host ice, place 1 power counter on Rover Algorithm."
+    }
+  ],
+  "counter_kind": "Power",
+  "built_from": 12100,
+  "is_playable": true
+}
