@@ -19,6 +19,13 @@ pub enum CardZoneRef {
     OwnHq,
     OwnArchives,
     OwnRAndD,
+    /// The bottom of the chooser's own deck, R&D or the stack — a
+    /// destination only: Reeducation's "add any number of cards from HQ to
+    /// the bottom of R&D", the first chosen uppermost of them, as a
+    /// selection onto the top is arranged. `Effect::AddToDeck(Bottom)` moves
+    /// the one card a resolution acts as; a selection's `then` resolves
+    /// once, as the first card chosen, so it could not move the rest.
+    BottomOfOwnDeck,
     OwnStack,
     OwnGrip,
     OwnHeap,
@@ -138,7 +145,7 @@ impl CardZoneRef {
     /// them shows nothing new. Exhaustive, for the same reason.
     pub fn shows_the_chooser_hidden_cards(&self) -> bool {
         match self {
-            CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentHand | CardZoneRef::OpponentDeck => true,
+            CardZoneRef::OwnRAndD | CardZoneRef::BottomOfOwnDeck | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentHand | CardZoneRef::OpponentDeck => true,
             CardZoneRef::OwnHq
             | CardZoneRef::OwnArchives
             | CardZoneRef::OwnGrip
@@ -169,7 +176,7 @@ impl CardZoneRef {
         use crate::dsl::TrashedFrom;
         match self {
             CardZoneRef::OwnHq | CardZoneRef::OwnGrip | CardZoneRef::OpponentHand => TrashedFrom::Hand,
-            CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck => TrashedFrom::Deck,
+            CardZoneRef::OwnRAndD | CardZoneRef::BottomOfOwnDeck | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck => TrashedFrom::Deck,
             CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => TrashedFrom::Installed,
             CardZoneRef::OwnArchives
             | CardZoneRef::OwnHeap

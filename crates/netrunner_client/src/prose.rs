@@ -164,6 +164,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnHq => "HQ",
         CardZoneRef::OwnArchives => "Archives",
         CardZoneRef::OwnRAndD => "R&D",
+        CardZoneRef::BottomOfOwnDeck => "the bottom of your deck",
         CardZoneRef::OwnStack => "the stack",
         CardZoneRef::OwnGrip => "the grip",
         CardZoneRef::OwnHeap => "the heap",
@@ -577,6 +578,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::AddAtRandomToBottomOfDeck { side, count } => format!("{} adds {} cards from their hand at random to the bottom of their deck", who(*side), describe_amount(count)),
         Effect::AddToHand => "add it to its owner's grip".to_string(),
         Effect::InstallProgramOnHost { from, .. } => {
             format!("install that program from {} on this card, or a trojan on a piece of ice", describe_zone(from))

@@ -40858,3 +40858,65 @@ mod red_sand_stage_35 {
         assert_eq!(derezzed.runner.resources.credits, before, "only a derez by the Runner");
     }
 }
+
+mod red_sand_stage_36 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Reeducation scored from a remote, HQ holding three cards, R&D two and
+    /// the grip `grip` cards: the Corp is asked which cards go under R&D.
+    fn scoring(grip: usize) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.corp.r_and_d = vec![id("pad_campaign"), id("hostile_takeover")];
+        state.runner.grip = ["sure_gamble", "corroder", "gordian_blade"].iter().take(grip).map(|card| id(card)).collect();
+        state.runner.stack = vec![id("diesel")];
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("reeducation"), card: id("reeducation"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 5, ..Default::default() });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("reeducation") }).expect("score");
+        (state, registry)
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        pass_until_settled(apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0, registry).0
+    }
+
+    #[test]
+    fn reeducation_puts_cards_under_r_and_d_draws_as_many_and_takes_as_many_from_the_grip() {
+        let (state, registry) = scoring(3);
+        let after = choose(&state, &registry, &[0, 1]);
+        // Hedge Fund and Ice Wall went under R&D, Hedge Fund the upper of
+        // them; the Corp drew two off the top.
+        assert_eq!(after.corp.r_and_d, vec![id("ice_wall"), id("hedge_fund")]);
+        let mut hq = after.corp.hq.clone();
+        hq.sort();
+        assert_eq!(hq, vec![id("enigma"), id("hostile_takeover"), id("pad_campaign")]);
+        assert_eq!(after.runner.grip.len(), 1, "two of the three went to the stack");
+        assert_eq!(after.runner.stack.len(), 3);
+        assert_eq!(after.runner.stack.last(), Some(&id("diesel")), "under the stack, not on top");
+    }
+
+    #[test]
+    fn reeducation_leaves_the_grip_alone_when_it_holds_fewer_than_x() {
+        let (state, registry) = scoring(1);
+        let after = choose(&state, &registry, &[0, 1]);
+        assert_eq!(after.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(after.runner.stack, vec![id("diesel")]);
+    }
+
+    #[test]
+    fn reeducation_with_nothing_chosen_moves_nothing() {
+        let (state, registry) = scoring(3);
+        let after = choose(&state, &registry, &[]);
+        assert_eq!((after.corp.hq.len(), after.corp.r_and_d.len(), after.runner.grip.len()), (3, 2, 3));
+    }
+}
