@@ -142,6 +142,16 @@ pub enum CardTarget {
     /// nothing, so that Verbal Plasticity's "you take the basic action"
     /// stays a word about a player.
     DrawnCard,
+    /// The card the Runner just passed on, read off the moment the trigger
+    /// heard (`GameEvent::AccessPassed::card`) — Aeneas Informant's "you
+    /// may reveal **it**". Only meaningful for `Effect::Reveal`, on
+    /// `Trigger::OnAccessPassed`. Written over as `Accessed` when the
+    /// "may" parks, since the parked choice keeps no moment. Composition
+    /// didn't work: `DrawnCard` is the basic action's card, and no other
+    /// target names a card in HQ or R&D.
+    AccessedCard,
+    /// `AccessedCard` written in — the card itself. Never authored.
+    Accessed(CardId),
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -3361,6 +3371,19 @@ impl Effect {
         }
     }
 
+    /// `CardTarget::AccessedCard` written over as the card passed on, in
+    /// the shapes a choice's option is written in.
+    pub fn with_accessed_card(self, card: &CardId) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_accessed_card(card)).collect();
+        match self {
+            Effect::Reveal(CardTarget::AccessedCard) => Effect::Reveal(CardTarget::Accessed(card.clone())),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: Box::new(effect.with_accessed_card(card)), otherwise: otherwise.map(|e| Box::new(e.with_accessed_card(card))) },
+            other => other,
+        }
+    }
+
     /// `CardFilter::ChosenThisWay` written over as the installs a selection
     /// chose (its `then`), in the shapes `with_those_trashed` walks.
     pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> Effect {
@@ -3519,6 +3542,10 @@ impl Effect {
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            // Aeneas Informant's "reveal it", written in when its "may"
+            // parked: the card accessed out of HQ or R&D is the Runner's
+            // to know until it is revealed.
+            Effect::Reveal(CardTarget::Accessed(_)) => Effect::Reveal(CardTarget::AccessedCard),
             Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }

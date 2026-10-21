@@ -690,6 +690,21 @@ pub fn evaluate_effect(
             dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side, card, by })?;
             Ok(events)
         }
+        // A Corp card the Runner accessed and passed on, wherever it is
+        // now: what the Corp learns is which card it was.
+        Effect::Reveal(target @ (CardTarget::AccessedCard | CardTarget::Accessed(_))) => {
+            let card = match (target, ctx.triggering_event) {
+                (CardTarget::Accessed(card), _) => card.clone(),
+                (_, Some(GameEvent::AccessPassed { card, .. })) => card.clone(),
+                _ => return Ok(Vec::new()),
+            };
+            let in_hand = state.corp.hq.contains(&card);
+            let by = controller(ctx, state, registry);
+            reveal(state, Side::Corp, &card, in_hand);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by })?;
+            Ok(events)
+        }
         Effect::Reveal(_) => Err(RulesError::UnresolvedCardTarget),
 
         // Every card in the hand, revealed as `RevealAtRandom` reveals one.
@@ -2348,12 +2363,20 @@ pub fn evaluate_effect(
                         Some(GameEvent::IcePassed { server, position, .. }) => Some((*server, *position)),
                         _ => None,
                     };
+                    let accessed = match ctx.triggering_event {
+                        Some(GameEvent::AccessPassed { card, .. }) => Some(card),
+                        _ => None,
+                    };
                     options
                         .iter()
                         .map(|option| {
                             let option = option.clone().filled(&fill);
-                            match passed {
+                            let option = match passed {
                                 Some((server, position)) => option.with_passed_ice(server, position),
+                                None => option,
+                            };
+                            match accessed {
+                                Some(card) => option.with_accessed_card(card),
                                 None => option,
                             }
                         })
@@ -3556,7 +3579,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             .or_else(|| state.runner.rig.iter().position(|installed| installed.install_id == *install).map(rig)),
         // Many cards, trashed one after another by `trash_card`: no Corp
         // card in the pool prevents a trash, so nobody would be asked.
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside | CardTarget::DrawnCard => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => None,
     }
 }
 
@@ -3650,7 +3673,7 @@ fn resolve_corp_installed_target(
         | CardTarget::RandomFromHand(_)
         | CardTarget::AttackedServerRoot
         | CardTarget::SetAside
-        | CardTarget::DrawnCard => {
+        | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -3841,7 +3864,7 @@ pub(crate) fn trash_card(
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
-        CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard => Err(RulesError::UnresolvedCardTarget),
+        CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => Err(RulesError::UnresolvedCardTarget),
 
         // Each by its handle, the root read once before the first goes, so
         // what a trash's own consequences install there is not taken too.

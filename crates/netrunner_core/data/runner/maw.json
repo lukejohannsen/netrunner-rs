@@ -1,0 +1,37 @@
+{
+  "id": "maw",
+  "title": "Maw",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 6,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessPassed",
+      "subject": "Any",
+      "when": "NotInArchives",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "TrashCard": {
+            "RandomFromHand": "Corp"
+          }
+        }
+      ],
+      "text": "The first time each turn you access a card not in Archives and do not steal or trash it, the Corp must trash 1 card from HQ at random."
+    }
+  ],
+  "built_from": 12002,
+  "is_playable": true
+}

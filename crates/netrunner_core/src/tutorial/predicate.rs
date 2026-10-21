@@ -209,7 +209,7 @@ pub fn event_card(event: &GameEvent) -> Option<&CardId> {
         | GameEvent::CardTrashed { card, .. }
         | GameEvent::CardRemovedFromGame { card, .. }
         | GameEvent::CardTrashedFromAccess { card, .. }
-        | GameEvent::AccessPassed { card }
+        | GameEvent::AccessPassed { card, .. }
         | GameEvent::TriggerOrderChosen { card, .. }
         | GameEvent::TriggerFired { card, .. }
         | GameEvent::AgendaScored { card, .. }

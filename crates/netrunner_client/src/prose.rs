@@ -264,6 +264,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
         CardTarget::SetAside => "every card still set aside".to_string(),
         CardTarget::DrawnCard => "the card drawn".to_string(),
+        CardTarget::AccessedCard | CardTarget::Accessed(_) => "the card accessed".to_string(),
     }
 }
 
@@ -795,6 +796,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
         EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
         EventFilter::Successful => "that was successful".to_string(),
+        EventFilter::NotInArchives => "of a card not in Archives".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

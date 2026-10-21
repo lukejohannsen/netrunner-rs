@@ -40141,3 +40141,98 @@ mod red_sand_stage_24 {
         assert_eq!(state.corp.r_and_d.len(), 2);
     }
 }
+
+mod red_sand_stage_25 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with `rig` installed, a facedown PAD Campaign in
+    /// the root of a remote, HQ of three and `archived` faceup in Archives.
+    fn table(rig: &str, archived: &str) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id(rig), card: id(rig), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.corp.archives = vec![ArchivedCard::faceup(id(archived))];
+        state
+    }
+
+    /// Runs `server` and passes on `card`, its one card.
+    fn run_and_pass(state: &GameState, registry: &CardRegistry, server: ServerId, card: &str) -> (GameState, Vec<GameEvent>) {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("breach");
+        let (state, _) = close_all_windows(state, registry);
+        let (state, events) = apply_action(&state, registry, PlayerAction::PassAccessedCard { card_id: id(card) }).expect("pass");
+        let (state, more) = pass_until_settled(state, registry);
+        (state, events.into_iter().chain(more).collect())
+    }
+
+    #[test]
+    fn maw_trashes_from_hq_the_first_time_each_turn_a_card_not_in_archives_is_passed_on() {
+        let registry = registry();
+        let state = table("maw", "hedge_fund");
+        let (state, events) = run_and_pass(&state, &registry, ServerId::Remote(0), "pad_campaign");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::AccessPassed { in_archives: false, .. })), "{events:?}");
+        assert_eq!(state.corp.hq.len(), 2, "one card from HQ at random: {events:?}");
+        assert_eq!(state.corp.archives.len(), 2);
+
+        let (state, _) = run_and_pass(&state, &registry, ServerId::Remote(0), "pad_campaign");
+        assert_eq!(state.corp.hq.len(), 2, "only the first time each turn");
+    }
+
+    #[test]
+    fn maw_does_nothing_for_a_card_passed_on_in_archives() {
+        let registry = registry();
+        let state = table("maw", "hedge_fund");
+        let (state, events) = run_and_pass(&state, &registry, ServerId::Archives, "hedge_fund");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::AccessPassed { in_archives: true, .. })), "{events:?}");
+        assert_eq!(state.corp.hq.len(), 3);
+        // Archives did not spend the first time.
+        let (state, _) = run_and_pass(&state, &registry, ServerId::Remote(0), "pad_campaign");
+        assert_eq!(state.corp.hq.len(), 2);
+    }
+
+    #[test]
+    fn aeneas_informant_may_reveal_a_card_with_a_trash_cost_left_untrashed_for_a_credit() {
+        let registry = registry();
+        let state = table("aeneas_informant", "pad_campaign");
+        let (state, _) = run_and_pass(&state, &registry, ServerId::Remote(0), "pad_campaign");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "the may: {:?}", state.pending_decision);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("reveal it");
+        assert_eq!(state.runner.resources.credits, Credits(1));
+        assert!(
+            events.iter().any(|event| matches!(event, GameEvent::CardRevealed { side: Side::Corp, card, .. } if *card == id("pad_campaign"))),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn aeneas_informant_asks_nothing_in_archives() {
+        let registry = registry();
+        let state = table("aeneas_informant", "pad_campaign");
+        let (state, _) = run_and_pass(&state, &registry, ServerId::Archives, "pad_campaign");
+        assert!(state.pending_decision.is_none(), "{:?}", state.pending_decision);
+        assert_eq!(state.runner.resources.credits, Credits(0));
+    }
+
+    #[test]
+    fn a_pass_out_of_archives_is_counted_apart() {
+        let maw = registry().get(&id("maw")).cloned().expect("maw");
+        let once = crate::rules::turn_log::Occurrences::meant_by(crate::dsl::Trigger::OnAccessPassed, maw.triggers[0].when.as_ref(), Side::Runner);
+        assert!(once.is_ok(), "{once:?}");
+    }
+}

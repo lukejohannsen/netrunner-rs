@@ -7726,7 +7726,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_a },
+                GameEvent::AccessPassed { card: card_a, in_archives: true },
                 GameEvent::CardAccessed { card: card_b.clone(), server: ServerId::Archives, install: None },
             ]
         );
@@ -7735,7 +7735,7 @@ mod tests {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card_b.clone() })
                 .expect("passing the second card should succeed");
-        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b }, GameEvent::RunCompleted { server: ServerId::Archives }]);
+        assert_eq!(events, vec![GameEvent::AccessPassed { card: card_b, in_archives: true }, GameEvent::RunCompleted { server: ServerId::Archives }]);
         assert_eq!(state.active_run, None);
         assert!(state.paid_ability_window.is_none());
     }

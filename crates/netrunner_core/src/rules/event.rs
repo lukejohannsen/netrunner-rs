@@ -634,7 +634,18 @@ pub enum GameEvent {
         #[serde(default)]
         install: Option<crate::rules::state::InstallId>,
     },
-    AccessPassed { card: CardId },
+    /// The Runner passed on a card they accessed: neither stole nor
+    /// trashed it. `in_archives`: the card was in the Archives pile rather
+    /// than in a root or HQ or R&D — Maw's and Aeneas Informant's "a card
+    /// **not in Archives**" (`EventFilter::NotInArchives`), stated on the
+    /// event because the card is no longer being accessed when the moment
+    /// is asked again. Masked from the Corp, as the access is. Written
+    /// only when true; `serde(default)` for histories recorded before it.
+    AccessPassed {
+        card: CardId,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        in_archives: bool,
+    },
     PaidAbilityWindowOpened { side: Side },
     PriorityPassed { side: Side },
     PaidAbilityWindowClosed,

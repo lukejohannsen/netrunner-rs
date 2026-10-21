@@ -1,0 +1,53 @@
+{
+  "id": "aeneas_informant",
+  "title": "Aeneas Informant",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessPassed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "NotInArchives",
+          {
+            "Card": "HasTrashCost"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "Reveal": "AccessedCard"
+                  },
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may reveal it and gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you access a card with a trash cost not in Archives and do not trash it, you may reveal it and gain 1[credit]."
+    }
+  ],
+  "built_from": 12044,
+  "is_playable": true
+}

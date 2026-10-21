@@ -114,6 +114,10 @@ pub(crate) struct Moment {
     /// the server, and a run ended by a card's text may have been
     /// successful first (CR 6.8.4a).
     pub successful: Option<bool>,
+    /// Whether a passed card was accessed in the Archives pile, read off
+    /// the event (`GameEvent::AccessPassed::in_archives`), for
+    /// `EventFilter::NotInArchives`. `None` for every other moment.
+    pub in_archives: Option<bool>,
 }
 
 /// A card that may hear a moment.
@@ -157,7 +161,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -168,7 +172,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -207,6 +211,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             // carries none. A card accessed out of HQ or R&D has neither.
             let install = install.or_else(|| root_install_of(state, accessed, *server));
             vec![moment(Trigger::OnAccessed, &card(accessed, install), Some(Side::Runner))]
+        }
+        // Neither stolen nor trashed. Only the Runner accesses.
+        GameEvent::AccessPassed { card: passed, in_archives } => {
+            vec![Moment { in_archives: Some(*in_archives), ..moment(Trigger::OnAccessPassed, &card(passed, None), Some(Side::Runner)) }]
         }
         GameEvent::CardTrashedFromAccess { card: trashed, install, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: install.is_some() };
@@ -481,7 +489,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::CreditsSpent { .. }
         | GameEvent::CardRemovedFromGame { .. }
         | GameEvent::GameOver { .. }
-        | GameEvent::AccessPassed { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
@@ -776,6 +783,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::Successful = filter {
         return moment.successful == Some(true);
+    }
+    if let EventFilter::NotInArchives = filter {
+        return moment.in_archives == Some(false);
     }
     let listening = install;
     match (filter, &moment.about) {
