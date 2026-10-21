@@ -388,6 +388,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnApproachServer
         | Trigger::OnSuccessfulRun
         | Trigger::OnBreach
+        | Trigger::OnBreachEnded
         | Trigger::OnRunEnded
         | Trigger::OnCreditsSpentOutsidePool
         | Trigger::OnArchivesTurnedFaceup

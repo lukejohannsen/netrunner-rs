@@ -444,6 +444,13 @@ pub struct AccessState {
     /// Public: both players watched it go.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// The Runner stole or trashed a card they accessed in this breach —
+    /// Aumakua's "if you did not steal or trash any accessed cards", stated
+    /// on `GameEvent::BreachEnded` when the breach is over. Set where an
+    /// accessed card is stolen or trashed (`access::steal`, the two trashes
+    /// that emit `CardTrashedFromAccess`). Public: both players saw it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub took: bool,
     pub phase: AccessPhase,
 }
 
@@ -499,7 +506,7 @@ impl Default for AccessState {
             pending_install: None,
             pending_install_rezzed: false,
             outside_breach: None,
-            left: false,
+            left: false, took: false,
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }

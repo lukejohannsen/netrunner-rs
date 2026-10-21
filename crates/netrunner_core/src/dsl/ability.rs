@@ -585,6 +585,13 @@ pub enum EffectRequirement {
     /// bit per ice type would widen every row of the turn log for a fact no
     /// "first time" counts.
     PassedIceWas(crate::dsl::IceType),
+    /// The breach that ended stole and trashed none of the cards the
+    /// Runner accessed in it — Aumakua's "**if you did not steal or trash
+    /// any accessed cards**". Read off the moment (`GameEvent::
+    /// BreachEnded::took`), since the breach's own tally is gone with it.
+    /// Composition didn't work: `AgendasStolenThisRun` counts a run of
+    /// several breaches, and no count holds an access's trash.
+    TookNothingInTheBreach,
     /// The Corp has at least this many credits — Fransofia Ward's "if the
     /// Corp has 15[c] or more". `RunnerCreditsAtMost`'s Corp-side sibling.
     CorpCreditsAtLeast(u32),

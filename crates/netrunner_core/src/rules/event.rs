@@ -218,6 +218,17 @@ pub enum GameEvent {
     /// another server the two were read as one — every "whenever you
     /// breach" card heard the success.
     BreachBegun { server: ServerId },
+    /// The breach of `server` is over (CR 7.3.4): every card the Runner
+    /// would access has been accessed, or the rest can no longer be. The
+    /// moment "whenever you finish breaching a server" means (Aumakua).
+    /// `took`: the Runner stole or trashed a card they accessed in it —
+    /// Aumakua's "if you did not steal or trash any accessed cards".
+    /// Public, like the breach. Written only when true.
+    BreachEnded {
+        server: ServerId,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        took: bool,
+    },
     RunJackedOut { server: ServerId },
     RunCompleted { server: ServerId },
     /// `install` names which copy landed, and is never masked — an install
@@ -952,7 +963,7 @@ impl GameEvent {
             | GameEvent::EncounterEnded { .. }
             | GameEvent::IceFullyBroken { .. }
             | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
-            | GameEvent::BreachBegun { .. }
+            | GameEvent::BreachBegun { .. } | GameEvent::BreachEnded { .. }
             | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }
             | GameEvent::IceSwapped { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. }
             | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }

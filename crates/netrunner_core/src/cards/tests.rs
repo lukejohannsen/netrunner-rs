@@ -6579,7 +6579,7 @@ mod system_gateway {
         sorted.sort_unstable();
         assert_eq!(
             sorted,
-            vec!["audrey_v2", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
+            vec!["audrey_v2", "aumakua", "botulus", "cache", "chisel", "conduit", "consume", "cordyceps", "crypsis", "crypt", "darwin", "datasucker", "fermenter", "friday_chip", "god_of_war", "hantu", "hemorrhage", "imp", "leech", "medium", "musaazi", "parasite", "pelangi", "pheromones", "plague", "the_nihilist", "tranquilizer", "trypano", "yusuf"],
             "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
         );
 
@@ -40234,5 +40234,64 @@ mod red_sand_stage_25 {
         let maw = registry().get(&id("maw")).cloned().expect("maw");
         let once = crate::rules::turn_log::Occurrences::meant_by(crate::dsl::Trigger::OnAccessPassed, maw.triggers[0].when.as_ref(), Side::Runner);
         assert!(once.is_ok(), "{once:?}");
+    }
+}
+
+mod red_sand_stage_26 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with Aumakua installed and a facedown PAD
+    /// Campaign in the root of a remote, `credits` to trash it with.
+    fn table(credits: u32) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("aumakua"), card: id("aumakua"), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state
+    }
+
+    /// Runs the remote and makes `decision` on PAD Campaign, its one card.
+    fn breach(state: &GameState, registry: &CardRegistry, decision: PlayerAction) -> (GameState, Vec<GameEvent>) {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("breach");
+        let (state, _) = close_all_windows(state, registry);
+        let (state, events) = apply_action(&state, registry, decision).expect("decide");
+        let (state, more) = pass_until_settled(state, registry);
+        (state, events.into_iter().chain(more).collect())
+    }
+
+    fn aumakua(state: &GameState, registry: &CardRegistry) -> (u32, i32) {
+        let installed = state.runner.rig.iter().find(|card| card.card == id("aumakua")).expect("installed");
+        (crate::rules::pending_choice::virus_on(installed, registry), crate::rules::continuous::breaker_strength(state, registry, installed))
+    }
+
+    #[test]
+    fn aumakua_takes_a_virus_counter_for_a_breach_that_took_nothing() {
+        let registry = registry();
+        let (state, events) = breach(&table(0), &registry, PlayerAction::PassAccessedCard { card_id: id("pad_campaign") });
+        assert!(events.iter().any(|event| matches!(event, GameEvent::BreachEnded { took: false, .. })), "{events:?}");
+        assert_eq!(aumakua(&state, &registry), (1, 1), "one counter, one strength");
+    }
+
+    #[test]
+    fn aumakua_takes_nothing_for_a_breach_that_trashed_a_card() {
+        let registry = registry();
+        let (state, events) = breach(&table(10), &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") });
+        assert!(events.iter().any(|event| matches!(event, GameEvent::BreachEnded { took: true, .. })), "{events:?}");
+        assert_eq!(aumakua(&state, &registry), (0, 0));
     }
 }

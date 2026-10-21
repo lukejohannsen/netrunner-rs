@@ -828,6 +828,8 @@ fn determinize_run(
         candidates: access.candidates.clone(),
         // Public: the card at its decision left while it was accessed.
         left: access.left,
+        // Public: the steal or the trash was made in the open.
+        took: access.took,
         // Only the number is in the view, and it is the number the sample
         // needs: which cards they are is drawn from the sample's own HQ or
         // R&D once those exist (`draw_from_zone`), since the cards the
@@ -1667,6 +1669,7 @@ mod tests {
                     server,
                     outside_breach: None,
                     left: false,
+                    took: false,
                     candidates: Vec::new(),
                     from_zone: Vec::new(),
                     resolved_cards: Vec::new(),

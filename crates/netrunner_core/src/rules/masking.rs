@@ -438,6 +438,10 @@ pub struct PublicAccessState {
     /// `AccessState::left`, never masked: both players watched the card go.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// `AccessState::took`, never masked: both players watched the steal
+    /// or the trash.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub took: bool,
     pub phase: PublicAccessPhase,
 }
 
@@ -1183,7 +1187,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceFullyBroken { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }
-        | GameEvent::BreachBegun { .. }
+        | GameEvent::BreachBegun { .. } | GameEvent::BreachEnded { .. }
         | GameEvent::RunJackedOut { .. }
         | GameEvent::RunCompleted { .. }
         | GameEvent::IceRezzed { .. }
@@ -1443,6 +1447,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, v
         pending_install: access.pending_install,
         outside_breach: access.outside_breach.clone(),
         left: access.left,
+        took: access.took,
         phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
     }
 }

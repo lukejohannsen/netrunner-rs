@@ -234,6 +234,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             pending_install: _, // engine's: which install is being accessed; access::Access shows the card
             outside_breach: _,  // engine's: the count left and the card's continuation; the choice of card shows the candidates, and the card's text is on its face
             left: _,            // engine's: the card that left is in Archives, drawn there, and the breach moves past it before the person is asked anything
+            took: _,            // engine's: the steal or trash is in the log and on the board already; it only says whether Aumakua takes a counter
             phase: _,           // drawn: access::Access and Prompt::of
         }) = access_state
         {}
