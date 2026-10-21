@@ -3639,7 +3639,10 @@ impl Effect {
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
             Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
             // Focus Group's "place X advancement counters on 1 installed
-            // card": the number rides into the card chosen.
+            // card": the number rides into the card chosen. And into how
+            // many are chosen: Severnius Stim Implant's "trash 2 or more
+            // cards from your grip" is a number, then a selection of that
+            // many, which read 0 when the number was left unwritten here.
             Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
                 side,
                 source,
@@ -3650,8 +3653,8 @@ impl Effect {
                 shuffle_after,
                 destination,
                 then: then.map(boxed),
-                count,
-                up_to,
+                count: count.map(amount),
+                up_to: up_to.map(amount),
             },
             // Its `then`'s number is the draw's, as a nested
             // `ChooseNumber`'s `then` is that choice's.

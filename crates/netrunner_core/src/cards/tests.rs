@@ -40505,3 +40505,53 @@ mod red_sand_stage_29 {
         assert_eq!(server_of(&state, 904), ServerId::Remote(0));
     }
 }
+
+mod red_sand_stage_30 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Severnius Stim Implant installed and five cards in the grip:
+    /// trashing `trashed` of them runs R&D with one more access for every 2.
+    fn run_rnd_trashing(trashed: u32) -> GameState {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("severnius_stim_implant"), card: id("severnius_stim_implant"), ..Default::default() }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("severnius_stim_implant"), ability_index: 0 }).expect("activate");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: trashed }).expect("how many");
+        for position in toggles(&state, &registry).into_iter().take(trashed as usize) {
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        // Every card in the grip is chosen without asking (CR 1.2.4).
+        if matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })) {
+            state = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash them").0;
+        }
+        assert_eq!(state.runner.grip.len(), 5 - trashed as usize);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("run R&D");
+        state
+    }
+
+    #[test]
+    fn severnius_adds_an_access_for_every_2_cards_trashed() {
+        let state = run_rnd_trashing(5);
+        let run = state.active_run.as_ref().expect("a run on R&D");
+        assert_eq!(run.server, ServerId::RnD);
+        assert_eq!(run.additional_rd_access, 2, "five cards are two pairs");
+        assert_eq!(run_rnd_trashing(2).active_run.as_ref().map(|run| run.additional_rd_access), Some(1));
+    }
+}
