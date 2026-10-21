@@ -40689,3 +40689,49 @@ mod red_sand_stage_32 {
         assert_eq!(state.runner.resources.credits.0, credits - 4, "Gordian Blade costs 4");
     }
 }
+
+mod red_sand_stage_33 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Ansel 1.0's "Trash 1 installed Runner card" has selected Corroder,
+    /// with Dummy Box installed and a program and a resource in the grip.
+    fn corroder_about_to_be_trashed() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let rig = |card: &str, install: u32| crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() };
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("corroder", 2001), rig("dummy_box", 2002)];
+        state.runner.grip = vec![id("sure_gamble"), id("gordian_blade"), id("dummy_box")];
+        let ansel = id("ansel_1_0");
+        let trash_one = registry.get(&ansel).expect("ansel").subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(&mut state, &trash_one, &mut crate::rules::ResolutionContext::for_card(Some(&ansel)), &registry).expect("the corp is asked which");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        (state, registry)
+    }
+
+    #[test]
+    fn dummy_box_trashes_a_program_from_the_grip_to_save_an_installed_program() {
+        let (state, registry) = corroder_about_to_be_trashed();
+        assert!(state.pending_prevention.is_some(), "the trash is parked for the Runner to prevent");
+        let (saved, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 0 }).expect("trash a program from the grip");
+        let saved = match crate::rules::legal_actions_for(&saved, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })) {
+            Some(pick) => apply_action(&saved, &registry, pick).expect("pay with Gordian Blade").0,
+            None => saved,
+        };
+        assert!(saved.runner.rig.iter().any(|card| card.card == id("corroder")), "saved");
+        assert_eq!(saved.runner.heap, vec![id("gordian_blade")], "the program paid for it");
+        assert_eq!(saved.runner.grip, vec![id("sure_gamble"), id("dummy_box")]);
+    }
+
+    #[test]
+    fn dummy_box_cannot_save_a_program_with_a_card_of_another_type() {
+        let (state, registry) = corroder_about_to_be_trashed();
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 1 }).is_err(), "no hardware in the grip, and a program is parked");
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 2 }).is_err(), "a resource saves a resource, and a program is parked");
+    }
+}
