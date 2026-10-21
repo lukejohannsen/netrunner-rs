@@ -1,0 +1,100 @@
+{
+  "id": "severnius_stim_implant",
+  "title": "Severnius Stim Implant",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnGrip",
+          "count": 2,
+          "filter": "Any"
+        }
+      },
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Runner",
+          "min": 2,
+          "max": {
+            "CardsInHand": "Runner"
+          },
+          "then": {
+            "Sequence": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": "Any",
+                  "min": 0,
+                  "max": 0,
+                  "count": "ChosenNumber",
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OwnHeap"
+                }
+              },
+              {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "Sequence": [
+                        {
+                          "InitiateRun": "Hq"
+                        },
+                        {
+                          "AddAdditionalAccessAmount": {
+                            "server": "Hq",
+                            "amount": {
+                              "Every": {
+                                "amount": "ChosenNumber",
+                                "every": 2
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "InitiateRun": "RnD"
+                        },
+                        {
+                          "AddAdditionalAccessAmount": {
+                            "server": "RnD",
+                            "amount": {
+                              "Every": {
+                                "amount": "ChosenNumber",
+                                "every": 2
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "texts": [
+                    "Run HQ or R&D — HQ",
+                    "Run HQ or R&D — R&D"
+                  ]
+                }
+              }
+            ]
+          },
+          "text": "Trash 2 or more cards from your grip"
+        }
+      },
+      "text": "[click]: Trash 2 or more cards from your grip. Run HQ or R&D. Whenever you breach that server during this run, access 1 additional card for every 2 cards you trashed."
+    }
+  ],
+  "built_from": 12021,
+  "is_playable": true
+}
