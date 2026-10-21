@@ -40432,3 +40432,76 @@ mod red_sand_stage_28 {
         assert!(state.runner.grip.is_empty());
     }
 }
+
+mod red_sand_stage_29 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(handle: u32, card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(handle), card: id(card), server, slot, rezzed: true, ..Default::default() }
+    }
+
+    /// Metamorph on HQ, an Ice Wall on R&D and an Enigma on a remote; a
+    /// PAD Campaign in that remote's root and SanSan City Grid in
+    /// another.
+    fn table() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![
+            installed(900, "metamorph", ServerId::Hq, InstallSlot::Ice),
+            installed(901, "ice_wall", ServerId::RnD, InstallSlot::Ice),
+            installed(902, "enigma", ServerId::Remote(0), InstallSlot::Ice),
+            installed(903, "pad_campaign", ServerId::Remote(0), InstallSlot::Root),
+            installed(904, "sansan_city_grid", ServerId::Remote(1), InstallSlot::Root),
+        ];
+        state
+    }
+
+    /// Fires Metamorph's subroutine and takes option `option`, then picks
+    /// every card it offers (two, either way here).
+    fn swap(option: usize) -> (GameState, Vec<usize>) {
+        let registry = registry();
+        let mut state = table();
+        let subroutine = registry.get(&id("metamorph")).expect("registered").subroutines[0].effect.clone();
+        let card = id("metamorph");
+        crate::rules::evaluate_effect(&mut state, &subroutine, &mut crate::rules::ResolutionContext::for_install(InstallId(900), &card), &registry).expect("fire");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("choose");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        let mut state = state;
+        for position in &offered {
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        (state, offered)
+    }
+
+    fn server_of(state: &GameState, handle: u32) -> ServerId {
+        state.find_corp_install(InstallId(handle)).expect("installed").server
+    }
+
+    #[test]
+    fn metamorph_swaps_2_other_pieces_of_ice() {
+        let (state, offered) = swap(0);
+        assert_eq!(offered.len(), 2, "not Metamorph itself");
+        assert_eq!(server_of(&state, 901), ServerId::Remote(0));
+        assert_eq!(server_of(&state, 902), ServerId::RnD);
+        assert_eq!(server_of(&state, 900), ServerId::Hq);
+    }
+
+    #[test]
+    fn metamorph_swaps_2_installed_non_ice_cards() {
+        let (state, offered) = swap(1);
+        assert_eq!(offered.len(), 2);
+        assert_eq!(server_of(&state, 903), ServerId::Remote(1));
+        assert_eq!(server_of(&state, 904), ServerId::Remote(0));
+    }
+}
