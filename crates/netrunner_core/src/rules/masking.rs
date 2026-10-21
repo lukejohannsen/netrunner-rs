@@ -537,6 +537,11 @@ pub struct PublicRunState {
     /// that run" where the real game does.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub subroutine_broken: bool,
+    /// `RunState::click_lost_to_break`: public, as the clicks and the
+    /// breaks are. Carried so a sample built from the view fires Zed 2.0's
+    /// core damage where the real game does.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub click_lost_to_break: bool,
     /// `RunState::reached_success_phase`: public, as the run reaching the
     /// server is. Carried so a sample's run ends unsuccessful where the
     /// real one does (Hannah "Wheels" Pilintra's tag).
@@ -1497,6 +1502,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         fully_broken: run.fully_broken,
         ice_derezzed: run.ice_derezzed,
         subroutine_broken: run.subroutine_broken,
+        click_lost_to_break: run.click_lost_to_break,
         reached_success_phase: run.reached_success_phase,
         breached: run.breached,
         breaches_after: run.breaches_after.clone(),

@@ -1,0 +1,81 @@
+{
+  "id": "zed_2_0",
+  "title": "Zed 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed piece of hardware.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Hardware"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed piece of hardware.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Hardware"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "If the Runner has lost [click] to break a subroutine during this run, do 2 core damage.",
+      "effect": {
+        "EffectIf": {
+          "condition": "ClickLostToBreakThisRun",
+          "effect": {
+            "DealDamage": [
+              "Brain",
+              2
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12010,
+  "is_playable": true
+}

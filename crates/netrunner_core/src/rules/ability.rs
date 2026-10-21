@@ -5145,6 +5145,9 @@ pub fn check_requirement(
         EffectRequirement::SubroutineBrokenThisRun => {
             if state.run_in_progress().is_some_and(|run| run.subroutine_broken) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::ClickLostToBreakThisRun => {
+            if state.run_in_progress().is_some_and(|run| run.click_lost_to_break) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::SubroutineBrokenThisEncounter => {
             let broken = state
                 .active_run
@@ -6167,6 +6170,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::IceDerezzedThisRun
         | EffectRequirement::SubroutineBrokenThisRun
+        | EffectRequirement::ClickLostToBreakThisRun
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::LastRunSuccessful

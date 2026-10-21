@@ -892,6 +892,8 @@ fn determinize_run(
         // Public, and what Mercury: Chrome Libertador's "if you did not
         // break any subroutines" reads.
         subroutine_broken: run.subroutine_broken,
+        // Public, and what Zed 2.0's last subroutine reads.
+        click_lost_to_break: run.click_lost_to_break,
         // Public, and what makes the run's end unsuccessful or not.
         reached_success_phase: run.reached_success_phase,
         // Public, and which server a breach that has begun goes on to.
