@@ -2823,7 +2823,7 @@ mod tests {
         assert_eq!(mask_event_for_player(&hq, &state, Side::Runner), Some(hq.clone()));
         assert_eq!(mask_event_for_player(&archives, &state, Side::Corp), Some(archives.clone()));
 
-        let passed = GameEvent::AccessPassed { card: id("hedge_fund") };
+        let passed = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false };
         assert_eq!(mask_event_for_player(&passed, &state, Side::Corp), None);
         assert_eq!(mask_event_for_player(&passed, &state, Side::Runner), Some(passed.clone()));
     }
@@ -2973,7 +2973,7 @@ mod tests {
     fn a_spectator_gets_every_event_the_more_restricted_seat_gets_and_no_other() {
         let state = game_state(corp_state_with_cards());
         let corp_secret = GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") };
-        let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund") };
+        let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund"), in_archives: false };
         let public = GameEvent::CardAccessed { card: id("cyberdex_trial"), server: ServerId::Archives, install: None };
         assert_eq!(mask_event_for_player(&corp_secret, &state, Viewer::Spectator), None);
         // An install is struck rather than dropped, for a spectator as for

@@ -110,7 +110,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
 pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("maw", "Maw"),
     ("zed_2_0", "Zed 2.0"),
     ("sync_bre", "SYNC BRE"),
     ("oberth_protocol", "Oberth Protocol"),
@@ -127,7 +126,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("aeneas_informant", "Aeneas Informant"),
     ("adjusted_matrix", "Adjusted Matrix"),
     ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),

@@ -337,6 +337,12 @@ pub enum CardFilter {
     /// [trash] (`Cost::prints_trash`). Definition-level. Composition didn't
     /// work: no filter read a card's abilities.
     HasTrashAbility,
+    /// A card with a printed trash cost — Aeneas Informant's "access a
+    /// card **with a trash cost**". Definition-level, read off
+    /// `CardDefinition::trash_cost`. Composition didn't work: no filter
+    /// read the trash cost, and `TrashableBy` asks whether the Runner may
+    /// trash it now, which a card without a cost can be by a card's text.
+    HasTrashCost,
     /// The positive twin of `NotInstalledThisTurn`: Word on the Street's
     /// "an agenda the Corp installed this turn". A separate word rather
     /// than `Not(NotInstalledThisTurn)`, because `Not` is definition-level
@@ -967,6 +973,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
             .abilities
             .iter()
             .any(|ability| ability.trigger == crate::dsl::Trigger::Paid && ability.cost.as_ref().is_some_and(crate::dsl::Cost::prints_trash)),
+        CardFilter::HasTrashCost => card.trash_cost.is_some(),
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
         // Instance-level: where the card sits is state.
         CardFilter::InAttackedServer => true,

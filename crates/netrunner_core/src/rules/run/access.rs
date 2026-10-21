@@ -1515,7 +1515,11 @@ pub fn resolve_pass(
         return Err(RulesError::MandatoryStealViolation { card: card_id.clone() });
     }
 
-    let mut events = vec![GameEvent::AccessPassed { card: card_id.clone() }];
+    // Heard as the pass is made, before the next card is offered: Maw's
+    // trash from HQ comes before the breach goes on.
+    let in_archives = pending.server == ServerId::Archives && pending.install.is_none();
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::AccessPassed { card: card_id.clone(), in_archives })?;
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
@@ -1904,7 +1908,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("top".to_string()) },
+                GameEvent::AccessPassed { card: CardId("top".to_string()), in_archives: false },
                 GameEvent::CardAccessed { card: CardId("middle".to_string()), server: ServerId::RnD, install: None },
             ]
         );
@@ -2189,7 +2193,7 @@ mod tests {
         let events = resolve_pass(&mut state, &CardId("first".to_string()), &registry()).unwrap();
         assert_eq!(
             events,
-            vec![GameEvent::AccessPassed { card: CardId("first".to_string()) }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
+            vec![GameEvent::AccessPassed { card: CardId("first".to_string()), in_archives: false }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
         );
         assert_eq!(state.active_run, None);
     }
@@ -2711,7 +2715,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id },
+                GameEvent::AccessPassed { card: card_id, in_archives: true },
                 GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -2789,7 +2793,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id },
+                GameEvent::AccessPassed { card: card_id, in_archives: false },
                 GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
@@ -2834,7 +2838,7 @@ mod tests {
         assert_eq!(
             second,
             vec![
-                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Archives,
@@ -2849,7 +2853,7 @@ mod tests {
         assert_eq!(
             last,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
                 GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -2895,7 +2899,7 @@ mod tests {
         assert_eq!(
             resolved,
             vec![
-                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()), in_archives: true },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Archives,
@@ -2946,7 +2950,7 @@ mod tests {
         assert_eq!(
             resolved,
             vec![
-                GameEvent::AccessPassed { card: CardId("card_1".to_string()) },
+                GameEvent::AccessPassed { card: CardId("card_1".to_string()), in_archives: true },
                 GameEvent::CardAccessed {
                     card: CardId("card_2".to_string()),
                     server: ServerId::Archives,
@@ -2978,7 +2982,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
                 GameEvent::CardAccessed {
                     card: CardId("ice_wall".to_string()),
                     server: ServerId::Archives,
@@ -3192,7 +3196,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: card_id },
+                GameEvent::AccessPassed { card: card_id, in_archives: true },
                 GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -3273,7 +3277,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 5 } },
@@ -3365,7 +3369,7 @@ mod tests {
         assert_eq!(
             pass_events,
             vec![
-                GameEvent::AccessPassed { card: card_id },
+                GameEvent::AccessPassed { card: card_id, in_archives: true },
                 GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
@@ -3783,7 +3787,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()), in_archives: true },
                 GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None },
             ]
         );

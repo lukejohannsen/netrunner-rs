@@ -3,7 +3,7 @@
   "name": "Zero-Day Heist",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12 Red Sand Stage 13 Rosetta 2.0 (Red Sand Stage 15) Corporate Defector (Red Sand Stage 23) takes Poison Vial's slot",
+  "description": "Not a published list: built so the sweeps reach Los: Data Hijacker, Red Sand's Criminal identity, who gains 2[credit] the first time the Corp rezzes a piece of ice each turn. On Cold Reading's list, its identity swapped, with Red Sand Stage 5's Spot the Prey, Möbius, Exploit, Build Script and Mad Dash for two Hot Pursuit, an Easy Mark, a Special Order, two Credit Kiting, two No Free Lunch and two Pan-Weave; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Maui and two Caldera for the Prognostic Q-Loop and two Tremolo. Red Sand Stage 7 takes two Flashbang for two Laser Pointer. Red Sand Stage 12 Red Sand Stage 13 Rosetta 2.0 (Red Sand Stage 15) Corporate Defector (Red Sand Stage 23) takes Poison Vial's slot Red Sand Stage 25: two Cat's Cradle for Aeneas Informant",
   "style": [
     "pressure"
   ],
@@ -27,10 +27,6 @@
     },
     {
       "card": "femme_fatale",
-      "count": 2
-    },
-    {
-      "card": "cats_cradle",
       "count": 2
     },
     {
@@ -119,6 +115,10 @@
     },
     {
       "card": "corporate_defector",
+      "count": 2
+    },
+    {
+      "card": "aeneas_informant",
       "count": 2
     }
   ]

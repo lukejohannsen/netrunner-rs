@@ -1467,6 +1467,8 @@ impl CardDefinition {
             EventFilter::TrashedRezzed => triggered.trigger == Trigger::OnCardTrashed,
             // Only a run's end says whether the run was successful.
             EventFilter::Successful => triggered.trigger == Trigger::OnRunEnded,
+            // Only a pass on an access says where the card was accessed.
+            EventFilter::NotInArchives => triggered.trigger == Trigger::OnAccessPassed,
             EventFilter::TrashedFromThisServer => {
                 matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
             }

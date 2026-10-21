@@ -91,6 +91,13 @@ pub enum Class {
     /// both players saw the run succeed or not. The server alone, for a
     /// filter that does not ask, is both columns (`Occurrences::meant_by`).
     RunEnded { server: ServerClass, successful: bool },
+    /// A pass on an accessed card (`Trigger::OnAccessPassed`), counted by
+    /// whether the card was in Archives and not by the card — which, out
+    /// of HQ or R&D, only the Runner saw. Maw's "the first time each turn
+    /// you access a card **not in Archives** and do not steal or trash it"
+    /// counts only those. Public: both players see which server a breach
+    /// is of, and the Corp knows whether a root card was accessed.
+    Accessed { in_archives: bool },
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
 }
@@ -282,6 +289,7 @@ impl Class {
             Class::Damage(kind) => kind as usize,
             Class::Ice(facts) => facts.bits(),
             Class::RunEnded { server, successful } => server as usize + if successful { ServerClass::COUNT } else { 0 },
+            Class::Accessed { in_archives } => in_archives as usize,
             Class::Nothing => 0,
         }
     }
@@ -357,6 +365,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnCardMoved => true,
         // A drawn card is its drawer's alone.
         Trigger::OnCardDrawn => true,
+        // A card accessed out of HQ or R&D is seen by the Runner alone.
+        // The log counts a pass by where it was (`Class::Accessed`).
+        Trigger::OnAccessPassed => true,
         // Exposed is revealed to both players (CR 1.21.4).
         Trigger::OnCardExposed => false,
         // A score area is public.
@@ -433,6 +444,9 @@ fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     if let Some(facts) = moment.ice {
         return Class::Ice(facts);
+    }
+    if let Some(in_archives) = moment.in_archives {
+        return Class::Accessed { in_archives };
     }
     match &moment.about {
         About::Nothing => Class::Nothing,
@@ -560,6 +574,10 @@ impl Occurrences {
                     .map(|server| bit(Class::RunEnded { server, successful: true }))
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::NotInArchives) if trigger == Trigger::OnAccessPassed => Some(bit(Class::Accessed { in_archives: false })),
+            Some(EventFilter::NotInArchives) => {
+                return Err(format!("only a pass on an access says where the card was, not a {trigger:?}"));
+            }
             Some(EventFilter::Successful) => {
                 return Err(format!("only a run's end says whether the run was successful, not a {trigger:?}"));
             }
