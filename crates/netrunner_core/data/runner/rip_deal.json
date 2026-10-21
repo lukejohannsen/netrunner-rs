@@ -1,0 +1,84 @@
+{
+  "id": "rip_deal",
+  "title": "Rip Deal",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        }
+      ]
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "requirement": {
+        "And": [
+          "ThisCardStartedTheRun",
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OwnHeap",
+              "count": 1,
+              "filter": "Any"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "Prohibit": {
+                      "what": "AccessCardsInHq",
+                      "until": "Run"
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnHeap",
+                      "filter": "Any",
+                      "min": 0,
+                      "max": 0,
+                      "count": {
+                        "AccessLimit": "Hq"
+                      },
+                      "reveal": true,
+                      "shuffle_after": false,
+                      "destination": "OwnGrip"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may add that many cards from your heap to your grip. If you do, you cannot access any cards in HQ during this breach",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "If successful, when you determine the number of cards in HQ you are allowed to access during this run's breach of HQ, you may add that many cards from your heap to your grip. If you do, you cannot access any cards in HQ during this breach."
+    }
+  ],
+  "built_from": 12084,
+  "is_playable": true
+}

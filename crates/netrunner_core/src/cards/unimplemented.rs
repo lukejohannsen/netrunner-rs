@@ -143,7 +143,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("rip_deal", "Rip Deal"),
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("metamorph", "Metamorph"),
     ("transparency_initiative", "Transparency Initiative"),

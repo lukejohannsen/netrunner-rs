@@ -127,13 +127,16 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
         .filter(|c| !root_closed && (outside_breach || c.server == server) && c.slot == InstallSlot::Root)
         .map(|c| c.install_id)
         .collect();
+    // Rip Deal's "you cannot access any cards in HQ during this breach":
+    // the root is still open.
+    let hq_closed = !outside_breach && server == ServerId::Hq && continuous::cannot(state, registry, Prohibition::AccessCardsInHq);
     let pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
     let set_aside = state.corp.set_aside.clone();
     let Some(access) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()) else { return };
     let mut from_zone = Vec::with_capacity(access.from_zone.len());
     for card in &access.from_zone {
         let earlier = from_zone.iter().filter(|c| *c == card).count();
-        if zone_holds(state, server, card, earlier) {
+        if !hq_closed && zone_holds(state, server, card, earlier) {
             from_zone.push(card.clone());
         }
     }

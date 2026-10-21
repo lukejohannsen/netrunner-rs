@@ -3,7 +3,7 @@
   "name": "Advance Fee",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a). No One Home (Kitara Stage 10c) in for Cat's Cradle: the trace an interrupt starts. Kitara Stage 18: two Zamba for its two Jeitinho, a console that pays 1[credit] for each card the 419's exposes and Lemuria Codecracker turn over; three decks keep Jeitinho.",
+  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a). No One Home (Kitara Stage 10c) in for Cat's Cradle: the trace an interrupt starts. Kitara Stage 18: two Zamba for its two Jeitinho, a console that pays 1[credit] for each card the 419's exposes and Lemuria Codecracker turn over; three decks keep Jeitinho. Rip Deal (Red Sand Stage 28)",
   "style": [
     "pressure"
   ],
@@ -27,10 +27,6 @@
     },
     {
       "card": "saci",
-      "count": 2
-    },
-    {
-      "card": "hot_pursuit",
       "count": 2
     },
     {
@@ -115,6 +111,10 @@
     },
     {
       "card": "zamba",
+      "count": 2
+    },
+    {
+      "card": "rip_deal",
       "count": 2
     }
   ]

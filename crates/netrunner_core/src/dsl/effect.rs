@@ -3236,6 +3236,17 @@ pub enum Prohibition {
     /// One word for the two centrals, since no pool card names one of
     /// them alone where the other could be breached.
     AccessRootOfHqOrRnD,
+    /// The Runner cannot access cards in HQ, though they can still access
+    /// cards in its root — Rip Deal's "If you do, you cannot access any
+    /// cards in HQ during this breach. (You can still access cards in the
+    /// root of HQ.)" The cards of HQ a breach of it would access drop out
+    /// where the breach drops what can no longer be accessed (CR 7.4.2,
+    /// `run::access::prune_candidates`), after the access limit has been
+    /// determined (CR 7.3.5), which is what Rip Deal counted. Composition
+    /// didn't work: `AccessRootOfHqOrRnD` closes the root and leaves the
+    /// cards, and this is the other half. Made for the run: the breach it
+    /// is made in is the run's only breach of HQ.
+    AccessCardsInHq,
     /// The Runner cannot install cards — Jua's "When the Runner encounters
     /// this ice, they cannot install cards for the remainder of the turn".
     /// Asked by `engine::install_requirement_met`, which the one door into
@@ -3265,7 +3276,7 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 22] = [
+    pub const ALL: [Prohibition; 23] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3286,6 +3297,7 @@ impl Prohibition {
         Prohibition::JackOut,
         Prohibition::AccessMoreThanOneCard,
         Prohibition::AccessRootOfHqOrRnD,
+        Prohibition::AccessCardsInHq,
         Prohibition::Install,
         Prohibition::ResolveFirstThreeSubroutines,
     ];
@@ -3294,7 +3306,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install => Side::Runner,
         }
     }
 
@@ -3305,7 +3317,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines => None,
         }
     }
 }
