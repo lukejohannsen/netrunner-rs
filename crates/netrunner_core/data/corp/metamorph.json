@@ -1,0 +1,70 @@
+{
+  "id": "metamorph",
+  "title": "Metamorph",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Swap 2 other installed pieces of ice or 2 of your installed non-ice cards.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    "Ice",
+                    "NotSourceCard"
+                  ]
+                },
+                "min": 2,
+                "max": 2,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "SwapInstalledIce": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "Not": "Ice"
+                },
+                "min": 2,
+                "max": 2,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "SwapInstalledIce": [
+                    0,
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "texts": [
+            "Swap 2 other installed pieces of ice",
+            "2 of your installed non-ice cards"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 12094,
+  "is_playable": true
+}
