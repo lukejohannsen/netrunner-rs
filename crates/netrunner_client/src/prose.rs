@@ -664,6 +664,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::JackOut, _) => "the Runner cannot jack out",
                 (Prohibition::AccessMoreThanOneCard, _) => "the Runner cannot access more than 1 card",
                 (Prohibition::AccessRootOfHqOrRnD, _) => "the Runner cannot access cards in the root of HQ or R&D",
+                (Prohibition::AccessCardsInHq, _) => "the Runner cannot access cards in HQ",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
@@ -1069,6 +1070,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::JackOut => "cannot jack out",
             Prohibition::AccessMoreThanOneCard => "cannot access more than 1 card",
             Prohibition::AccessRootOfHqOrRnD => "cannot access cards in the root of HQ or R&D",
+            Prohibition::AccessCardsInHq => "cannot access cards in HQ",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
         }

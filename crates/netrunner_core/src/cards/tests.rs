@@ -40365,3 +40365,70 @@ mod red_sand_stage_27 {
         assert_eq!(state.runner.grip.len(), 2, "the second draws nothing");
     }
 }
+
+mod red_sand_stage_28 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with Rip Deal in the grip, three cards in the heap
+    /// and two in HQ, one of them an agenda.
+    fn table() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![id("rip_deal")];
+        state.runner.heap = vec![id("sure_gamble"), id("corroder"), id("dirty_laundry")];
+        state.corp.hq = vec![id("hostile_takeover"), id("hedge_fund")];
+        state
+    }
+
+    /// Plays Rip Deal and runs HQ to its breach, where the "may" parks.
+    fn to_the_breach(registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&table(), registry, PlayerAction::PlayEvent { card_id: id("rip_deal") }).expect("play");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("breach");
+        let (state, _) = close_all_windows(state, registry);
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "the may: {:?}", state.pending_decision);
+        state
+    }
+
+    #[test]
+    fn rip_deal_takes_cards_from_the_heap_instead_of_accessing_hq() {
+        let registry = registry();
+        let state = to_the_breach(&registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("add instead");
+        let positions: Vec<usize> = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(positions.len(), 3, "any card in the heap");
+        let (state, mut events) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: positions[1] }).expect("select");
+        let (state, more) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        events.extend(more);
+        let (state, more) = pass_until_settled(state, &registry);
+        events.extend(more);
+        assert_eq!(state.runner.grip.len(), 1, "one card, the access limit");
+        assert_eq!(state.runner.heap.len(), 2);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "nothing in HQ was accessed: {events:?}");
+        assert!(state.active_run.is_none(), "the breach found nothing to access");
+        assert_eq!(state.runner.removed_from_game, vec![id("rip_deal")]);
+        assert!(!crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::AccessCardsInHq), "gone with the run");
+    }
+
+    #[test]
+    fn rip_deal_declined_accesses_hq_as_usual() {
+        let registry = registry();
+        let state = to_the_breach(&registry);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "{events:?}");
+        assert!(state.runner.grip.is_empty());
+    }
+}
