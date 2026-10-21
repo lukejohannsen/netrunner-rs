@@ -847,6 +847,12 @@ pub enum GameEvent {
     /// 1[credit], after the credit is gained. Feeds `Trigger::
     /// OnBasicCreditAction` (CPC Generator).
     BasicCreditActionTaken { side: Side },
+    /// The Corp has made its mandatory draw (CR 5.6.1e), and whatever
+    /// heard it about to happen has finished with it. Fired only by
+    /// `turn::draw_and_open_the_turn`, and not when the draw lost the game
+    /// (CR 1.7.2c). Feeds `Trigger::OnMandatoryDraw` (Open Forum). Public:
+    /// that the draw was made is, as `CardDrawn` is.
+    MandatoryDrawMade { side: Side },
     /// A player chose one of `Effect::PresentChoice`'s options
     /// (`state::PendingDecision::ChooseEffect`) is now awaiting
     /// `PlayerAction::ResolvePendingChoice`.
@@ -965,7 +971,7 @@ impl GameEvent {
             | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
-            | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. }
+            | GameEvent::BasicDrawActionTaken { .. } | GameEvent::BasicCreditActionTaken { .. } | GameEvent::MandatoryDrawMade { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. } | GameEvent::CardNameChosen { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }

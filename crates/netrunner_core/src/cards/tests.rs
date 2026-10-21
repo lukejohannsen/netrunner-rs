@@ -40071,3 +40071,73 @@ mod red_sand_stage_23 {
         assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. })), "{events:?}");
     }
 }
+
+mod red_sand_stage_24 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn open_forum() -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id("open_forum"),
+            card: id("open_forum"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> (GameState, Vec<GameEvent>) {
+        let (state, mut events) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        let (state, more) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        events.extend(more);
+        (state, events)
+    }
+
+    #[test]
+    fn open_forum_adds_the_top_of_rnd_to_hq_after_the_mandatory_draw_then_puts_one_back() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![open_forum()];
+        state.corp.hq = Vec::new();
+        state.corp.r_and_d = vec![id("enigma"), id("hedge_fund"), id("ice_wall")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, mut events) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.hq, vec![id("ice_wall")], "the mandatory draw came first");
+        assert_eq!(toggles(&state, &registry), vec![1], "then the top card, revealed");
+        let (state, picked) = pick(&state, &registry, 1);
+        events.extend(picked);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { revealed: true, cards, .. } if *cards == vec![id("hedge_fund")])), "{events:?}");
+        assert_eq!(state.corp.hq, vec![id("ice_wall"), id("hedge_fund")]);
+        assert_eq!(toggles(&state, &registry), vec![0, 1], "1 card from HQ back on top");
+        let (state, _) = pick(&state, &registry, 0);
+        assert_eq!(state.corp.hq, vec![id("hedge_fund")]);
+        assert_eq!(state.corp.r_and_d, vec![id("enigma"), id("ice_wall")], "on top");
+    }
+
+    #[test]
+    fn open_forum_waits_for_nothing_on_the_runners_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![open_forum()];
+        state.corp.r_and_d = vec![id("enigma"), id("hedge_fund")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.pending_decision.is_none(), "{:?}", state.pending_decision);
+        assert_eq!(state.corp.r_and_d.len(), 2);
+    }
+}

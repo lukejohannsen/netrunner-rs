@@ -719,6 +719,10 @@ pub(crate) fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
+pub(crate) fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerState {
     /// Runner's identity card, set once by `GameState::setup`. `None`

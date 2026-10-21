@@ -402,6 +402,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnVirusCountersPurged
         | Trigger::OnTraceSuccessful
         | Trigger::OnBasicCreditAction
+        | Trigger::OnMandatoryDraw
         | Trigger::WhileTrue
         | Trigger::Paid => false,
     }
@@ -762,13 +763,20 @@ impl AsOf {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CopyTurn {
     turn: u32,
-    /// A bit per `Trigger::index`.
+    /// A bit per `Trigger::index` below 64, and `once_more`/`twice_more`
+    /// the rest: a second word each rather than a `u128`, so a record
+    /// written when there were 64 triggers reads as it was, and one that
+    /// counts none of the later ones writes none.
     once: u64,
     twice: u64,
+    #[serde(default, skip_serializing_if = "crate::rules::state::is_zero_u64")]
+    once_more: u64,
+    #[serde(default, skip_serializing_if = "crate::rules::state::is_zero_u64")]
+    twice_more: u64,
 }
 
-// A bit per trigger.
-const _: () = assert!(Trigger::ALL.len() <= u64::BITS as usize);
+// A bit per trigger, over the two words.
+const _: () = assert!(Trigger::ALL.len() <= 2 * u64::BITS as usize);
 
 impl CopyTurn {
     /// Whether moments of `trigger` are counted on the copy: those a card
@@ -811,11 +819,17 @@ impl CopyTurn {
         if self.turn != turn {
             *self = CopyTurn { turn, ..CopyTurn::default() };
         }
-        let bit = 1u64 << trigger.index();
-        if self.once & bit != 0 {
-            self.twice |= bit;
+        let (once, twice, bit) = self.words(trigger);
+        if *once & bit != 0 {
+            *twice |= bit;
         }
-        self.once |= bit;
+        *once |= bit;
+    }
+
+    /// The two words `trigger`'s bit is in, and the bit.
+    fn words(&mut self, trigger: Trigger) -> (&mut u64, &mut u64, u64) {
+        let index = trigger.index();
+        if index < 64 { (&mut self.once, &mut self.twice, 1u64 << index) } else { (&mut self.once_more, &mut self.twice_more, 1u64 << (index - 64)) }
     }
 
     /// 0, 1, or 2 for "more than once": `turn`'s moments of `trigger`
@@ -826,8 +840,9 @@ impl CopyTurn {
         if self.turn != turn {
             return 0;
         }
-        let bit = 1u64 << trigger.index();
-        u32::from(self.once & bit != 0) + u32::from(self.twice & bit != 0)
+        let mut copy = *self;
+        let (once, twice, bit) = copy.words(trigger);
+        u32::from(*once & bit != 0) + u32::from(*twice & bit != 0)
     }
 }
 
@@ -1273,6 +1288,25 @@ mod tests {
     use super::*;
     use crate::dsl::{CardDefinition, CardId};
     use crate::rules::state::InstallId;
+
+    /// A trigger past the 64th counts in the second word, apart from the
+    /// first word's, and a copy that counted none of them writes nothing
+    /// new: a record from before the second word reads as it was.
+    #[test]
+    fn a_copy_counts_a_trigger_past_the_first_word_apart() {
+        let mut copy = CopyTurn::default();
+        copy.bump(3, Trigger::OnMandatoryDraw);
+        copy.bump(3, Trigger::OnMandatoryDraw);
+        copy.bump(3, Trigger::OnPlay);
+        assert_eq!(copy.count(3, Trigger::OnMandatoryDraw), 2);
+        assert_eq!(copy.count(3, Trigger::OnPlay), 1);
+        assert_eq!(copy.count(3, Trigger::OnRunStart), 0, "index 1, not 65 - 64");
+        let mut first_word = CopyTurn::default();
+        first_word.bump(3, Trigger::OnPlay);
+        let written = serde_json::to_string(&first_word).expect("write");
+        assert!(!written.contains("more"), "{written}");
+        assert_eq!(serde_json::from_str::<CopyTurn>(&written).expect("read"), first_word);
+    }
 
     fn registry() -> CardRegistry {
         let mut registry = CardRegistry::default();
