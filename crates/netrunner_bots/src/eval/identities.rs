@@ -59,7 +59,7 @@
 
 use super::*;
 use netrunner_core::dsl::{CardId, ContinuousKind, Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
-use netrunner_core::rules::turn_log::{Class, ServerClass};
+use netrunner_core::rules::turn_log::ServerClass;
 use netrunner_core::rules::{check_requirement, eligible_positions, InstallId, ResolutionContext, ServerId};
 
 /// What the identities' text pays at a moment, to each side.
@@ -371,7 +371,7 @@ fn spent(state: &GameState, trigger: &TriggeredEffect) -> bool {
                 ServerId::Archives => ServerClass::Archives,
                 ServerId::Remote(_) => ServerClass::Remote,
             };
-            state.this_turn.times_about(trigger.trigger, Class::Server(class)) > 0
+            state.this_turn.times_on(trigger.trigger, class) > 0
         }),
         _ => state.this_turn.times(trigger.trigger) > 0,
     }
