@@ -830,7 +830,19 @@ pub enum GameEvent {
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
-    BasicDrawActionTaken { side: Side },
+    ///
+    /// `card`: the card the action drew, when the draw finished as the
+    /// action resolved — Corporate Defector's "reveal **that card**"
+    /// (`CardTarget::DrawnCard`). `None` when nothing was drawn, or when a
+    /// card that hears the draw about to happen parked it (Daily Business
+    /// Show), since then the card is not known yet. The drawer's alone, as
+    /// `DrewCard` is (`masking`); `serde(default)` for histories recorded
+    /// before the field existed.
+    BasicDrawActionTaken {
+        side: Side,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        card: Option<CardId>,
+    },
     /// Fired only by `engine::gain_credit_click`, the basic action to gain
     /// 1[credit], after the credit is gained. Feeds `Trigger::
     /// OnBasicCreditAction` (CPC Generator).

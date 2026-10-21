@@ -1440,7 +1440,7 @@ mod tests {
         state.runner.stack = vec![CardId("extra_card".to_string())];
 
         let events =
-            dispatch_event(&mut state, &registry, &GameEvent::BasicDrawActionTaken { side: Side::Runner }).unwrap();
+            dispatch_event(&mut state, &registry, &GameEvent::BasicDrawActionTaken { side: Side::Runner, card: None }).unwrap();
 
         assert_eq!(state.runner.grip, vec![CardId("extra_card".to_string())]);
         assert!(events.contains(&GameEvent::CardDrawn { side: Side::Runner }));

@@ -672,6 +672,26 @@ pub fn evaluate_effect(
         }
         Effect::RemoveFromGame(_) => Err(RulesError::UnresolvedCardTarget),
 
+        // Corporate Defector's "reveal that card": the card the basic
+        // action drew, if it is still in the hand it was drawn to.
+        Effect::Reveal(CardTarget::DrawnCard) => {
+            let Some(GameEvent::BasicDrawActionTaken { side, card: Some(card) }) = ctx.triggering_event else { return Ok(Vec::new()) };
+            let in_hand = match side {
+                Side::Corp => state.corp.hq.contains(card),
+                Side::Runner => state.runner.grip.contains(card),
+            };
+            if !in_hand {
+                return Ok(Vec::new());
+            }
+            let (side, card) = (*side, card.clone());
+            let by = controller(ctx, state, registry);
+            reveal(state, side, &card, true);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side, card, by })?;
+            Ok(events)
+        }
+        Effect::Reveal(_) => Err(RulesError::UnresolvedCardTarget),
+
         // Every card in the hand, revealed as `RevealAtRandom` reveals one.
         Effect::RevealHand(side) => {
             let hand = match side {
@@ -3536,7 +3556,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             .or_else(|| state.runner.rig.iter().position(|installed| installed.install_id == *install).map(rig)),
         // Many cards, trashed one after another by `trash_card`: no Corp
         // card in the pool prevents a trash, so nobody would be asked.
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHand(_) | CardTarget::AttackedServerRoot | CardTarget::SetAside | CardTarget::DrawnCard => None,
     }
 }
 
@@ -3629,7 +3649,8 @@ fn resolve_corp_installed_target(
         | CardTarget::HostedOnThisCard
         | CardTarget::RandomFromHand(_)
         | CardTarget::AttackedServerRoot
-        | CardTarget::SetAside => {
+        | CardTarget::SetAside
+        | CardTarget::DrawnCard => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -3820,7 +3841,7 @@ pub(crate) fn trash_card(
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
-        CardTarget::HostedOnThisCard | CardTarget::SetAside => Err(RulesError::UnresolvedCardTarget),
+        CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard => Err(RulesError::UnresolvedCardTarget),
 
         // Each by its handle, the root read once before the first goes, so
         // what a trash's own consequences install there is not taken too.

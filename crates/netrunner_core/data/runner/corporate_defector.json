@@ -1,0 +1,23 @@
+{
+  "id": "corporate_defector",
+  "title": "Corporate Defector",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnBasicDrawAction",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "Reveal": "DrawnCard"
+        }
+      ],
+      "text": "Whenever the Corp draws a card with the basic action, reveal that card."
+    }
+  ],
+  "built_from": 12109,
+  "is_playable": true
+}

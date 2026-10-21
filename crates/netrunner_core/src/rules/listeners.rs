@@ -277,7 +277,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // No card in the pool hears a mark being identified; the cards that
         // read the mark read it (`lingering::mark`).
         GameEvent::MarkIdentified { .. } => Vec::new(),
-        GameEvent::BasicDrawActionTaken { side } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
+        GameEvent::BasicDrawActionTaken { side, .. } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
         GameEvent::BasicCreditActionTaken { side } => vec![moment(Trigger::OnBasicCreditAction, &About::Nothing, Some(*side))],
 
         GameEvent::RunInitiated { server } => vec![moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner))],

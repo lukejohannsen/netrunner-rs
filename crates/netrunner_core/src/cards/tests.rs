@@ -40024,3 +40024,50 @@ mod red_sand_stage_22 {
         assert!(state.corp.removed_from_game.is_empty(), "no other copy");
     }
 }
+
+mod red_sand_stage_23 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_draws(defector: bool) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        if defector {
+            state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("corporate_defector"), card: id("corporate_defector"), ..Default::default() }];
+        }
+        apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("draw")
+    }
+
+    #[test]
+    fn corporate_defector_reveals_the_card_the_corp_draws_with_the_basic_action() {
+        let (state, events) = corp_draws(true);
+        let drawn = state.corp.hq.last().cloned().expect("drew");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { side: Side::Corp, card, .. } if *card == drawn)), "{events:?}");
+        let runner_sees = events.iter().filter_map(|event| crate::rules::mask_event_for_player(event, &state, Side::Runner)).collect::<Vec<_>>();
+        assert!(runner_sees.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { card, .. } if *card == drawn)), "the Runner is shown it");
+        assert!(runner_sees.iter().any(|event| matches!(event, crate::rules::GameEvent::BasicDrawActionTaken { card: None, .. })), "the action names no card to the Runner itself");
+    }
+
+    #[test]
+    fn without_corporate_defector_the_corps_draw_stays_hidden() {
+        let (state, events) = corp_draws(false);
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. })), "{events:?}");
+        assert!(state.revealed.is_empty());
+    }
+
+    #[test]
+    fn corporate_defector_does_not_hear_the_runners_own_draw() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("corporate_defector"), card: id("corporate_defector"), ..Default::default() }];
+        let (_, events) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. })), "{events:?}");
+    }
+}
