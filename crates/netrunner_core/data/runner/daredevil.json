@@ -1,0 +1,38 @@
+{
+  "id": "daredevil",
+  "title": "Daredevil",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "when": "ProtectedByTwoOrMoreIce",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "The first time you initiate a run on a server protected by 2 or more pieces of ice each turn, draw 2 cards."
+    }
+  ],
+  "built_from": 12066,
+  "is_playable": true
+}

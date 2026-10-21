@@ -797,6 +797,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
         EventFilter::Successful => "that was successful".to_string(),
         EventFilter::NotInArchives => "of a card not in Archives".to_string(),
+        EventFilter::ProtectedByTwoOrMoreIce => "on a server protected by 2 or more pieces of ice".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

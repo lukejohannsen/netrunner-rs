@@ -98,6 +98,13 @@ pub enum Class {
     /// counts only those. Public: both players see which server a breach
     /// is of, and the Corp knows whether a root card was accessed.
     Accessed { in_archives: bool },
+    /// A run's start (`Trigger::OnRunStart`), counted by its server and
+    /// whether 2 or more pieces of ice protected it as the run was
+    /// initiated — Daredevil's "the first time you initiate a run on a
+    /// server **protected by 2 or more pieces of ice** each turn". Public:
+    /// both players see the ice on the table. The server alone is both
+    /// columns, as a run's end is.
+    RunStarted { server: ServerClass, guarded: bool },
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
 }
@@ -290,6 +297,7 @@ impl Class {
             Class::Ice(facts) => facts.bits(),
             Class::RunEnded { server, successful } => server as usize + if successful { ServerClass::COUNT } else { 0 },
             Class::Accessed { in_archives } => in_archives as usize,
+            Class::RunStarted { server, guarded } => server as usize + if guarded { ServerClass::COUNT } else { 0 },
             Class::Nothing => 0,
         }
     }
@@ -456,9 +464,10 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Cards(_) => Class::Nothing,
         About::Server(server) => {
             let server = ServerClass::of(*server);
-            match moment.successful {
-                Some(successful) => Class::RunEnded { server, successful },
-                None => Class::Server(server),
+            match (moment.successful, moment.guarded) {
+                (Some(successful), _) => Class::RunEnded { server, successful },
+                (None, Some(guarded)) => Class::RunStarted { server, guarded },
+                (None, None) => Class::Server(server),
             }
         }
         About::Card { card, installed, .. } => {
@@ -546,6 +555,8 @@ impl Occurrences {
         let server_bit = |server: ServerClass| {
             if trigger == Trigger::OnRunEnded {
                 bit(Class::RunEnded { server, successful: false }) | bit(Class::RunEnded { server, successful: true })
+            } else if trigger == Trigger::OnRunStart {
+                bit(Class::RunStarted { server, guarded: false }) | bit(Class::RunStarted { server, guarded: true })
             } else {
                 bit(Class::Server(server))
             }
@@ -576,6 +587,15 @@ impl Occurrences {
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::NotInArchives) if trigger == Trigger::OnAccessPassed => Some(bit(Class::Accessed { in_archives: false })),
+            Some(EventFilter::ProtectedByTwoOrMoreIce) if trigger == Trigger::OnRunStart => Some(
+                [ServerClass::Archives, ServerClass::RnD, ServerClass::Hq, ServerClass::Remote]
+                    .into_iter()
+                    .map(|server| bit(Class::RunStarted { server, guarded: true }))
+                    .fold(0, |mask, column| mask | column),
+            ),
+            Some(EventFilter::ProtectedByTwoOrMoreIce) => {
+                return Err(format!("only a run's start says how the server was protected, not a {trigger:?}"));
+            }
             Some(EventFilter::NotInArchives) => {
                 return Err(format!("only a pass on an access says where the card was, not a {trigger:?}"));
             }
@@ -997,6 +1017,18 @@ impl TurnLog {
     /// How many of those were about `class`.
     pub fn times_about(&self, trigger: Trigger, class: Class) -> u32 {
         self.counts[trigger.index()].iter().map(|row| u32::from(row[class.column()])).sum()
+    }
+
+    /// How many of those were about `server`, in whichever columns
+    /// `trigger` counts a server by — a run's start and end are each two
+    /// (`Class::RunStarted`, `Class::RunEnded`). The question a reader
+    /// outside the engine asks, so it does not have to know which.
+    pub fn times_on(&self, trigger: Trigger, server: ServerClass) -> u32 {
+        match trigger {
+            Trigger::OnRunEnded => [false, true].into_iter().map(|successful| self.times_about(trigger, Class::RunEnded { server, successful })).sum(),
+            Trigger::OnRunStart => [false, true].into_iter().map(|guarded| self.times_about(trigger, Class::RunStarted { server, guarded })).sum(),
+            _ => self.times_about(trigger, Class::Server(server)),
+        }
     }
 
     pub fn actions_finished(&self) -> u32 {

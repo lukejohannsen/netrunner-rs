@@ -135,7 +135,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bug_out_bag", "Bug Out Bag"),
     ("keros_mcintyre", "Keros Mcintyre"),
-    ("daredevil", "Daredevil"),
     ("loki", "Loki"),
     ("miraju", "Mirāju"),
     ("reeducation", "Reeducation"),

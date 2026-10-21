@@ -980,6 +980,17 @@ pub enum EventFilter {
     /// is about a moment that is about a server, a pass is about a card,
     /// and "HQ, R&D or any root" is no list of servers a card can write.
     NotInArchives,
+    /// The server the run was initiated on was protected by 2 or more
+    /// pieces of ice — Daredevil's "the first time you initiate a run on a
+    /// server **protected by 2 or more pieces of ice** each turn". Read off
+    /// the moment (`listeners::Moment::guarded`), and counted apart by the
+    /// turn log, so "the first time" is the first such run: a run on an
+    /// open server earlier in the turn does not spend it. Only on
+    /// `OnRunStart`. The only card that counts a server's ice prints 2, so
+    /// the number is in the word. Composition didn't work: an intervening
+    /// if is asked after the first time has been judged, and a first time
+    /// narrowed by one is spent by a run on an open server.
+    ProtectedByTwoOrMoreIce,
     /// Every one of these — Hostile Architecture's "the Runner trashes any
     /// of **your installed** cards", on a trash by a card's text: the card
     /// is the Corp's and the moment the Runner's (`OwnedBy`), **and** it

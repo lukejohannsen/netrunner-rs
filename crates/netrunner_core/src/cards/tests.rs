@@ -40295,3 +40295,73 @@ mod red_sand_stage_26 {
         assert_eq!(aumakua(&state, &registry), (0, 0));
     }
 }
+
+mod red_sand_stage_27 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with Daredevil installed, a stack to draw from,
+    /// `ice` unrezzed Ice Walls protecting a remote and nothing in HQ.
+    fn table(ice: usize) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip.clear();
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        state.corp.hq.clear();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("daredevil"), card: id("daredevil"), ..Default::default() }];
+        state.corp.installed = (0..ice)
+            .map(|position| crate::rules::InstalledCard {
+                install_id: InstallId(9000 + position as u32),
+                card: id("ice_wall"),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            })
+            .collect();
+        state
+    }
+
+    fn run(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn daredevil_draws_2_for_a_run_on_a_server_protected_by_2_ice() {
+        let registry = registry();
+        let state = run(&table(2), &registry, ServerId::Remote(0));
+        assert_eq!(state.runner.grip.len(), 2);
+    }
+
+    #[test]
+    fn daredevil_draws_nothing_for_a_server_protected_by_1_ice() {
+        let registry = registry();
+        let state = run(&table(1), &registry, ServerId::Remote(0));
+        assert!(state.runner.grip.is_empty());
+    }
+
+    /// "The first time … each turn" is the first run on a guarded server:
+    /// a run on open HQ before it does not spend it, and a second guarded
+    /// run after it draws nothing.
+    #[test]
+    fn daredevil_counts_only_runs_on_guarded_servers() {
+        let registry = registry();
+        let state = run(&table(2), &registry, ServerId::Hq);
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert!(state.active_run.is_none(), "the run on an empty HQ is over");
+        assert!(state.runner.grip.is_empty(), "HQ was not protected");
+        let mut state = run(&state, &registry, ServerId::Remote(0));
+        assert_eq!(state.runner.grip.len(), 2, "the first guarded run");
+        // The run is set aside: what is asked is the turn's count.
+        state.active_run = None;
+        state.paid_ability_window = None;
+        let state = run(&state, &registry, ServerId::Remote(0));
+        assert_eq!(state.runner.grip.len(), 2, "the second draws nothing");
+    }
+}

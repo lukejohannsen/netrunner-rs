@@ -2376,7 +2376,7 @@ pub(super) fn rig_rd_accesses(state: &GameState, registry: &CardRegistry, horizo
 pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, server: netrunner_core::rules::ServerId) -> u32 {
     use netrunner_core::dsl::{EventFilter, Subject};
     use netrunner_core::rules::ServerId;
-    use netrunner_core::rules::turn_log::{Class, ServerClass};
+    use netrunner_core::rules::turn_log::ServerClass;
     let class = match server {
         ServerId::Hq => ServerClass::Hq,
         ServerId::RnD => ServerClass::RnD,
@@ -2404,7 +2404,7 @@ pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, se
             Some(EventFilter::Server(servers)) => servers.contains(&server),
             Some(_) => false,
         })
-        .filter(|trigger| !trigger.first_each_turn || state.this_turn.times_about(trigger.trigger, Class::Server(class)) == 0)
+        .filter(|trigger| !trigger.first_each_turn || state.this_turn.times_on(trigger.trigger, class) == 0)
         .map(|trigger| trigger.effects.iter().map(|effect| outright(effect, server)).sum::<u32>())
         .sum()
 }

@@ -118,6 +118,14 @@ pub(crate) struct Moment {
     /// the event (`GameEvent::AccessPassed::in_archives`), for
     /// `EventFilter::NotInArchives`. `None` for every other moment.
     pub in_archives: Option<bool>,
+    /// Whether the server a run was initiated on was protected by 2 or
+    /// more pieces of ice as it was, for a run's start
+    /// (`Trigger::OnRunStart`) — Daredevil's "the first time you initiate
+    /// a run on a server **protected by 2 or more pieces of ice** each
+    /// turn" (`EventFilter::ProtectedByTwoOrMoreIce`). Read off the table
+    /// as the run is initiated (CR 6.9.1); the event names only the server.
+    /// `None` for every other moment.
+    pub guarded: Option<bool>,
 }
 
 /// A card that may hear a moment.
@@ -161,7 +169,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None, guarded: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -172,7 +180,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None, guarded: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -289,7 +297,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::BasicCreditActionTaken { side } => vec![moment(Trigger::OnBasicCreditAction, &About::Nothing, Some(*side))],
         GameEvent::MandatoryDrawMade { side } => vec![moment(Trigger::OnMandatoryDraw, &About::Nothing, Some(*side))],
 
-        GameEvent::RunInitiated { server } => vec![moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner))],
+        GameEvent::RunInitiated { server } => {
+            let guarded = crate::rules::engine::ice_protecting(state, *server) >= 2;
+            vec![Moment { guarded: Some(guarded), ..moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner)) }]
+        }
         GameEvent::IceApproached { server, .. } => vec![moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner))],
         GameEvent::ServerApproached { server } => vec![moment(Trigger::OnApproachServer, &About::Server(*server), Some(Side::Runner))],
         GameEvent::IceEncountered { card_id, .. } => {
@@ -787,6 +798,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::NotInArchives = filter {
         return moment.in_archives == Some(false);
+    }
+    if let EventFilter::ProtectedByTwoOrMoreIce = filter {
+        return moment.guarded == Some(true);
     }
     let listening = install;
     match (filter, &moment.about) {
