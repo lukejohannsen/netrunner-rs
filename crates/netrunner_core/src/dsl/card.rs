@@ -1380,6 +1380,21 @@ impl CardDefinition {
         self.recurring_credits.is_some() && self.counter_kind.is_some_and(|kind| kind != CounterKind::Credit)
     }
 
+    /// Whether this operation becomes a condition counter as it resolves —
+    /// its subtype says so (Eavesdrop's Condition), or its text hosts it
+    /// as one (`Effect::HostThisAsCondition`): Rover Algorithm prints "as a
+    /// hosted condition counter" with no subtype at all, and was trashed
+    /// before its choice of host resolved.
+    pub fn becomes_a_condition(&self) -> bool {
+        let mut hosts = false;
+        for trigger in &self.triggers {
+            for effect in &trigger.effects {
+                effect.for_each_effect(&mut |effect| hosts |= matches!(effect, crate::dsl::Effect::HostThisAsCondition { .. }));
+            }
+        }
+        hosts || self.subtypes.contains(&crate::dsl::CardSubtype::Condition)
+    }
+
     /// Which printed ability the paid ability at `index` is, for its use
     /// limit (`OncePerTurnKey::ability`): its own index, or the earlier
     /// entry it is `part_of`.
@@ -1449,7 +1464,7 @@ impl CardDefinition {
             // Only a card that is hosted has a host to be about: one that
             // installs on ice, or a condition, which is hosted as it
             // becomes a counter (CR 1.13.6d).
-            EventFilter::Host => about == TriggerAbout::Card && (self.installs_on_ice || self.subtypes.contains(&CardSubtype::Condition)),
+            EventFilter::Host => about == TriggerAbout::Card && (self.installs_on_ice || self.becomes_a_condition()),
             // Only a Corp install's moment says where the card came
             // from (`listeners::Moment::from_hq`).
             EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
@@ -1964,7 +1979,9 @@ impl CardDefinition {
         // target and the number is never added.
         for effect in &self.continuous {
             let misfit = |kind, why| Err(CardValidationError::ContinuousEffectDoesNotFit(self.id.clone(), kind, why));
-            let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource);
+            // A Runner's installed card can be hosted on another, and a
+            // condition counter is hosted on its install (Rover Algorithm).
+            let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource) || self.becomes_a_condition();
             let played = matches!(self.card_type, CardType::Event | CardType::Operation);
             if !matches!(self.card_type, CardType::Ice(_)) && effect.condition.as_ref().is_some_and(says_protecting_remote) {
                 return misfit("Protecting", "only a piece of ice protects a server");
@@ -1981,7 +1998,7 @@ impl CardDefinition {
                 return misfit("AgendaPoints", "what an agenda is worth cannot read the threat level, which is a score: the sum of what agendas are worth");
             }
             match (&effect.kind, &effect.applies_to) {
-                (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
+                (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card or a condition counter is hosted on another"),
                 (_, Scope::Hosted) if !matches!(self.card_type, CardType::Ice(_)) && !self.continuous.iter().any(|effect| effect.kind == ContinuousKind::MayHost) => {
                     return misfit("Hosted", "only a piece of ice, or a card that may host, says what becomes of the cards hosted on it");
                 }

@@ -142,7 +142,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mandatory_seed_replacement", "Mandatory Seed Replacement"),
     ("transparency_initiative", "Transparency Initiative"),
-    ("rover_algorithm", "Rover Algorithm"),
 ];
 
 /// *Crimson Dust* (`crimson_dust`): tranche F4 of the FFG plan.

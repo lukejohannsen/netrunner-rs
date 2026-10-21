@@ -1828,7 +1828,7 @@ pub(crate) fn play_operation_card(
         // A current stays in the play area, active, until another is
         // played or an agenda is stolen (`rules::current`).
         crate::rules::current::file(next, registry, &mut events, side, card_id.clone())?;
-    } else if card_def.not_trashed_until_your_next_turn || card_def.subtypes.contains(&crate::dsl::CardSubtype::Condition) {
+    } else if card_def.not_trashed_until_your_next_turn || card_def.becomes_a_condition() {
         // A lockdown stays in the play area, active, and is heard there:
         // its own `OnPlay` resolves as the copy with this handle
         // (`listeners::moments` pins the play to it), so a choice it makes
