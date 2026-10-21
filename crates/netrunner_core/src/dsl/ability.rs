@@ -392,6 +392,12 @@ pub enum EffectRequirement {
     /// Composition didn't work: `SubroutineResolvedThisRun` is the other
     /// fate of a subroutine, and the turn log counts breaks by the turn.
     SubroutineBrokenThisRun,
+    /// The Runner has lost [click] to break a subroutine during the active
+    /// run (`RunState::click_lost_to_break`) — Zed 2.0's last subroutine.
+    /// Composition didn't work: `SubroutineBrokenThisRun` is true of a
+    /// breaker's break as well, and what paid for a break is the run's to
+    /// remember.
+    ClickLostToBreakThisRun,
     /// The Runner is encountering a piece of ice and has already broken a
     /// subroutine during this encounter — Poison Vial's "Use this ability
     /// only if you have already broken a subroutine during this encounter".

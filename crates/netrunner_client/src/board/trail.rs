@@ -528,6 +528,7 @@ mod tests {
             fully_broken: false,
             ice_derezzed: false,
             subroutine_broken: false,
+            click_lost_to_break: false,
             reached_success_phase: false,
             breached: None,
             breaches_after: Vec::new(),

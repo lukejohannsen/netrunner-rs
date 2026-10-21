@@ -200,6 +200,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         redirect_at_success: _,  // engine's: when the redirect above is taken; the HUD's line names where the run goes, and the log's "redirected" line says when it went
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
         ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
+        click_lost_to_break: _, // engine's: the clicks lost and the breaks are each a line of the log, and Zed 2.0's damage is a subroutine the person watches fire
         subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not
         reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
         breaches_after: _, // engine's: the breaches Divide and Conquer still owes this run; each is the log's "the Runner breached HQ" as it begins, and every access prompt names its server

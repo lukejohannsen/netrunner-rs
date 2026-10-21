@@ -766,6 +766,14 @@ pub struct RunState {
     /// run is a new `RunState`, so nothing clears it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub subroutine_broken: bool,
+    /// Whether the Runner has lost [click] to break a subroutine during
+    /// this run — Zed 2.0's "If the Runner has lost [click] to break a
+    /// subroutine during this run" (`EffectRequirement::ClickLostToBreakThisRun`).
+    /// Set by `engine::activate_ability` when an ability whose cost is
+    /// `Cost::LoseClicks` broke a subroutine; `subroutine_broken` cannot
+    /// say it, because a breaker's break is one too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub click_lost_to_break: bool,
     /// Whether the run reached the success phase (CR 6.9.5) — set as the
     /// Runner completes the run past the approach to the server, whether
     /// or not it is then declared successful. A run that did not, against
@@ -977,6 +985,7 @@ impl Default for RunState {
             subroutine_resolved: false,
             ice_derezzed: false,
             subroutine_broken: false,
+            click_lost_to_break: false,
             reached_success_phase: false,
             breached: None,
             breaches_after: Vec::new(),

@@ -40555,3 +40555,63 @@ mod red_sand_stage_30 {
         assert_eq!(run_rnd_trashing(2).active_run.as_ref().map(|run| run.additional_rd_access), Some(1));
     }
 }
+
+mod red_sand_stage_31 {
+    use super::reprints::{encounter, ice_at_hq, runner_turn};
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn lose_two_clicks(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, "zed_2_0"), ability_index: 0 }).expect("lose [click][click]: break up to 2 subroutines")
+    }
+
+    fn zed_at_hq() -> GameState {
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![ice_at_hq("zed_2_0")];
+        state
+    }
+
+    #[test]
+    fn zed_lets_the_runner_lose_two_clicks_to_break_two_subroutines_and_remembers_it_for_the_run() {
+        let registry = registry();
+        let at_ice = encounter(&zed_at_hq(), &registry);
+        assert!(!at_ice.active_run.as_ref().expect("a run").click_lost_to_break);
+        let (broken, events) = lose_two_clicks(&at_ice, &registry);
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::SubroutineBroken { .. })).count(), 2, "{events:?}");
+        assert_eq!(broken.runner.resources.clicks, Clicks(at_ice.runner.resources.clicks.0 - 2));
+        assert!(broken.active_run.as_ref().expect("a run").click_lost_to_break);
+    }
+
+    #[test]
+    fn zed_does_two_core_damage_once_a_click_was_lost_to_break_a_subroutine() {
+        let registry = registry();
+        let at_ice = encounter(&zed_at_hq(), &registry);
+        let (broken, _) = lose_two_clicks(&at_ice, &registry);
+        let (fired, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (fired, _) = apply_action(&fired, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes: the last subroutine fires");
+        let (fired, _) = close_all_windows(fired, &registry);
+        assert_eq!(fired.runner.brain_damage, 2, "a click was lost to break");
+    }
+
+    #[test]
+    fn zed_does_no_core_damage_when_nothing_was_broken_by_a_lost_click() {
+        let registry = registry();
+        let at_ice = encounter(&zed_at_hq(), &registry);
+        let mut unbroken = at_ice.clone();
+        // The subroutine alone, as it would fire after a breaker's break.
+        let sub = registry.get(&id("zed_2_0")).expect("Zed 2.0").subroutines[2].effect.clone();
+        let zed = id("zed_2_0");
+        let mut ctx = crate::rules::ResolutionContext::for_install(install_of(&at_ice, "zed_2_0"), &zed);
+        crate::rules::evaluate_effect(&mut unbroken, &sub, &mut ctx, &registry).expect("resolves");
+        assert_eq!(unbroken.runner.brain_damage, 0);
+        unbroken.active_run.as_mut().expect("a run").subroutine_broken = true;
+        crate::rules::evaluate_effect(&mut unbroken, &sub, &mut ctx, &registry).expect("resolves");
+        assert_eq!(unbroken.runner.brain_damage, 0, "a break that cost no click is not one");
+    }
+}

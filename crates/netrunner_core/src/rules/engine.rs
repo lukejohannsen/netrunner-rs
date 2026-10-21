@@ -2845,7 +2845,16 @@ fn activate_ability(
         .cloned()
         .collect();
     let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, paid_with, ..ability_ctx(is_identity, target, &card_id) };
-    events.extend(ability::evaluate_effect(&mut next, &effect, &mut effect_ctx, registry)?);
+    let resolved = ability::evaluate_effect(&mut next, &effect, &mut effect_ctx, registry)?;
+    // A break paid for by losing [click] (Eli 1.0's, Zed 2.0's own), which
+    // Zed 2.0's last subroutine asks of the run.
+    if matches!(ability.cost, Some(Cost::LoseClicks(_)))
+        && resolved.iter().any(|event| matches!(event, GameEvent::SubroutineBroken { .. }))
+        && let Some(run) = next.active_run.as_mut()
+    {
+        run.click_lost_to_break = true;
+    }
+    events.extend(resolved);
     // What the effect left set aside is trashed (CR 9.5.5, at the next
     // checkpoint): only a rig card hosts cards, and only its owner's.
     for card in std::mem::take(&mut effect_ctx.set_aside) {
