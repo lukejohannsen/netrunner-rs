@@ -149,7 +149,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("salvaged_vanadis_armory", "Salvaged Vanadis Armory"),
     ("dianas_hunt", "Diana's Hunt"),
-    ("dummy_box", "Dummy Box"),
     ("sand_storm", "Sand Storm"),
 ];
 

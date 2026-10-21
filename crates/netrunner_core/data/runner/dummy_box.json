@@ -1,0 +1,72 @@
+{
+  "id": "dummy_box",
+  "title": "Dummy Box",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Trash 1 card from your grip: Prevent the Corp from trashing 1 installed card of the same type. — a program",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": {
+            "CardType": "Program"
+          },
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Program"
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Trash 1 card from your grip: Prevent the Corp from trashing 1 installed card of the same type. — a piece of hardware",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": {
+            "CardType": "Hardware"
+          },
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Hardware"
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Trash 1 card from your grip: Prevent the Corp from trashing 1 installed card of the same type. — a resource",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": {
+            "CardType": "Resource"
+          },
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardType": "Resource"
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12108,
+  "is_playable": true
+}
