@@ -118,7 +118,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
-    ("customized_secretary", "Customized Secretary"),
     ("mca_informant", "MCA Informant"),
 ];
 

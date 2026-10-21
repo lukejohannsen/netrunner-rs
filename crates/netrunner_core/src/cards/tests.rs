@@ -40615,3 +40615,77 @@ mod red_sand_stage_31 {
         assert_eq!(unbroken.runner.brain_damage, 0, "a break that cost no click is not one");
     }
 }
+
+mod red_sand_stage_32 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Customized Secretary installed over a stack whose top five hold two
+    /// programs, and a sixth program below them.
+    fn installed() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("customized_secretary")];
+        // The top of the stack is the end of the `Vec`.
+        state.runner.stack = vec![id("corroder"), id("sure_gamble"), id("cleaver"), id("sure_gamble"), id("sure_gamble"), id("gordian_blade")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("customized_secretary"), trash_first: false, host: None }).expect("install");
+        (state, registry)
+    }
+
+    fn secretary(state: &GameState) -> &crate::rules::InstalledRunnerCard {
+        state.runner.rig.iter().find(|card| card.card == id("customized_secretary")).expect("installed")
+    }
+
+    #[test]
+    fn customized_secretary_hosts_revealed_programs_from_the_top_five_and_shuffles_the_stack() {
+        let (state, registry) = installed();
+        let offered = toggles(&state, &registry);
+        assert_eq!(offered.len(), 2, "the two programs among the top five, not Corroder below them: {offered:?}");
+        let mut state = state;
+        for position in offered {
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("toggle").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("host them");
+        let mut hosted = secretary(&state).hosted_cards.clone();
+        hosted.sort();
+        assert_eq!(hosted, vec![id("cleaver"), id("gordian_blade")]);
+        assert_eq!(state.runner.stack.len(), 4);
+        assert!(state.runner.stack.contains(&id("corroder")));
+    }
+
+    #[test]
+    fn customized_secretary_installs_a_hosted_program_for_a_click_paying_its_cost() {
+        let (state, registry) = installed();
+        let mut state = state;
+        for position in toggles(&state, &registry) {
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("toggle").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("host them");
+        let (clicks, credits) = (state.runner.resources.clicks.0, state.runner.resources.credits.0);
+        let target = secretary(&state).install_id;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).expect("[click]: install a hosted program");
+        let gordian = secretary(&state).hosted_cards.iter().position(|card| *card == id("gordian_blade")).expect("hosted");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: gordian }).expect("Gordian Blade");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("install it, paying");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("gordian_blade")));
+        assert_eq!(secretary(&state).hosted_cards, vec![id("cleaver")]);
+        assert_eq!(state.runner.resources.clicks.0, clicks - 1);
+        assert_eq!(state.runner.resources.credits.0, credits - 4, "Gordian Blade costs 4");
+    }
+}
