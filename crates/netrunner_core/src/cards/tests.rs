@@ -40800,3 +40800,61 @@ mod red_sand_stage_34 {
         assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("rover_algorithm") }));
     }
 }
+
+mod red_sand_stage_35 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Two rezzed Ice Walls on HQ and Keros Mcintyre in the rig, on the
+    /// Runner's turn.
+    fn two_rezzed_walls() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("keros_mcintyre"), install_id: InstallId(2001), ..Default::default() }];
+        let wall = |install: u32| crate::rules::InstalledCard { install_id: InstallId(install), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() };
+        state.corp.installed = vec![wall(1001), wall(1002)];
+        (state, registry)
+    }
+
+    /// `by`'s card's "derez a rezzed piece of ice", answered with the first
+    /// one still rezzed, carried through to a settled state.
+    fn derez_one(state: &GameState, registry: &CardRegistry, by: &str, side: Side) -> GameState {
+        let mut state = state.clone();
+        let source = if side == Side::Runner { "OpponentInstalled" } else { "OwnInstalled" };
+        let derez: crate::dsl::Effect = serde_json::from_value(serde_json::json!({"PromptChooseCards": {
+            "side": side, "source": source, "filter": {"All": ["Ice", "Rezzed"]}, "min": 1, "max": 1,
+            "reveal": false, "shuffle_after": false, "then": {"DerezCard": "ThisCard"}
+        }})).expect("an effect");
+        let card = id(by);
+        crate::rules::evaluate_effect(&mut state, &derez, &mut crate::rules::ResolutionContext::for_card(Some(&card)), registry).expect("asked which");
+        let position = state.corp.installed.iter().position(|ice| ice.rezzed).expect("a rezzed wall");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("the first rezzed wall");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("derez it");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn keros_mcintyre_pays_for_the_first_piece_of_ice_the_runner_derezzes_each_turn() {
+        let (state, registry) = two_rezzed_walls();
+        let before = state.runner.resources.credits;
+        let once = derez_one(&state, &registry, "emergency_shutdown", Side::Runner);
+        assert_eq!(once.corp.installed.iter().filter(|ice| ice.rezzed).count(), 1);
+        assert_eq!(once.runner.resources.credits.0, before.0 + 2, "the first derez pays 2");
+        let twice = derez_one(&once, &registry, "emergency_shutdown", Side::Runner);
+        assert!(twice.corp.installed.iter().all(|ice| !ice.rezzed));
+        assert_eq!(twice.runner.resources.credits.0, before.0 + 2, "the second pays nothing");
+    }
+
+    #[test]
+    fn keros_mcintyre_ignores_the_corp_derezzing_its_own_ice() {
+        let (state, registry) = two_rezzed_walls();
+        let before = state.runner.resources.credits;
+        let derezzed = derez_one(&state, &registry, "hedge_fund", Side::Corp);
+        assert_eq!(derezzed.corp.installed.iter().filter(|ice| ice.rezzed).count(), 1);
+        assert_eq!(derezzed.runner.resources.credits, before, "only a derez by the Runner");
+    }
+}

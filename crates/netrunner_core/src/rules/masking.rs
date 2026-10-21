@@ -1041,8 +1041,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // for them; a spectator's view does not, and for them the identity
         // is struck. The handle is what lets it still say which install
         // flipped.
-        GameEvent::CardDerezzed { install, card: Some(card) } if concealed(card) => {
-            Some(GameEvent::CardDerezzed { install: *install, card: None })
+        GameEvent::CardDerezzed { install, card: Some(card), by } if concealed(card) => {
+            Some(GameEvent::CardDerezzed { install: *install, card: None, by: *by })
         }
         GameEvent::CardDerezzed { .. } => visible(),
         // **Dropped whole, and deliberately not given a handle.** Every
@@ -2736,15 +2736,15 @@ mod tests {
         // Tranquilizer derezzed it. The Runner saw the card while it was
         // rezzed, but the view conceals it now and the log follows the
         // view; the handle is what survives.
-        let derezzed = GameEvent::CardDerezzed { install: InstallId(1069), card: Some(id("ice_wall")) };
+        let derezzed = GameEvent::CardDerezzed { install: InstallId(1069), card: Some(id("ice_wall")), by: None };
         assert_eq!(
             mask_event_for_player(&derezzed, &state, Side::Runner),
-            Some(GameEvent::CardDerezzed { install: InstallId(1069), card: None })
+            Some(GameEvent::CardDerezzed { install: InstallId(1069), card: None, by: None })
         );
         assert_eq!(mask_event_for_player(&derezzed, &state, Side::Corp), Some(derezzed.clone()));
 
         // A rezzed install is nameable, so nothing is struck.
-        let rezzed = GameEvent::CardDerezzed { install: InstallId(1070), card: Some(id("enigma")) };
+        let rezzed = GameEvent::CardDerezzed { install: InstallId(1070), card: Some(id("enigma")), by: None };
         assert_eq!(mask_event_for_player(&rezzed, &state, Side::Runner), Some(rezzed.clone()));
     }
 

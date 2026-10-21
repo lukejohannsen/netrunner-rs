@@ -1275,7 +1275,7 @@ impl Trigger {
     /// about the game carry a player (a run is the Runner's) that no card
     /// asks for, and a `Whose` on one would read as a restriction it is not.
     pub fn states_whose(self) -> bool {
-        self.hears() == Hears::OwnSide || matches!(self, Trigger::OnTagRemoved | Trigger::OnBasicCreditAction | Trigger::OnBasicDrawAction)
+        self.hears() == Hears::OwnSide || matches!(self, Trigger::OnTagRemoved | Trigger::OnBasicCreditAction | Trigger::OnBasicDrawAction | Trigger::OnDerez)
     }
 
     /// Whose moment this trigger hears. Read off how the pool's cards print
