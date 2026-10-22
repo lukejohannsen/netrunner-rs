@@ -1,0 +1,112 @@
+{
+  "id": "beth_kilrain_chang",
+  "title": "Beth Kilrain-Chang",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "AmountAtLeast": [
+                    {
+                      "Credits": "Corp"
+                    },
+                    5
+                  ]
+                },
+                {
+                  "Not": {
+                    "AmountAtLeast": [
+                      {
+                        "Credits": "Corp"
+                      },
+                      10
+                    ]
+                  }
+                }
+              ]
+            },
+            "effect": {
+              "GainCredits": [
+                "Runner",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If the Corp has 5-9[credit] when your turn begins, gain 1[credit]."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "AmountAtLeast": [
+                    {
+                      "Credits": "Corp"
+                    },
+                    10
+                  ]
+                },
+                {
+                  "Not": {
+                    "AmountAtLeast": [
+                      {
+                        "Credits": "Corp"
+                      },
+                      15
+                    ]
+                  }
+                }
+              ]
+            },
+            "effect": {
+              "DrawCards": [
+                "Runner",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If the Corp has 10-14[credit] when your turn begins, draw 1 card."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "Credits": "Corp"
+                },
+                15
+              ]
+            },
+            "effect": {
+              "GainClicks": [
+                "Runner",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "If the Corp has at least 15[credit] when your turn begins, gain [click]."
+    }
+  ],
+  "built_from": 11030,
+  "is_playable": true
+}

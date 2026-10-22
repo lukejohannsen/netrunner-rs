@@ -1,0 +1,29 @@
+{
+  "id": "process_automation",
+  "title": "Process Automation",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 13023,
+  "is_playable": true
+}

@@ -1,0 +1,57 @@
+{
+  "id": "aaron_marron",
+  "title": "Aaron Marrón",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, place 2 power counters on Aaron Marrón."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, place 2 power counters on Aaron Marrón."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveTags": {
+              "Fixed": 1
+            }
+          },
+          {
+            "DrawCards": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      },
+      "text": "Hosted power counter: Remove 1 tag and draw 1 card."
+    }
+  ],
+  "built_from": 11106,
+  "is_playable": true
+}

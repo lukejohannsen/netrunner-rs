@@ -1,0 +1,67 @@
+{
+  "id": "temujin_contract",
+  "title": "Temüjin Contract",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "unique": true,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseServer": {}
+        },
+        {
+          "AddCounters": 20
+        }
+      ],
+      "text": "Choose a server and place 20[credit] from the bank on Temüjin Contract when you install it."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": "ChosenServer",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "Reduced": {
+                "amount": "HostedCounters",
+                "by": {
+                  "Reduced": {
+                    "amount": "HostedCounters",
+                    "by": {
+                      "Fixed": 4
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "RemoveCounters": {
+            "Fixed": 4
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on the chosen server, take 4[credit] from Temüjin Contract."
+    }
+  ],
+  "built_from": 11026,
+  "is_playable": true
+}
