@@ -116,7 +116,10 @@ mod tests {
                     asked += 1;
                     let written = serde_json::to_string(&then.as_ref().clone().with_chosen_number(7)).expect("an effect serializes");
                     assert!(!written.contains("ChosenNumber"), "{:?} — the number never reaches part of its `then`: {written}", card.id);
-                    assert!(written.contains("{\"Fixed\":7}"), "{:?} asks for a number and never reads it: {written}", card.id);
+                    // A count written as a bare number (`Effect::Access`'s) is
+                    // read when a different number writes a different effect.
+                    let other = serde_json::to_string(&then.as_ref().clone().with_chosen_number(8)).expect("an effect serializes");
+                    assert!(written != other, "{:?} asks for a number and never reads it: {written}", card.id);
                 });
             }
         }

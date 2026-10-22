@@ -1563,6 +1563,13 @@ fn resume_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Game
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     match run.phase {
         RunPhase::Initiation => Ok(paid_ability::open_window_if_at_checkpoint(state, registry).into_iter().collect()),
+        // A replaced breach whose replacement parked and has resolved
+        // without accessing (`RunState::replacement_parked`): the run
+        // ends, as it would have had nothing parked.
+        RunPhase::Success if run.replacement_parked => {
+            run::end_run(state);
+            Ok(Vec::new())
+        }
         // A breach whose beginning parked something waits here too, a
         // breach with no run included (`run::access::access_server`).
         RunPhase::Success if run.declared_successful || run.breached.is_some() => run::breach(state, registry),

@@ -1775,7 +1775,11 @@ pub enum Effect {
     Access {
         from: crate::dsl::CardZoneRef,
         filter: crate::dsl::CardFilter,
-        count: u32,
+        /// An amount for Counter Surveillance's "choose a number less than
+        /// or equal to X. Access that many cards" (`ChosenNumber`, written
+        /// in); a printed number is written as one (`number_or_amount`).
+        #[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")]
+        count: Amount,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
     },
@@ -3665,6 +3669,7 @@ impl Effect {
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::GiveBadPublicity(a) => Effect::GiveBadPublicity(amount(a)),
             Effect::RemoveBadPublicity(a) => Effect::RemoveBadPublicity(amount(a)),
+            Effect::Access { from, filter, count, then } => Effect::Access { from, filter, count: amount(count), then: then.map(boxed) },
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },

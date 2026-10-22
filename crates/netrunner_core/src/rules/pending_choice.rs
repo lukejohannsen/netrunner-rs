@@ -145,7 +145,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         },
         // Moved whole by `Effect::ShuffleIntoDeck`, never chosen from; and
         // a place to put cards, never to take them from.
-        CardZoneRef::RootOfAttackedServer | CardZoneRef::BottomOfOwnDeck => Vec::new(),
+        CardZoneRef::RootOfAttackedServer | CardZoneRef::AttackedServer | CardZoneRef::BottomOfOwnDeck => Vec::new(),
     }
 }
 
@@ -735,7 +735,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
         // Counted, never chosen from: a played operation is no list of
         // card ids (`PlayedOperation`).
-        CardZoneRef::PlayArea | CardZoneRef::RootOfAttackedServer => None,
+        CardZoneRef::PlayArea | CardZoneRef::RootOfAttackedServer | CardZoneRef::AttackedServer => None,
         CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => match owner {
             Side::Corp => Some(&mut state.corp.removed_from_game),
             Side::Runner => Some(&mut state.runner.removed_from_game),

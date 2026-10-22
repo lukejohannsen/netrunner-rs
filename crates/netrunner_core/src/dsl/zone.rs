@@ -106,6 +106,13 @@ pub enum CardZoneRef {
     /// and nothing outside a run. `CardTarget::AttackedServerRoot` says
     /// the same cards for a trash; a deck is a zone, so here it is one.
     RootOfAttackedServer,
+    /// The cards in and in the root of the attacked server — Counter
+    /// Surveillance's "access that many cards in and/or in the root of the
+    /// attacked server", a source for `Effect::Access` only: its candidates
+    /// are a breach's of that server (HQ and R&D whole, with no random
+    /// access limit, Archives turned faceup, every root), and the accesses
+    /// end once the number given has been chosen (CR 7.1.10).
+    AttackedServer,
     /// The opposing side's score area — the Runner's, when the chooser is
     /// the Corp (IP Enforcement's "install 1 agenda from the Runner's
     /// score area"). A source only: nothing puts a card *into* an
@@ -164,6 +171,7 @@ impl CardZoneRef {
             | CardZoneRef::OpponentRemovedFromGame
             | CardZoneRef::OwnRemovedFromGame
             | CardZoneRef::RootOfAttackedServer
+            | CardZoneRef::AttackedServer
             | CardZoneRef::PlayArea => false,
         }
     }
@@ -191,7 +199,8 @@ impl CardZoneRef {
             | CardZoneRef::OwnScoreArea
             | CardZoneRef::OpponentRemovedFromGame
             | CardZoneRef::OwnRemovedFromGame
-            | CardZoneRef::RootOfAttackedServer => TrashedFrom::Elsewhere,
+            | CardZoneRef::RootOfAttackedServer
+            | CardZoneRef::AttackedServer => TrashedFrom::Elsewhere,
             CardZoneRef::PlayArea => TrashedFrom::PlayArea,
         }
     }

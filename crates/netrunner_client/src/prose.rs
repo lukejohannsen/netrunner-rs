@@ -185,6 +185,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OpponentRemovedFromGame | CardZoneRef::OwnRemovedFromGame => "out of the game",
         CardZoneRef::PlayArea => "the play area",
         CardZoneRef::RootOfAttackedServer => "the root of the attacked server",
+        CardZoneRef::AttackedServer => "the attacked server",
     }
 }
 
@@ -534,7 +535,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 CardFilter::Any => String::new(),
                 filter => format!(" ({})", humanize(format!("{filter:?}")).to_lowercase()),
             };
-            let access = format!("access {count} of {}{which}, not as a breach", describe_zone(from));
+            let access = format!("access {} of {}{which}, not as a breach", describe_amount(count), describe_zone(from));
             match then {
                 Some(then) => format!("{access}, then {}", describe_effect(then, registry)),
                 None => access,
