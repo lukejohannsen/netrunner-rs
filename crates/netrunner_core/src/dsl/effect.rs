@@ -1476,6 +1476,22 @@ pub enum Effect {
     /// hosting none. Composition didn't work: nothing turned a hosted card
     /// over.
     TurnHostedFaceup,
+    /// The prompting piece of ice gains, for the remainder of the run, the
+    /// ice types of the acting one — the ice a selection's `then` resolves
+    /// as — and its printed subroutines, in order, before its other
+    /// subroutines: Loki's "choose another rezzed piece of ice. For the
+    /// remainder of this run, this ice gains the subtypes of the chosen ice
+    /// and gains the subroutines of that ice in order before its other
+    /// subroutines". The types are `Lingering::GainSubtype` until the run
+    /// ends; the subroutines go on the run (`RunState::gained_for_the_run`)
+    /// for every encounter with it to come, and into the encounter in
+    /// progress if it is the prompting ice's. **Not modelled:** a subtype
+    /// that is not an ice type (bioroid, AP, tracer), which nothing in
+    /// the engine lets ice gain, and a subroutine the chosen ice has gained
+    /// rather than printed. Composition didn't work: `GainSubroutine` and
+    /// `GainIceSubtype` write what the card file names, and these are
+    /// read off another card as the choice is made.
+    CopiedByPromptingIce,
     /// The acting install — a piece of ice, reached through
     /// `TriggeredEffect::acts_on_subject` — gains `subroutine`, before or
     /// after its other subroutines, for `duration`:
@@ -4028,6 +4044,7 @@ impl Effect {
             | Effect::WinTheGame
             | Effect::TurnHostedFaceup
             | Effect::GainSubroutine { .. }
+            | Effect::CopiedByPromptingIce
             | Effect::GainIceSubtype { .. }
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }

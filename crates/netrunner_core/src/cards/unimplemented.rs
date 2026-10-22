@@ -123,7 +123,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.
 pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("loki", "Loki"),
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.

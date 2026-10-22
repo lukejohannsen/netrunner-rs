@@ -42038,3 +42038,92 @@ mod red_sand_stage_51 {
         assert!(matches!(steps[1], crate::dsl::Effect::PromptChooseCards { .. }), "then a card from HQ");
     }
 }
+
+mod red_sand_stage_52 {
+    use super::*;
+    use crate::rules::{InstalledCard, RunPhase};
+
+    const LOKI: InstallId = InstallId(9200);
+    const WALL: InstallId = InstallId(9201);
+    const UNREZZED: InstallId = InstallId(9202);
+
+    fn ice(install: InstallId, card: &str, server: ServerId, rezzed: bool) -> InstalledCard {
+        InstalledCard { install_id: install, card: CardId(card.to_string()), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// A run on HQ that has just begun to encounter a rezzed Loki, with a
+    /// rezzed Ice Wall on R&D and an unrezzed Enigma on Archives.
+    fn encountering_loki() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 2];
+        state.runner.stack = vec![CardId("diesel".to_string()); 3];
+        state.corp.installed.push(ice(LOKI, "loki", ServerId::Hq, true));
+        state.corp.installed.push(ice(WALL, "ice_wall", ServerId::RnD, true));
+        state.corp.installed.push(ice(UNREZZED, "enigma", ServerId::Archives, false));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (mut state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("to the ice");
+        while state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce) {
+            let side = state.paid_ability_window.as_ref().expect("the approach's window").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        (state, registry)
+    }
+
+    fn choose_the_only_candidate(state: &GameState, registry: &CardRegistry) -> GameState {
+        let toggles: Vec<PlayerAction> = crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        assert_eq!(toggles.len(), 1, "only the other rezzed ice: {toggles:?}");
+        let (state, _) = apply_action(state, registry, toggles[0].clone()).expect("toggle");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn texts(state: &GameState) -> Vec<String> {
+        let run = state.active_run.as_ref().expect("run");
+        run.ice[run.position].subroutines.iter().map(|sub| sub.definition.text.clone()).collect()
+    }
+
+    #[test]
+    fn loki_takes_on_the_chosen_ices_subroutines_before_its_own() {
+        let (state, registry) = encountering_loki();
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(RunPhase::EncounterIce));
+        let state = choose_the_only_candidate(&state, &registry);
+        assert_eq!(texts(&state), vec!["End the run.".to_string(), "End the run unless the Runner shuffles all cards from the grip into the stack.".to_string()]);
+        let run = state.active_run.as_ref().expect("run");
+        assert!(crate::rules::continuous::ice_types(&state, &registry, &run.ice[run.position]).contains(&crate::dsl::IceType::Barrier), "and its subtype");
+    }
+
+    #[test]
+    fn what_loki_took_lasts_the_run() {
+        let (state, registry) = encountering_loki();
+        let state = choose_the_only_candidate(&state, &registry);
+        let run = state.active_run.as_ref().expect("run");
+        assert_eq!(run.gained_for_the_run.iter().filter(|gained| gained.ice == LOKI).count(), 1, "kept for the next encounter with it");
+        let mut ended = state.clone();
+        ended.active_run = None;
+        assert!(!crate::rules::continuous::ice_gains_subtype(&ended, &registry, LOKI, crate::dsl::IceType::Barrier), "until the run ends");
+    }
+
+    #[test]
+    fn lokis_subroutine_ends_the_run_unless_the_grip_is_shuffled_in() {
+        let (state, registry) = encountering_loki();
+        let mut state = choose_the_only_candidate(&state, &registry);
+        {
+            let run = state.active_run.as_mut().expect("run");
+            let position = run.position;
+            run.ice[position].subroutines[0].status = crate::rules::SubroutineStatus::Broken;
+        }
+        while state.pending_decision.is_none() {
+            let side = state.paid_ability_window.as_ref().expect("the encounter's window").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("shuffle the grip in");
+        assert!(state.runner.grip.is_empty());
+        assert_eq!(state.runner.stack.len(), 5);
+        assert!(state.active_run.is_some(), "the run goes on");
+    }
+}
