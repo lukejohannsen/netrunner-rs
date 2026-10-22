@@ -1,0 +1,76 @@
+{
+  "id": "data_ward",
+  "title": "Data Ward",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 6,
+  "strength": 8,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 3
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            },
+            "text": "they take 1 tag unless they pay 3[credit]"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, they take 1 tag unless they pay 3[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 11075,
+  "is_playable": true
+}

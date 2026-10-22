@@ -1,0 +1,103 @@
+{
+  "id": "bulwark",
+  "title": "Bulwark",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 10,
+  "strength": 8,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, take 1 bad publicity."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "RunnerInstalls": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "AI"
+                }
+              ]
+            }
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "When the Runner encounters this ice, if there is an installed AI program, gain 2[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner trashes 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap"
+        }
+      }
+    },
+    {
+      "text": "Gain 2[credit]. End the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          "EndTheRun"
+        ]
+      }
+    },
+    {
+      "text": "Gain 2[credit]. End the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          "EndTheRun"
+        ]
+      }
+    }
+  ],
+  "built_from": 11078,
+  "is_playable": true
+}

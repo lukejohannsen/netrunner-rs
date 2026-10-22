@@ -1,0 +1,108 @@
+{
+  "id": "fairchild_3_0",
+  "title": "Fairchild 3.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 5,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 3
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 3
+          }
+        }
+      },
+      "text": "Lose [click][click][click]: Break up to 3 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner must pay 3[credit] or trash 1 of their installed cards.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnInstalled",
+              "filter": "Any",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap"
+            }
+          },
+          "text": "The Runner must pay 3[credit] or trash 1 of their installed cards"
+        }
+      }
+    },
+    {
+      "text": "The Runner must pay 3[credit] or trash 1 of their installed cards.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnInstalled",
+              "filter": "Any",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap"
+            }
+          },
+          "text": "The Runner must pay 3[credit] or trash 1 of their installed cards"
+        }
+      }
+    },
+    {
+      "text": "Do 1 core damage or end the run.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            },
+            "EndTheRun"
+          ],
+          "texts": [
+            "Do 1 core damage",
+            "end the run"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 11049,
+  "is_playable": true
+}
