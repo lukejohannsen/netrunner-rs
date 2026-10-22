@@ -5233,7 +5233,7 @@ fn announcement_ends(event: &GameEvent, announced: &CardId) -> bool {
 /// (`Trigger::OnDerez`, Saci): an effect dispatches it, and a cost's payer
 /// does (`dispatch_cost_events`). `None` if nothing by that handle is
 /// installed.
-fn derez(state: &mut GameState, install: InstallId, by: Option<Side>) -> Option<GameEvent> {
+pub(crate) fn derez(state: &mut GameState, install: InstallId, by: Option<Side>) -> Option<GameEvent> {
     let installed = state.corp.installed.iter_mut().find(|c| c.install_id == install)?;
     installed.rezzed = false;
     let card = installed.card.clone();

@@ -3,7 +3,7 @@
   "name": "Zymurgy",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Red Sand Stage 47's deck for AgInfusion: New Miracles for a New World, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the unrezzed ice the Runner approaches and sends the run to another server's outermost ice. Eternal-legal only.",
+  "description": "Not a published list: Red Sand Stage 47's deck for AgInfusion: New Miracles for a New World, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the unrezzed ice the Runner approaches and sends the run to another server's outermost ice. Eternal-legal only. Red Sand Stage 51: two Mirāju for two Neural Katana, a code gate that sends a Runner who broke it to the outermost position of Archives instead of passing it; A Thousand Cuts keeps Neural Katana.",
   "style": [
     "traps"
   ],
@@ -54,7 +54,7 @@
       "count": 2
     },
     {
-      "card": "neural_katana",
+      "card": "miraju",
       "count": 2
     },
     {

@@ -388,6 +388,18 @@ pub enum ContinuousKind {
     /// (`Effect::HostThisAsCondition`). Composition didn't work: `MayHost`
     /// grants what a card could not otherwise host, and ice hosts anything.
     CannotHost,
+    /// When an encounter with this ice ends having had its printed
+    /// subroutine broken, the Runner moves to the outermost position of
+    /// this server instead of passing the ice, may jack out, and the ice
+    /// is derezzed — Mirāju's "Whenever an encounter with this ice ends,
+    /// if the Runner broke its printed subroutine, the Runner moves to the
+    /// outermost position of Archives instead of passing this ice. They may
+    /// jack out. Derez this ice." About `This`, a rezzed piece of ice,
+    /// asked by `run::engine::instead_of_passing` as the encounter ends.
+    /// Composition didn't work: a trigger on the encounter's end resolves
+    /// after the pass it would replace has happened, and a replacement is
+    /// the standing effect's to say before the pass (CR 6.1.3; 6.1.3e's example is this card).
+    InsteadOfPassing(crate::rules::ServerId),
     /// `by` cannot trash this card — Jarogniew Mercs's "The Corp cannot
     /// trash this resource while there is another resource installed" and
     /// Kessleroid's "The Runner cannot trash this ice (while it is

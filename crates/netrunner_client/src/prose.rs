@@ -1062,6 +1062,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::CannotBeBrokenUsing(subtype) => format!("its subroutines cannot be broken using {} programs", subtype.printed()),
         ContinuousKind::StrengthCannotBeLowered => "its strength cannot be lowered".to_string(),
         ContinuousKind::CannotHost => "cannot host cards".to_string(),
+        ContinuousKind::InsteadOfPassing(server) => format!("when an encounter ends with its printed subroutine broken, the Runner moves to the outermost position of {} instead of passing it, and it is derezzed", describe_server(*server)),
         ContinuousKind::CannotBeTrashedBy(by) => format!("the {} cannot trash it", match by {
             Side::Corp => "Corp",
             Side::Runner => "Runner",
