@@ -1,0 +1,65 @@
+{
+  "id": "transparency_initiative",
+  "title": "Transparency Initiative",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "CardType": "Agenda"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "CardType": "Agenda"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                "TurnFaceup",
+                {
+                  "HostThisAsCondition": {
+                    "condition": 0,
+                    "host": 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Turn an agenda faceup and install Transparency Initiative on that agenda as a hosted condition counter"
+    },
+    {
+      "trigger": "OnAdvance",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you advance host agenda, gain 1[credit]."
+    }
+  ],
+  "built_from": 12099,
+  "is_playable": true
+}

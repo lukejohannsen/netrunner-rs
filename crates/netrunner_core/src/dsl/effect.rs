@@ -2197,6 +2197,13 @@ pub enum Effect {
     /// install (`engine::install_into_rig`), which asks "install only if"
     /// and is heard as an install, and a selection's `destination` moves
     /// cards between zones the rig is not one of.
+    ///
+    /// **Resolved as one of the Corp's installed agendas** it is that
+    /// agenda turned faceup, with no rez and nothing paid — Transparency
+    /// Initiative's "Turn an agenda faceup", in the `then` of a selection
+    /// over `OwnInstalled` agendas. Written with the `rezzed` flag, as
+    /// BANGUN's faceup agendas are: faceup is what the flag records for
+    /// the view, and an agenda is never rezzed (CR 8.1.1).
     TurnFaceup,
 }
 

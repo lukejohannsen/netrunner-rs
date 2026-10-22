@@ -1847,6 +1847,17 @@ pub(crate) fn resolve_confirm_card_selection(
             // The condition being played is the parking card's handle in
             // the play area; its host is the install chosen.
             (Effect::HostThisAsCondition { .. }, _, [chosen, ..]) => source_install.map(|this| Effect::HostThisAsCondition { condition: this, host: *chosen }),
+            // …wherever it stands in the sentence: Transparency
+            // Initiative's "Turn an agenda faceup and install Transparency
+            // Initiative on that agenda" hosts after it turns.
+            (Effect::Sequence(mut effects), _, [chosen, ..]) if effects.iter().any(|effect| matches!(effect, Effect::HostThisAsCondition { .. })) => source_install.map(|this| {
+                for effect in &mut effects {
+                    if let Effect::HostThisAsCondition { .. } = effect {
+                        *effect = Effect::HostThisAsCondition { condition: this, host: *chosen };
+                    }
+                }
+                Effect::Sequence(effects)
+            }),
             // The identity chosen from the pile, hosted on the parking card.
             (Effect::HostOtherIdentity { .. }, [chosen, ..], _) => source_install.map(|this| Effect::HostOtherIdentity { identity: chosen.clone(), host: this }),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {

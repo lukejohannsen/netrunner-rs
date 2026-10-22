@@ -41049,3 +41049,61 @@ mod red_sand_stage_38 {
         assert!(state.pending_decision.is_none());
     }
 }
+
+mod red_sand_stage_39 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn agenda(card: &str, install: u32, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, ..Default::default() }
+    }
+
+    /// Transparency Initiative played onto Project Vitruvius, the second of
+    /// two facedown agendas.
+    fn transparent() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("transparency_initiative")];
+        state.corp.installed = vec![agenda("hostile_takeover", 1001, 0), agenda("project_vitruvius", 1002, 1)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("transparency_initiative") }).expect("play Transparency Initiative");
+        let state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Project Vitruvius").0;
+        let state = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        (pass_until_settled(state, &registry).0, registry)
+    }
+
+    fn install(state: &GameState, handle: u32) -> &crate::rules::InstalledCard {
+        state.corp.installed.iter().find(|card| card.install_id == InstallId(handle)).expect("installed")
+    }
+
+    #[test]
+    fn transparency_initiative_turns_the_agenda_faceup_and_is_hosted_on_it() {
+        let (state, registry) = transparent();
+        assert!(install(&state, 1002).rezzed, "faceup, where the Runner sees it");
+        assert!(!install(&state, 1002).is_rezzed(&registry), "an agenda is neither rezzed nor unrezzed");
+        assert!(!install(&state, 1001).rezzed, "the other agenda stays facedown");
+        assert_eq!(state.corp.conditions.len(), 1);
+        assert_eq!(state.corp.conditions[0].host, InstallId(1002));
+        assert_eq!(state.corp.conditions[0].card, id("transparency_initiative"));
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        let seen = view.corp.servers.iter().flat_map(|server| server.root.iter()).find(|card| card.install_id == InstallId(1002)).expect("in the view");
+        assert_eq!(seen.card, Some(id("project_vitruvius")), "the Runner sees the agenda");
+    }
+
+    #[test]
+    fn transparency_initiative_pays_for_advancing_its_host_only() {
+        let (state, registry) = transparent();
+        let before = state.corp.resources.credits.0;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(1002) }).expect("advance the host");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.corp.resources.credits.0, before - 1 + 1, "the advance paid for itself");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(1001) }).expect("advance the other");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.corp.resources.credits.0, before - 1, "no credit for another agenda");
+    }
+}
