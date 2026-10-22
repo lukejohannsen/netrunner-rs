@@ -952,6 +952,14 @@ pub struct TurnLog {
     /// that folds two orders of the same clicks into one position compares
     /// the states whole (`netrunner_bots::planner::prune`, Phase 5 §26).
     same_actions: [Option<(SameAction, u8)>; SAME_ACTIONS],
+    /// Whether the last action finished this turn was a play of an
+    /// operation or event (`SameAction::Play`) — Bioroid Work Crew's "the
+    /// next paid ability window after playing and resolving an operation"
+    /// (`EffectRequirement::AfterAPlay`). The one fact here about the
+    /// order of the turn's actions, and only one bit of it, so two turns
+    /// whose plays came at different places are different logs only while
+    /// the play is the last thing either did.
+    last_action_was_a_play: bool,
 }
 
 /// How many different actions one turn's log tells apart.
@@ -997,6 +1005,7 @@ impl Default for TurnLog {
             click_gains_in_runs: 0,
             added_to_archives: 0,
             same_actions: [None; SAME_ACTIONS],
+            last_action_was_a_play: false,
         }
     }
 }
@@ -1064,6 +1073,21 @@ impl TurnLog {
                 (None, None) => std::cmp::Ordering::Equal,
             });
         }
+    }
+
+    /// Whether the last action finished this turn was a play
+    /// (`EffectRequirement::AfterAPlay`).
+    pub fn last_action_was_a_play(&self) -> bool {
+        self.last_action_was_a_play
+    }
+
+    /// The same log with the order of the turn's last action forgotten —
+    /// for a search that folds two orders of the same clicks into one
+    /// position (`netrunner_bots`' planner), which this one bit would
+    /// otherwise always tell apart.
+    pub fn without_the_last_action(mut self) -> Self {
+        self.last_action_was_a_play = false;
+        self
     }
 
     pub fn agenda_points_scored(&self) -> u32 {
@@ -1152,6 +1176,8 @@ struct Sparse {
     added_to_archives: u8,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     same_actions: Vec<(SameAction, u8)>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    last_action_was_a_play: bool,
 }
 
 fn is_zero(count: &u8) -> bool {
@@ -1180,6 +1206,7 @@ impl From<TurnLog> for Sparse {
             click_gains_in_runs: log.click_gains_in_runs,
             added_to_archives: log.added_to_archives,
             same_actions: log.same_actions.iter().flatten().copied().collect(),
+            last_action_was_a_play: log.last_action_was_a_play,
         }
     }
 }
@@ -1194,6 +1221,7 @@ impl From<Sparse> for TurnLog {
             installed_in_remotes: sparse.installed_in_remotes,
             click_gains_in_runs: sparse.click_gains_in_runs,
             added_to_archives: sparse.added_to_archives,
+            last_action_was_a_play: sparse.last_action_was_a_play,
             ..TurnLog::default()
         };
         for (slot, taken) in log.same_actions.iter_mut().zip(sparse.same_actions) {
@@ -1315,6 +1343,7 @@ pub(crate) fn unfile_resolving_operation(state: &mut GameState, position: usize)
 /// `TurnLog::times_taken`.
 pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction) {
     state.this_turn.actions_finished = state.this_turn.actions_finished.saturating_add(1);
+    state.this_turn.last_action_was_a_play = action == SameAction::Play;
     state.this_turn.take(action);
 }
 

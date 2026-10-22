@@ -5270,6 +5270,11 @@ pub fn check_requirement(
         EffectRequirement::ClickLostToBreakThisRun => {
             if state.run_in_progress().is_some_and(|run| run.click_lost_to_break) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        // Between the play and the next action: no action is under way (a
+        // run is one), and the last one finished was the play.
+        EffectRequirement::AfterAPlay => {
+            if state.this_turn.last_action_was_a_play() && state.active_run.is_none() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::SubroutineBrokenThisEncounter => {
             let broken = state
                 .active_run
@@ -6294,6 +6299,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IceDerezzedThisRun
         | EffectRequirement::SubroutineBrokenThisRun
         | EffectRequirement::ClickLostToBreakThisRun
+        | EffectRequirement::AfterAPlay
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::LastRunSuccessful

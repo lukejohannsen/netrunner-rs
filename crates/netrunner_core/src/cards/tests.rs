@@ -41365,3 +41365,69 @@ mod red_sand_stage_43 {
         assert!(state.lingering.iter().any(|effect| matches!(effect.until, Until::EndOfEncounter(_))));
     }
 }
+
+mod red_sand_stage_44 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Corp's turn, a rezzed Bioroid Work Crew in a remote, Hedge Fund
+    /// and an Ice Wall in HQ.
+    fn crew() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(7001),
+            card: id("bioroid_work_crew"),
+            server: ServerId::Remote(1),
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.next_install_id = 7002;
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        (state, registry)
+    }
+
+    fn may_use(state: &GameState, registry: &CardRegistry) -> bool {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .iter()
+            .any(|action| matches!(action, PlayerAction::ActivateAbility { target: InstallId(7001), .. }))
+    }
+
+    #[test]
+    fn bioroid_work_crew_installs_from_hq_right_after_an_operation() {
+        let (state, registry) = crew();
+        assert!(!may_use(&state, &registry), "no operation played yet");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("Hedge Fund");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(may_use(&state, &registry), "the window after the operation");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(7001), ability_index: 0 }).expect("[trash]: install");
+        assert!(state.corp.archives_contains(&id("bioroid_work_crew")), "trashed to pay for it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("chosen");
+        let state = match state.pending_decision {
+            Some(_) => {
+                let place = crate::rules::legal_actions_for(&state, &registry, Side::Corp).into_iter().next().expect("a place for the ice");
+                apply_action(&state, &registry, place).expect("installed").0
+            }
+            None => state,
+        };
+        assert!(state.corp.installed.iter().any(|card| card.card == id("ice_wall")), "Ice Wall installed from HQ");
+        assert_eq!(state.corp.resources.clicks, Clicks(2), "the install was no action");
+    }
+
+    #[test]
+    fn bioroid_work_crew_waits_for_no_later_action() {
+        let (state, registry) = crew();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("Hedge Fund");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).expect("a click for a credit");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(!may_use(&state, &registry), "that window has passed");
+    }
+}

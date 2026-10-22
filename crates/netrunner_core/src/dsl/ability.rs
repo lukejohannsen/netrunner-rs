@@ -398,6 +398,14 @@ pub enum EffectRequirement {
     /// breaker's break as well, and what paid for a break is the run's to
     /// remember.
     ClickLostToBreakThisRun,
+    /// It is the paid ability window that follows the active player's
+    /// play of an operation or event — Bioroid Work Crew's "Use this
+    /// ability only during the next paid ability window after playing and
+    /// resolving an operation": the last action finished this turn was a
+    /// play (`TurnLog::last_action_was_a_play`), and none has begun since.
+    /// Composition didn't work: the turn log counted actions and which,
+    /// never the order they came in.
+    AfterAPlay,
     /// The Runner is encountering a piece of ice and has already broken a
     /// subroutine during this encounter — Poison Vial's "Use this ability
     /// only if you have already broken a subroutine during this encounter".
