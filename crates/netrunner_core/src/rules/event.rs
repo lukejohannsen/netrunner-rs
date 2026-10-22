@@ -281,6 +281,11 @@ pub enum GameEvent {
         install: crate::rules::state::InstallId,
         #[serde(default)]
         card: Option<CardId>,
+        /// Who turned it facedown — the side of the card whose text or
+        /// cost did it: Keros Mcintyre's "the first time **you** derez a
+        /// piece of ice each turn". Public, as the card that did it is.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        by: Option<crate::rules::Side>,
     },
     /// `Effect::SwapInstalledIce` exchanged `a`'s and `b`'s server/slot
     /// positions.

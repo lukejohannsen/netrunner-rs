@@ -1,0 +1,36 @@
+{
+  "id": "keros_mcintyre",
+  "title": "Keros Mcintyre",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDerez",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Card": "Ice"
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "The first time you derez a piece of ice each turn, gain 2[credit]."
+    }
+  ],
+  "built_from": 12065,
+  "is_playable": true
+}

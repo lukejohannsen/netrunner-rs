@@ -251,8 +251,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AgendaAddedToScoreArea { card: added, .. } => vec![moment(Trigger::OnAgendaAddedToScoreArea, &card(added, None), Some(Side::Corp))],
         GameEvent::CardAddedToHand { .. } => Vec::new(),
         // Whoever turned it facedown: Saci hears its host derezzed by a
-        // Tranquilizer as by a Corp's cost.
-        GameEvent::CardDerezzed { install, card: Some(derezzed) } => vec![moment(Trigger::OnDerez, &card(derezzed, Some(*install)), None)],
+        // Tranquilizer as by a Corp's cost, and the moment is the side's
+        // that did it, for Keros Mcintyre's "you derez".
+        GameEvent::CardDerezzed { install, card: Some(derezzed), by } => vec![moment(Trigger::OnDerez, &card(derezzed, Some(*install)), *by)],
         GameEvent::CardDerezzed { card: None, .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],

@@ -841,8 +841,12 @@ pub fn evaluate_effect(
             if installed.rezzed && !installed.is_rezzed(registry) {
                 return Ok(Vec::new());
             }
+            // Whose card derezzed it: a selection's `then` resolves as the
+            // ice it chose, so the card still talking is the prompting one
+            // (Emergency Shutdown's "derez 1 installed piece of ice").
+            let by = ctx.prompting_card.and_then(|card| registry.get(card)).map(|card| card.side).or_else(|| carried_out_by(registry, ctx));
             let mut events = Vec::new();
-            if let Some(derezzed) = derez(state, install) {
+            if let Some(derezzed) = derez(state, install, by) {
                 dispatcher::emit(state, registry, &mut events, derezzed)?;
             }
             Ok(events)
@@ -4597,7 +4601,7 @@ pub(crate) fn pay_cost_ctx(
         Cost::DerezSelf => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             let install = acting_corp_install_mut(state, ctx).filter(|installed| installed.rezzed).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?.install_id;
-            Ok(derez(state, install).into_iter().collect())
+            Ok(derez(state, install, Some(Side::Corp)).into_iter().collect())
         }
 
         Cost::AddSelfToHq => {
@@ -4761,7 +4765,7 @@ pub(crate) fn pay_cost_ctx(
             let installs: Vec<InstallId> = picked.iter().map(|&p| state.corp.installed[p].install_id).collect();
             let mut events = Vec::new();
             for install in installs {
-                events.extend(derez(state, install));
+                events.extend(derez(state, install, Some(Side::Corp)));
             }
             Ok(events)
         }
@@ -5084,7 +5088,7 @@ fn announcement_ends(event: &GameEvent, announced: &CardId) -> bool {
 /// (`Trigger::OnDerez`, Saci): an effect dispatches it, and a cost's payer
 /// does (`dispatch_cost_events`). `None` if nothing by that handle is
 /// installed.
-fn derez(state: &mut GameState, install: InstallId) -> Option<GameEvent> {
+fn derez(state: &mut GameState, install: InstallId, by: Option<Side>) -> Option<GameEvent> {
     let installed = state.corp.installed.iter_mut().find(|c| c.install_id == install)?;
     installed.rezzed = false;
     let card = installed.card.clone();
@@ -5093,7 +5097,7 @@ fn derez(state: &mut GameState, install: InstallId) -> Option<GameEvent> {
     {
         run.ice_derezzed = true;
     }
-    Some(GameEvent::CardDerezzed { install, card: Some(card) })
+    Some(GameEvent::CardDerezzed { install, card: Some(card), by })
 }
 
 /// Checks an `AbilityDef::requirement` gate before its cost/effect resolve —
