@@ -1,0 +1,36 @@
+{
+  "id": "special_report",
+  "title": "Special Report",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 50,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnRAndD",
+            "then": {
+              "DrawCardsAmount": [
+                "Corp",
+                "CardsSelected"
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Shuffle any number of cards from HQ into R&D. Draw that number of cards."
+    }
+  ],
+  "built_from": 11035,
+  "is_playable": true
+}

@@ -1,0 +1,40 @@
+{
+  "id": "sandburg",
+  "title": "Sandburg",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": {
+            "Every": {
+              "amount": {
+                "Credits": "Corp"
+              },
+              "every": 5
+            }
+          }
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "while": {
+        "AmountAtLeast": [
+          {
+            "Credits": "Corp"
+          },
+          10
+        ]
+      },
+      "text": "If you have at least 10[credit], each piece of ice has +1 strength for every 5[credit] in your credit pool."
+    }
+  ],
+  "built_from": 11020,
+  "triggers": [],
+  "is_playable": true
+}

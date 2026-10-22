@@ -1,0 +1,29 @@
+{
+  "id": "crisis_management",
+  "title": "Crisis Management",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, do 1 meat damage."
+    }
+  ],
+  "built_from": 11018,
+  "is_playable": true
+}

@@ -1,0 +1,47 @@
+{
+  "id": "ark_lockdown",
+  "title": "Ark Lockdown",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseCardName": {
+            "chooser": "Corp",
+            "names": {
+              "CardTypeOneOf": [
+                "Event",
+                "Hardware",
+                "Program",
+                "Resource"
+              ]
+            },
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentDiscard",
+                "filter": "ChosenName",
+                "min": 0,
+                "max": 0,
+                "reveal": true,
+                "shuffle_after": false,
+                "destination": "OpponentRemovedFromGame",
+                "count": {
+                  "Fixed": 45
+                }
+              }
+            },
+            "text": "Name a card"
+          }
+        }
+      ],
+      "text": "Name a card. Remove all copies of that card in the heap from the game."
+    }
+  ],
+  "built_from": 11050,
+  "is_playable": true
+}
