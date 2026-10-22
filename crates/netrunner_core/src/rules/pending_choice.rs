@@ -2196,7 +2196,11 @@ pub(crate) fn resolve_choose_server(
         let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
         ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
         let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
-        events.extend(ability::evaluate_effect(state, &Effect::MoveThisCardToRoot(server), &mut ctx, registry)?);
+        // A piece of ice moves to protect it (Sand Storm), anything else
+        // to its root.
+        let is_ice = source_install.and_then(|install| state.find_corp_install(install)).is_some_and(|installed| installed.slot == crate::rules::state::InstallSlot::Ice);
+        let effect = if is_ice { Effect::MoveThisIceToOutermostOf(server) } else { Effect::MoveThisCardToRoot(server) };
+        events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
         if resume == PendingChoiceResume::ResumeSubroutines {
             mark_parked_resume_subroutines(state);
             events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

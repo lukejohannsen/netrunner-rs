@@ -1,0 +1,31 @@
+{
+  "id": "sand_storm",
+  "title": "Sand Storm",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "If this ice is installed, move it to the outermost position protecting another server. (The run continues from this new position.) Trash this ice.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": "ThisCardIsInstalled",
+              "effect": "PromptMoveThisCardToAnotherRoot"
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 12114,
+  "is_playable": true
+}

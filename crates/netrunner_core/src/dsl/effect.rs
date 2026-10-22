@@ -1922,6 +1922,11 @@ pub enum Effect {
     /// resolves as `MoveThisCardToRoot`. The servers offered are the ones
     /// that exist, its own excepted: a remote is created by an install,
     /// not by a move.
+    ///
+    /// **Resolved as a piece of ice**, the move is to the outermost
+    /// position protecting the server chosen, as `MoveThisIceToOutermostOf`
+    /// — Sand Storm's "move it to the outermost position protecting
+    /// another server", a subroutine on the ice itself.
     PromptMoveThisCardToAnotherRoot,
     /// Moves the acting install — a piece of ice — to the outermost
     /// position protecting the attacked server, from wherever it is:
@@ -1937,6 +1942,20 @@ pub enum Effect {
     /// (`SwapInstalledIce`), which cannot take a piece of ice to another
     /// server or ahead of a server with no ice.
     MoveThisIceToOutermost,
+    /// Moves the acting install — a piece of ice — to the outermost
+    /// position protecting `ServerId`, and the run with it when it is the
+    /// ice being encountered: Sand Storm's "move it to the outermost
+    /// position protecting another server. (The run continues from this
+    /// new position.)" The run's server becomes that one, its ice that
+    /// server's with this one outermost, and the Runner stands on it, its
+    /// encounter unfinished (`run::move_run_with_ice`). The authored server
+    /// is a placeholder: this resolves only as the Corp's choice of server
+    /// (`PromptMoveThisCardToAnotherRoot` over a piece of ice), which
+    /// writes it. Not an install, as `MoveThisIceToOutermost` is not.
+    /// Composition didn't work: `MoveThisIceToOutermost` moves ice only to
+    /// the attacked server, and every move of the run leaves the
+    /// encounter it was in.
+    MoveThisIceToOutermostOf(crate::rules::ServerId),
     /// The Runner encounters the ice this resolves as again, without
     /// moving (CR 6.5.9a, a forced encounter) — Sisyphus Protocol's "If you
     /// do, the Runner encounters that ice again", heard as the ice is
@@ -3934,6 +3953,7 @@ impl Effect {
             | Effect::MoveThisCardToRoot(..)
             | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::MoveThisIceToOutermost
+            | Effect::MoveThisIceToOutermostOf(_)
             | Effect::ForceEncounter
             | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }

@@ -41167,3 +41167,57 @@ mod red_sand_stage_40 {
         assert!(declined.runner.grip.contains(&id("corroder")));
     }
 }
+
+mod red_sand_stage_41 {
+    use super::*;
+    use crate::rules::RunPhase;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// A run on HQ, protected by a rezzed Sand Storm, up to the Corp's
+    /// choice of server its subroutine asks, with Ice Wall protecting R&D.
+    fn storm() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![ice("sand_storm", 1001, ServerId::Hq), ice("ice_wall", 1002, ServerId::RnD)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Sand Storm");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner breaks nothing");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the subroutine fires");
+        (state, registry)
+    }
+
+    #[test]
+    fn sand_storm_takes_the_run_to_another_server_and_is_trashed() {
+        let (state, registry) = storm();
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseServer { chooser: Side::Corp, .. })), "the Corp chooses a server: {:?}", state.pending_decision);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        let (state, _) = close_all_windows(state, &registry);
+        let run = state.active_run.as_ref().expect("the run continues");
+        assert_eq!(run.server, ServerId::RnD, "from the new position");
+        assert!(state.corp.installed.iter().all(|card| card.card != id("sand_storm")), "trashed");
+        assert!(state.corp.archives.iter().any(|archived| archived.card == id("sand_storm")));
+        assert_eq!(run.ice.len(), 1, "Ice Wall alone protects R&D now");
+        assert_eq!(run.ice[0].card_id, id("ice_wall"));
+        assert_eq!(run.position, 0, "the Runner has yet to approach Ice Wall");
+        assert_ne!(run.phase, RunPhase::EncounterIce);
+        assert!(state.runner.servers_run_this_turn.contains(&ServerId::RnD));
+    }
+
+    #[test]
+    fn sand_storm_cannot_stay_where_it_is() {
+        let (state, registry) = storm();
+        let refused = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq });
+        assert!(refused.is_err(), "another server");
+    }
+}
