@@ -1,0 +1,62 @@
+{
+  "id": "reeducation",
+  "title": "Reeducation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 99,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "BottomOfOwnDeck",
+            "then": {
+              "Sequence": [
+                {
+                  "DrawCardsAmount": [
+                    "Corp",
+                    "CardsSelected"
+                  ]
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "Not": {
+                        "MoreThan": [
+                          "CardsSelected",
+                          {
+                            "CardsInHand": "Runner"
+                          }
+                        ]
+                      }
+                    },
+                    "effect": {
+                      "AddAtRandomToBottomOfDeck": {
+                        "side": "Runner",
+                        "count": "CardsSelected"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, add any number of cards from HQ to the bottom of R&D."
+    }
+  ],
+  "built_from": 12074,
+  "is_playable": true
+}

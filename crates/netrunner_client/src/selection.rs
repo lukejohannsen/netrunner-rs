@@ -130,6 +130,7 @@ pub fn purpose(
             }
             Some(CardZoneRef::OwnArchives | CardZoneRef::OwnHeap | CardZoneRef::OpponentDiscard) => format!("Trash {what}"),
             Some(hand @ (CardZoneRef::OwnHq | CardZoneRef::OwnGrip | CardZoneRef::OpponentHand)) => format!("Add {what} to {}", zone(hand)),
+            Some(CardZoneRef::BottomOfOwnDeck) => format!("Add {what} to the bottom of {}", zone(&CardZoneRef::BottomOfOwnDeck)),
             Some(deck @ (CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck)) => {
                 if shuffle_after {
                     format!("Shuffle {what} into {}", zone(deck))
@@ -205,7 +206,7 @@ fn type_word(filter: &CardFilter) -> Option<&'static str> {
 }
 
 fn is_deck(zone: &CardZoneRef) -> bool {
-    matches!(zone, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck)
+    matches!(zone, CardZoneRef::OwnRAndD | CardZoneRef::BottomOfOwnDeck | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck)
 }
 
 /// Whether what follows the choice puts the cards on the bottom of the
@@ -250,6 +251,7 @@ fn zone_name(chooser: Side, zone: &CardZoneRef, source_card: Option<&CardId>, re
         CardZoneRef::OwnHq => "HQ".to_string(),
         CardZoneRef::OwnArchives => "Archives".to_string(),
         CardZoneRef::OwnRAndD => "R&D".to_string(),
+        CardZoneRef::BottomOfOwnDeck => deck(chooser),
         CardZoneRef::OwnStack => "the stack".to_string(),
         CardZoneRef::TopOfOwnStack => "the top of the stack".to_string(),
         CardZoneRef::OwnGrip => "the grip".to_string(),
@@ -639,6 +641,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OwnHq => "HQ".to_string(),
         CardZoneRef::OwnArchives => archives(),
         CardZoneRef::OwnRAndD => "R&D".to_string(),
+        CardZoneRef::BottomOfOwnDeck => deck(chooser),
         CardZoneRef::OwnStack => "the stack".to_string(),
         CardZoneRef::TopOfOwnStack => "the top of the stack".to_string(),
         CardZoneRef::OwnGrip => "the grip".to_string(),

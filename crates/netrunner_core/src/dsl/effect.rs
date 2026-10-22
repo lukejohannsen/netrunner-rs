@@ -1342,6 +1342,14 @@ pub enum Effect {
     /// the card is in none of its owner's zones, per the `TrashCard`
     /// "already gone" precedent.
     AddToDeck(DeckEnd),
+    /// `count` cards at random from `side`'s hand to the bottom of their
+    /// deck, unseen — Reeducation's "they add X cards from the grip to the
+    /// bottom of the stack at random". Fewer in the hand, fewer moved; the
+    /// card's own "if the Runner has at least X cards in the grip" is its
+    /// `EffectIf`. Composition didn't work: `RevealAtRandom` shows what it
+    /// draws and counts a number the card file writes, and
+    /// `Cost::AddRandomFromGripToBottom` is a price, paid before an effect.
+    AddAtRandomToBottomOfDeck { side: crate::rules::Side, count: Amount },
     /// Adds the acting install to its owner's grip — Pichação's "add this
     /// program to your grip". The install is the "if", as it is for
     /// `AddToDeck`: gone, or reinstalled under another handle, nothing
@@ -3885,6 +3893,7 @@ impl Effect {
             | Effect::SetIdentityCopy(_)
             | Effect::IdentifyMark
             | Effect::AddToDeck(_)
+            | Effect::AddAtRandomToBottomOfDeck { .. }
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
             | Effect::RevealHand(_)

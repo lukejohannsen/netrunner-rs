@@ -133,7 +133,6 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("bug_out_bag", "Bug Out Bag"),
     ("loki", "Loki"),
     ("miraju", "Mirāju"),
-    ("reeducation", "Reeducation"),
     ("standoff", "Standoff"),
 ];
 

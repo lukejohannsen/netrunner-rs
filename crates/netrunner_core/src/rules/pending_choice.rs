@@ -143,8 +143,9 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
             Side::Corp => state.corp.removed_from_game.clone(),
             Side::Runner => state.runner.removed_from_game.clone(),
         },
-        // Moved whole by `Effect::ShuffleIntoDeck`, never chosen from.
-        CardZoneRef::RootOfAttackedServer => Vec::new(),
+        // Moved whole by `Effect::ShuffleIntoDeck`, never chosen from; and
+        // a place to put cards, never to take them from.
+        CardZoneRef::RootOfAttackedServer | CardZoneRef::BottomOfOwnDeck => Vec::new(),
     }
 }
 
@@ -700,6 +701,10 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnHq => Some(&mut state.corp.hq),
         CardZoneRef::OwnArchives => None,
         CardZoneRef::OwnRAndD => Some(&mut state.corp.r_and_d),
+        CardZoneRef::BottomOfOwnDeck => match owner {
+            Side::Corp => Some(&mut state.corp.r_and_d),
+            Side::Runner => Some(&mut state.runner.stack),
+        },
         CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack => Some(&mut state.runner.stack),
         CardZoneRef::OwnGrip => Some(&mut state.runner.grip),
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
@@ -1674,6 +1679,12 @@ pub(crate) fn resolve_confirm_card_selection(
                 } else if matches!(dest, CardZoneRef::OwnScoreArea) && side == Side::Corp {
                     let added = ability::add_agenda_to_score_area(state, registry, card_id.clone());
                     crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
+                } else if matches!(dest, CardZoneRef::BottomOfOwnDeck) {
+                    // The top of a deck is its end, so its bottom is the
+                    // front; each card goes under the ones chosen before it.
+                    if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
+                        zone.insert(0, card_id.clone());
+                    }
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
                     onto_deck += 1;

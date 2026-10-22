@@ -1679,6 +1679,32 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::AddAtRandomToBottomOfDeck { side, count } => {
+            let count = resolve_amount(count, ctx, state, registry);
+            let mut events = Vec::new();
+            for _ in 0..count {
+                let hand_len = match side { Side::Corp => state.corp.hq.len(), Side::Runner => state.runner.grip.len() };
+                if hand_len == 0 {
+                    break;
+                }
+                let index = (state.next_u64() % hand_len as u64) as usize;
+                // The top of a deck is its end, so its bottom is the front.
+                let card = match side {
+                    Side::Corp => {
+                        let card = state.corp.hq.remove(index);
+                        state.corp.r_and_d.insert(0, card.clone());
+                        card
+                    }
+                    Side::Runner => {
+                        let card = state.runner.grip.remove(index);
+                        state.runner.stack.insert(0, card.clone());
+                        card
+                    }
+                };
+                events.push(GameEvent::CardAddedToDeck { side: *side, card, top: false, revealed: false });
+            }
+            Ok(events)
+        }
         Effect::AddToDeck(end) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let top = *end == crate::dsl::DeckEnd::Top;
