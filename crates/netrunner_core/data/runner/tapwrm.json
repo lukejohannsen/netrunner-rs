@@ -1,0 +1,57 @@
+{
+  "id": "tapwrm",
+  "title": "Tapwrm",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "install_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "Server": [
+              "Hq",
+              "RnD",
+              "Archives"
+            ]
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "Every": {
+                "amount": {
+                  "Credits": "Corp"
+                },
+                "every": 5
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] for every 5[credit] in the Corp's credit pool."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "Trash Tapwrm if the Corp purges virus counters."
+    }
+  ],
+  "built_from": 11104,
+  "is_playable": true
+}

@@ -1,0 +1,33 @@
+{
+  "id": "first_responders",
+  "title": "First Responders",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: Draw 1 card. Use this ability only if you have suffered damage from a Corp card ability this turn.",
+      "cost": {
+        "Credits": 2
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurn": "OnDamageSuffered"
+          },
+          1
+        ]
+      },
+      "effect": {
+        "DrawCards": [
+          "Runner",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 11048,
+  "is_playable": true
+}

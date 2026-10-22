@@ -1,0 +1,31 @@
+{
+  "id": "reaver",
+  "title": "Reaver",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "TrashedFrom": [
+          "Installed"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you trash an installed card each turn, draw 1 card."
+    }
+  ],
+  "built_from": 11086,
+  "is_playable": true
+}

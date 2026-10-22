@@ -1,0 +1,24 @@
+{
+  "id": "biometric_spoofing",
+  "title": "Biometric Spoofing",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent 2 damage.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "up_to": 2
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 13026,
+  "is_playable": true
+}

@@ -1,0 +1,58 @@
+{
+  "id": "obelus",
+  "title": "Obelus",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1,
+          "of": "RunnerTags"
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 maximum hand size for each tag you have."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Server": [
+              "Hq",
+              "RnD"
+            ]
+          },
+          "Successful"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCardsAmount": [
+            "Runner",
+            "CardsAccessedLastRun"
+          ]
+        }
+      ],
+      "text": "The first time each turn a successful run on HQ or R&D ends, draw 1 card for each time you accessed a card during that run."
+    }
+  ],
+  "built_from": 11041,
+  "is_playable": true
+}

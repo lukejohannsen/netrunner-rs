@@ -1,0 +1,32 @@
+{
+  "id": "misdirection",
+  "title": "Misdirection",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [click], X[credit]: Remove X tags.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsX": {
+              "max": "RunnerTags"
+            }
+          },
+          {
+            "Clicks": 2
+          }
+        ]
+      },
+      "effect": {
+        "RemoveTags": "ChosenNumber"
+      }
+    }
+  ],
+  "built_from": 11085,
+  "is_playable": true
+}
