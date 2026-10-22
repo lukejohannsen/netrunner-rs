@@ -137,7 +137,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("null_whistleblower", "Null: Whistleblower"),
     ("gpi_net_tap", "GPI Net Tap"),
     ("mirror", "Mirror"),
-    ("dai_v", "Dai V"),
     ("another_day_another_paycheck", "Another Day, Another Paycheck"),
     ("sherlock_2_0", "Sherlock 2.0"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
@@ -154,8 +153,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
     ("rumor_mill", "Rumor Mill"),
-    ("nfr", "Nfr"),
-    ("paperclip", "Paperclip"),
     ("golden", "Golden"),
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
     ("data_breach", "Data Breach"),
@@ -173,7 +170,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("black_orchestra", "Black Orchestra"),
     ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
     ("peregrine", "Peregrine"),
     ("houdini", "Houdini"),
@@ -215,7 +211,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("mkultra", "MKUltra"),
     ("on_the_lam", "On the Lam"),
     ("cold_read", "Cold Read"),
     ("interdiction", "Interdiction"),
@@ -237,7 +232,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sifr", "Şifr"),
-    ("sunya", "Sūnya"),
     ("recon_drone", "Recon Drone"),
     ("tracker", "Tracker"),
     ("encore", "Encore"),
@@ -263,16 +257,12 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("spear_phishing", "Spear Phishing"),
     ("syn_attack", "SYN Attack"),
     ("polyhistor", "Polyhistor"),
-    ("lustig", "Lustig"),
-    ("demara", "Demara"),
-    ("mammon", "Mammon"),
     ("charlatan", "Charlatan"),
     ("maxwell_james", "Maxwell James"),
     ("careful_planning", "Careful Planning"),
     ("deep_data_mining", "Deep Data Mining"),
     ("adept", "Adept"),
     ("savant", "Savant"),
-    ("dhegdheer", "Dhegdheer"),
     ("levy_advanced_research_lab", "Levy Advanced Research Lab"),
     ("dean_lister", "Dean Lister"),
     ("the_shadow_net", "The Shadow Net"),
@@ -1174,7 +1164,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),
     ("spear_phishing", "Spear Phishing"),
-    ("demara", "Demara"),
     ("r_d_interface", "R&D Interface"),
     ("deus_x", "Deus X"),
     ("ice_analyzer", "Ice Analyzer"),

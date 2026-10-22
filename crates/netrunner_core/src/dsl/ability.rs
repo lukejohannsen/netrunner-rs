@@ -508,6 +508,16 @@ pub enum EffectRequirement {
     /// strength cut would be offered, and paid for, against a sentry.
     /// Asked the way a restricted break is (`Effect::BreakSubroutines`).
     Encountering(crate::dsl::IceType),
+    /// The acting icebreaker could use an interface ability on the ice
+    /// being encountered: the ice is of this type, printed or gained (CR
+    /// 3.9.5h), and the breaker's strength is at least the ice's (CR
+    /// 3.9.5g) — Black Orchestra's "+2 strength. Then, **if this program
+    /// can interface with the code gate you are encountering**, break up
+    /// to 2 subroutines" (also MKUltra, Paperclip). Composition didn't
+    /// work: `Encountering` says the type and nothing else asks a strength,
+    /// and `Effect::BreakSubroutines` refuses a weaker breaker by failing
+    /// the whole ability, the strength it had just bought included.
+    CanInterfaceWith(crate::dsl::IceType),
     /// The Runner is encountering a piece of ice protecting their mark (CR
     /// 10.11, `lingering::mark`) — Tunnel Vision's "Break up to 2
     /// subroutines on a piece of ice **protecting your mark**". Read off

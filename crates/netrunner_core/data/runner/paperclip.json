@@ -1,0 +1,79 @@
+{
+  "id": "paperclip",
+  "title": "Paperclip",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "from_discard": true,
+      "requirement": {
+        "Encountering": "Barrier"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnHeap",
+                  "discount": {
+                    "Credits": 0
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install this program from your heap",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you encounter a barrier, you may install this program from your heap."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "X[credit]: +X strength. Then, if this program can interface with the barrier you are encountering, break up to X subroutines.",
+      "cost": {
+        "CreditsX": {}
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BoostStrengthAmount": {
+              "amount": "ChosenNumber",
+              "duration": "Encounter"
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "CanInterfaceWith": "Barrier"
+              },
+              "effect": {
+                "BreakSubroutines": {
+                  "count": "ChosenNumber",
+                  "restrict_to": "Barrier"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 11024,
+  "is_playable": true
+}

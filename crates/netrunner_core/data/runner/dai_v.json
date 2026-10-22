@@ -1,0 +1,48 @@
+{
+  "id": "dai_v",
+  "title": "Dai V",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 6,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break all subroutines. Spend credits only from stealth cards to use this ability.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 2
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 11006,
+  "is_playable": true
+}
