@@ -41107,3 +41107,63 @@ mod red_sand_stage_39 {
         assert_eq!(state.corp.resources.credits.0, before - 1, "no credit for another agenda");
     }
 }
+
+mod red_sand_stage_40 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Diana's Hunt played on HQ, protected by a rezzed Enigma, up to the
+    /// choice its encounter offers, with Corroder in the grip.
+    fn at_the_encounter(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("dianas_hunt"), id("sure_gamble"), id("corroder")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("enigma"),
+            card: id("enigma"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("dianas_hunt") }).expect("play Diana's Hunt");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    #[test]
+    fn dianas_hunt_installs_a_program_from_the_grip_for_nothing_and_trashes_it_when_the_run_ends() {
+        let registry = registry();
+        let state = at_the_encounter(&registry);
+        assert!(state.pending_decision.is_some(), "the encounter offers the install");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install");
+        let position = asked.runner.grip.iter().position(|card| *card == id("corroder")).expect("in the grip");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position }).expect("Corroder");
+        let (installed, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(1), "Diana's Hunt's 4[credit] and nothing for Corroder");
+        let (state, _) = apply_action(&installed, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes the encounter");
+        let (ended, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("Enigma's subroutines end the run");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.active_run.is_none(), "the run ended");
+        assert!(!ended.runner.rig.iter().any(|card| card.card == id("corroder")), "trashed as the run ended");
+        assert!(ended.runner.heap.contains(&id("corroder")));
+    }
+
+    #[test]
+    fn dianas_hunt_may_install_nothing() {
+        let registry = registry();
+        let state = at_the_encounter(&registry);
+        let (declined, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(declined.runner.rig.is_empty());
+        assert!(declined.runner.grip.contains(&id("corroder")));
+    }
+}
