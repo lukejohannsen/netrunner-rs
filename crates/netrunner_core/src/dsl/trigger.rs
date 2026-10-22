@@ -942,6 +942,19 @@ pub enum EventFilter {
     /// naming this server is finer than any column the turn keeps, so
     /// `first_each_turn` could not have counted it.
     InRootOfThisServer,
+    /// "You advance a card **in the root of or protecting this server**" —
+    /// Oberth Protocol's "The first time each turn you advance a card in
+    /// the root of or protecting this server": a Corp advance of a card in
+    /// the listener's own server. Its "first time" is counted on the copies
+    /// in that root that listen for it (`turn_log::record`), as
+    /// `InRootOfThisServer`'s installs are, and for the same reason: the
+    /// turn's log counts kinds of card and never which server. A copy
+    /// installed after the turn's first advance there did not see it,
+    /// which no card in the pool can reach but by installing Oberth into a
+    /// server already advanced in this turn. Composition didn't work: a
+    /// `Card` filter naming this server is finer than any column the turn
+    /// keeps.
+    InOrProtectingThisServer,
     /// The card was trashed from one of these places — Strike Fund's
     /// "When this event is trashed **from your grip or stack**". Read off
     /// the moment, which the event states (`GameEvent::CardTrashed::from`),
@@ -1056,6 +1069,7 @@ impl EventFilter {
             | EventFilter::OwnedBy { .. }
             | EventFilter::InRoot
             | EventFilter::InRootOfThisServer
+            | EventFilter::InOrProtectingThisServer
             | EventFilter::TrashedFromThisServer => true,
             EventFilter::All(parts) => parts.iter().any(EventFilter::names_whose),
             _ => false,

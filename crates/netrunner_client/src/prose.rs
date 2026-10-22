@@ -812,6 +812,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Host => "of host ice".to_string(),
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
         EventFilter::InRootOfThisServer => "by the Corp, in the root of this server".to_string(),
+        EventFilter::InOrProtectingThisServer => "by the Corp, in or protecting this server".to_string(),
         EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
         EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
         EventFilter::Successful => "that was successful".to_string(),

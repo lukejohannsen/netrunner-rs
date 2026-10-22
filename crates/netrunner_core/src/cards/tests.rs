@@ -41781,3 +41781,90 @@ mod red_sand_stage_48 {
         assert_eq!(card.validate(), Err(crate::dsl::CardValidationError::RepeatOutsideAProcess(id("baz"))));
     }
 }
+
+mod red_sand_stage_49 {
+    use super::*;
+    use crate::rules::InstalledCard;
+
+    const OBERTH: InstallId = InstallId(9000);
+    const AGENDA: InstallId = InstallId(9001);
+    const ICE: InstallId = InstallId(9002);
+    const ELSEWHERE: InstallId = InstallId(9003);
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Corp's turn: Oberth Protocol in the root of a remote with an
+    /// agenda, an Ice Wall protecting it, and another agenda in a second
+    /// remote.
+    fn table(oberth_rezzed: bool) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        let card = |install, card: &str, server, slot, rezzed| InstalledCard { install_id: install, card: id(card), server, slot, rezzed, ..Default::default() };
+        state.corp.installed = vec![
+            card(OBERTH, "oberth_protocol", ServerId::Remote(0), InstallSlot::Root, oberth_rezzed),
+            card(AGENDA, "hostile_takeover", ServerId::Remote(0), InstallSlot::Root, false),
+            card(ICE, "ice_wall", ServerId::Remote(0), InstallSlot::Ice, true),
+            card(ELSEWHERE, "hostile_takeover", ServerId::Remote(1), InstallSlot::Root, false),
+        ];
+        (state, registry)
+    }
+
+    fn advance(state: &GameState, registry: &CardRegistry, target: InstallId) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::AdvanceCard { target }).expect("advance");
+        close_all_windows(state, registry).0
+    }
+
+    fn tokens(state: &GameState, install: InstallId) -> u32 {
+        state.find_corp_install(install).map_or(0, |installed| installed.advancement_tokens)
+    }
+
+    #[test]
+    fn oberth_adds_a_counter_to_the_first_advance_in_its_server() {
+        let (state, registry) = table(true);
+        let state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 2, "advanced, and one more");
+        let state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 3, "only the first time");
+    }
+
+    #[test]
+    fn oberth_counts_ice_protecting_its_server() {
+        let (state, registry) = table(true);
+        let state = advance(&state, &registry, ICE);
+        assert_eq!(tokens(&state, ICE), 2);
+        let state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 1, "the ice was the first");
+    }
+
+    #[test]
+    fn oberth_ignores_other_servers() {
+        let (state, registry) = table(true);
+        let state = advance(&state, &registry, ELSEWHERE);
+        assert_eq!(tokens(&state, ELSEWHERE), 1);
+        let state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 2, "the first here");
+    }
+
+    #[test]
+    fn an_advance_before_oberth_is_rezzed_was_the_first() {
+        let (mut state, registry) = table(false);
+        state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 1, "unrezzed, it does nothing");
+        state.corp.installed.iter_mut().find(|installed| installed.install_id == OBERTH).unwrap().rezzed = true;
+        let state = advance(&state, &registry, AGENDA);
+        assert_eq!(tokens(&state, AGENDA), 2, "not the first time this turn");
+    }
+
+    #[test]
+    fn the_agenda_in_the_root_keeps_its_own_count() {
+        let (state, registry) = table(true);
+        let state = advance(&state, &registry, ICE);
+        let agenda = state.find_corp_install(AGENDA).unwrap();
+        assert_eq!(agenda.this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance), 0, "the ice's advance is not the agenda's");
+    }
+}

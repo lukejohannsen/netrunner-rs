@@ -1485,6 +1485,9 @@ impl CardDefinition {
             // Only a Corp card is in a root, and only the Corp installs
             // into one.
             EventFilter::InRootOfThisServer => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            // Only an advance is counted on the root's copies, and only a
+            // Corp card is in a server.
+            EventFilter::InOrProtectingThisServer => triggered.trigger == Trigger::OnAdvance && self.side == crate::rules::Side::Corp,
             // Only a trash says which pile the card left.
             EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
             // Only a trash says where a card was trashed from, and only a
@@ -1663,7 +1666,11 @@ impl CardDefinition {
             // "The first time each turn you install a card in the root of
             // **this server**" is counted on the copies in that root
             // (`EventFilter::InRootOfThisServer`), which only an install is.
-            if triggered.when == Some(EventFilter::InRootOfThisServer) {
+            if triggered.when == Some(EventFilter::InOrProtectingThisServer) {
+                if triggered.trigger != Trigger::OnAdvance {
+                    return Err(self.first_time_misfit(format!("a root's copies count only the advances in its server; a {:?} is not counted", triggered.trigger)));
+                }
+            } else if triggered.when == Some(EventFilter::InRootOfThisServer) {
                 if triggered.trigger != Trigger::OnInstall {
                     return Err(self.first_time_misfit(format!("a root's copies count only the installs into it; a {:?} is not counted", triggered.trigger)));
                 }
@@ -1705,7 +1712,7 @@ impl CardDefinition {
         // One printed ability counts on one thing: the copy, or the turn.
         let about_this = first_time
             .iter()
-            .filter(|triggered| triggered.subject == Some(Subject::This) || matches!(triggered.when, Some(EventFilter::ByThis | EventFilter::InRootOfThisServer)))
+            .filter(|triggered| triggered.subject == Some(Subject::This) || matches!(triggered.when, Some(EventFilter::ByThis | EventFilter::InRootOfThisServer | EventFilter::InOrProtectingThisServer)))
             .count();
         if about_this > 0 && about_this < first_time.len() {
             return Err(self.first_time_misfit("a card's first-time entries share one count, and it is either this copy's or the turn's".to_string()));

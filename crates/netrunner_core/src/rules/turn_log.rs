@@ -625,7 +625,7 @@ impl Occurrences {
             Some(EventFilter::Host) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }
-            Some(EventFilter::InRootOfThisServer) => {
+            Some(EventFilter::InRootOfThisServer | EventFilter::InOrProtectingThisServer) => {
                 return Err(format!("the turn counts a {trigger:?} without which server it went into; the copies in a root count those"));
             }
             Some(EventFilter::ByThis) => {
@@ -1271,6 +1271,27 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             let turn = state.turn;
             for installed in state.corp.installed.iter_mut().filter(|installed| installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root) {
                 installed.this_turn.bump(turn, Trigger::OnInstall);
+            }
+        }
+        // And on every card in the root of the server a Corp card was
+        // advanced in that counts advances there — Oberth Protocol's first
+        // time (`EventFilter::InOrProtectingThisServer`). Only those
+        // copies: an agenda in the root counts its own advances on the
+        // same trigger.
+        if moment.trigger == Trigger::OnAdvance
+            && let About::Card { install: Some(advanced), .. } = moment.about
+            && let Some(server) = state.find_corp_install(advanced).map(|installed| installed.server)
+        {
+            let turn = state.turn;
+            let counts_here = |card: &crate::dsl::CardId| {
+                registry.get(card).is_some_and(|definition| {
+                    definition.triggers.iter().any(|triggered| triggered.first_each_turn && triggered.when == Some(EventFilter::InOrProtectingThisServer))
+                })
+            };
+            for installed in state.corp.installed.iter_mut().filter(|installed| {
+                installed.server == server && installed.slot == crate::rules::state::InstallSlot::Root && installed.install_id != advanced && counts_here(&installed.card)
+            }) {
+                installed.this_turn.bump(turn, Trigger::OnAdvance);
             }
         }
         // And on the rig install it is about, for what a rig copy is
