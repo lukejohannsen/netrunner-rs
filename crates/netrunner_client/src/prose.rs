@@ -426,7 +426,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 None => grow,
             }
         }
-        Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
+        Effect::AddCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "counter", "counters")),
+        Effect::AddCounters(amount) => format!("place counters equal to {}", describe_amount(amount)),
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::HostedCounters) => "remove all its counters".to_string(),
         Effect::RemoveCounters(amount) => format!("remove counters equal to {}", describe_amount(amount)),

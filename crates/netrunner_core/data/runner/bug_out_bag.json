@@ -1,0 +1,47 @@
+{
+  "id": "bug_out_bag",
+  "title": "Bug Out Bag",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "additional_install_cost": {
+    "CreditsX": {}
+  },
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": "ChosenNumber"
+        }
+      ],
+      "text": "When you install this resource, place X power counters on it."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "Not": {
+          "ZoneHasAtLeast": {
+            "zone": "OwnGrip",
+            "count": 1
+          }
+        }
+      },
+      "effects": [
+        {
+          "DrawCardsAmount": [
+            "Runner",
+            "HostedCounters"
+          ]
+        },
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When your turn ends, if you have no cards in your grip, draw 1 card for each hosted power counter, then trash this resource."
+    }
+  ],
+  "built_from": 12064,
+  "is_playable": true
+}

@@ -815,7 +815,7 @@ pub(super) fn host_derez(def: &CardDefinition) -> Option<HostDerez> {
         let mut counters = 0;
         for effect in &trigger.effects {
             effect.for_each_effect(&mut |effect| match effect {
-                Effect::AddCounters(n) => counters += *n,
+                Effect::AddCounters(Amount::Fixed(n)) => counters += *n,
                 Effect::EffectIf { condition: EffectRequirement::ThisCardCountersAtLeast(n), effect, .. } => {
                     let mut derezzes = false;
                     effect.for_each_effect(&mut |inner| derezzes |= matches!(inner, Effect::DerezCard(CardTarget::HostIce)));
@@ -1119,7 +1119,7 @@ fn tally(effect: &Effect, side: Side) -> Tally {
         Effect::DrawCards(s, n) if own(s) => Tally { cards: *n as i32, ..Default::default() },
         Effect::GainClicks(s, n) if own(s) => Tally { clicks: *n as i32, ..Default::default() },
         Effect::LoseClicks(n) => Tally { clicks: -(*n as i32), ..Default::default() },
-        Effect::AddCounters(n) => Tally { counters: *n as i32, ..Default::default() },
+        Effect::AddCounters(Amount::Fixed(n)) => Tally { counters: *n as i32, ..Default::default() },
         Effect::GiveBadPublicity(Amount::Fixed(n)) if side == Side::Runner => Tally { bad_publicity: *n as i32, ..Default::default() },
         Effect::RemoveCounters(Amount::Fixed(n)) => Tally { counters: -(*n as i32), ..Default::default() },
         Effect::GainCreditsPerCounter { side: s, credits_per_counter } if own(s) => {
@@ -2346,7 +2346,7 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: 
         && def.triggers.iter().filter(|trigger| (trigger.trigger == Trigger::OnSuccessfulRun || trigger.first_each_turn) && trigger.requirement.is_none()).any(|trigger| {
             let mut places = false;
             for effect in &trigger.effects {
-                effect.for_each_effect(&mut |effect| places |= matches!(effect, Effect::AddCounters(n) if *n > 0));
+                effect.for_each_effect(&mut |effect| places |= matches!(effect, Effect::AddCounters(Amount::Fixed(n)) if *n > 0));
             }
             places
         });

@@ -496,7 +496,9 @@ pub enum Effect {
     /// putting counters on itself. `RulesError::UnresolvedCardTarget` if
     /// `acting_card` is `None`, `RulesError::CardNotActive` if it names a
     /// card that's neither a rezzed Corp install nor a Runner rig card.
-    AddCounters(u32),
+    /// An `Amount`, written as a bare number when fixed: Bug Out Bag's
+    /// "place X power counters on it" reads the X its install cost named.
+    AddCounters(#[serde(deserialize_with = "number_or_amount", serialize_with = "write_number_or_amount")] Amount),
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
     /// target/error rules as `AddCounters`. An `Amount` since Business As
     /// Usual's "Remove **all** virus counters from 1 installed card"
@@ -3686,6 +3688,7 @@ impl Effect {
             Effect::RemoveBadPublicity(a) => Effect::RemoveBadPublicity(amount(a)),
             Effect::Access { from, filter, count, then } => Effect::Access { from, filter, count: amount(count), then: then.map(boxed) },
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
+            Effect::AddCounters(a) => Effect::AddCounters(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::RezInstalled { install, pay_cost, discount } => Effect::RezInstalled { install, pay_cost, discount: amount(discount) },
             Effect::Mill { deck, amount: a, then } => Effect::Mill { deck, amount: amount(a), then },

@@ -41523,3 +41523,70 @@ mod red_sand_stage_45 {
         assert_eq!(card.subroutines.len(), 2);
     }
 }
+
+mod red_sand_stage_46 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn, Bug Out Bag in the grip and `credits` to name X
+    /// with.
+    fn holding_the_bag(credits: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.grip = vec![id("bug_out_bag")];
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        (state, registry)
+    }
+
+    fn install_for(state: &GameState, registry: &CardRegistry, x: u32) -> GameState {
+        let parked = apply_action(state, registry, PlayerAction::InstallResource { card_id: id("bug_out_bag"), host: None }).expect("asks X").0;
+        assert!(parked.pending_payment.is_some(), "X is asked before anything is paid");
+        let (state, _) = apply_action(&parked, registry, PlayerAction::ChooseNumber { amount: x }).expect("X");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn bug_out_bag_costs_x_and_holds_x_power_counters() {
+        let (state, registry) = holding_the_bag(5);
+        let state = install_for(&state, &registry, 3);
+        assert_eq!(state.runner.resources.credits, Credits(2), "3[credit] paid");
+        let bag = state.runner.rig.iter().find(|card| card.card == id("bug_out_bag")).expect("installed");
+        assert_eq!(bag.counters, 3);
+    }
+
+    #[test]
+    fn bug_out_bag_draws_its_counters_at_a_turn_end_with_an_empty_grip_and_goes() {
+        let (state, registry) = holding_the_bag(5);
+        let state = install_for(&state, &registry, 3);
+        assert!(state.runner.grip.is_empty());
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert_eq!(ended.runner.grip.len(), 3, "one card per hosted counter");
+        assert!(ended.runner.rig.iter().all(|card| card.card != id("bug_out_bag")) && ended.runner.heap.contains(&id("bug_out_bag")));
+    }
+
+    #[test]
+    fn bug_out_bag_waits_while_the_grip_holds_a_card() {
+        let (mut state, registry) = holding_the_bag(5);
+        state.runner.grip.push(id("sure_gamble"));
+        let state = install_for(&state, &registry, 2);
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert_eq!(ended.runner.grip.len(), 1, "nothing drawn");
+        assert!(ended.runner.rig.iter().any(|card| card.card == id("bug_out_bag")), "and the bag stays");
+    }
+
+    #[test]
+    fn bug_out_bag_may_be_installed_for_nothing() {
+        let (state, registry) = holding_the_bag(0);
+        let state = install_for(&state, &registry, 0);
+        let bag = state.runner.rig.iter().find(|card| card.card == id("bug_out_bag")).expect("installed for 0");
+        assert_eq!(bag.counters, 0);
+    }
+}

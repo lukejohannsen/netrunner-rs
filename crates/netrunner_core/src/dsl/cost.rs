@@ -43,7 +43,13 @@ pub enum Cost {
     /// X is chosen before anything is paid (`CardDefinition::validate`).
     /// Composition didn't work: `CreditsAmount` is a number the state
     /// decides, and no cost let the payer name one.
-    CreditsX { max: Amount },
+    ///
+    /// `max` left off is no bound but what the payer could spend — Bug
+    /// Out Bag's install cost of X, which prints none.
+    CreditsX {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<Amount>,
+    },
     Clicks(u32),
     /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
     /// Break up to 2 subroutines on this ice." Not `Clicks`: that cost
