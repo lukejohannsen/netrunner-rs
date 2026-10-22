@@ -1134,6 +1134,21 @@ pub(crate) fn cannot_host(state: &GameState, registry: &CardRegistry, install: I
     Target::corp_install(state, registry, install).is_some_and(|target| any(state, registry, target, |kind| *kind == ContinuousKind::CannotHost))
 }
 
+/// Where the run moves instead of passing this piece of ice, when its
+/// printed subroutine was broken (`ContinuousKind::InsteadOfPassing`,
+/// Mirāju) — asked by `run::engine::instead_of_passing` as the encounter
+/// with it ends.
+pub(crate) fn instead_of_passing(state: &GameState, registry: &CardRegistry, install: InstallId) -> Option<crate::rules::ServerId> {
+    let target = Target::corp_install(state, registry, install)?;
+    let mut to = None;
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::InsteadOfPassing(_)), |effect, _, _| {
+        if let ContinuousKind::InsteadOfPassing(server) = effect.kind {
+            to.get_or_insert(server);
+        }
+    });
+    to
+}
+
 /// What the table adds to the cost of trashing the accessed Corp card
 /// `card`: what is said about the install, when it is one (`install` —
 /// Mahkota Langit Grid's root), and what is said about any card accessed

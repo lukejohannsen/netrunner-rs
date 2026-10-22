@@ -1031,6 +1031,60 @@ pub(crate) fn redirect_to(state: &mut GameState, registry: &CardRegistry, target
     Ok(from)
 }
 
+/// Mirāju's "the Runner moves to the outermost position of Archives
+/// instead of passing this ice. They may jack out. Derez this ice."
+/// (`ContinuousKind::InsteadOfPassing`): the encounter at `position` ends,
+/// and if its ice says so and a printed subroutine on it was broken (one
+/// not gained for the encounter or the run), the Runner is put in the
+/// movement phase in front of the target's outermost ice — where the
+/// jack-out decision comes first (CR 6.9.4b) — rather than past this one,
+/// and the ice is derezzed. `None` when the ice is passed as usual. A
+/// forced encounter, or one that interrupted another, ends by returning
+/// to what it interrupted (CR 6.5.9a), which passes nothing to replace.
+///
+/// The encounter's end is handed back with the rest of the step, for
+/// `advance_run` to dispatch as it does a pass; the derez is dispatched
+/// here, as it is made.
+fn instead_of_passing(state: &mut GameState, registry: &CardRegistry, position: usize) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(None) };
+    if run.forced_encounter || !run.suspended.is_empty() {
+        return Ok(None);
+    }
+    let Some(ice) = run.ice.get(position).filter(|ice| ice.rezzed) else { return Ok(None) };
+    if !ice.subroutines.iter().any(|sub| !sub.gained && sub.status == SubroutineStatus::Broken) {
+        return Ok(None);
+    }
+    let install = ice.install_id;
+    let Some(target) = continuous::instead_of_passing(state, registry, install) else { return Ok(None) };
+    let run = state.active_run.as_mut().expect("checked above");
+    let from = run.server;
+    let mut events: Vec<GameEvent> = encounter_ends(run).into_iter().collect();
+    events.push(GameEvent::RunRedirected { from, to: target });
+    // Derezzed before the target's ice is built, so a Mirāju protecting
+    // Archives is approached as the unrezzed ice it now is.
+    if let Some(derezzed) = crate::rules::ability::derez(state, install, Some(Side::Corp)) {
+        crate::rules::dispatcher::emit(state, registry, &mut events, derezzed)?;
+    }
+    let ice: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect::<Result<Vec<Option<RunIce>>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let run = state.active_run.as_mut().expect("checked above");
+    run.server = target;
+    run.ice = ice;
+    enter_movement(run, 0);
+    if !state.runner.servers_run_this_turn.contains(&target) {
+        state.runner.servers_run_this_turn.push(target);
+    }
+    Ok(Some(events))
+}
+
 /// Moves the run to `target`'s **outermost** position, rebuilding its ice
 /// list with nothing passed — Proprionegation's "the Runner moves to the
 /// outermost position of Archives".
@@ -1505,6 +1559,9 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             // A bioroid as printed: nothing in the pool gives ice a subtype
             // that is not an ice type.
             let rezzed_bioroid = rezzed.and_then(|ice| registry.get(&ice.card_id)).is_some_and(|def| def.subtypes.contains(&crate::dsl::CardSubtype::Bioroid));
+            if let Some(moved) = instead_of_passing(state, registry, position)? {
+                return Ok(moved);
+            }
             let run = state.active_run.as_mut().expect("active_run checked above");
             Ok(pass_current_ice(run, position, rezzed_as, rezzed_bioroid))
         }

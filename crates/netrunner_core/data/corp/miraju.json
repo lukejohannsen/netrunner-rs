@@ -1,0 +1,63 @@
+{
+  "id": "miraju",
+  "title": "Mirāju",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "InsteadOfPassing": "Archives"
+      },
+      "applies_to": "This",
+      "text": "Whenever an encounter with this ice ends, if the Runner broke its printed subroutine, the Runner moves to the outermost position of Archives instead of passing this ice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may draw 1 card. Then, shuffle 1 card from HQ into R&D.",
+      "effect": {
+        "Sequence": [
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "Any",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": true,
+              "destination": "OwnRAndD"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 12071,
+  "is_playable": true
+}

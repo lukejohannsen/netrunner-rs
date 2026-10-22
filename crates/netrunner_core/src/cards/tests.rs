@@ -41947,3 +41947,94 @@ mod red_sand_stage_50 {
         assert!(salvage(&state, &registry).is_err());
     }
 }
+
+mod red_sand_stage_51 {
+    use super::*;
+    use crate::rules::{GameEvent, InstalledCard, RunPhase, SubroutineStatus};
+
+    const MIRAJU: InstallId = InstallId(9100);
+    const ON_ARCHIVES: InstallId = InstallId(9101);
+
+    fn ice(install: InstallId, card: &str, server: ServerId, rezzed: bool) -> InstalledCard {
+        InstalledCard { install_id: install, card: CardId(card.to_string()), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// A run on HQ encountering a rezzed Mirāju, its window open, with an
+    /// Ice Wall protecting Archives.
+    fn encountering() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.installed.push(ice(MIRAJU, "miraju", ServerId::Hq, true));
+        state.corp.installed.push(ice(ON_ARCHIVES, "ice_wall", ServerId::Archives, true));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (mut state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("to the ice");
+        while state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce) {
+            let side = state.paid_ability_window.as_ref().expect("the approach's window").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(RunPhase::EncounterIce));
+        (state, registry)
+    }
+
+    /// The printed subroutine handled as `status`, then both players pass
+    /// the encounter's window.
+    fn end_encounter(mut state: GameState, registry: &CardRegistry, status: SubroutineStatus) -> (GameState, Vec<GameEvent>) {
+        let run = state.active_run.as_mut().expect("run");
+        let position = run.position;
+        run.ice[position].subroutines[0].status = status;
+        let mut events = Vec::new();
+        while let Some(window) = state.paid_ability_window.as_ref()
+            && state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce)
+        {
+            let (next, more) = apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass");
+            state = next;
+            events.extend(more);
+        }
+        (state, events)
+    }
+
+    #[test]
+    fn a_broken_miraju_moves_the_runner_to_archives_instead_of_being_passed() {
+        let (state, registry) = encountering();
+        let (state, events) = end_encounter(state, &registry, SubroutineStatus::Broken);
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.phase, run.position), (ServerId::Archives, RunPhase::Movement, 0), "in front of Archives' outermost ice");
+        assert!(run.jack_out_permitted, "they may jack out");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::EncounterEnded { .. })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IcePassed { .. })), "Mirāju is not passed");
+        assert!(!state.find_corp_install(MIRAJU).expect("installed").rezzed, "derezzed");
+    }
+
+    #[test]
+    fn going_on_from_archives_approaches_its_outermost_ice() {
+        let (state, registry) = encountering();
+        let (state, _) = end_encounter(state, &registry, SubroutineStatus::Broken);
+        let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("go on");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.phase, run.position), (ServerId::Archives, RunPhase::ApproachIce, 0));
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceApproached { .. })));
+    }
+
+    #[test]
+    fn an_unbroken_miraju_is_passed() {
+        let (state, registry) = encountering();
+        let (state, events) = end_encounter(state, &registry, SubroutineStatus::Resolved);
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.server, ServerId::Hq);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IcePassed { .. })));
+        assert!(state.find_corp_install(MIRAJU).expect("installed").rezzed);
+    }
+
+    #[test]
+    fn mirajus_subroutine_may_draw_then_shuffles_a_card_from_hq_into_rnd() {
+        let registry = registry();
+        let definition = registry.get(&CardId("miraju".to_string())).expect("Mirāju");
+        let effect = &definition.subroutines[0].effect;
+        let crate::dsl::Effect::Sequence(steps) = effect else { panic!("a sequence") };
+        assert!(matches!(steps[0], crate::dsl::Effect::PresentChoice { .. }), "a may");
+        assert!(matches!(steps[1], crate::dsl::Effect::PromptChooseCards { .. }), "then a card from HQ");
+    }
+}
