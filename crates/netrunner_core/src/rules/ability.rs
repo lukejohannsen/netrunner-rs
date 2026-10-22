@@ -2775,6 +2775,7 @@ pub fn evaluate_effect(
                 install: None,
                 move_to_root: false,
                 remember: false,
+                then: None,
                 ignore_run_costs: *ignore_additional_costs,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -2809,6 +2810,7 @@ pub fn evaluate_effect(
                 install: None,
                 move_to_root: true,
                 remember: false,
+                then: None,
                 ignore_run_costs: false,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -2896,6 +2898,7 @@ pub fn evaluate_effect(
                 on_start: None,
                 move_to_root: false,
                 remember: false,
+                then: None,
                 ignore_run_costs: false,
                 install: Some(crate::rules::state::PendingInstallFromZone {
                     origin: origin_zone.clone(),
@@ -3082,16 +3085,20 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::ChooseServer { only_protected_by_ice } => {
+        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, then } => {
             let card = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let chooser = registry.get(card).map_or(Side::Runner, |definition| definition.side);
             let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             servers.extend(crate::rules::legal_actions::existing_remote_ids(state).into_iter().map(ServerId::Remote));
             if *only_protected_by_ice {
                 servers.retain(|server| state.corp.installed.iter().any(|c| c.server == *server && c.slot == crate::rules::state::InstallSlot::Ice));
-                if servers.is_empty() {
-                    return Ok(Vec::new());
-                }
+            }
+            if *other_than_attacked {
+                let attacked = state.active_run.as_ref().map(|run| run.server);
+                servers.retain(|server| Some(*server) != attacked);
+            }
+            if servers.is_empty() {
+                return Ok(Vec::new());
             }
             state.pending_decision = Some(PendingDecision::ChooseServer {
                 chooser,
@@ -3102,7 +3109,8 @@ pub fn evaluate_effect(
                 on_start: None,
                 install: None,
                 move_to_root: false,
-                remember: true,
+                remember: then.is_none(),
+                then: then.clone(),
                 ignore_run_costs: false,
                 source_card: Some(card.clone()),
                 prompting_card: ctx.attributed_card(),
@@ -3217,6 +3225,11 @@ pub fn evaluate_effect(
         Effect::MoveRunToOutermost(server) => {
             let Some(server) = server.or_else(|| state.active_run.as_ref().map(|run| run.server)) else { return Ok(Vec::new()) };
             crate::rules::run::move_run_to_outermost(state, registry, server)
+        }
+
+        Effect::MoveRunToOutermostAndEncounter(server) => {
+            let Some(server) = server.or_else(|| state.active_run.as_ref().map(|run| run.server)) else { return Ok(Vec::new()) };
+            crate::rules::run::move_run_to_outermost_then(state, registry, server, true)
         }
 
         Effect::MoveRunToIce(crate::dsl::MovedTo::PassedIce) => match ctx.triggering_event {

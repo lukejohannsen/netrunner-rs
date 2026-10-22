@@ -1519,6 +1519,7 @@ mod tests {
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
             move_to_root: false,
             remember: false,
+            then: None,
             ignore_run_costs: false,
             install: None,
             chooser: Side::Runner,

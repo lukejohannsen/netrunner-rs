@@ -573,6 +573,11 @@ fn instance_matches_filter(
         CardFilter::AmongInstalls(installs) => {
             zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_some_and(|install| installs.contains(&install))
         }
+        // AgInfusion's "the piece of ice the Runner is approaching", by
+        // handle off the run.
+        CardFilter::BeingApproached => {
+            zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()).is_some_and(|install| copy_matches(state, filter, Some(install)))
+        }
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
@@ -628,11 +633,12 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     if let CardFilter::RezzedDuringLastRun = filter {
         return state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));
     }
-    if let CardFilter::BeingEncountered = filter {
+    if let CardFilter::BeingEncountered | CardFilter::BeingApproached = filter {
+        let phase = if matches!(filter, CardFilter::BeingApproached) { crate::rules::run::RunPhase::ApproachIce } else { crate::rules::run::RunPhase::EncounterIce };
         return state
             .active_run
             .as_ref()
-            .filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce)
+            .filter(|run| run.phase == phase)
             .and_then(|run| run.ice.get(run.position))
             .is_some_and(|ice| ice.install_id == install);
     }
@@ -1943,6 +1949,8 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
         Effect::AddAdditionalAccess { count, .. } => Effect::AddAdditionalAccess { server, count },
         // Mercia B4LL4RD follows the ice it installed.
         Effect::MoveThisCardToRoot(_) => Effect::MoveThisCardToRoot(server),
+        // AgInfusion moves the run to the server it chose.
+        Effect::MoveRunToOutermostAndEncounter(_) => Effect::MoveRunToOutermostAndEncounter(Some(server)),
         // "Run any server. If successful, instead of breaching the attacked
         // server, …" (Pinhole Threading): the breach replaced is the chosen
         // server's.
@@ -2148,7 +2156,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, remember, ignore_run_costs, source_card, prompting_card, source_install, resume } =
+    let PendingDecision::ChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, remember, then, ignore_run_costs, source_card, prompting_card, source_install, resume } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -2188,6 +2196,20 @@ pub(crate) fn resolve_choose_server(
             source: card,
         });
         return Ok(vec![GameEvent::PendingChoiceResolved { chooser, option_index: 0 }]);
+    }
+
+    // What the choice is for (AgInfusion): resolved with the server in it,
+    // as the card that asked.
+    if let Some(then) = then {
+        let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+        let mut events = vec![GameEvent::PendingChoiceResolved { chooser, option_index: 0 }];
+        events.extend(ability::evaluate_effect(state, &substitute_chosen_server(*then, server), &mut ctx, registry)?);
+        if resume == PendingChoiceResume::ResumeSubroutines {
+            mark_parked_resume_subroutines(state);
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
+        return Ok(events);
     }
 
     // The move-shaped resolution (Lotus Haze): the parking install moves,

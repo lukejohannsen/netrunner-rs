@@ -620,9 +620,11 @@ impl Prompt {
                         },
                     }
                 }
-                PendingDecision::ChooseServer { source_card, prompting_card, install, remember, .. } => match Placement::of(view, registry) {
+                PendingDecision::ChooseServer { source_card, prompting_card, install, remember, then, .. } => match Placement::of(view, registry) {
                     Some(placement) => Prompt { title: format!("{} asks: {}", asked_by(prompting_card, source_card), lower_first(&placement.question())), detail: placement.detail() },
                     None if install.is_some() => Prompt { title: format!("{} asks: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
+                    // AgInfusion: the run moves there, it does not start.
+                    None if then.is_some() => Prompt { title: format!("{} asks: choose a server to move the run to", asked_by(prompting_card, source_card)), detail: String::new() },
                     // Tsakhia: a server remembered for the turn, not a run.
                     None if *remember => Prompt { title: format!("{} asks: choose a server", asked_by(prompting_card, source_card)), detail: String::new() },
                     None => Prompt { title: format!("{} asks: choose a server to run", asked_by(prompting_card, source_card)), detail: String::new() },

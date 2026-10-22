@@ -700,8 +700,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
         }
-        Effect::ChooseServer { only_protected_by_ice: false } => "choose a server".to_string(),
-        Effect::ChooseServer { only_protected_by_ice: true } => "choose a server protected by ice".to_string(),
+        Effect::ChooseServer { only_protected_by_ice, other_than_attacked, then } => format!(
+            "choose a server{}{}{}",
+            if *only_protected_by_ice { " protected by ice" } else { "" },
+            if *other_than_attacked { " other than the attacked server" } else { "" },
+            then.as_ref().map(|then| format!(", then: {}", describe_effect(then, registry))).unwrap_or_default()
+        ),
         Effect::RevealHand(Side::Corp) => "reveal HQ".to_string(),
         Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
         Effect::Expose => "expose it".to_string(),
@@ -716,6 +720,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SpendChosenServer => "the chosen server is spent for this turn".to_string(),
         Effect::MoveRunToOutermost(Some(server)) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::MoveRunToOutermost(None) => "move the run to the outermost ice of the attacked server".to_string(),
+        Effect::MoveRunToOutermostAndEncounter(Some(server)) => format!("move the run to the outermost position of {} and encounter any ice there", describe_server(*server)),
+        Effect::MoveRunToOutermostAndEncounter(None) => "move the run to the outermost position of that server and encounter any ice there".to_string(),
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::PassedIce | netrunner_core::dsl::MovedTo::Ice { .. }) => "the Runner approaches the passed ice again, and may jack out".to_string(),
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::ChosenThisWay | netrunner_core::dsl::MovedTo::Install(_)) => "the Runner moves to the chosen ice and approaches it, and may jack out".to_string(),
         Effect::MoveRunToIce(netrunner_core::dsl::MovedTo::ThisCard) => "the Runner moves to that ice and approaches it".to_string(),
@@ -1255,9 +1261,10 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
                 }
             }
         }
-        PendingDecision::ChooseServer { install, remember, .. } => match crate::placement::Placement::of(view, registry) {
+        PendingDecision::ChooseServer { install, remember, then, .. } => match crate::placement::Placement::of(view, registry) {
             Some(placement) => asks(placement.question()),
             None if install.is_some() => asks("installing a card".to_string()),
+            None if then.is_some() => asks("choose a server to move the run to".to_string()),
             None if *remember => asks("choose a server".to_string()),
             None => asks("choose a server to run".to_string()),
         },

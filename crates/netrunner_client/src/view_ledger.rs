@@ -322,6 +322,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 install: _,         // drawn: placement::Placement
                 move_to_root: _,    // drawn: placement::Placement's question
                 remember: _,        // drawn: Prompt::of's "choose a server" and the buttons' "Choose HQ" (actions)
+                then: _,            // drawn: Prompt::of's "choose a server to move the run to" (AgInfusion)
                 ignore_run_costs: _, // engine's: the run it starts pays nothing extra, which the readouts show by not changing
                 on_success: _,      // engine's
                 source_card: _,     // drawn: Prompt::of
