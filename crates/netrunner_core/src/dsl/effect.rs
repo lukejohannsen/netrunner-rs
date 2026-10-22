@@ -1960,6 +1960,14 @@ pub enum Effect {
     /// the attacked server, and every move of the run leaves the
     /// encounter it was in.
     MoveThisIceToOutermostOf(crate::rules::ServerId),
+    /// For the remainder of the run, the icebreaker this resolves as gains
+    /// "abilities that increase this program's strength last for the
+    /// remainder of the run" — System Seizure's interrupt, heard as a boost
+    /// is made (`Trigger::OnStrengthBoosted`, `acts_on_subject`), so the
+    /// boost that set it off lasts the run too. Nothing outside a run.
+    /// Composition didn't work: `BoostsLast` is declared by the card that
+    /// lengthens, and this is given to whichever icebreaker was boosted.
+    BoostsLastTheRun,
     /// The Runner encounters the ice this resolves as again, without
     /// moving (CR 6.5.9a, a forced encounter) — Sisyphus Protocol's "If you
     /// do, the Runner encounters that ice again", heard as the ice is
@@ -3959,6 +3967,7 @@ impl Effect {
             | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::MoveThisIceToOutermost
             | Effect::MoveThisIceToOutermostOf(_)
+            | Effect::BoostsLastTheRun
             | Effect::ForceEncounter
             | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }

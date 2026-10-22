@@ -415,6 +415,14 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     format!("{card} has lost all its abilities")
                 }
                 // Anvil, Unsmiling Tsarevna: about the ice itself.
+                // System Seizure: about the icebreaker it was given to.
+                (Lingering::BoostsLastTheRun, on) => {
+                    let card = match on {
+                        On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "that icebreaker".to_string(), |card| title(&card)),
+                        _ => "that icebreaker".to_string(),
+                    };
+                    format!("{card}'s strength boosts last the run")
+                }
                 (Lingering::BreakLimit(at_most), on) => {
                     let ice = match on {
                         On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "the ice".to_string(), |card| title(&card)),

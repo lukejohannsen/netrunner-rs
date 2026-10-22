@@ -392,6 +392,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             None => Vec::new(),
         },
         GameEvent::CardsLookedAt { .. } => Vec::new(),
+        GameEvent::StrengthBoosted { card_id, install, .. } => vec![moment(Trigger::OnStrengthBoosted, &card(card_id, Some(*install)), Some(Side::Runner))],
         GameEvent::CardExposed { install, card: exposed } => vec![moment(Trigger::OnCardExposed, &card(exposed, Some(*install)), None)],
         GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
@@ -505,7 +506,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
-        | GameEvent::StrengthBoosted { .. }
         | GameEvent::TraceInitiated { .. }
         | GameEvent::TraceCorpBidSubmitted { .. }
         | GameEvent::TraceRunnerBidSubmitted { .. }

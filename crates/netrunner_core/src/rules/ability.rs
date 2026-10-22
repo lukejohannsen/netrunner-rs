@@ -2091,12 +2091,29 @@ pub fn evaluate_effect(
             let until = lingering::until(state, duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: On::Install(host_install), until, source: acting.clone() });
             let new_strength = lingering::rig_strength(state, &state.runner.rig[position]);
-            Ok(vec![GameEvent::StrengthBoosted {
-                card_id: acting.clone(),
-                new_strength,
-                delta: *amount as i32,
-                duration,
-            }])
+            let mut events = Vec::new();
+            let boosted = GameEvent::StrengthBoosted { card_id: acting.clone(), install: host_install, new_strength, delta: *amount as i32, duration };
+            dispatcher::emit(state, registry, &mut events, boosted)?;
+            Ok(events)
+        }
+
+        Effect::BoostsLastTheRun => {
+            // "For the remainder of the run": nothing outside one.
+            if state.active_run.is_none() {
+                return Ok(Vec::new());
+            }
+            let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+            let source = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // Heard as the boost was made (`Trigger::OnStrengthBoosted`), so
+            // the boost that set it off is one of the abilities it speaks
+            // of: what that boost left for the encounter lasts the run.
+            for effect in state.lingering.iter_mut() {
+                if matches!(effect.what, Lingering::Strength(_)) && effect.on == On::Install(install) && matches!(effect.until, lingering::Until::EndOfEncounter(_)) {
+                    effect.until = lingering::Until::EndOfRun;
+                }
+            }
+            state.lingering.push(LingeringEffect { what: Lingering::BoostsLastTheRun, on: On::Install(install), until: lingering::Until::EndOfRun, source });
+            Ok(Vec::new())
         }
 
         Effect::BreakSubroutines { count, restrict_to } => {
@@ -7432,6 +7449,7 @@ mod tests {
             events,
             vec![GameEvent::StrengthBoosted {
                 card_id: acting,
+                install: state.runner.rig[0].install_id,
                 new_strength: 3,
                 delta: 1,
                 duration: EffectDuration::Encounter,

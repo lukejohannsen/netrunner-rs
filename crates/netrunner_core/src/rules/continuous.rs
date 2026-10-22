@@ -722,7 +722,8 @@ pub(crate) fn boosts_last(state: &GameState, registry: &CardRegistry, install: I
     use crate::dsl::EffectDuration;
     let card = state.runner.rig.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card))?;
     let says = |duration: EffectDuration| any(state, registry, Target::Rig { card, install }, |kind| *kind == ContinuousKind::BoostsLast(duration));
-    [EffectDuration::Turn, EffectDuration::Run].into_iter().find(|duration| says(*duration))
+    let granted = state.lingering.iter().any(|effect| effect.what == crate::rules::lingering::Lingering::BoostsLastTheRun && effect.on == crate::rules::lingering::On::Install(install) && effect.holds(state));
+    [EffectDuration::Turn, EffectDuration::Run].into_iter().find(|duration| says(*duration) || (granted && *duration == EffectDuration::Run))
 }
 
 /// Whether `card`, being accessed now, is revealed while it is (CR 1.21.7:

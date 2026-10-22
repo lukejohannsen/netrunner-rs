@@ -1,0 +1,33 @@
+{
+  "id": "system_seizure",
+  "title": "System Seizure",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnStrengthBoosted",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Icebreaker"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "effects": [
+        "BoostsLastTheRun"
+      ],
+      "text": "The first time each turn you would increase the strength of an icebreaker, for the remainder of the run that icebreaker gains \"Abilities that increase this program's strength last for the remainder of the run"
+    }
+  ],
+  "built_from": 12026,
+  "is_playable": true
+}

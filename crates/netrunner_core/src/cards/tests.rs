@@ -41301,3 +41301,67 @@ mod red_sand_stage_42 {
         assert!(state.active_run.is_none());
     }
 }
+
+mod red_sand_stage_43 {
+    use super::*;
+    use super::system_gateway::{corp_ice, enter_encounter_with};
+    use crate::rules::lingering::{Lingering, On, Until};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Two Cleavers and System Seizure in play, encountering HQ's Wall of
+    /// Static.
+    fn seized() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: InstallId(1), base_strength: 3, ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: InstallId(2), base_strength: 3, ..Default::default() },
+        ];
+        state.runner.in_play = vec![crate::rules::PlayedOperation { card: id("system_seizure"), handle: InstallId(3) }];
+        state.next_install_id = 4;
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        (state, registry)
+    }
+
+    fn pump(state: &GameState, registry: &CardRegistry, install: u32) -> GameState {
+        // The window the pump leaves open is not closed: passing it would
+        // end the encounter, and an encounter's boosts with it.
+        // The Corp passes the priority a pump gave it.
+        let state = match apply_action(state, registry, PlayerAction::PassPriority { side: Side::Corp }) {
+            Ok((passed, _)) if passed.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) => passed,
+            _ => state.clone(),
+        };
+        apply_action(&state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index: 1 }).expect("pump").0
+    }
+
+    #[test]
+    fn system_seizure_makes_the_first_boost_of_the_turn_and_every_later_one_on_that_breaker_last_the_run() {
+        let (state, registry) = seized();
+        let state = pump(&state, &registry, 1);
+        let strength = |state: &GameState, install: u32| state.lingering.iter().filter(|effect| effect.on == On::Install(InstallId(install)) && matches!(effect.what, Lingering::Strength(_))).map(|effect| effect.until).collect::<Vec<_>>();
+        assert_eq!(strength(&state, 1), vec![Until::EndOfRun], "the boost that set it off lasts the run");
+        assert!(state.lingering.iter().any(|effect| effect.what == Lingering::BoostsLastTheRun && effect.on == On::Install(InstallId(1))));
+
+        let state = pump(&state, &registry, 1);
+        assert_eq!(strength(&state, 1), vec![Until::EndOfRun, Until::EndOfRun], "that icebreaker's later boosts last the run too");
+
+        let state = pump(&state, &registry, 2);
+        assert!(matches!(strength(&state, 2).as_slice(), [Until::EndOfEncounter(_)]), "the second icebreaker's boost is not the turn's first");
+    }
+
+    #[test]
+    fn without_system_seizure_a_boost_lasts_the_encounter() {
+        let (mut state, registry) = seized();
+        state.runner.in_play.clear();
+        let state = pump(&state, &registry, 1);
+        assert!(state.lingering.iter().all(|effect| effect.what != Lingering::BoostsLastTheRun));
+        assert!(state.lingering.iter().any(|effect| matches!(effect.until, Until::EndOfEncounter(_))));
+    }
+}

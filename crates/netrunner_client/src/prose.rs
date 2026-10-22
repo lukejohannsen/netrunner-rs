@@ -685,6 +685,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ForceEncounter => "the Runner encounters that ice again".to_string(),
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::MoveThisIceToOutermostOf(server) => format!("move this ice to the outermost position protecting {}", describe_server(*server)),
+        Effect::BoostsLastTheRun => "for the remainder of the run, abilities that increase its strength last for the remainder of the run".to_string(),
         Effect::MoveThisIceInnermostAndEncounter => "move this ice to the innermost position protecting the approached server, and the Runner encounters it".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
