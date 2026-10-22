@@ -1,0 +1,27 @@
+{
+  "id": "laguna_velasco_district",
+  "title": "Laguna Velasco District",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnBasicDrawAction",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you take the basic action to draw cards, increase the number of cards you draw by 1."
+    }
+  ],
+  "built_from": 13022,
+  "is_playable": true
+}

@@ -42195,3 +42195,111 @@ mod red_sand_stage_53 {
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&interface));
     }
 }
+
+mod flashpoint_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = rig
+            .iter()
+            .enumerate()
+            .map(|(i, card)| crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(i as u32 + 1), ..Default::default() })
+            .collect();
+        state.next_install_id = rig.len() as u32 + 1;
+        state.runner.stack = (0..6).map(|i| CardId(format!("stack_card_{i}"))).collect();
+        (state, registry)
+    }
+
+    #[test]
+    fn process_automation_gains_2_and_draws_1() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.grip = vec![id("process_automation")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("process_automation") }).expect("play it");
+        assert_eq!(state.runner.resources.credits, Credits(7));
+        assert_eq!(state.runner.grip.len(), 1, "the event left, a card came");
+    }
+
+    #[test]
+    fn laguna_velasco_district_adds_a_card_to_every_basic_draw() {
+        let (state, registry) = runner_turn(&["laguna_velasco_district"]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw again");
+        assert_eq!(state.runner.grip.len(), 4, "two each time, not only the first");
+    }
+
+    #[test]
+    fn llds_memory_diamond_raises_memory_link_and_hand_size() {
+        let (bare, registry) = runner_turn(&[]);
+        let (state, _) = runner_turn(&["llds_memory_diamond"]);
+        assert_eq!(crate::rules::continuous::link(&state, &registry), crate::rules::continuous::link(&bare, &registry) + 1);
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), crate::rules::continuous::hand_size(&bare, &registry, Side::Runner) + 1);
+    }
+
+    #[test]
+    fn blockade_runner_draws_3_and_shuffles_1_back() {
+        let (mut state, registry) = runner_turn(&["blockade_runner"]);
+        state.runner.grip = vec![id("sure_gamble")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 }).expect("[click],[click]");
+        assert_eq!(state.runner.resources.clicks, Clicks(2));
+        assert_eq!(state.runner.grip.len(), 4, "3 drawn before the choice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Sure Gamble");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle it in");
+        assert_eq!(state.runner.grip.len(), 3);
+        assert!(state.runner.stack.contains(&id("sure_gamble")));
+        assert_eq!(state.runner.stack.len(), 4);
+    }
+
+    #[test]
+    fn peace_in_our_time_is_a_first_click_and_ends_the_running() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.grip = vec![id("peace_in_our_time"), id("peace_in_our_time")];
+        state.corp.resources.credits = Credits(0);
+        let play = PlayerAction::PlayEvent { card_id: id("peace_in_our_time") };
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&play), "first click");
+        let (state, _) = apply_action(&state, &registry, play.clone()).expect("play it");
+        assert_eq!(state.runner.resources.credits, Credits(14), "paid 1, gained 10");
+        assert_eq!(state.corp.resources.credits, Credits(5));
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(!offered.contains(&play), "not the first click any more");
+        assert!(!offered.iter().any(|action| matches!(action, PlayerAction::InitiateRun { .. })), "no runs this turn");
+    }
+
+    #[test]
+    fn beth_kilrain_chang_draws_when_the_corp_is_at_10_to_14() {
+        let (mut state, registry) = runner_turn(&["beth_kilrain_chang"]);
+        state.corp.resources.credits = Credits(12);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let state = super::close_all_windows(state, &registry).0;
+        assert_eq!(state.runner.grip.len(), 1, "a card for 12[credit]");
+        assert_eq!(state.runner.resources.credits, Credits(5), "no credit");
+        assert_eq!(state.runner.resources.clicks, Clicks(4), "no extra click");
+    }
+
+    #[test]
+    fn beth_kilrain_chang_gains_a_click_when_the_corp_is_at_15() {
+        let (mut state, registry) = runner_turn(&["beth_kilrain_chang"]);
+        state.corp.resources.credits = Credits(15);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let state = super::close_all_windows(state, &registry).0;
+        assert_eq!(state.runner.resources.clicks, Clicks(5));
+        assert!(state.runner.grip.is_empty());
+    }
+
+    #[test]
+    fn algo_trading_takes_all_its_credits() {
+        let (mut state, registry) = runner_turn(&["algo_trading"]);
+        state.runner.rig[0].counters = 8;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 }).expect("[click],[trash]");
+        assert_eq!(state.runner.resources.credits, Credits(13));
+        assert!(state.runner.rig.is_empty());
+    }
+}

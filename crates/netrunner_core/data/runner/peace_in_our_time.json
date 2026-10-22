@@ -1,0 +1,59 @@
+{
+  "id": "peace_in_our_time",
+  "title": "Peace in Our Time",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "And": [
+      {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurn": "OnActionFinished"
+            },
+            1
+          ]
+        }
+      },
+      {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesLastTurn": "OnAgendaScored"
+            },
+            1
+          ]
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            10
+          ]
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            5
+          ]
+        },
+        {
+          "Prohibit": {
+            "what": "Run",
+            "until": "Turn"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 11109,
+  "is_playable": true
+}

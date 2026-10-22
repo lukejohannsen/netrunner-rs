@@ -1,0 +1,80 @@
+{
+  "id": "algo_trading",
+  "title": "Algo Trading",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "min": 0,
+            "max": {
+              "Fixed": 3
+            },
+            "of": {
+              "Credits": "Runner"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Runner",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "AddCounters": "ChosenNumber"
+                }
+              ]
+            },
+            "text": "you may move up to 3[credit] from your credit pool to Algo Trading"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may move up to 3[credit] from your credit pool to Algo Trading."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 6
+            },
+            "effect": {
+              "AddCounters": 2
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, place 2[credit] on Algo Trading from the bank if there are at least 6[credit] on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsAmount": [
+          "Runner",
+          "HostedCounters"
+        ]
+      },
+      "text": "[click],[trash]: Take all credits from Algo Trading."
+    }
+  ],
+  "built_from": 11029,
+  "is_playable": true
+}

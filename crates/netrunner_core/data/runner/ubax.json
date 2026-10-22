@@ -1,0 +1,35 @@
+{
+  "id": "ubax",
+  "title": "Ubax",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, draw 1 card."
+    }
+  ],
+  "built_from": 13016,
+  "is_playable": true
+}
