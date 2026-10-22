@@ -91,10 +91,17 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         place: Place::Installed,
     });
     // A condition counter is active while it is hosted (CR 1.9.5j), in its
-    // host's server, after the table it is on.
+    // host's server, after the table it is on — or in no server, hosted on
+    // a Runner's card (MCA Informant's connection resource).
     let conditions = state.corp.conditions.iter().filter_map(|condition| {
-        let host = state.find_corp_install(condition.host)?;
-        Some(ActiveCard { side: Side::Corp, card: &condition.card, install: Some(condition.handle), server: Some(host.server), place: Place::Installed })
+        let server = match state.find_corp_install(condition.host) {
+            Some(host) => Some(host.server),
+            None => {
+                state.find_rig_install(condition.host)?;
+                None
+            }
+        };
+        Some(ActiveCard { side: Side::Corp, card: &condition.card, install: Some(condition.handle), server, place: Place::Installed })
     });
     // A lockdown in the play area (CR 1.8.3a), after the table: it was
     // played after anything installed there.

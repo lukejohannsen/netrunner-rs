@@ -1,0 +1,98 @@
+{
+  "id": "mca_informant",
+  "title": "MCA Informant",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OpponentInstalled",
+      "count": 1,
+      "filter": {
+        "All": [
+          {
+            "CardType": "Resource"
+          },
+          {
+            "HasSubtype": "Connection"
+          }
+        ]
+      }
+    }
+  },
+  "continuous": [
+    {
+      "kind": {
+        "Tags": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner is considered to have 1 additional tag."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    {
+                      "HasSubtype": "Connection"
+                    }
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "HostThisAsCondition": {
+                    "condition": 0,
+                    "host": 0
+                  }
+                }
+              }
+            },
+            "EndActionPhase"
+          ]
+        }
+      ],
+      "text": "Host this operation on an installed connection resource as a condition counter"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 2
+          }
+        ]
+      },
+      "effect": {
+        "TrashCard": "ConditionHost"
+      },
+      "used_by": "Runner",
+      "text": "[click], 2[credit]: Trash this resource."
+    }
+  ],
+  "built_from": 12036,
+  "is_playable": true
+}

@@ -344,6 +344,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                     .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
                     .or_else(|| state.rig_abilities_card(*target).cloned())
                     .or_else(|| state.runner.find_stolen(*target).map(|s| s.card.clone()))
+                    .or_else(|| state.corp.conditions.iter().find(|condition| condition.handle == *target).map(|condition| condition.card.clone()))
             };
             if let Some(used_by) = card
                 .as_ref()
@@ -359,6 +360,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
             if *target == InstallId::CORP_IDENTITY
                 || state.find_corp_install(*target).is_some()
                 || state.corp.find_scored(*target).is_some()
+                || state.corp.conditions.iter().any(|condition| condition.handle == *target)
             {
                 Side::Corp
             } else if matches!(*target, InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT) || state.find_rig_install(*target).is_some() {
@@ -825,6 +827,10 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     // An agenda the Runner stole, whose ability the Corp uses there.
     for scored in state.runner.scored_agendas.iter().filter(|s| state.runner.find_stolen(s.install_id).is_some()) {
         candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
+    }
+    // A condition counter's, by its handle (MCA Informant).
+    for condition in &state.corp.conditions {
+        candidates.extend(paid_ability_candidates(&condition.card, condition.handle, registry));
     }
     for rig_card in &state.runner.rig {
         let card = state.rig_abilities_card(rig_card.install_id).unwrap_or(&rig_card.card);

@@ -864,6 +864,7 @@ fn corp_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
         .map(|c| c.install_id)
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
         .chain(runner_scored_corp_cards(state))
+        .chain(state.corp.conditions.iter().map(|condition| condition.handle))
         .position(|candidate| candidate == id)?;
     (position < IDENTITY_ABILITY_SLOT).then_some(position)
 }
@@ -877,6 +878,7 @@ fn corp_ability_target(state: &GameState, slot: usize) -> Option<InstallId> {
         .map(|c| c.install_id)
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
         .chain(runner_scored_corp_cards(state))
+        .chain(state.corp.conditions.iter().map(|condition| condition.handle))
         .nth(slot)
 }
 

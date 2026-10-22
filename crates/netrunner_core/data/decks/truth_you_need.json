@@ -3,7 +3,7 @@
   "name": "The Truth You Need",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment. Kitara Stage 13b: two Degree Mill for its two Bellona, the same three points each, stolen only by shuffling two installed Runner cards into the stack. Two Gold Farmer made room for two Jua, so an encounter can forbid the turn's installs. Red Sand Stage 1: two each of Authenticator, Data Loop and Free Lunch for two each of Capacitor, Klevetnik and Unsmiling Tsarevna. Red Sand Stage 2: two Traffic Analyzer, Henry Phillips and two Threat Level Alpha for two Vladisibirsk City Grid, Arella Salvatore and two Turtlebacks. Red Sand Stage 4: two Escalate Vitriol for two Freedom of Information, point for point, an agenda that pays for the tags the deck gives. Red Sand Stage 36: three Kingmaking for two Reeducation and a second Gold Farmer, which keeps 20 agenda points.",
+  "description": "Not a published list: built so the sweeps reach Acme Consulting: The Truth You Need, Reign and Reverie's NBN identity, under which the Runner is considered to have 1 additional tag while encountering the outermost ice protecting a server. Broadcast Hour's list unchanged, whose tag punishment (Hydra, Capacitor, Game Over, Freedom of Information) is what the considered tag feeds; its 10 influence fits Acme's 15. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 9. Kitara Stage 5a: two Market Forces and two Self-Growth Program for two Game Over and two Attitude Adjustment. Kitara Stage 13b: two Degree Mill for its two Bellona, the same three points each, stolen only by shuffling two installed Runner cards into the stack. Two Gold Farmer made room for two Jua, so an encounter can forbid the turn's installs. Red Sand Stage 1: two each of Authenticator, Data Loop and Free Lunch for two each of Capacitor, Klevetnik and Unsmiling Tsarevna. Red Sand Stage 2: two Traffic Analyzer, Henry Phillips and two Threat Level Alpha for two Vladisibirsk City Grid, Arella Salvatore and two Turtlebacks. Red Sand Stage 4: two Escalate Vitriol for two Freedom of Information, point for point, an agenda that pays for the tags the deck gives. Red Sand Stage 36: three Kingmaking for two Reeducation and a second Gold Farmer, which keeps 20 agenda points. Red Sand Stage 37: two Ganked! for two MCA Informant.",
   "style": [
     "fast-advance"
   ],
@@ -47,10 +47,6 @@
     },
     {
       "card": "hostile_infrastructure",
-      "count": 2
-    },
-    {
-      "card": "ganked",
       "count": 2
     },
     {
@@ -103,6 +99,10 @@
     },
     {
       "card": "reeducation",
+      "count": 2
+    },
+    {
+      "card": "mca_informant",
       "count": 2
     }
   ]

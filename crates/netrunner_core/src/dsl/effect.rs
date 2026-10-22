@@ -85,6 +85,12 @@ pub enum CardTarget {
     /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
     /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
     HostIce,
+    /// The install the acting condition counter is hosted on, on either
+    /// side of the table — MCA Informant's "Host resource gains '[click],
+    /// 2[credit]: Trash this resource.'", an ability of the condition that
+    /// acts on its host. Composition didn't work: `HostIce` is the host of a
+    /// Trojan, found through the rig card, and a condition is no install.
+    ConditionHost,
     /// Every card hosted on `acting_card` (`InstalledRunnerCard::
     /// hosted_cards`) — Bling's "when your discard phase ends, trash all
     /// hosted cards". Only meaningful for `Effect::TrashCard`; each hosted

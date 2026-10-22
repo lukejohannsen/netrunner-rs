@@ -450,6 +450,17 @@ fn acting_rig_card<'s>(state: &'s GameState, ctx: &ResolutionContext<'_>) -> Opt
     acting_rig_position(state, ctx).map(|position| &state.runner.rig[position])
 }
 
+/// The install the acting condition counter is hosted on, and whose it is
+/// (`CardTarget::ConditionHost`).
+fn condition_host(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<(Side, InstallId)> {
+    let condition = ctx.acting_install.and_then(|handle| state.corp.conditions.iter().find(|condition| condition.handle == handle))?;
+    if state.find_corp_install(condition.host).is_some() {
+        Some((Side::Corp, condition.host))
+    } else {
+        state.find_rig_install(condition.host).map(|_| (Side::Runner, condition.host))
+    }
+}
+
 fn acting_rig_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
     match ctx.acting_install {
         Some(install) => state.runner.rig.iter().position(|c| c.install_id == install),
@@ -1912,7 +1923,9 @@ pub fn evaluate_effect(
         // left the table while the choice was parked: the operation stays
         // in the play area until the Corp's next turn, as a lockdown would.
         Effect::HostThisAsCondition { condition, host } => {
-            let Some(host_card) = state.corp.installed.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()) else {
+            // On a Corp install (Eavesdrop's ice) or a Runner's (MCA
+            // Informant's connection resource).
+            let Some(host_card) = state.find_corp_install(*host).map(|c| c.card.clone()).or_else(|| state.find_rig_install(*host).map(|c| c.card.clone())) else {
                 return Ok(Vec::new());
             };
             let position = state.corp.play_area.iter().position(|played| played.handle == *condition).ok_or(RulesError::InstallNotFound(*condition))?;
@@ -3599,6 +3612,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             let (host, _, _) = resolve_corp_installed_target(state, target, ctx).ok()?;
             state.corp.installed.iter().position(|installed| installed.install_id == host).map(corp)
         }
+        CardTarget::ConditionHost => condition_host(state, ctx).map(|(owner, install)| WouldHappen::Trash { owner, install, by }),
         CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
         CardTarget::Install(install) => state
             .corp
@@ -3705,6 +3719,12 @@ fn resolve_corp_installed_target(
         | CardTarget::SetAside
         | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => {
             Err(RulesError::UnresolvedCardTarget)
+        }
+        // A condition's host, when it is a piece of Corp ice (Eavesdrop's).
+        CardTarget::ConditionHost => {
+            let (_, host) = condition_host(state, ctx).filter(|(owner, _)| *owner == Side::Corp).ok_or(RulesError::UnresolvedCardTarget)?;
+            let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
+            Ok((host, installed.card.clone(), installed.server))
         }
     }
 }
@@ -3895,6 +3915,12 @@ pub(crate) fn trash_card(
             trash_install(state, registry, Side::Corp, install, by)
         }
 
+        // Gone with its host already, or its host gone: nothing to trash.
+        CardTarget::ConditionHost => match condition_host(state, ctx) {
+            Some((owner, install)) => trash_install(state, registry, owner, install, by),
+            None => Ok(Vec::new()),
+        },
+
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
         CardTarget::HostedOnThisCard | CardTarget::SetAside | CardTarget::DrawnCard | CardTarget::AccessedCard | CardTarget::Accessed(_) => Err(RulesError::UnresolvedCardTarget),
@@ -4040,6 +4066,14 @@ fn trash_hosted_card(state: &mut GameState, registry: &CardRegistry, card: CardI
 pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: &CardRegistry, removed: &InstalledRunnerCard) -> Vec<GameEvent> {
     let host = removed.install_id;
     let mut events = Vec::new();
+    // A condition counter goes with its host (CR 1.13.6d), as it does from
+    // a Corp install (`cascade_trash_hosted_programs`): MCA Informant's
+    // connection resource.
+    while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
+        let removed = state.corp.conditions.remove(position);
+        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
+    }
     // Cards hosted *uninstalled* on the host (Madani's programs, Detente's
     // Corp cards) are trashed with it too — they were in no other zone,
     // and they left the rig inside `removed`, which is why this takes the

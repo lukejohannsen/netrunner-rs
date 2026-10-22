@@ -258,6 +258,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::Install(_) => "that card".to_string(),
         CardTarget::TopOfStack { side, .. } => format!("the top card of {}'s deck", who(*side)),
         CardTarget::HostIce => "the host ice".to_string(),
+        CardTarget::ConditionHost => "the card it is hosted on".to_string(),
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
         CardTarget::EncounteredIce => "the ice being encountered".to_string(),
         CardTarget::RandomFromHand(Side::Corp) => "a random card from HQ".to_string(),
