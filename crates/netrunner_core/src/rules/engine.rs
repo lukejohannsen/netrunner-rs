@@ -6029,6 +6029,7 @@ mod tests {
                 GameEvent::AbilityTookCredits { side: Side::Runner, card: card_id.clone() },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::StrengthBoosted {
+                    install: install_of(&state, &card_id.0),
                     card_id,
                     new_strength: 3,
                     delta: 1,

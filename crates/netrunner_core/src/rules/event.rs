@@ -665,7 +665,10 @@ pub enum GameEvent {
     PaidAbilityWindowOpened { side: Side },
     PriorityPassed { side: Side },
     PaidAbilityWindowClosed,
-    StrengthBoosted { card_id: CardId, new_strength: i32, delta: i32, duration: EffectDuration },
+    /// An ability boosted the installed card `install`'s strength by
+    /// `delta`. `install` is which copy, for the cards that hear a boost
+    /// (`Trigger::OnStrengthBoosted`, System Seizure's "that icebreaker").
+    StrengthBoosted { card_id: CardId, install: InstallId, new_strength: i32, delta: i32, duration: EffectDuration },
     TraceInitiated { base: u32, initiating_card: Option<CardId> },
     TraceCorpBidSubmitted { corp_bid: u32, total_strength: u32 },
     TraceRunnerBidSubmitted { runner_bid: u32, total_strength: u32 },

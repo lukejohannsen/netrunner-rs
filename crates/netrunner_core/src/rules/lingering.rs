@@ -234,6 +234,13 @@ pub enum Lingering {
     /// chooser's install for as long as it is installed, read with
     /// [`chosen_ice_type`]. Public: the rules make the choice open.
     ChosenIceType(crate::dsl::IceType),
+    /// The icebreaker has "abilities that increase this program's strength
+    /// last for the remainder of the run" for as long as the entry holds —
+    /// System Seizure's grant, made by `Effect::BoostsLastTheRun` and read
+    /// by `continuous::boosts_last` beside the table's `BoostsLast`.
+    /// Lingering rather than continuous: it is given to one icebreaker,
+    /// the one boosted, which the current cannot name.
+    BoostsLastTheRun,
 }
 
 /// The Runner's mark this turn, if one has been identified (CR 10.11.1a:
@@ -386,7 +393,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun => 0,
         })
         .sum()
 }
@@ -427,7 +434,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun => 0,
         })
 }
 
@@ -440,7 +447,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun => 0,
         })
         .sum()
 }
