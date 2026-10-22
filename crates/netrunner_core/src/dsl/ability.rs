@@ -406,6 +406,13 @@ pub enum EffectRequirement {
     /// Composition didn't work: the turn log counted actions and which,
     /// never the order they came in.
     AfterAPlay,
+    /// It is the paid ability window that follows the Runner's suffering
+    /// damage — Salvaged Vanadis Armory's "Use this ability only during the
+    /// next paid ability window after suffering any amount of damage":
+    /// damage has been suffered this turn and no window has closed since
+    /// (`TurnLog::window_after_damage`). Composition didn't work: as with
+    /// `AfterAPlay`, the log counted what happened, never what came after.
+    InTheWindowAfterDamage,
     /// The Runner is encountering a piece of ice and has already broken a
     /// subroutine during this encounter — Poison Vial's "Use this ability
     /// only if you have already broken a subroutine during this encounter".

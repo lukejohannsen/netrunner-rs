@@ -224,6 +224,7 @@ pub(crate) fn pass_priority(
         let checkpoint = window.checkpoint;
         events.push(GameEvent::PaidAbilityWindowClosed);
         state.paid_ability_window = None;
+        crate::rules::turn_log::record_window_closed(state);
         events.extend(close_window(state, registry, checkpoint)?);
     } else {
         window.active_priority = acting_side.other();

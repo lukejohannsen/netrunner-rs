@@ -22722,7 +22722,7 @@ mod uprising {
         PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }
     }
 
-    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
         apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, card), ability_index: 0 })
     }
 
@@ -24623,7 +24623,7 @@ mod uprising {
 
     // ---- Stage 7a: lockdown ----
 
-    fn play_op(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    fn play_op(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
         apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) })
     }
 
@@ -25185,7 +25185,7 @@ mod downfall {
         state
     }
 
-    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
         apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, card), ability_index })
     }
 
@@ -27055,7 +27055,7 @@ mod reprints {
         state
     }
 
-    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
         apply_action(state, registry, PlayerAction::ActivateAbility { target: install_of(state, card), ability_index })
     }
 
@@ -41866,5 +41866,84 @@ mod red_sand_stage_49 {
         let state = advance(&state, &registry, ICE);
         let agenda = state.find_corp_install(AGENDA).unwrap();
         assert_eq!(agenda.this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance), 0, "the ice's advance is not the agenda's");
+    }
+}
+
+mod red_sand_stage_50 {
+    use super::*;
+
+    const ARMORY: InstallId = InstallId(9000);
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Runner's turn with Salvaged Vanadis Armory installed, a grip
+    /// to suffer damage from, and two pieces of hardware that each deal
+    /// 1 damage as they are installed.
+    fn runner_turn() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.runner.grip.extend([id("ghosttongue"), id("respirocytes")]);
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("salvaged_vanadis_armory"), install_id: ARMORY, ..Default::default() }];
+        (state, registry)
+    }
+
+    fn install(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::InstallHardware { card_id: id(card), host: None }).expect("install").0
+    }
+
+    fn salvage(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: ARMORY, ability_index: 0 })
+    }
+
+    #[test]
+    fn the_armory_cannot_be_used_before_any_damage() {
+        let (state, registry) = runner_turn();
+        assert!(salvage(&state, &registry).is_err());
+    }
+
+    #[test]
+    fn after_damage_the_armory_mills_that_much() {
+        let (state, registry) = runner_turn();
+        let state = install(&state, &registry, "ghosttongue");
+        assert_eq!(state.this_turn.damage_suffered(), 1);
+        let (done, _) = salvage(&state, &registry).expect("the window after the damage");
+        assert!(!done.runner.rig.iter().any(|card| card.install_id == ARMORY), "trashed to pay");
+        assert_eq!(done.corp.r_and_d.len(), 5, "the top 1 card");
+    }
+
+    #[test]
+    fn the_window_after_damage_ends_when_the_next_action_begins() {
+        let (state, registry) = runner_turn();
+        let state = install(&state, &registry, "ghosttongue");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("click for a credit");
+        assert!(salvage(&state, &registry).is_err(), "the window after the damage has closed");
+    }
+
+    #[test]
+    fn x_is_every_damage_suffered_this_turn() {
+        let (state, registry) = runner_turn();
+        let state = install(&state, &registry, "ghosttongue");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("click for a credit");
+        let state = install(&state, &registry, "respirocytes");
+        assert_eq!(state.this_turn.damage_suffered(), 2);
+        let (done, _) = salvage(&state, &registry).expect("the window after the second damage");
+        assert_eq!(done.corp.r_and_d.len(), 4, "1 core damage and 1 meat damage");
+    }
+
+    #[test]
+    fn the_damage_and_the_window_are_forgotten_at_the_next_turn() {
+        let (state, registry) = runner_turn();
+        let mut state = install(&state, &registry, "ghosttongue");
+        crate::rules::turn_log::rotate(&mut state);
+        assert_eq!(state.this_turn.damage_suffered(), 0);
+        assert!(salvage(&state, &registry).is_err());
     }
 }
