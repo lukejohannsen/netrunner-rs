@@ -5645,6 +5645,15 @@ pub fn check_requirement(
             });
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::CanInterfaceWith(ice_type) => {
+            let ice = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position));
+            let breaker = acting_rig_card(state, ctx);
+            let can = ice.zip(breaker).is_some_and(|(ice, breaker)| {
+                (ice.ice_type == *ice_type || continuous::ice_gains_subtype(state, registry, ice.install_id, *ice_type))
+                    && continuous::breaker_strength(state, registry, breaker) >= continuous::ice_strength(state, registry, ice)
+            });
+            if can { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::EncounteringIceProtectingMark => {
             let protecting = crate::rules::lingering::mark(state).is_some_and(|mark| {
                 state
@@ -6430,6 +6439,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
+        | EffectRequirement::CanInterfaceWith(_)
         | EffectRequirement::EncounteringIceProtectingMark
         | EffectRequirement::MarkIs(_)
         | EffectRequirement::ThisCardStartedTheRun

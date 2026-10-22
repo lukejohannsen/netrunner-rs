@@ -42472,3 +42472,169 @@ mod flashpoint_stage_2b {
         assert_eq!(done.runner.heap.iter().filter(|card| **card == id("sure_gamble")).count(), 9, "the rest trashed");
     }
 }
+
+mod flashpoint_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    /// Installed with its printed strength, as an install seeds it.
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        let base_strength = registry().get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), base_strength, ..Default::default() }
+    }
+
+    fn ice(card: &str, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        let installed = state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("installed");
+        crate::rules::continuous::breaker_strength(state, registry, installed)
+    }
+
+    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, install: u32, ability_index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index }).map(|(state, _)| state)
+    }
+
+    fn all_broken(state: &GameState) -> bool {
+        let run = state.active_run.as_ref().expect("encountering");
+        run.ice[run.position].subroutines.iter().all(|s| s.status == crate::rules::SubroutineStatus::Broken)
+    }
+
+    #[test]
+    fn nfr_and_sunya_grow_a_counter_for_each_ice_they_fully_break() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("nfr", 10)];
+        state.corp.installed = vec![ice("ice_wall", 11)];
+        let broke = use_ability(&encounter(&state, &registry), &registry, 10, 0).expect("1[credit]: break 1 barrier subroutine");
+        let passed = close_all_windows(broke, &registry).0;
+        assert_eq!(passed.runner.rig[0].counters, 1, "fully broke a piece of ice");
+        assert_eq!(strength(&passed, &registry, "nfr"), 2, "+1 strength a counter");
+
+        let mut sentry = runner_turn();
+        sentry.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("sunya", 20) }];
+        assert_eq!(strength(&sentry, &registry, "sunya"), 3);
+        sentry.corp.installed = vec![ice("ice_wall", 21)];
+        assert!(use_ability(&encounter(&sentry, &registry), &registry, 20, 0).is_err(), "sentries only");
+    }
+
+    #[test]
+    fn demara_and_lustig_trash_themselves_to_bypass_their_ice_type() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("demara", 10)];
+        state.corp.installed = vec![ice("ice_wall", 11)];
+        let bypassed = use_ability(&encounter(&state, &registry), &registry, 10, 2).expect("[trash]: bypass the barrier");
+        assert!(bypassed.runner.rig.is_empty() && bypassed.runner.heap.contains(&id("demara")));
+
+        let mut sentry = runner_turn();
+        sentry.runner.rig = vec![rig("lustig", 20)];
+        sentry.corp.installed = vec![ice("ice_wall", 21)];
+        assert!(use_ability(&encounter(&sentry, &registry), &registry, 20, 2).is_err(), "a barrier is not a sentry");
+        let pumped = use_ability(&encounter(&sentry, &registry), &registry, 20, 1).expect("3[credit]: +5 strength");
+        assert_eq!(strength(&pumped, &registry, "lustig"), 6);
+    }
+
+    #[test]
+    fn dai_v_spends_only_credits_from_stealth_cards() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("dai_v", 10)];
+        state.corp.installed = vec![ice("ice_wall", 11)];
+        let at_wall = encounter(&state, &registry);
+        assert!(use_ability(&at_wall, &registry, 10, 0).is_err(), "twenty credits in the pool, none from a stealth card");
+        let pumped = use_ability(&at_wall, &registry, 10, 1).expect("1[credit]: +1 strength");
+        assert_eq!(strength(&pumped, &registry, "dai_v"), 2);
+    }
+
+    #[test]
+    fn mammon_buys_its_counters_as_the_turn_begins_and_breaks_with_them() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![rig("mammon", 10)];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("spend 3");
+        let mut state = close_all_windows(state, &registry).0;
+        assert_eq!((state.runner.rig[0].counters, state.runner.resources.credits), (3, Credits(2)));
+
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice("ice_wall", 11)];
+        let pumped = use_ability(&encounter(&state, &registry), &registry, 10, 1).expect("2[credit]: +2 strength");
+        let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes");
+        let broke = use_ability(&pumped, &registry, 10, 0).expect("hosted power counter: break 1 subroutine");
+        assert_eq!(broke.runner.rig[0].counters, 2);
+        assert!(all_broken(&broke));
+    }
+
+    #[test]
+    fn dhegdheer_hosts_a_program_for_1_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![rig("dhegdheer", 10)];
+        state.next_install_id = 11;
+        state.runner.grip = vec![id("corroder"), id("corroder")];
+        let onto = PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: Some(InstallId(10)) };
+        let (hosted, _) = apply_action(&state, &registry, onto.clone()).expect("install Corroder onto it");
+        assert_eq!(hosted.runner.resources.credits, Credits(5 - 1), "Corroder costs 2, 1 less");
+        assert!(apply_action(&hosted, &registry, onto).is_err(), "limit 1 hosted program");
+    }
+
+    #[test]
+    fn black_orchestra_comes_out_of_the_heap_at_a_code_gate_and_breaks_once_it_is_strong_enough() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.heap = vec![id("black_orchestra")];
+        state.corp.installed = vec![ice("enigma", 11)];
+        let at_gate = encounter(&state, &registry);
+        assert!(at_gate.pending_decision.is_some(), "may install it from the heap");
+        let (installed, _) = apply_action(&at_gate, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install it");
+        assert!(installed.runner.heap.is_empty());
+        assert_eq!(installed.runner.resources.credits, Credits(20 - 3));
+        let install = installed.runner.rig.iter().find(|card| card.card == id("black_orchestra")).expect("in the rig").install_id;
+        let broke = use_ability(&installed, &registry, install.0, 0).expect("3[credit]: +2 strength, then break");
+        assert_eq!(strength(&broke, &registry, "black_orchestra"), 4);
+        assert!(all_broken(&broke), "strong enough to interface with Enigma");
+    }
+
+    #[test]
+    fn paperclip_pumps_by_x_and_breaks_x_only_on_a_barrier_it_can_interface_with() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("paperclip", 10)];
+        state.corp.installed = vec![ice("rototurret", 11)];
+        let x = PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 };
+        let (asked, _) = apply_action(&encounter(&state, &registry), &registry, x.clone()).expect("asks for X");
+        let (pumped, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        assert_eq!(strength(&pumped, &registry, "paperclip"), 3, "+X strength on any ice");
+        assert!(!all_broken(&pumped), "a sentry is not a barrier");
+
+        state.corp.installed = vec![ice("ice_wall", 12)];
+        let (asked, _) = apply_action(&encounter(&state, &registry), &registry, x).expect("asks for X");
+        let (broke, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("X = 1");
+        assert!(all_broken(&broke));
+        assert_eq!(broke.runner.resources.credits, Credits(20 - 1));
+    }
+}

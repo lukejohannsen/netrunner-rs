@@ -1,0 +1,81 @@
+{
+  "id": "black_orchestra",
+  "title": "Black Orchestra",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "from_discard": true,
+      "requirement": {
+        "Encountering": "CodeGate"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnHeap",
+                  "discount": {
+                    "Credits": 0
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install this program from your heap",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you encounter a code gate, you may install this program from your heap."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "3[credit]: +2 strength. Then, if this program can interface with the code gate you are encountering, break up to 2 subroutines.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BoostStrength": {
+              "amount": 2,
+              "duration": "Encounter"
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "CanInterfaceWith": "CodeGate"
+              },
+              "effect": {
+                "BreakSubroutines": {
+                  "count": {
+                    "Fixed": 2
+                  },
+                  "restrict_to": "CodeGate"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 11042,
+  "is_playable": true
+}

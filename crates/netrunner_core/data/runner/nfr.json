@@ -1,0 +1,55 @@
+{
+  "id": "nfr",
+  "title": "Nfr",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 1,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each power counter on it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": "ByThis",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever this program fully breaks a piece of ice, place 1 power counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 11023,
+  "is_playable": true
+}

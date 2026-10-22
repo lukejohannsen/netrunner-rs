@@ -1,0 +1,83 @@
+{
+  "id": "mammon",
+  "title": "Mammon",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "min": 0,
+            "max": {
+              "Credits": "Runner"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Runner",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "AddCounters": "ChosenNumber"
+                }
+              ]
+            },
+            "text": "you may spend any number of credits to place that many power counters on this program"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may spend any number of credits to place that many power counters on this program."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "RemoveCounters": "HostedCounters"
+        }
+      ],
+      "text": "When your discard phase ends, remove all hosted power counters."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Hosted power counter: Break 1 subroutine.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 13009,
+  "is_playable": true
+}

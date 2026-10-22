@@ -1,0 +1,52 @@
+{
+  "id": "dhegdheer",
+  "title": "Dhegdheer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 0,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "You can install other programs onto this program."
+    },
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "text": "Each program installed this way costs 1[credit] less to install."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 4
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory cost of the hosted program does not count against your memory limit."
+    }
+  ],
+  "triggers": [],
+  "built_from": 13020,
+  "is_playable": true
+}
