@@ -42303,3 +42303,101 @@ mod flashpoint_stage_1 {
         assert!(state.runner.rig.is_empty());
     }
 }
+
+mod flashpoint_stage_2 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = rig
+            .iter()
+            .enumerate()
+            .map(|(i, card)| crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(i as u32 + 1), ..Default::default() })
+            .collect();
+        state.next_install_id = rig.len() as u32 + 1;
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.grip.extend([id("ghosttongue"), id("respirocytes")]);
+        state.runner.stack = vec![id("diesel"); 5];
+        state.corp.hq = vec![id("hedge_fund"); 4];
+        (state, registry)
+    }
+
+    fn install(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::InstallHardware { card_id: id(card), host: None }).expect("install").0
+    }
+
+    #[test]
+    fn misdirection_removes_x_tags_for_x_credits() {
+        let (mut state, registry) = runner_turn(&["misdirection"]);
+        state.runner.tags = 3;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 }).expect("[click], [click], X[credit]");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        assert_eq!(state.runner.tags, 1);
+        assert_eq!(state.runner.resources.credits, Credits(8));
+        assert_eq!(state.runner.resources.clicks, Clicks(2));
+    }
+
+    #[test]
+    fn officer_frank_needs_meat_damage_this_turn() {
+        let (state, registry) = runner_turn(&["officer_frank"]);
+        let frank = PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 };
+        assert!(apply_action(&state, &registry, frank.clone()).is_err(), "no meat damage yet");
+        let state = install(&state, &registry, "respirocytes");
+        let (state, _) = apply_action(&state, &registry, frank).expect("after the meat damage");
+        assert_eq!(state.corp.hq.len(), 2, "2 cards from HQ at random");
+        assert!(!state.runner.rig.iter().any(|card| card.card == id("officer_frank")), "trashed to pay");
+    }
+
+    #[test]
+    fn first_responders_draws_for_2_after_damage() {
+        let (state, registry) = runner_turn(&["first_responders"]);
+        let responders = PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 0 };
+        assert!(apply_action(&state, &registry, responders.clone()).is_err(), "no damage yet");
+        let state = install(&state, &registry, "ghosttongue");
+        let (grip, credits) = (state.runner.grip.len(), state.runner.resources.credits.0);
+        let (state, _) = apply_action(&state, &registry, responders).expect("after the damage");
+        assert_eq!(state.runner.grip.len(), grip + 1);
+        assert_eq!(state.runner.resources.credits, Credits(credits - 2));
+    }
+
+    #[test]
+    fn tapwrm_installs_only_after_a_central_run_and_pays_by_the_corps_fives() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.grip.push(id("tapwrm"));
+        let install = PlayerAction::InstallProgram { card_id: id("tapwrm"), trash_first: false, host: None };
+        assert!(apply_action(&state, &registry, install).is_err(), "no successful run on a central this turn");
+
+        let (mut state, registry) = runner_turn(&["tapwrm"]);
+        state.corp.resources.credits = Credits(17);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let state = super::close_all_windows(state, &registry).0;
+        assert_eq!(state.runner.resources.credits, Credits(13), "1[credit] for each of 3 fives");
+    }
+
+    #[test]
+    fn obelus_raises_hand_size_by_the_tags() {
+        let (mut bare, registry) = runner_turn(&[]);
+        let (mut state, _) = runner_turn(&["obelus"]);
+        bare.runner.tags = 2;
+        state.runner.tags = 2;
+        let hand = |state: &GameState| crate::rules::continuous::hand_size(state, &registry, Side::Runner);
+        assert_eq!(hand(&state), hand(&bare) + 2);
+    }
+
+    #[test]
+    fn reaver_draws_the_first_time_the_runner_trashes_an_installed_card() {
+        let (state, registry) = runner_turn(&["reaver", "officer_frank"]);
+        let state = install(&state, &registry, "respirocytes");
+        let grip = state.runner.grip.len();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2), ability_index: 0 }).expect("Officer Frank trashes itself");
+        assert_eq!(state.runner.grip.len(), grip + 1, "Reaver's draw");
+    }
+}

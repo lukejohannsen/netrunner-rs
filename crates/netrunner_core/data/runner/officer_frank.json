@@ -1,0 +1,52 @@
+{
+  "id": "officer_frank",
+  "title": "Officer Frank",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash], 1[credit]: The Corp trashes 2 cards from HQ at random. Use this ability only if you suffered meat damage this turn.",
+      "cost": {
+        "AllOf": [
+          "TrashSelf",
+          {
+            "Credits": 1
+          }
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnDamageSuffered",
+              "when": {
+                "Damage": "Meat"
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "TrashCard": {
+              "RandomFromHand": "Corp"
+            }
+          },
+          {
+            "TrashCard": {
+              "RandomFromHand": "Corp"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 13024,
+  "is_playable": true
+}
