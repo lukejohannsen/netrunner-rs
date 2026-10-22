@@ -136,9 +136,7 @@ pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.
-pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("transparency_initiative", "Transparency Initiative"),
-];
+pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Crimson Dust* (`crimson_dust`): tranche F4 of the FFG plan.
 pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[

@@ -1095,6 +1095,14 @@ pub fn evaluate_effect(
             resolved
         }
         Effect::TurnFaceup => {
+            // One of the Corp's installed agendas, chosen by the selection
+            // this resolves as: turned faceup with no rez, as BANGUN's
+            // faceup install is, so it is "neither rezzed nor unrezzed"
+            // (CR 8.1.1, `InstalledCard::is_rezzed`) and the view shows it.
+            if let Some(agenda) = ctx.acting_install.and_then(|id| state.corp.installed.iter_mut().find(|card| card.install_id == id && Some(&card.card) == acting_card)) {
+                agenda.rezzed = true;
+                return Ok(Vec::new());
+            }
             let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
             crate::rules::engine::turn_runner_card_faceup(state, registry, &card)
         }
