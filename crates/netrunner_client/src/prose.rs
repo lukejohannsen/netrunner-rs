@@ -463,6 +463,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             describe_effect(then, registry)
         ),
         Effect::Repeat { times, effect } => format!("{}, as many times as {}", describe_effect(effect, registry), describe_amount(times)),
+        Effect::Process(effect) => describe_effect(effect, registry),
+        Effect::RepeatThisProcess => "repeat this process".to_string(),
         Effect::ForEach { filter, effect, .. } => {
             format!("for each installed card ({}): {}", humanize(format!("{filter:?}")).to_lowercase(), describe_effect(effect, registry))
         }

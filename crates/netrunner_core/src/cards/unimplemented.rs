@@ -126,7 +126,6 @@ pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BAW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("loki", "Loki"),
     ("miraju", "Mirāju"),
-    ("standoff", "Standoff"),
 ];
 
 /// *Free Mars* (`free_mars`): tranche F4 of the FFG plan.

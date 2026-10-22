@@ -1262,6 +1262,8 @@ pub enum CardValidationError {
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("card {0:?} reads `Amount::ChosenNumber` outside the `then` of an `Effect::ChooseNumber`, where no number has been chosen and it is 0")]
     ChosenNumberNobodyChose(CardId),
+    #[error("card {0:?} says `RepeatThisProcess` outside an `Effect::Process`, where there is nothing to repeat")]
+    RepeatOutsideAProcess(CardId),
     #[error("card {0:?} reads `Amount::TraceMargin` outside the `on_success` of an `Effect::Trace`, where no trace succeeded and it is 0")]
     TraceMarginWithoutATrace(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
@@ -1810,6 +1812,9 @@ impl CardDefinition {
         let mut chosen_number_nobody_chose = false;
         // `Amount::TraceMargin` anywhere but a trace's `on_success` reads 0.
         let mut trace_margin_without_a_trace = false;
+        // `RepeatThisProcess` outside an `Effect::Process` is a no-op: a
+        // card that reads as repeating and does not.
+        let mut repeat_outside_a_process = false;
         // `restrict_to: Some(Other)` parses and breaks exactly the ice a
         // breaker with no restriction breaks, which is not what a card
         // restricted to a type means.
@@ -1913,6 +1918,10 @@ impl CardDefinition {
             // The walk stops at a trace, so a root it changes names the
             // margin where no trace succeeded.
             trace_margin_without_a_trace |= root.clone().filled(&|amount| matches!(amount, crate::dsl::Amount::TraceMargin).then_some(1)) != *root;
+            repeat_outside_a_process |= root.clone().with_process(&Effect::Sequence(Vec::new())) != *root;
+        }
+        if repeat_outside_a_process {
+            return Err(CardValidationError::RepeatOutsideAProcess(self.id.clone()));
         }
         if chosen_number_nobody_chose {
             return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));
