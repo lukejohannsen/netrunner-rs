@@ -2338,6 +2338,11 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::Sequence(vec![(**effect).clone(); times]), ctx, registry)
         }
 
+        Effect::Process(body) => evaluate_effect(state, &(**body).clone().with_process(effect), ctx, registry),
+
+        // Written over by its process before anything resolves it.
+        Effect::RepeatThisProcess => Ok(Vec::new()),
+
         Effect::ForEach { source, filter, effect } => {
             let side = controller(ctx, state, registry);
             let positions = crate::rules::pending_choice::eligible_positions(state, registry, side, source, filter, ctx.acting_install, ctx.acting_card);

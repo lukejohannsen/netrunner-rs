@@ -41693,3 +41693,91 @@ mod red_sand_stage_47 {
         assert!(apply_action(&state, &registry, ability).is_err(), "once per turn");
     }
 }
+
+mod red_sand_stage_48 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Standoff installed with its two counters, the Runner holding
+    /// `rig`, the Corp `ice` beside it; scored.
+    fn scored(rig: &[&str], ice: &[&str]) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: InstallId(8000), card: id("standoff"), server: ServerId::Remote(0), advancement_tokens: 2, ..Default::default() });
+        for (n, card) in ice.iter().enumerate() {
+            state.corp.installed.push(crate::rules::InstalledCard { install_id: InstallId(8100 + n as u32), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() });
+        }
+        for (n, card) in rig.iter().enumerate() {
+            state.runner.rig.push(crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(8200 + n as u32), ..Default::default() });
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(8000) }).expect("score Standoff");
+        (state, registry)
+    }
+
+    fn answer(state: &GameState, registry: &CardRegistry, pay: bool) -> GameState {
+        let action = if pay { PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } } else { PlayerAction::DeclinePendingPaidChoice };
+        apply_action(state, registry, action).expect("answer").0
+    }
+
+    fn asked(state: &GameState) -> Option<Side> {
+        state.pending_paid_choice.as_ref().map(|choice| choice.side)
+    }
+
+    #[test]
+    fn standoff_pays_the_corp_when_the_runner_will_not_trash() {
+        let (state, registry) = scored(&["net_shield"], &[]);
+        let credits = state.corp.resources.credits;
+        assert_eq!(asked(&state), Some(Side::Runner));
+        let state = answer(&state, &registry, false);
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 5));
+        assert_eq!(state.corp.hq.len(), 1, "drew 1 card");
+        assert_eq!(state.runner.rig.len(), 1);
+    }
+
+    #[test]
+    fn standoff_ends_when_the_corp_will_not_trash_back() {
+        let (state, registry) = scored(&["net_shield"], &["ice_wall"]);
+        let credits = state.corp.resources.credits;
+        let state = answer(&state, &registry, true);
+        assert!(state.runner.rig.is_empty(), "the Runner trashed their card");
+        assert_eq!(asked(&state), Some(Side::Corp));
+        let state = answer(&state, &registry, false);
+        assert_eq!(asked(&state), None);
+        assert_eq!(state.corp.resources.credits, credits, "nothing gained");
+        assert!(state.corp.hq.is_empty());
+    }
+
+    #[test]
+    fn standoff_repeats_while_both_keep_trashing() {
+        let (state, registry) = scored(&["net_shield"], &["ice_wall"]);
+        let credits = state.corp.resources.credits;
+        let state = answer(&state, &registry, true);
+        let mut state = answer(&state, &registry, true);
+        assert!(state.find_corp_install(InstallId(8100)).is_none(), "the Corp trashed its ice");
+        // The process again: the Runner, with nothing left to trash, cannot
+        // pay, so the Corp draws and gains.
+        for _ in 0..3 {
+            if asked(&state) == Some(Side::Runner) {
+                state = answer(&state, &registry, false);
+            }
+        }
+        assert_eq!(asked(&state), None);
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 5));
+        assert_eq!(state.corp.hq.len(), 1);
+    }
+
+    #[test]
+    fn repeat_this_process_outside_a_process_is_refused() {
+        let card = crate::dsl::CardDefinition {
+            id: id("baz"),
+            card_type: crate::dsl::CardType::Operation,
+            triggers: vec![serde_json::from_str(r#"{"trigger": "OnPlay", "subject": "This", "effects": ["RepeatThisProcess"]}"#).expect("a trigger")],
+            ..Default::default()
+        };
+        assert_eq!(card.validate(), Err(crate::dsl::CardValidationError::RepeatOutsideAProcess(id("baz"))));
+    }
+}

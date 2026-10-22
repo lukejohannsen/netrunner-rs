@@ -1,0 +1,68 @@
+{
+  "id": "standoff",
+  "title": "Standoff",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 0,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Process": {
+            "OfferPaidChoice": {
+              "side": "Runner",
+              "cost": {
+                "Trash": {
+                  "from": "OwnInstalled",
+                  "filter": "Any",
+                  "count": 1
+                }
+              },
+              "if_paid": {
+                "OfferPaidChoice": {
+                  "side": "Corp",
+                  "cost": {
+                    "Trash": {
+                      "from": "OwnInstalled",
+                      "filter": "Any",
+                      "count": 1
+                    }
+                  },
+                  "if_paid": "RepeatThisProcess",
+                  "if_declined": {
+                    "Sequence": []
+                  },
+                  "text": "you may trash 1 of your installed cards to repeat this process"
+                }
+              },
+              "if_declined": {
+                "Sequence": [
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      5
+                    ]
+                  }
+                ]
+              },
+              "text": "the Runner may trash 1 of their installed cards"
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, the Runner may trash 1 of their installed cards. If they do not, draw 1 card and gain 5[credit]. Otherwise, you may trash 1 of your installed cards to repeat this process."
+    }
+  ],
+  "built_from": 12077,
+  "is_playable": true
+}

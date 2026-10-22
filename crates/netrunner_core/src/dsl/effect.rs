@@ -1255,6 +1255,20 @@ pub enum Effect {
     /// (`ChooseNumber`) would decide every repetition before the first
     /// draw could inform the next.
     Repeat { times: Amount, effect: Box<Effect> },
+    /// A process the card may repeat from inside itself — Standoff's "the
+    /// Runner may trash 1 of their installed cards. If they do not, draw 1
+    /// card and gain 5[credit]. Otherwise, you may trash 1 of your
+    /// installed cards to **repeat this process**". Resolving it resolves
+    /// the effect with every `RepeatThisProcess` in it written over by the
+    /// whole process again (`Effect::with_process`), so the repetition
+    /// rides through whatever parks before it, as a chosen number does.
+    /// Composition didn't work: `Repeat` reads how many times up front, and
+    /// this one goes on for as long as each player keeps paying.
+    Process(Box<Effect>),
+    /// "Repeat this process": the enclosing `Process` again. A no-op
+    /// anywhere else, which `validate` refuses. Composition didn't work: a
+    /// card file cannot write an effect inside itself.
+    RepeatThisProcess,
     /// `effect` once for each card in `source` that `filter` admits as it
     /// resolves, the card named in it as `CardTarget::Install` of its
     /// handle — Game Over's "Trash all installed non-icebreaker cards of
@@ -3680,6 +3694,26 @@ impl Effect {
         }
     }
 
+    /// This effect with every `RepeatThisProcess` written over by
+    /// `process`, the `Effect::Process` it is inside — through the
+    /// sentences a process is written in (a `Sequence`, an `EffectIf`, a
+    /// choice and a paid choice), stopping at a nested process.
+    pub fn with_process(self, process: &Effect) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_process(process));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_process(process)).collect();
+        match self {
+            Effect::RepeatThisProcess => process.clone(),
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf { condition, effect: boxed(effect), otherwise: otherwise.map(boxed) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
+            }
+            // A process inside this one repeats itself, not this.
+            other => other,
+        }
+    }
+
     /// This effect with every `Amount::ChosenNumber` written over by
     /// `Fixed(number)` — what `Effect::ChooseNumber::then` becomes once the
     /// number is chosen. Stops at a nested `ChooseNumber`'s own `then`,
@@ -3893,6 +3927,7 @@ impl Effect {
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::ChooseCardName { then: effect, .. }
             | Effect::Repeat { effect, .. }
+            | Effect::Process(effect)
             | Effect::ForEach { effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
@@ -3923,6 +3958,7 @@ impl Effect {
                 }
             }
             // Leaves: everything that holds no `Effect`.
+            Effect::RepeatThisProcess => {}
             Effect::GainCredits(..)
             | Effect::DealDamage(..)
             | Effect::ModifyStrength { .. }
