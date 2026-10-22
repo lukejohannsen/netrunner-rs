@@ -1,0 +1,33 @@
+{
+  "id": "drone_screen",
+  "title": "Drone Screen",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "This",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "Unpreventable": {
+                "DealDamage": [
+                  "Meat",
+                  1
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner initiates a run on this server, Trace[3]. If successful, do 1 meat damage (cannot be prevented)."
+    }
+  ],
+  "built_from": 11076,
+  "is_playable": true
+}

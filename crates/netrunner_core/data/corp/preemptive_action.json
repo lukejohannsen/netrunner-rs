@@ -1,0 +1,35 @@
+{
+  "id": "preemptive_action",
+  "title": "Preemptive Action",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "OwnRAndD",
+            "count": {
+              "Fixed": 3
+            }
+          }
+        },
+        "EndActionPhase"
+      ],
+      "text": "Shuffle 3 cards from Archives into R&D."
+    }
+  ],
+  "built_from": 11080,
+  "is_playable": true
+}

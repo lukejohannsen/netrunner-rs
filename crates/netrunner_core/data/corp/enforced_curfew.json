@@ -1,0 +1,23 @@
+{
+  "id": "enforced_curfew",
+  "title": "Enforced Curfew",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "The Runner's maximum hand size is reduced by 1."
+    }
+  ],
+  "built_from": 11100,
+  "triggers": [],
+  "is_playable": true
+}

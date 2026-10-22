@@ -1,0 +1,26 @@
+{
+  "id": "show_of_force",
+  "title": "Show of Force",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "When you score Show of Force, do 2 meat damage."
+    }
+  ],
+  "built_from": 11099,
+  "is_playable": true
+}
