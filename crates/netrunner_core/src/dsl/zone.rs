@@ -668,6 +668,14 @@ pub enum CardFilter {
     /// prints it, so every piece of ice would have had −1 during an
     /// encounter.
     BeingEncountered,
+    /// The piece of ice the Runner is approaching right now — AgInfusion:
+    /// New Miracles for a New World's "Trash **the unrezzed piece of ice
+    /// the Runner is approaching**:", the filter of a `Cost::Trash`, so the
+    /// cost is affordable exactly while there is one. `BeingEncountered`'s
+    /// twin for the approach (CR 6.9.2), read off the run the same way.
+    /// Composition didn't work: `InAttackedServer` is every piece of ice
+    /// on the server, and the run's position is nowhere else.
+    BeingApproached,
     /// A card that may be swapped into the place of the install the
     /// selection acts as (`run::swappable_into`, CR 8.8.2) — Project
     /// Yagi-Uda's "swap 1 card from HQ with 1 card in the root of or
@@ -1019,6 +1027,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::PassedDuringLastRun => true,
         CardFilter::RezzedDuringLastRun => true,
         CardFilter::BeingEncountered => true,
+        CardFilter::BeingApproached => true,
         CardFilter::SwappableIntoThis => true,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,

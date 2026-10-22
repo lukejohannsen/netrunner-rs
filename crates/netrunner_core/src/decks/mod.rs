@@ -607,6 +607,9 @@ mod tests {
             // Red Sand Stage 8: Jemison Astronautics' deck, on Family
             // Business's list; Red Sand is in neither pool.
             ("zugzwang", &neither),
+            // Red Sand Stage 47: AgInfusion's deck, on A Thousand Cuts'
+            // list; Red Sand is in neither pool.
+            ("zymurgy", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

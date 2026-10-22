@@ -1,0 +1,38 @@
+{
+  "id": "aginfusion_new_miracles_for_a_new_world",
+  "title": "AgInfusion: New Miracles for a New World",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnInstalled",
+          "filter": {
+            "All": [
+              "BeingApproached",
+              "UnrezzedIce"
+            ]
+          },
+          "count": 1
+        }
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "ChooseServer": {
+          "other_than_attacked": true,
+          "then": {
+            "MoveRunToOutermostAndEncounter": null
+          }
+        }
+      },
+      "text": "Once per turn → Trash the unrezzed piece of ice the Runner is approaching: Choose a server other than the attacked server. The Runner moves to the outermost position of that server and encounters any ice there."
+    }
+  ],
+  "built_from": 12052,
+  "is_playable": true
+}

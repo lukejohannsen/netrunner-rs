@@ -342,13 +342,12 @@ pub fn ability_is_usable(state: &GameState, registry: &CardRegistry, side: Side,
 /// between the Runner's actions, so its window has to open for it; a card
 /// there "as an agenda" has lost its abilities (CR 10.1.3).
 ///
-/// **Not the identity.** `ActivateAbility` names an `InstallId`, and an
-/// identity has none — `activate_ability_candidates` never offers one and
-/// `engine::activate_ability` could not resolve one — so an identity paid
-/// ability counted here would open a window in which the only legal move
-/// is `PassPriority`. No identity in the pool declares a paid ability
-/// today; when one does, it needs an install handle first, and this list
-/// grows with it.
+/// **And the identity**, under its handle (`InstallId::CORP_IDENTITY`,
+/// `RUNNER_IDENTITY`), which `ActivateAbility` names it by. It was left
+/// out while no identity printed a paid ability; AgInfusion: New Miracles
+/// for a New World's "Trash the unrezzed piece of ice the Runner is
+/// approaching:" is used in the approach's window, which a Corp with no
+/// credits to rez with never had opened for it.
 pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
     match side {
         Side::Corp => state
@@ -358,8 +357,15 @@ pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, 
             .filter(|c| c.rezzed)
             .map(|c| (c.install_id, c.card.clone()))
             .chain(state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| (scored.install_id, scored.card.clone())))
+            .chain(state.corp.identity.iter().map(|identity| (InstallId::CORP_IDENTITY, identity.clone())))
             .collect(),
-        Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, state.rig_abilities_card(c.install_id).unwrap_or(&c.card).clone())).collect(),
+        Side::Runner => state
+            .runner
+            .rig
+            .iter()
+            .map(|c| (c.install_id, state.rig_abilities_card(c.install_id).unwrap_or(&c.card).clone()))
+            .chain(state.runner.identity.iter().map(|identity| (InstallId::RUNNER_IDENTITY, identity.clone())))
+            .collect(),
     }
 }
 
@@ -503,12 +509,13 @@ mod tests {
         }
     }
 
-    /// An identity's paid ability cannot be activated (`ActivateAbility`
-    /// names an `InstallId`; an identity has none), so it must not count as
-    /// "usable" either — that opened a post-action window whose only legal
-    /// move was `PassPriority`.
+    /// An identity's paid ability counts as usable: `ActivateAbility`
+    /// names it by its handle (`InstallId::CORP_IDENTITY`), so a window it
+    /// opens offers it. While an identity had no handle, counting it opened
+    /// a window whose only legal move was `PassPriority`, and this test
+    /// held it out; AgInfusion's ability is used in the approach's window.
     #[test]
-    fn an_identitys_paid_ability_does_not_count_as_usable() {
+    fn an_identitys_paid_ability_counts_as_usable() {
         let mut registry = CardRegistry::new();
         registry.insert(crate::dsl::CardDefinition {
             id: CardId("identity_with_paid_ability".to_string()),
@@ -525,7 +532,8 @@ mod tests {
         let mut state = base_state();
         state.corp.identity = Some(CardId("identity_with_paid_ability".to_string()));
 
-        assert!(!has_usable_paid_ability(&state, &registry, Side::Corp));
+        assert!(has_usable_paid_ability(&state, &registry, Side::Corp));
+        assert!(ability_is_usable(&state, &registry, Side::Corp, crate::rules::InstallId::CORP_IDENTITY, &CardId("identity_with_paid_ability".to_string()), 0));
     }
 
     fn run_ice(rezzed: bool, subroutines: Vec<EncounteredSubroutine>) -> RunIce {

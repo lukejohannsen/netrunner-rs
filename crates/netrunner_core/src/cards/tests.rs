@@ -41590,3 +41590,106 @@ mod red_sand_stage_46 {
         assert_eq!(bag.counters, 0);
     }
 }
+
+mod red_sand_stage_47 {
+    use super::*;
+    use crate::rules::{PendingDecision, RunPhase};
+    use crate::rules::InstalledCard;
+    use crate::rules::GameEvent;
+
+    const AGINFUSION: InstallId = InstallId::CORP_IDENTITY;
+    const ON_HQ: InstallId = InstallId(7001);
+    const ON_RND: InstallId = InstallId(7002);
+
+    fn ice(install: InstallId, card: &str, server: ServerId, rezzed: bool) -> InstalledCard {
+        InstalledCard { install_id: install, card: CardId(card.to_string()), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// A run on HQ standing in the approach of an unrezzed Ice Wall, with
+    /// the Corp to act, and `rnd` protecting R&D.
+    fn approaching(hq_rezzed: bool, rnd: Option<(&str, bool)>) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("aginfusion_new_miracles_for_a_new_world".to_string()));
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed.push(ice(ON_HQ, "ice_wall", ServerId::Hq, hq_rezzed));
+        if let Some((card, rezzed)) = rnd {
+            state.corp.installed.push(ice(ON_RND, card, ServerId::RnD, rezzed));
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (mut state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("to the ice");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(RunPhase::ApproachIce));
+        while let Some(window) = state.paid_ability_window.as_ref().filter(|window| window.active_priority == Side::Runner) {
+            let side = window.active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        (state, registry)
+    }
+
+    fn use_aginfusion(state: &GameState, registry: &CardRegistry) -> GameState {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: AGINFUSION, ability_index: 0 }).expect("AgInfusion").0
+    }
+
+    #[test]
+    fn aginfusion_trashes_the_approached_ice_and_offers_every_other_server() {
+        let (state, registry) = approaching(false, None);
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::ActivateAbility { target: AGINFUSION, ability_index: 0 }));
+        let state = use_aginfusion(&state, &registry);
+        assert!(state.find_corp_install(ON_HQ).is_none(), "the approached ice is the cost");
+        let Some(PendingDecision::ChooseServer { chooser, allowed_servers: Some(servers), .. }) = &state.pending_decision else { panic!("a server is asked") };
+        assert_eq!(*chooser, Side::Corp);
+        assert!(!servers.contains(&ServerId::Hq), "not the attacked server");
+        assert!(servers.contains(&ServerId::RnD) && servers.contains(&ServerId::Archives));
+    }
+
+    #[test]
+    fn aginfusion_moves_the_runner_into_an_encounter_with_rezzed_ice() {
+        let (state, registry) = approaching(false, Some(("ice_wall", true)));
+        let state = use_aginfusion(&state, &registry);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.server, ServerId::RnD);
+        assert_eq!(run.phase, RunPhase::EncounterIce, "encountered, not approached");
+        assert_eq!(run.ice[run.position].install_id, ON_RND);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceEncountered { .. })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IceApproached { .. })));
+    }
+
+    #[test]
+    fn aginfusion_passes_unrezzed_ice_it_cannot_encounter() {
+        let (state, registry) = approaching(false, Some(("ice_wall", false)));
+        let state = use_aginfusion(&state, &registry);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.phase, run.position), (ServerId::RnD, RunPhase::Movement, 1));
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IcePassed { server: ServerId::RnD, position: 0, .. })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IceEncountered { .. })));
+    }
+
+    #[test]
+    fn aginfusion_to_a_server_with_no_ice_is_in_front_of_it() {
+        let (state, registry) = approaching(false, None);
+        let state = use_aginfusion(&state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("Archives");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!((run.server, run.phase), (ServerId::Archives, RunPhase::Movement));
+        assert!(run.ice.is_empty());
+    }
+
+    #[test]
+    fn aginfusion_needs_unrezzed_ice_and_works_once_a_turn() {
+        let (state, registry) = approaching(true, None);
+        let ability = PlayerAction::ActivateAbility { target: AGINFUSION, ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&ability), "rezzed ice is no cost");
+        assert!(apply_action(&state, &registry, ability.clone()).is_err());
+        let (state, registry) = approaching(false, Some(("ice_wall", false)));
+        let state = use_aginfusion(&state, &registry);
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("R&D");
+        // Back at an approach of unrezzed ice, later in the turn.
+        state.corp.installed.push(ice(InstallId(7003), "ice_wall", ServerId::RnD, false));
+        let run = state.active_run.as_mut().unwrap();
+        run.phase = RunPhase::ApproachIce;
+        assert!(apply_action(&state, &registry, ability).is_err(), "once per turn");
+    }
+}

@@ -2082,9 +2082,22 @@ pub enum Effect {
     /// protects, rezzed or not — Climactic Showdown's "Choose a server
     /// protected by ice" — as `PromptChooseServer`'s field of that name
     /// narrows a run's.
+    ///
+    /// `other_than_attacked` leaves the attacked server out of the offer,
+    /// and `then` is what the choice is for: resolved with the chosen
+    /// server written into it (`pending_choice::substitute_chosen_server`)
+    /// instead of remembered — AgInfusion: New Miracles for a New World's
+    /// "Choose a server other than the attacked server. The Runner moves
+    /// to the outermost position of that server…". Fields rather than a
+    /// sibling effect, because the choice is this one's: a server picked
+    /// by the acting card's controller with no run started.
     ChooseServer {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         only_protected_by_ice: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        other_than_attacked: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
     },
     /// For the rest of the encounter, whenever the Corp would resolve a
     /// subroutine on the encountered ice, it resolves instead the acting
@@ -2128,6 +2141,19 @@ pub enum Effect {
     /// approaches it, so it is the server being run; written `null`, since
     /// the server it means is the run's and no card file can name it.
     MoveRunToOutermost(Option<ServerId>),
+    /// Moves the run to a server's outermost position and the Runner
+    /// encounters the ice there, with no approach — AgInfusion: New
+    /// Miracles for a New World's "The Runner moves to the outermost
+    /// position of that server and **encounters** any ice there" (CR
+    /// 6.2.8a: the timing step becomes the Encounter Ice Phase). Ice that
+    /// is unrezzed cannot be encountered (CR 6.4.4), so the Runner is in
+    /// the movement phase at its position, past it; a server with no ice
+    /// puts the Runner in front of it, as `MoveRunToOutermost` does.
+    /// `None` is a placeholder for a chosen server (`ChooseServer::then`).
+    /// Composition didn't work: `MoveRunToOutermost` approaches the ice,
+    /// which gives the Corp a rez and the approach its triggers, and an
+    /// encounter after it would be a second step the card does not print.
+    MoveRunToOutermostAndEncounter(Option<ServerId>),
     /// Moves the run back in front of a piece of ice, in the movement
     /// phase before it — Code Replicator's "the Runner must approach that
     /// ice again. They may jack out": the Runner's jack-out decision comes
@@ -3887,6 +3913,7 @@ impl Effect {
                     effect.for_each_effect(f);
                 }
             }
+            Effect::ChooseServer { then: Some(effect), .. } => effect.for_each_effect(f),
             Effect::PromptChooseCards { then: None, .. } | Effect::IncreaseAboutToResolve { then: None, .. } => {}
             Effect::RevealAtRandom { each: Some(effect), .. } | Effect::TopOfDeck { each: Some(effect), .. } => effect.for_each_effect(f),
             Effect::RevealAtRandom { each: None, .. } | Effect::TopOfDeck { each: None, .. } => {}
@@ -3985,10 +4012,11 @@ impl Effect {
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::LoseAbilities { .. }
             | Effect::LimitBreaks { .. }
-            | Effect::ChooseServer { .. }
+            | Effect::ChooseServer { then: None, .. }
             | Effect::ReplaceSubroutines
             | Effect::SpendChosenServer
             | Effect::MoveRunToOutermost(..)
+            | Effect::MoveRunToOutermostAndEncounter(..)
             | Effect::MoveRunToIce(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }

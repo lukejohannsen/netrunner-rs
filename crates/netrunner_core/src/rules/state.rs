@@ -1584,6 +1584,11 @@ pub enum PendingDecision {
         /// Gantulga's "you may choose a server".
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remember: bool,
+        /// The fifth: what the choice is for, resolved with the chosen
+        /// server written into it — `Effect::ChooseServer::then`,
+        /// AgInfusion: New Miracles for a New World's move of the run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<crate::dsl::Effect>>,
         /// The run is made ignoring any additional costs to run
         /// (`Effect::PromptChooseServer::ignore_additional_costs`, Always
         /// Have a Backup Plan's second run): `run::start_run_ignoring_costs`.

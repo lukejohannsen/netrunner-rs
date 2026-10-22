@@ -1050,6 +1050,22 @@ pub(crate) fn move_run_to_outermost(
     registry: &CardRegistry,
     target: ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    move_run_to_outermost_then(state, registry, target, false)
+}
+
+/// `move_run_to_outermost`, the Runner encountering the ice there rather
+/// than approaching it when `encounter` — AgInfusion: New Miracles for a
+/// New World's "moves to the outermost position of that server and
+/// encounters any ice there" (`Effect::MoveRunToOutermostAndEncounter`,
+/// CR 6.2.8a). Rezzed ice is encountered as ice the Runner moved to is
+/// (Formicary), its end a pass; unrezzed ice cannot be (CR 6.4.4), and is
+/// passed as an approach past it would pass it.
+pub(crate) fn move_run_to_outermost_then(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    target: ServerId,
+    encounter: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
         return Ok(Vec::new());
@@ -1082,6 +1098,17 @@ pub(crate) fn move_run_to_outermost(
     // `Initiation`.
     if run.ice.is_empty() {
         enter_movement(run, 0);
+    } else if encounter && run.ice[0].rezzed {
+        run.forced_encounter = false;
+        events.extend(begin_encounter(state, registry, 0, false)?);
+    } else if encounter {
+        run.position = 0;
+        run.phase = RunPhase::ApproachIce;
+        run.forced_encounter = false;
+        let passed = pass_current_ice(run, 0, Vec::new(), false);
+        for event in passed {
+            crate::rules::dispatcher::emit(state, registry, &mut events, event)?;
+        }
     } else {
         run.position = 0;
         let approached = approach_next(run);
