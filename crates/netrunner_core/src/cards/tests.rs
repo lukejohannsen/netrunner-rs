@@ -41221,3 +41221,83 @@ mod red_sand_stage_41 {
         assert!(refused.is_err(), "another server");
     }
 }
+
+mod red_sand_stage_42 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Counter Surveillance used on HQ, three cards there, to the moment
+    /// its run succeeds: the replacement pays if it can and asks for the
+    /// number.
+    fn surveil(tags: u32, credits: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.tags = tags;
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("counter_surveillance"), install_id: InstallId(2001), ..Default::default() }];
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).expect("use it");
+        assert!(state.runner.heap.contains(&id("counter_surveillance")), "trashed to pay for it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success");
+        (close_all_windows(state, &registry).0, registry)
+    }
+
+    /// Accesses until the run is over, counting the cards accessed.
+    fn access_all(mut state: GameState, registry: &CardRegistry) -> (GameState, usize) {
+        let mut accessed = 0;
+        for _ in 0..20 {
+            if state.active_run.is_none() {
+                break;
+            }
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. } | PlayerAction::PassAccessedCard { .. }))
+                .cloned()
+                .unwrap_or(PlayerAction::PassPriority { side: Side::Runner });
+            let (after, events) = apply_action(&state, registry, next).expect("access");
+            accessed += events.iter().filter(|event| matches!(event, GameEvent::CardAccessed { .. })).count();
+            state = close_all_windows(after, registry).0;
+        }
+        (state, accessed)
+    }
+
+    #[test]
+    fn counter_surveillance_pays_for_its_tags_and_accesses_the_number_chosen() {
+        let (state, registry) = surveil(2, 5);
+        assert_eq!(state.runner.resources.credits, Credits(3), "2[credit] paid for 2 tags");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseNumber { .. })), "{:?}", state.pending_decision);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("2");
+        let first = events.iter().filter(|event| matches!(event, GameEvent::CardAccessed { .. })).count();
+        let (state, accessed) = access_all(close_all_windows(state, &registry).0, &registry);
+        assert_eq!(first + accessed, 2, "two cards of HQ, no random access limit");
+        assert!(state.active_run.is_none());
+        assert_eq!(state.corp.hq.len(), 3);
+    }
+
+    #[test]
+    fn counter_surveillance_choosing_zero_ends_the_run_with_no_breach() {
+        let (state, registry) = surveil(2, 5);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("0");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })));
+        assert!(state.active_run.is_none(), "the replacement resolved; the run is over, not breached");
+    }
+
+    #[test]
+    fn counter_surveillance_accesses_nothing_when_it_cannot_pay() {
+        let (state, registry) = surveil(2, 1);
+        assert_eq!(state.runner.resources.credits, Credits(1), "nothing paid");
+        assert!(state.pending_decision.is_none());
+        let (state, accessed) = access_all(state, &registry);
+        assert_eq!(accessed, 0, "no breach either");
+        assert!(state.active_run.is_none());
+    }
+}

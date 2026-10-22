@@ -923,6 +923,9 @@ fn determinize_run(
         access_replacement: None,
         access_replacement_card: None,
         access_replacement_install: None,
+        // The engine's, as `access_replacement` is: a sample taken while a
+        // replaced breach's number is asked forgets it.
+        replacement_parked: false,
         cards_accessed_count: 0,
         rnd_cards_accessed_count: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`

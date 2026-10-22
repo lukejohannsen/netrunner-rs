@@ -1,0 +1,63 @@
+{
+  "id": "counter_surveillance",
+  "title": "Counter Surveillance",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Run any server. If successful, instead of breaching the attacked server, pay X[credit] if able, where X is equal to the number of tags you have. If you do, choose a number less than or equal to X. Access that many cards in and/or in the root of the attacked server.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0,
+          "on_start": {
+            "SetAccessReplacement": {
+              "effect": {
+                "OfferPaidChoice": {
+                  "side": "Runner",
+                  "cost": {
+                    "CreditsAmount": "RunnerTags"
+                  },
+                  "if_paid": {
+                    "ChooseNumber": {
+                      "chooser": "Runner",
+                      "min": 0,
+                      "max": "RunnerTags",
+                      "then": {
+                        "Access": {
+                          "from": "AttackedServer",
+                          "filter": "Any",
+                          "count": "ChosenNumber"
+                        }
+                      },
+                      "text": "choose a number less than or equal to X"
+                    }
+                  },
+                  "if_declined": {
+                    "Sequence": []
+                  },
+                  "text": "pay X[credit] if able, where X is equal to the number of tags you have",
+                  "if_able": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12023,
+  "is_playable": true
+}

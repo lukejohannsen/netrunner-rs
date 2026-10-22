@@ -349,6 +349,30 @@ pub(crate) fn access_cards(
     // Read for the card that asked, so "that card" can be its own copy
     // (`Not(NotSourceCard)`: Otoroshi's chosen card, the acting install
     // inside the selection's `then`).
+    // The attacked server's cards, as its breach would offer them with
+    // no random access limit (CR 7.1.10): all of HQ in a random order, R&D
+    // from the top down, Archives faceup and every root.
+    let mut from_zone = Vec::new();
+    if *from == CardZoneRef::AttackedServer {
+        let server = state.active_run.as_ref().map(|run| run.server).ok_or(RulesError::NoActiveRun)?;
+        let candidates = match server {
+            ServerId::Hq => {
+                let mut pool = state.corp.hq.clone();
+                while !pool.is_empty() {
+                    let roll = state.next_u64();
+                    let index = (roll as usize) % pool.len();
+                    from_zone.push(pool.remove(index));
+                }
+                root_installs_on(state, server)
+            }
+            ServerId::RnD => {
+                from_zone = state.corp.r_and_d.iter().rev().cloned().collect();
+                root_installs_on(state, server)
+            }
+            ServerId::Archives | ServerId::Remote(_) => begin_breach(state, server).0,
+        };
+        return access_candidates(state, registry, candidates, from_zone, count, then, card, install, replacing_breach);
+    }
     let admitted = crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, from, filter, install, card.as_ref());
     let candidates: Vec<AccessCandidate> = match from {
         CardZoneRef::OpponentInstalled => admitted
@@ -366,19 +390,38 @@ pub(crate) fn access_cards(
         }
         _ => return Err(RulesError::UnresolvedCardTarget),
     };
+    access_candidates(state, registry, candidates, from_zone, count, then, card, install, replacing_breach)
+}
+
+/// `access_cards` once its candidates are known: the accesses stood up in
+/// the run, or in one of their own outside a run, and the first offered.
+#[allow(clippy::too_many_arguments)]
+fn access_candidates(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    candidates: Vec<AccessCandidate>,
+    from_zone: Vec<CardId>,
+    count: u32,
+    then: Option<Box<crate::dsl::Effect>>,
+    card: Option<CardId>,
+    install: Option<InstallId>,
+    replacing_breach: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
     let during_encounter = !replacing_breach && state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce && run.access_state.is_none());
     match state.active_run.as_ref() {
         Some(_) if during_encounter => {}
-        Some(run) if !replacing_breach || run.access_state.is_some() => return Err(RulesError::RunAlreadyInProgress),
+        Some(run) if !(replacing_breach || run.replacement_parked) || run.access_state.is_some() => return Err(RulesError::RunAlreadyInProgress),
         Some(_) => {}
         None => state.active_run = Some(RunState { server: ServerId::RnD, phase: RunPhase::Success, breach_only: true, ..RunState::default() }),
     }
     let run = state.active_run.as_mut().expect("stood up above");
     let server = run.server;
+    run.replacement_parked = false;
     run.phase = RunPhase::AccessingCard;
     run.access_state = Some(AccessState {
         server,
         candidates,
+        from_zone,
         outside_breach: Some(OutsideBreach { left: count, then, card, install, during_encounter, resume_subroutines: false }),
         ..AccessState::default()
     });
@@ -774,8 +817,17 @@ fn try_replace_access(
     // "Instead of breaching …, access 1 card in the root of another
     // server" (Pinhole Threading): the run goes on to those accesses, and
     // ends when they do (`offer_next`).
+    // "Choose a number …. Access that many cards" (Counter Surveillance):
+    // a replacement that parks keeps the run standing for its answer, and
+    // `engine::resume_run` ends it once nothing is parked.
     if !state.active_run.as_ref().is_some_and(|run| run.breached.is_some() || run.access_state.is_some()) {
-        super::engine::end_run(state);
+        if state.resolution_halted() && !state.is_over() {
+            if let Some(run) = state.active_run.as_mut() {
+                run.replacement_parked = true;
+            }
+        } else {
+            super::engine::end_run(state);
+        }
     }
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))

@@ -116,7 +116,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Station One* (`station_one`): tranche F4 of the FFG plan.
 pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
 ];
 

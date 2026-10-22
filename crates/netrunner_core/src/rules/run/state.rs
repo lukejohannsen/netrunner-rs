@@ -686,6 +686,16 @@ pub struct RunState {
     /// first of two.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_replacement_install: Option<InstallId>,
+    /// The breach was replaced and what replaced it is parked on a
+    /// decision (Counter Surveillance's "choose a number less than or equal
+    /// to X. Access that many cards"): the run stands at its success, not
+    /// breached, until the answer resolves it. Read by the accesses it
+    /// asks for, which are the replacement's and not a second breach, and
+    /// by `engine::resume_run`, which ends the run once nothing is parked
+    /// and no access began. Without it the run ended as the number was
+    /// asked, and the accesses had no run to be in.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replacement_parked: bool,
     /// How many cards this run's breach has accessed, counted by
     /// `run::access::present_card_for_access` as each is accessed (CR
     /// 7.3.6: only accesses actually performed; `0` if the run hasn't
@@ -966,6 +976,7 @@ impl Default for RunState {
             access_replacement: None,
             access_replacement_card: None,
             access_replacement_install: None,
+            replacement_parked: false,
             cards_accessed_count: 0,
             rnd_cards_accessed_count: 0,
             redirect_on_approach: None,

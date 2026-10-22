@@ -265,6 +265,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         access_replacement: None,
         access_replacement_card: None,
         access_replacement_install: None,
+        replacement_parked: false,
         access_state: None,
         bad_publicity_credits: state.corp.bad_publicity,
         server,

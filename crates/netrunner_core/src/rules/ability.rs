@@ -1152,7 +1152,7 @@ pub fn evaluate_effect(
             registry,
             from,
             filter,
-            *count,
+            resolve_amount(count, ctx, state, registry),
             then.clone(),
             acting_card.cloned(),
             ctx.acting_install,
