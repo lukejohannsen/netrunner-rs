@@ -1,0 +1,47 @@
+{
+  "id": "prisec",
+  "title": "Prisec",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                },
+                {
+                  "DealDamage": [
+                    "Meat",
+                    1
+                  ]
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to give the Runner 1 tag and do 1 meat damage"
+          }
+        }
+      ],
+      "text": "If the Runner accesses Prisec while installed, you may pay 2[credit] to give the Runner 1 tag and do 1 meat damage."
+    }
+  ],
+  "built_from": 11040,
+  "is_playable": true
+}

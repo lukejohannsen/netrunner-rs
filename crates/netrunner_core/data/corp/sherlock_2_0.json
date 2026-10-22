@@ -1,0 +1,89 @@
+{
+  "id": "sherlock_2_0",
+  "title": "Sherlock 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 7,
+  "strength": 6,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, add 1 installed program to the bottom of the Runner's stack.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "AddToDeck": "Bottom"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[4]. If successful, add 1 installed program to the bottom of the Runner's stack.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "AddToDeck": "Bottom"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "built_from": 11011,
+  "is_playable": true
+}
