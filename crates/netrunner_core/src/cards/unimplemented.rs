@@ -138,7 +138,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gpi_net_tap", "GPI Net Tap"),
     ("mirror", "Mirror"),
     ("another_day_another_paycheck", "Another Day, Another Paycheck"),
-    ("sherlock_2_0", "Sherlock 2.0"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
     ("watchdog", "Watchdog"),
@@ -157,15 +156,10 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
     ("data_breach", "Data Breach"),
     ("fairchild_2_0", "Fairchild 2.0"),
-    ("aiki", "Aiki"),
     ("enforcing_loyalty", "Enforcing Loyalty"),
-    ("hatchet_job", "Hatchet Job"),
     ("special_report", "Special Report"),
-    ("c_i_fund", "C.I. Fund"),
     ("liquidation", "Liquidation"),
     ("weyland_consortium_builder_of_nations", "Weyland Consortium: Builder of Nations"),
-    ("financial_collapse", "Financial Collapse"),
-    ("prisec", "Prisec"),
 ];
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
@@ -179,14 +173,10 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ark_lockdown", "Ark Lockdown"),
     ("hellion_beta_test", "Hellion Beta Test"),
     ("project_kusanagi", "Project Kusanagi"),
-    ("dna_tracker", "DNA Tracker"),
     ("jinteki_potential_unleashed", "Jinteki: Potential Unleashed"),
     ("alexa_belsky", "Alexa Belsky"),
-    ("observe_and_destroy", "Observe and Destroy"),
     ("service_outage", "Service Outage"),
-    ("boom", "BOOM!"),
     ("door_to_door", "Door to Door"),
-    ("scarcity_of_resources", "Scarcity of Resources"),
 ];
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.

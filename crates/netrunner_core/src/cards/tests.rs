@@ -42638,3 +42638,98 @@ mod flashpoint_stage_3 {
         assert_eq!(broke.runner.resources.credits, Credits(20 - 1));
     }
 }
+
+mod flashpoint_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn resource(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), ..Default::default() }
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).map(|(state, _)| state)
+    }
+
+    #[test]
+    fn boom_spends_a_click_and_does_seven_meat_damage_to_a_runner_with_two_tags() {
+        let registry = registry();
+        let mut state = corp_turn(&["boom"]);
+        state.runner.grip = vec![id("sure_gamble"); 9];
+        state.runner.tags = 1;
+        assert!(play(&state, &registry, "boom").is_err(), "one tag");
+        state.runner.tags = 2;
+        let done = play(&state, &registry, "boom").expect("two tags");
+        assert_eq!(done.corp.resources.clicks, Clicks(3 - 2), "the play's [click] and the additional one");
+        assert_eq!(done.runner.grip.len(), 2, "seven meat damage");
+    }
+
+    #[test]
+    fn observe_and_destroy_removes_a_tag_to_trash_an_installed_card_of_a_poor_runner() {
+        let registry = registry();
+        let mut state = corp_turn(&["observe_and_destroy"]);
+        state.runner.rig = vec![resource("daily_casts", 20)];
+        state.runner.tags = 1;
+        assert!(play(&state, &registry, "observe_and_destroy").is_err(), "the Runner has 10[credit]");
+        state.runner.resources.credits = Credits(5);
+        let asked = play(&state, &registry, "observe_and_destroy").expect("fewer than 6");
+        assert_eq!(asked.runner.tags, 0, "the tag removed as a cost");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Daily Casts");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(done.runner.rig.is_empty() && done.runner.heap.contains(&id("daily_casts")));
+    }
+
+    #[test]
+    fn scarcity_of_resources_makes_each_resource_cost_two_more() {
+        let registry = registry();
+        let state = corp_turn(&["scarcity_of_resources"]);
+        let mut state = play(&state, &registry, "scarcity_of_resources").expect("play the current");
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("daily_casts")];
+        let (done, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).expect("install it");
+        assert_eq!(done.runner.resources.credits, Credits(10 - 3 - 2));
+    }
+
+    #[test]
+    fn financial_collapse_takes_two_credits_for_each_resource_unless_one_is_trashed() {
+        let registry = registry();
+        let mut state = corp_turn(&["financial_collapse"]);
+        state.runner.rig = vec![resource("daily_casts", 20), resource("liberated_account", 21)];
+        state.runner.resources.credits = Credits(5);
+        assert!(play(&state, &registry, "financial_collapse").is_err(), "the Runner has fewer than 6[credit]");
+        state.runner.resources.credits = Credits(8);
+        let asked = play(&state, &registry, "financial_collapse").expect("play it");
+        let (lost, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("lose the credits");
+        assert_eq!(lost.runner.resources.credits, Credits(8 - 4));
+        let (trash, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("trash a resource instead");
+        let (chosen, _) = apply_action(&trash, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one resource");
+        let (kept, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!((kept.runner.resources.credits, kept.runner.rig.len()), (Credits(8), 1));
+    }
+
+    #[test]
+    fn c_i_fund_banks_credits_as_the_turn_begins_and_pays_them_out_when_trashed() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(10), card: id("c_i_fund"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("move 3");
+        let mut state = close_all_windows(state, &registry).0;
+        assert_eq!((state.corp.installed[0].counters, state.corp.resources.credits), (3, Credits(7)));
+        state.phase = GamePhase::Action(Side::Corp);
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("2[credit],[trash]");
+        assert!(done.corp.installed.is_empty());
+        assert_eq!(done.corp.resources.credits, Credits(7 - 2 + 3));
+    }
+}

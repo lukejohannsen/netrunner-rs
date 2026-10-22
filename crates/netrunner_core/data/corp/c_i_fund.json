@@ -1,0 +1,81 @@
+{
+  "id": "c_i_fund",
+  "title": "C.I. Fund",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Fixed": 3
+            },
+            "of": {
+              "Credits": "Corp"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Corp",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "AddCounters": "ChosenNumber"
+                }
+              ]
+            },
+            "text": "you may move up to 3[credit] from your credit pool to C.I. Fund"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may move up to 3[credit] from your credit pool to C.I. Fund."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 6
+            },
+            "effect": {
+              "AddCounters": 2
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, place 2[credit] on C.I. Fund from the bank if there are at least 6[credit] on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 2
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          "HostedCounters"
+        ]
+      },
+      "text": "2[credit],[trash]: Take all credits from C.I. Fund."
+    }
+  ],
+  "built_from": 11036,
+  "is_playable": true
+}

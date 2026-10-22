@@ -1,0 +1,25 @@
+{
+  "id": "scarcity_of_resources",
+  "title": "Scarcity of Resources",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "OpponentInstalling": {
+          "CardType": "Resource"
+        }
+      },
+      "text": "The install cost of each resource is increased by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11060,
+  "is_playable": true
+}

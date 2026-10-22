@@ -1,0 +1,65 @@
+{
+  "id": "financial_collapse",
+  "title": "Financial Collapse",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "Credits": "Runner"
+      },
+      6
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "LoseCreditsAmount": [
+                  "Runner",
+                  {
+                    "Times": {
+                      "amount": {
+                        "RunnerInstalls": {
+                          "CardType": "Resource"
+                        }
+                      },
+                      "times": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnInstalled",
+                  "filter": {
+                    "CardType": "Resource"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OwnHeap"
+                }
+              }
+            ],
+            "texts": [
+              "The Runner loses 2[credit] for each installed resource",
+              "The Runner can trash a resource to prevent this"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 11039,
+  "is_playable": true
+}
