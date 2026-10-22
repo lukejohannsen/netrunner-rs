@@ -716,6 +716,23 @@ pub fn evaluate_effect(
             dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side: Side::Corp, card, by })?;
             Ok(events)
         }
+        // Equivocation's "reveal the top card of R&D": the card stays where
+        // it is, and both players now know it. Not `in_hand`, so it goes on
+        // no list of revealed cards in a hand.
+        Effect::Reveal(CardTarget::TopOfStack { side, zone }) => {
+            let deck = match (side, zone) {
+                (Side::Runner, StackZone::Stack) => &state.runner.stack,
+                (Side::Corp, StackZone::RAndD) => &state.corp.r_and_d,
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            let Some(card) = deck.last().cloned() else { return Ok(Vec::new()) };
+            let side = *side;
+            let by = controller(ctx, state, registry);
+            reveal(state, side, &card, false);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardRevealed { side, card, by })?;
+            Ok(events)
+        }
         Effect::Reveal(_) => Err(RulesError::UnresolvedCardTarget),
 
         // Every card in the hand, revealed as `RevealAtRandom` reveals one.

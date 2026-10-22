@@ -1,0 +1,66 @@
+{
+  "id": "frantic_coding",
+  "title": "Frantic Coding",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 10
+            },
+            "then": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnHeap",
+                "filter": {
+                  "All": [
+                    "TrashedThisWay",
+                    {
+                      "CardType": "Program"
+                    },
+                    {
+                      "InstallableRunnerCardWithDiscount": {
+                        "Credits": 5
+                      }
+                    }
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "EffectIf": {
+                    "condition": {
+                      "AmountAtLeast": [
+                        "CardsSelected",
+                        1
+                      ]
+                    },
+                    "effect": {
+                      "InstallRunnerCardFromZone": {
+                        "from": "OwnHeap",
+                        "discount": {
+                          "Credits": 5
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 11062,
+  "is_playable": true
+}

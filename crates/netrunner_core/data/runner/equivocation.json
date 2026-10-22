@@ -1,0 +1,71 @@
+{
+  "id": "equivocation",
+  "title": "Equivocation",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "Reveal": {
+                      "TopOfStack": {
+                        "side": "Corp",
+                        "zone": "RAndD"
+                      }
+                    }
+                  },
+                  {
+                    "PresentChoice": {
+                      "chooser": "Runner",
+                      "options": [
+                        {
+                          "DrawCards": [
+                            "Corp",
+                            1
+                          ]
+                        },
+                        {
+                          "Sequence": []
+                        }
+                      ],
+                      "texts": [
+                        "you may force the Corp to draw that card",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may reveal the top card of R&D",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, you may reveal the top card of R&D. If you do, you may force the Corp to draw that card."
+    }
+  ],
+  "built_from": 11084,
+  "is_playable": true
+}
