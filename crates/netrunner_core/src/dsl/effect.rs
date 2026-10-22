@@ -290,8 +290,11 @@ pub enum Effect {
     RemoveFromGame(CardTarget),
     /// Reveals the card in its owner's hand (CR 1.21.3), where it stays,
     /// shown until the ability is finished (CR 1.21.6, `GameState::revealed`) —
-    /// Corporate Defector's "reveal that card", of `CardTarget::DrawnCard`.
-    /// Any other target is `RulesError::UnresolvedCardTarget`. Composition
+    /// Corporate Defector's "reveal that card", of `CardTarget::DrawnCard`;
+    /// the card the Runner passed on (`AccessedCard`); and the top card of
+    /// a deck, which stays on top (`TopOfStack`, Equivocation's "reveal the
+    /// top card of R&D"). Any other target is
+    /// `RulesError::UnresolvedCardTarget`. Composition
     /// didn't work: `RevealHand` reveals every card, `RevealAtRandom` a
     /// random one, and a selection's `reveal` records a choice, which
     /// nobody makes here.

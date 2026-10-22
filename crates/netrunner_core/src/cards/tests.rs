@@ -42401,3 +42401,74 @@ mod flashpoint_stage_2 {
         assert_eq!(state.runner.grip.len(), grip + 1, "Reaver's draw");
     }
 }
+
+mod flashpoint_stage_2b {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = rig
+            .iter()
+            .enumerate()
+            .map(|(i, card)| crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(i as u32 + 1), ..Default::default() })
+            .collect();
+        state.next_install_id = rig.len() as u32 + 1;
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        state.corp.hq = Vec::new();
+        (state, registry)
+    }
+
+    /// A successful run on R&D, stopped at Equivocation's "may".
+    fn run_on_rnd(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (running, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
+        let (running, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        apply_action(&running, registry, PlayerAction::CompleteRun).expect("successful").0
+    }
+
+    #[test]
+    fn equivocation_reveals_the_top_of_rnd_and_may_make_the_corp_draw_it() {
+        let (state, registry) = runner_turn(&["equivocation"]);
+        let asked = run_on_rnd(&state, &registry);
+        let (revealed, events) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("reveal it");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { side: Side::Corp, card, .. } if *card == id("enigma"))), "the top card, shown");
+        assert_eq!(revealed.corp.r_and_d.last(), Some(&id("enigma")), "still on top");
+        let (drawn, _) = apply_action(&revealed, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("force the draw");
+        assert_eq!(drawn.corp.hq, vec![id("enigma")]);
+    }
+
+    #[test]
+    fn equivocation_may_leave_the_revealed_card_where_it_is() {
+        let (state, registry) = runner_turn(&["equivocation"]);
+        let asked = run_on_rnd(&state, &registry);
+        let (revealed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("reveal it");
+        let (left, _) = apply_action(&revealed, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("leave it");
+        assert!(left.corp.hq.is_empty());
+        assert_eq!(left.corp.r_and_d.len(), 3);
+    }
+
+    #[test]
+    fn frantic_coding_installs_a_program_from_the_top_10_for_5_less_and_trashes_the_rest() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.grip = vec![id("frantic_coding")];
+        state.runner.stack = vec![id("sure_gamble"); 9];
+        state.runner.stack.insert(4, id("cleaver"));
+        state.runner.stack.insert(0, id("diesel"));
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("frantic_coding") }).expect("play it");
+        assert_eq!(asked.runner.stack, vec![id("diesel")], "the top 10 looked at");
+        let toggles: Vec<_> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(toggles.len(), 1, "Cleaver, the one program among them");
+        let (chosen, _) = apply_action(&asked, &registry, toggles[0].clone()).expect("Cleaver");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(done.runner.rig.iter().any(|card| card.card == id("cleaver")), "installed");
+        assert_eq!(done.runner.resources.credits, Credits(7), "3 for the event, Cleaver's 3 less 5");
+        assert_eq!(done.runner.heap.iter().filter(|card| **card == id("sure_gamble")).count(), 9, "the rest trashed");
+    }
+}

@@ -195,7 +195,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("frantic_coding", "Frantic Coding"),
     ("the_gauntlet", "The Gauntlet"),
     ("saker", "Saker"),
     ("ele_smoke_scovak_cynosure_of_the_net", "Ele \"Smoke\" Scovak: Cynosure of the Net"),
@@ -219,7 +218,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mkultra", "MKUltra"),
     ("on_the_lam", "On the Lam"),
     ("cold_read", "Cold Read"),
-    ("equivocation", "Equivocation"),
     ("interdiction", "Interdiction"),
     ("baba_yaga", "Baba Yaga"),
     ("fairchild", "Fairchild"),
