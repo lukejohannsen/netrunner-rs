@@ -118,7 +118,6 @@ pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("counter_surveillance", "Counter Surveillance"),
     ("system_seizure", "System Seizure"),
-    ("mca_informant", "MCA Informant"),
 ];
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.

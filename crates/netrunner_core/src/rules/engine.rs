@@ -2615,13 +2615,19 @@ fn activate_ability(
     // …or an agenda the Runner stole, whose ability is the Corp's to use
     // from the Runner's score area (Oracle Thinktank).
     let scored = state.corp.find_scored(target).or_else(|| state.runner.find_stolen(target));
+    // …or a condition counter, faceup and active on its host (CR 1.13.6d):
+    // MCA Informant's "[click], 2[credit]: Trash this resource", which the
+    // Runner uses (`AbilityDef::used_by`).
+    let condition = state.corp.conditions.iter().find(|condition| condition.handle == target);
     let corp_card = if target == InstallId::CORP_IDENTITY {
         state.corp.identity.clone()
     } else {
-        corp_install.map(|c| c.card.clone()).or_else(|| scored.map(|s| s.card.clone()))
+        corp_install.map(|c| c.card.clone()).or_else(|| scored.map(|s| s.card.clone())).or_else(|| condition.map(|c| c.card.clone()))
     };
-    let corp_active =
-        corp_install.is_some_and(|c| c.rezzed) || scored.is_some() || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
+    let corp_active = corp_install.is_some_and(|c| c.rezzed)
+        || scored.is_some()
+        || condition.is_some()
+        || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
     let runner_card = match target {
         InstallId::RUNNER_IDENTITY => state.runner.identity.clone(),
         InstallId::RUN_EVENT => run::run_event(state, registry).cloned(),
@@ -3180,7 +3186,11 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
-    if continuous::tags(state, registry) == 0 {
+    // A tag the Runner is only considered to have cannot be removed (CR
+    // 1.9.4: MCA Informant's, Acme Consulting's), so the action asks for
+    // one they were given; asked of `continuous::tags`, it was offered
+    // with none and took a tag the Runner did not have.
+    if state.runner.tags == 0 {
         return Err(RulesError::RunnerNotTagged);
     }
 

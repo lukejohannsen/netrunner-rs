@@ -40920,3 +40920,70 @@ mod red_sand_stage_36 {
         assert_eq!((after.corp.hq.len(), after.corp.r_and_d.len(), after.runner.grip.len()), (3, 2, 3));
     }
 }
+
+mod red_sand_stage_37 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// MCA Informant played with three clicks left onto Underworld Contact,
+    /// the Runner's one connection.
+    fn informed() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("mca_informant")];
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { card: id("daily_casts"), install_id: InstallId(2001), ..Default::default() },
+            crate::rules::InstalledRunnerCard { card: id("underworld_contact"), install_id: InstallId(2002), ..Default::default() },
+        ];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mca_informant") }).expect("play MCA Informant");
+        if state.pending_decision.is_some() {
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Underworld Contact").0;
+            state = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+        }
+        (pass_until_settled(state, &registry).0, registry)
+    }
+
+    #[test]
+    fn mca_informant_tags_the_runner_from_a_connection_and_ends_the_action_phase() {
+        let (state, registry) = informed();
+        assert_eq!(state.corp.conditions.len(), 1);
+        assert_eq!(state.corp.conditions[0].host, InstallId(2002), "hosted on Underworld Contact");
+        assert_eq!(crate::rules::continuous::tags(&state, &registry), 1, "1 additional tag");
+        assert_ne!(state.phase, GamePhase::Action(Side::Corp), "the Corp's action phase is over with clicks left");
+    }
+
+    #[test]
+    fn the_runner_pays_a_click_and_2_credits_to_trash_the_host_and_the_informant_with_it() {
+        let (mut state, registry) = informed();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.paid_ability_window = None;
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        let handle = state.corp.conditions[0].handle;
+        let trash = PlayerAction::ActivateAbility { target: handle, ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&trash), "the Runner's to use");
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&PlayerAction::RemoveTag), "a tag the Runner is only considered to have cannot be removed (CR 1.9.4)");
+        let (after, _) = apply_action(&state, &registry, trash).expect("trash Underworld Contact");
+        assert!(!after.runner.rig.iter().any(|card| card.card == id("underworld_contact")));
+        assert!(after.runner.heap.contains(&id("underworld_contact")));
+        assert!(after.corp.conditions.is_empty() && after.corp.archives.iter().any(|card| card.card == id("mca_informant")), "the condition went with its host");
+        assert_eq!((after.runner.resources.clicks, after.runner.resources.credits), (Clicks(3), Credits(3)));
+        assert_eq!(crate::rules::continuous::tags(&after, &registry), 0);
+    }
+
+    #[test]
+    fn mca_informant_needs_a_connection_to_host_on() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("mca_informant")];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mca_informant") }).is_err());
+    }
+}
