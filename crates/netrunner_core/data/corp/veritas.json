@@ -1,0 +1,46 @@
+{
+  "id": "veritas",
+  "title": "Veritas",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Corp gains 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "The Runner loses 2[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Trace[2]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11116,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Stronger Together",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Haas-Bioroid: Stronger Together, the Revised Core Set's Haas-Bioroid identity, whose bioroid ice has +1 strength, and four of the set's ice: Hive, which loses an “End the run.” for each of the Corp's agenda points, Caduceus's two traces, Yagura and Himitsu-Bako. Eight bioroids — Ansel 1.0, Eli 1.0, Hákarl 1.0, Viktor 1.0 and Týr — on Retirement Package's frame, its 21 points in Midnight-3 Arcology where it holds Vulnerability Audit, with the four splashes for 14 of its 15 influence. Eternal-legal only: Stronger Together is a Revised Core Set card. FFG F1 Stage 3. FFG F1 Stage 4: two Green Level Clearance for its two Corporate Hospitality, an operation for an operation; Ash 2X3ZB9CY and Strongbox for its two Experiential Data, an upgrade for an upgrade; and three Project Ares for its two Project Vacheron, the same 6 points in one more card, which has the Runner trash an install for each counter past 4. Retirement Package keeps all three. FFG F1 Stage 6: two Hudson 1.0 for its two Viktor 1.0, a bioroid for a bioroid, whose subroutines leave the Runner one card to access for the rest of the run. Retirement Package keeps Viktor. Kitara Stage 4a: two Ikawah Project for three Midnight-3 Arcology, the same six points. Kitara Stage 5a: two Riot Suppression for two Big Deal. Warden Fatuma for Adonis Campaign: a bioroid deck whose ice takes the granted subroutine Kitara Stage 26: two Malia Z0L0K4 for two Bass CH1R180G4, a bioroid asset that takes a resource's abilities for as long as she is rezzed. Red Sand Stage 1: two each of Seidr Adaptive Barrier, Self-Adapting Code Wall and Conundrum for two each of Hákarl 1.0, Eli 1.0 and Hive. Red Sand Stage 2: two Nerine 2.0 for two Yagura. Red Sand Stage 3: two Load Testing, two O₂ Shortage and an MCA Austerity Policy for two Green Level Clearance, two NEXT Activation Command and the Strongbox, three ways to take the Runner's clicks. Red Sand Stage 11 Restore (Red Sand Stage 22) takes Riot Suppression's slot Zed 2.0 (Red Sand Stage 31) Red Sand Stage 44: two Bioroid Work Crew for two Marilyn Campaign, an install from HQ in the window after each operation; Vigilance keeps Marilyn Campaign. Red Sand Stage 52: one Loki for one Zed 2.0, a bioroid that takes on another rezzed ice's subtypes and subroutines for the run as it is encountered. Flashpoint Stage 4: Sherlock 2.0 for a second Conundrum.",
+  "description": "Not a published list: built so the sweeps reach Haas-Bioroid: Stronger Together, the Revised Core Set's Haas-Bioroid identity, whose bioroid ice has +1 strength, and four of the set's ice: Hive, which loses an “End the run.” for each of the Corp's agenda points, Caduceus's two traces, Yagura and Himitsu-Bako. Eight bioroids — Ansel 1.0, Eli 1.0, Hákarl 1.0, Viktor 1.0 and Týr — on Retirement Package's frame, its 21 points in Midnight-3 Arcology where it holds Vulnerability Audit, with the four splashes for 14 of its 15 influence. Eternal-legal only: Stronger Together is a Revised Core Set card. FFG F1 Stage 3. FFG F1 Stage 4: two Green Level Clearance for its two Corporate Hospitality, an operation for an operation; Ash 2X3ZB9CY and Strongbox for its two Experiential Data, an upgrade for an upgrade; and three Project Ares for its two Project Vacheron, the same 6 points in one more card, which has the Runner trash an install for each counter past 4. Retirement Package keeps all three. FFG F1 Stage 6: two Hudson 1.0 for its two Viktor 1.0, a bioroid for a bioroid, whose subroutines leave the Runner one card to access for the rest of the run. Retirement Package keeps Viktor. Kitara Stage 4a: two Ikawah Project for three Midnight-3 Arcology, the same six points. Kitara Stage 5a: two Riot Suppression for two Big Deal. Warden Fatuma for Adonis Campaign: a bioroid deck whose ice takes the granted subroutine Kitara Stage 26: two Malia Z0L0K4 for two Bass CH1R180G4, a bioroid asset that takes a resource's abilities for as long as she is rezzed. Red Sand Stage 1: two each of Seidr Adaptive Barrier, Self-Adapting Code Wall and Conundrum for two each of Hákarl 1.0, Eli 1.0 and Hive. Red Sand Stage 2: two Nerine 2.0 for two Yagura. Red Sand Stage 3: two Load Testing, two O₂ Shortage and an MCA Austerity Policy for two Green Level Clearance, two NEXT Activation Command and the Strongbox, three ways to take the Runner's clicks. Red Sand Stage 11 Restore (Red Sand Stage 22) takes Riot Suppression's slot Zed 2.0 (Red Sand Stage 31) Red Sand Stage 44: two Bioroid Work Crew for two Marilyn Campaign, an install from HQ in the window after each operation; Vigilance keeps Marilyn Campaign. Red Sand Stage 52: one Loki for one Zed 2.0, a bioroid that takes on another rezzed ice's subtypes and subroutines for the run as it is encountered. Flashpoint Stage 4: Sherlock 2.0 for a second Conundrum. Flashpoint Stage 5: Fairchild 2.0, Fairchild 3.0 and Fairchild for a second Seidr Adaptive Barrier, Self-Adapting Code Wall and Nerine 2.0.",
   "style": [
     "glacier"
   ],
@@ -63,11 +63,11 @@
     },
     {
       "card": "seidr_adaptive_barrier",
-      "count": 2
+      "count": 1
     },
     {
       "card": "self_adapting_code_wall",
-      "count": 2
+      "count": 1
     },
     {
       "card": "conundrum",
@@ -75,7 +75,7 @@
     },
     {
       "card": "nerine_2_0",
-      "count": 2
+      "count": 1
     },
     {
       "card": "load_testing",
@@ -107,6 +107,18 @@
     },
     {
       "card": "sherlock_2_0",
+      "count": 1
+    },
+    {
+      "card": "fairchild_2_0",
+      "count": 1
+    },
+    {
+      "card": "fairchild_3_0",
+      "count": 1
+    },
+    {
+      "card": "fairchild",
       "count": 1
     }
   ]

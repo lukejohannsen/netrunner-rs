@@ -42733,3 +42733,96 @@ mod flashpoint_stage_4 {
         assert_eq!(done.corp.resources.credits, Credits(7 - 2 + 3));
     }
 }
+
+mod flashpoint_stage_5 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice_at_hq(card: &str, advancement_tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(50), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, advancement_tokens, ..Default::default() }
+    }
+
+    fn runner_turn(ice: &str) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice_at_hq(ice, 0)];
+        state
+    }
+
+    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn let_subroutines_fire(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes encounter: subroutines fire").0
+    }
+
+    #[test]
+    fn thoth_tags_the_runner_on_encounter() {
+        let registry = registry();
+        let at_ice = encounter(&runner_turn("thoth"), &registry);
+        assert_eq!(at_ice.runner.tags, 1);
+    }
+
+    #[test]
+    fn ip_block_tags_on_encounter_only_with_an_ai_installed() {
+        let registry = registry();
+        let state = runner_turn("ip_block");
+        assert_eq!(encounter(&state, &registry).runner.tags, 0, "no AI");
+        let mut with_ai = state.clone();
+        with_ai.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(60), card: id("crypsis"), ..Default::default() }];
+        assert_eq!(encounter(&with_ai, &registry).runner.tags, 1, "Crypsis is an AI");
+    }
+
+    #[test]
+    fn data_ward_tags_a_runner_who_will_not_pay_three_then_ends_the_run() {
+        let registry = registry();
+        let at_ice = encounter(&runner_turn("data_ward"), &registry);
+        assert!(at_ice.pending_paid_choice.is_some(), "1 tag unless they pay 3[credit]");
+        let (paid, _) = apply_action(&at_ice, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3");
+        assert_eq!((paid.runner.tags, paid.runner.resources.credits), (0, Credits(10 - 3)));
+        assert!(let_subroutines_fire(&paid, &registry).active_run.is_some(), "not tagged: the run goes on");
+    }
+
+    #[test]
+    fn mausolus_does_more_with_three_advancement_counters() {
+        let registry = registry();
+        let mut state = runner_turn("mausolus");
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let fired = let_subroutines_fire(&encounter(&state, &registry), &registry);
+        assert_eq!((fired.corp.resources.credits, fired.runner.grip.len(), fired.runner.tags), (Credits(10 + 1), 4, 1));
+        assert!(fired.active_run.is_some(), "the run goes on");
+
+        state.corp.installed = vec![ice_at_hq("mausolus", 3)];
+        let fired = let_subroutines_fire(&encounter(&state, &registry), &registry);
+        assert_eq!((fired.corp.resources.credits, fired.runner.grip.len(), fired.runner.tags), (Credits(10 + 3), 2, 1));
+        assert!(fired.active_run.is_none(), "and ends the run");
+    }
+
+    #[test]
+    fn fairchild_2_0_is_broken_by_losing_two_clicks() {
+        let registry = registry();
+        let at_ice = encounter(&runner_turn("fairchild_2_0"), &registry);
+        let clicks = at_ice.runner.resources.clicks;
+        let (broke, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: InstallId(50), ability_index: 0 }).expect("lose [click][click]");
+        assert_eq!(broke.runner.resources.clicks, Clicks(clicks.0 - 2));
+        let run = broke.active_run.as_ref().expect("encountering");
+        assert_eq!(run.ice[run.position].subroutines.iter().filter(|s| s.status == crate::rules::SubroutineStatus::Broken).count(), 2);
+    }
+
+    #[test]
+    fn veritas_gains_the_corp_two_and_takes_two_from_the_runner() {
+        let registry = registry();
+        let fired = let_subroutines_fire(&encounter(&runner_turn("veritas"), &registry), &registry);
+        assert_eq!(fired.corp.resources.credits, Credits(10 + 2));
+        assert_eq!(fired.runner.resources.credits, Credits(10 - 2));
+    }
+}

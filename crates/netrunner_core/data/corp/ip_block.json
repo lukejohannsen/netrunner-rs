@@ -1,0 +1,67 @@
+{
+  "id": "ip_block",
+  "title": "IP Block",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "RunnerInstalls": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "AI"
+                }
+              ]
+            }
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, give them 1 tag if there is an installed AI program."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[3]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 11094,
+  "is_playable": true
+}

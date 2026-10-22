@@ -1,0 +1,56 @@
+{
+  "id": "thoth",
+  "title": "Thoth",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 7,
+  "strength": 6,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, give them 1 tag."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, do 1 net damage for each tag the Runner has.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "DealDamageAmount": [
+              "Net",
+              "RunnerTags"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[4]. If successful, the Runner loses 1[credit] for each tag they have.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "LoseCreditsAmount": [
+              "Runner",
+              "RunnerTags"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11095,
+  "is_playable": true
+}

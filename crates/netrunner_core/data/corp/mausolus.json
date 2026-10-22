@@ -1,0 +1,94 @@
+{
+  "id": "mausolus",
+  "title": "Mausolus",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 5,
+  "advancement_requirement": 0,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit]. If there are 3 or more hosted advancement counters, instead gain 3[credit].",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "HostedAdvancementTokens",
+              3
+            ]
+          },
+          "effect": {
+            "GainCredits": [
+              "Corp",
+              3
+            ]
+          },
+          "otherwise": {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage. If there are 3 or more hosted advancement counters, instead do 3 net damage.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "HostedAdvancementTokens",
+              3
+            ]
+          },
+          "effect": {
+            "DealDamage": [
+              "Net",
+              3
+            ]
+          },
+          "otherwise": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag. If there are 3 or more hosted advancement counters, instead give the Runner 1 tag and end the run.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "HostedAdvancementTokens",
+              3
+            ]
+          },
+          "effect": {
+            "Sequence": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              "EndTheRun"
+            ]
+          },
+          "otherwise": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11097,
+  "is_playable": true
+}
