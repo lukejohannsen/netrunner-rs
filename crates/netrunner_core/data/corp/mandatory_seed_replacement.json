@@ -1,0 +1,58 @@
+{
+  "id": "mandatory_seed_replacement",
+  "title": "Mandatory Seed Replacement",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "CorpInstalls": "Ice"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Ice",
+                      "min": 2,
+                      "max": 2,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "SwapInstalledIce": [
+                          0,
+                          0
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "rearrange any number of ice protecting all servers",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score Mandatory Seed Replacement, rearrange any number of ice protecting all servers."
+    }
+  ],
+  "built_from": 12092,
+  "is_playable": true
+}

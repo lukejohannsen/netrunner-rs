@@ -893,6 +893,11 @@ pub fn evaluate_effect(
             state.corp.installed[pos_a].slot = slot_b;
             state.corp.installed[pos_b].server = server_a;
             state.corp.installed[pos_b].slot = slot_a;
+            // And their places in the list, which is the order of a
+            // server's ice: two pieces protecting one server traded nothing
+            // above, and each now stands where the other stood (Mandatory
+            // Seed Replacement's rearrangement within a server).
+            state.corp.installed.swap(pos_a, pos_b);
             // Both handles and both identities: `Trigger` dispatch is
             // keyed by `CardId`, and the handles are what let
             // `masking::mask_event_for_player` strike an identity the

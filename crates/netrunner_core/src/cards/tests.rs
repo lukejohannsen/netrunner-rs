@@ -40987,3 +40987,65 @@ mod red_sand_stage_37 {
         assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mca_informant") }).is_err());
     }
 }
+
+mod red_sand_stage_38 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// The ice protecting `server`, in the order a run meets it.
+    fn order(state: &GameState, server: ServerId) -> Vec<CardId> {
+        state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice).map(|c| c.card.clone()).collect()
+    }
+
+    /// Mandatory Seed Replacement scored with Ice Wall then Enigma on HQ and
+    /// Tollbooth on R&D: the Corp is asked whether to swap, three times.
+    fn scoring() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.installed = vec![ice("ice_wall", 1001, ServerId::Hq), ice("enigma", 1002, ServerId::Hq), ice("tollbooth", 1003, ServerId::RnD)];
+        state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("mandatory_seed_replacement"), card: id("mandatory_seed_replacement"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 4, ..Default::default() });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("mandatory_seed_replacement") }).expect("score");
+        (state, registry)
+    }
+
+    fn swap(state: &GameState, registry: &CardRegistry, a: u32, b: u32) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("swap");
+        let position = |state: &GameState, install: u32| state.corp.installed.iter().position(|c| c.install_id == InstallId(install)).expect("installed");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: position(&state, a) }).expect("first");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: position(&state, b) }).expect("second");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn stop(state: &GameState, registry: &CardRegistry) -> GameState {
+        apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("leave it").0
+    }
+
+    #[test]
+    fn mandatory_seed_replacement_swaps_ice_within_a_server_and_across_servers() {
+        let (state, registry) = scoring();
+        let state = swap(&state, &registry, 1001, 1002);
+        assert_eq!(order(&state, ServerId::Hq), vec![id("enigma"), id("ice_wall")], "the two on HQ traded places");
+        let state = swap(&state, &registry, 1002, 1003);
+        assert_eq!(order(&state, ServerId::Hq), vec![id("tollbooth"), id("ice_wall")], "Tollbooth took Enigma's place");
+        assert_eq!(order(&state, ServerId::RnD), vec![id("enigma")]);
+        let state = pass_until_settled(stop(&state, &registry), &registry).0;
+        assert!(state.pending_decision.is_none(), "asked once for each piece of ice");
+    }
+
+    #[test]
+    fn mandatory_seed_replacement_may_leave_every_piece_where_it_is() {
+        let (state, registry) = scoring();
+        let state = stop(&stop(&stop(&state, &registry), &registry), &registry);
+        assert_eq!(order(&state, ServerId::Hq), vec![id("ice_wall"), id("enigma")]);
+        assert!(state.pending_decision.is_none());
+    }
+}
