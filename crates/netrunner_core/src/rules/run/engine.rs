@@ -1197,6 +1197,46 @@ pub(crate) fn move_run_in_front_of_install(
     Ok(events)
 }
 
+/// Takes the run with `ice`, which has just moved to the outermost position
+/// protecting another server, when it is the ice the Runner is
+/// encountering — Sand Storm's "(The run continues from this new
+/// position.)": the run's server becomes the one the ice protects now, its
+/// ice that server's, and the Runner stands on the moved ice at position 0
+/// in the encounter it was in, with what the run knew of that ice (its
+/// subroutines' progress) kept. Nothing when the run is elsewhere: the
+/// attacked server's list is brought into step by `reconcile_ice`, as for
+/// any ice that leaves it.
+pub(crate) fn move_run_with_ice(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    ice: crate::rules::state::InstallId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(target) = state.find_corp_install(ice).filter(|place| place.slot == InstallSlot::Ice).map(|place| place.server) else { return Ok(Vec::new()) };
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let encountered = run.phase == RunPhase::EncounterIce && run.suspended.is_empty() && run.ice.get(run.position).is_some_and(|run_ice| run_ice.install_id == ice);
+    if !encountered || run.server == target {
+        return Ok(Vec::new());
+    }
+    let from = run.server;
+    let standing = run.ice[run.position].clone();
+    let mut protecting = Vec::new();
+    for installed in state.corp.installed.iter().filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice) {
+        if installed.install_id == ice {
+            protecting.push(standing.clone());
+        } else {
+            protecting.extend(build_run_ice(installed, registry)?);
+        }
+    }
+    let run = state.active_run.as_mut().expect("checked above");
+    run.server = target;
+    run.position = protecting.iter().position(|run_ice| run_ice.install_id == ice).unwrap_or(0);
+    run.ice = protecting;
+    if !state.runner.servers_run_this_turn.contains(&target) {
+        state.runner.servers_run_this_turn.push(target);
+    }
+    Ok(vec![GameEvent::RunRedirected { from, to: target }])
+}
+
 /// Whether `card_id` may be swapped into the place of `install`, a Corp
 /// install (CR 8.8.2: "a card can only ever be swapped into a location it
 /// is normally allowed to occupy"): a piece of ice for a piece of ice, and

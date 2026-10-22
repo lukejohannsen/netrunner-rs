@@ -2760,16 +2760,16 @@ pub fn evaluate_effect(
 
         Effect::PromptMoveThisCardToAnotherRoot => {
             let Some(installed) = acting_corp_install(state, ctx) else { return Ok(Vec::new()) };
-            if installed.slot != crate::rules::state::InstallSlot::Root {
-                return Ok(Vec::new());
-            }
+            // A piece of ice moves to protect another server (Sand Storm),
+            // which any server may be protected by.
+            let ice = installed.slot == crate::rules::state::InstallSlot::Ice;
             let own = installed.server;
             // "Central server only" holds at all times: such an upgrade is
             // not moved into a server it may not occupy (CR 8.5.12).
             let card = registry.get(&installed.card);
             let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             servers.extend(crate::rules::legal_actions::existing_remote_ids(state).into_iter().map(ServerId::Remote));
-            servers.retain(|server| *server != own && card.is_none_or(|card| card.may_be_installed_in(*server)));
+            servers.retain(|server| *server != own && (ice || card.is_none_or(|card| card.may_be_installed_in(*server))));
             if servers.is_empty() {
                 return Ok(Vec::new());
             }
@@ -2946,6 +2946,27 @@ pub fn evaluate_effect(
             if from != server {
                 dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: server })?;
             }
+            Ok(events)
+        }
+
+        Effect::MoveThisIceToOutermostOf(server) => {
+            let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
+            if state.corp.installed[position].slot != crate::rules::state::InstallSlot::Ice || state.corp.installed[position].server == *server {
+                return Ok(Vec::new());
+            }
+            // Out of the list and back in front of the server's ice:
+            // `corp.installed` is outermost-first per server.
+            let mut ice = state.corp.installed.remove(position);
+            let from = ice.server;
+            ice.server = *server;
+            let (card, install) = (ice.card.clone(), ice.install_id);
+            match state.corp.installed.iter().position(|c| c.server == *server && c.slot == crate::rules::state::InstallSlot::Ice) {
+                Some(index) => state.corp.installed.insert(index, ice),
+                None => state.corp.installed.push(ice),
+            }
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: *server })?;
+            events.extend(crate::rules::run::move_run_with_ice(state, registry, install)?);
             Ok(events)
         }
 

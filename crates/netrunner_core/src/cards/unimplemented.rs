@@ -141,7 +141,6 @@ pub(crate) const FM_UNIMPLEMENTED: &[(&str, &str)] = &[];
 /// *Crimson Dust* (`crimson_dust`): tranche F4 of the FFG plan.
 pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("salvaged_vanadis_armory", "Salvaged Vanadis Armory"),
-    ("sand_storm", "Sand Storm"),
 ];
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.
