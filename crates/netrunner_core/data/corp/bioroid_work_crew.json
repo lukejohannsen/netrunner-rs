@@ -1,0 +1,44 @@
+{
+  "id": "bioroid_work_crew",
+  "title": "Bioroid Work Crew",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Install 1 card from HQ. Use this ability only during the next paid ability window after playing and resolving an operation.",
+      "cost": "TrashSelf",
+      "requirement": "AfterAPlay",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "CardTypeOneOf": [
+              {
+                "Ice": "Barrier"
+              },
+              "Agenda",
+              "Asset",
+              "Upgrade"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptInstallCorpCard": {
+              "origin_zone": "OwnHq"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12051,
+  "is_playable": true
+}

@@ -1130,7 +1130,7 @@ fn prune(mut nodes: Vec<Node>) -> Vec<Node> {
             if new_first {
                 first_actions.push(first.clone());
             }
-            if kept.iter().any(|k| (k.score - node.score).abs() <= TIE_BREAK_JITTER && k.state == node.state) {
+            if kept.iter().any(|k| (k.score - node.score).abs() <= TIE_BREAK_JITTER && same_position(&k.state, &node.state)) {
                 // The first action is recorded all the same: the kept
                 // twin stands for it, and a weaker line that merely
                 // begins the same way would be no addition.
@@ -1140,6 +1140,23 @@ fn prune(mut nodes: Vec<Node>) -> Vec<Node> {
         }
     }
     kept
+}
+
+/// Two states equal but for whether the turn's last action was a play
+/// (`TurnLog::last_action_was_a_play`, Bioroid Work Crew's window): that
+/// bit is the order of the clicks, which is exactly what `prune` folds
+/// away. Compared whole, every line ending in a play stood apart from its
+/// reordering, and the beam it kept moved the planner's choices on boards
+/// with no Work Crew anywhere (the Public Trail test fell to 58 of 180).
+fn same_position(a: &GameState, b: &GameState) -> bool {
+    if a.this_turn.last_action_was_a_play() == b.this_turn.last_action_was_a_play() {
+        return a == b;
+    }
+    let mut b = b.clone();
+    b.this_turn = b.this_turn.without_the_last_action();
+    let mut a = a.clone();
+    a.this_turn = a.this_turn.without_the_last_action();
+    a == b
 }
 
 #[cfg(test)]

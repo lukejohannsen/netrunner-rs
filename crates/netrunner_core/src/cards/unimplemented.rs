@@ -121,7 +121,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("adjusted_matrix", "Adjusted Matrix"),
-    ("bioroid_work_crew", "Bioroid Work Crew"),
     ("aginfusion_new_miracles_for_a_new_world", "AgInfusion: New Miracles for a New World"),
 ];
 
