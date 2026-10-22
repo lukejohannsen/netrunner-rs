@@ -42127,3 +42127,71 @@ mod red_sand_stage_52 {
         assert!(state.active_run.is_some(), "the run goes on");
     }
 }
+
+mod red_sand_stage_53 {
+    use super::*;
+    use super::system_gateway::{corp_ice, enter_encounter_with};
+
+    const CLEAVER: InstallId = InstallId(1);
+    const MATRIX: InstallId = InstallId(2);
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Cleaver in the rig, Adjusted Matrix in the grip, an Enigma — a
+    /// code gate, which Cleaver cannot break — protecting HQ.
+    fn runner_turn() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("cleaver"), install_id: CLEAVER, base_strength: 3, ..Default::default() }];
+        state.next_install_id = 2;
+        state.runner.grip = vec![id("adjusted_matrix")];
+        state.corp.installed = vec![corp_ice("enigma", ServerId::Hq)];
+        (state, registry)
+    }
+
+    #[test]
+    fn adjusted_matrix_goes_only_on_an_icebreaker() {
+        let (state, registry) = runner_turn();
+        let onto = |host| PlayerAction::InstallHardware { card_id: id("adjusted_matrix"), host };
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.contains(&onto(Some(CLEAVER))), "onto Cleaver");
+        assert!(!offered.contains(&onto(None)), "not into the rig on its own");
+    }
+
+    #[test]
+    fn the_host_breaks_any_subroutine_for_a_click() {
+        let (state, registry) = runner_turn();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("adjusted_matrix"), host: Some(CLEAVER) }).expect("install onto Cleaver");
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let clicks = state.runner.resources.clicks;
+        let interface = PlayerAction::ActivateAbility { target: MATRIX, ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, interface).expect("Lose [click]: Break 1 subroutine");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the host");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("break with it");
+        assert_eq!(state.runner.resources.clicks, Clicks(clicks.0 - 1), "a click lost");
+        let mut state = state;
+        while matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. }) | Some(crate::rules::PendingDecision::ChooseEffect { .. })) {
+            let first = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. } | PlayerAction::ResolvePendingChoice { .. })).expect("a subroutine to break");
+            state = apply_action(&state, &registry, first).expect("which").0;
+            if matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })) {
+                state = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0;
+            }
+        }
+        let run = state.active_run.as_ref().expect("run");
+        let broken = run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count();
+        assert_eq!(broken, 1, "a code gate's subroutine, broken through a fracter");
+    }
+
+    #[test]
+    fn the_interface_is_used_only_during_an_encounter() {
+        let (state, registry) = runner_turn();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("adjusted_matrix"), host: Some(CLEAVER) }).expect("install onto Cleaver");
+        let interface = PlayerAction::ActivateAbility { target: MATRIX, ability_index: 0 };
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&interface));
+    }
+}
