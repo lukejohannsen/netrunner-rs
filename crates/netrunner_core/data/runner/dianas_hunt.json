@@ -1,0 +1,85 @@
+{
+  "id": "dianas_hunt",
+  "title": "Diana's Hunt",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnEncounter",
+                "every_time": true,
+                "this_run": true,
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnGrip",
+                          "filter": {
+                            "CardType": "Program"
+                          },
+                          "min": 0,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "EffectIf": {
+                              "condition": {
+                                "AmountAtLeast": [
+                                  "CardsSelected",
+                                  1
+                                ]
+                              },
+                              "effect": {
+                                "InstallRunnerCardFromZone": {
+                                  "from": "OwnGrip",
+                                  "discount": "AllCosts",
+                                  "if_installed": {
+                                    "SetRunEndedEffect": {
+                                      "EffectIf": {
+                                        "condition": "ThisCardIsInstalled",
+                                        "effect": {
+                                          "TrashCard": "ThisCard"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "Sequence": []
+                      }
+                    ],
+                    "texts": [
+                      "you may install 1 program from your grip, ignoring all costs",
+                      ""
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server. Whenever you encounter a piece of ice during that run, you may install 1 program from your grip, ignoring all costs. When that run ends, trash all programs installed this way."
+    }
+  ],
+  "built_from": 12106,
+  "is_playable": true
+}

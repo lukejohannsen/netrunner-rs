@@ -1004,6 +1004,10 @@ pub fn evaluate_effect(
                 // you found, paying 3[credit] less"; one it cannot afford
                 // stays in the stack (CR 1.16.4b).
                 crate::dsl::CardZoneRef::OwnStack => RunnerCardSource::Stack,
+                // Diana's Hunt's "install 1 program from your grip, ignoring
+                // all costs", which needs the discount and the rider that
+                // `InstallRunnerCardFromGrip` has neither of.
+                crate::dsl::CardZoneRef::OwnGrip => RunnerCardSource::Grip,
                 // The cards hosted on the install that parked the choice.
                 crate::dsl::CardZoneRef::HostedOnSource => RunnerCardSource::Hosted(ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?),
                 _ => return Err(RulesError::UnresolvedCardTarget),
