@@ -1,0 +1,24 @@
+{
+  "id": "salvaged_vanadis_armory",
+  "title": "Salvaged Vanadis Armory",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "InTheWindowAfterDamage",
+      "effect": {
+        "Mill": {
+          "deck": "Corp",
+          "amount": "DamageSufferedThisTurn"
+        }
+      },
+      "text": "[trash]: The Corp trashes the top X cards of R&D."
+    }
+  ],
+  "built_from": 12103,
+  "is_playable": true
+}

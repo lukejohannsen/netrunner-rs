@@ -92,6 +92,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
         Amount::CardsInstalledInRemotesThisTurn => "the cards installed in remote servers this turn".to_string(),
         Amount::ClickGainsInRunsThisTurn => "the times you gained [click] during a run this turn".to_string(),
+        Amount::DamageSufferedThisTurn => "the damage you have suffered this turn".to_string(),
         Amount::CorpCardsAddedToArchivesThisTurn => "the Corp cards added to Archives this turn".to_string(),
         Amount::TimesThisActionThisTurn => "the times you have taken that action this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),

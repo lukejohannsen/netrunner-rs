@@ -5305,6 +5305,9 @@ pub fn check_requirement(
         EffectRequirement::AfterAPlay => {
             if state.this_turn.last_action_was_a_play() && state.active_run.is_none() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::InTheWindowAfterDamage => {
+            if state.this_turn.window_after_damage() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::SubroutineBrokenThisEncounter => {
             let broken = state
                 .active_run
@@ -6051,6 +6054,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
+        Amount::DamageSufferedThisTurn => state.this_turn.damage_suffered(),
         Amount::CorpCardsAddedToArchivesThisTurn => state.this_turn.added_to_archives(),
         Amount::TimesThisActionThisTurn => match ctx.triggering_event {
             Some(GameEvent::ActionFinished { action, .. }) => state.this_turn.times_taken(*action),
@@ -6330,6 +6334,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::SubroutineBrokenThisRun
         | EffectRequirement::ClickLostToBreakThisRun
         | EffectRequirement::AfterAPlay
+        | EffectRequirement::InTheWindowAfterDamage
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::LastRunSuccessful

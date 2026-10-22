@@ -940,6 +940,24 @@ pub struct TurnLog {
     /// the one door every addition goes through, `file_in_archives`.
     /// Public, as a card's arriving in Archives is, faceup or not.
     added_to_archives: u8,
+    /// The damage the Runner has suffered this turn, every kind — Salvaged
+    /// Vanadis Armory's "X is equal to the amount of damage you have
+    /// suffered this turn". A sum beside the cells, as
+    /// `agenda_points_scored` is: a cell counts the times, not the amount.
+    damage_suffered: u8,
+    /// Damage has been suffered and no priority window has closed since —
+    /// Salvaged Vanadis Armory's "Use this ability only during the next
+    /// paid ability window after suffering any amount of damage"
+    /// (`EffectRequirement::InTheWindowAfterDamage`). Set by the damage;
+    /// cleared when a paid ability window closes on two passes
+    /// (`record_window_closed`) and when an action begins, which closes
+    /// the action phase's window (CR 5.7.1b) — read at the action's end,
+    /// so damage the action itself dealt keeps it (`record_action_finished`).
+    /// One bit rather than a count of windows: what a card asks is only
+    /// whether *this* window is the next one, and a window forced shut
+    /// without passes (a run ended under it, CR 6.8.2a) leaves it set,
+    /// which errs toward the Runner for one window.
+    window_after_damage: bool,
     /// The times each action was taken this turn, by what makes two
     /// actions the same (`SameAction`, CR 5.2.5a) — Wage Workers' "if you
     /// have taken that action exactly 3 times this turn". Beside the cells,
@@ -1004,6 +1022,8 @@ impl Default for TurnLog {
             installed_in_remotes: 0,
             click_gains_in_runs: 0,
             added_to_archives: 0,
+            damage_suffered: 0,
+            window_after_damage: false,
             same_actions: [None; SAME_ACTIONS],
             last_action_was_a_play: false,
         }
@@ -1114,6 +1134,16 @@ impl TurnLog {
         u32::from(self.added_to_archives)
     }
 
+    pub fn damage_suffered(&self) -> u32 {
+        u32::from(self.damage_suffered)
+    }
+
+    /// Whether damage has been suffered and no window has closed since
+    /// (`EffectRequirement::InTheWindowAfterDamage`).
+    pub fn window_after_damage(&self) -> bool {
+        self.window_after_damage
+    }
+
     /// How many of `trigger`'s moments this turn its `when` admits, as a
     /// card on `controller`'s side means them (`Occurrences::meant_by`);
     /// 0 for a filter finer than the log counts, which `validate` refuses.
@@ -1174,6 +1204,10 @@ struct Sparse {
     click_gains_in_runs: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     added_to_archives: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    damage_suffered: u8,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    window_after_damage: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     same_actions: Vec<(SameAction, u8)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1205,6 +1239,8 @@ impl From<TurnLog> for Sparse {
             installed_in_remotes: log.installed_in_remotes,
             click_gains_in_runs: log.click_gains_in_runs,
             added_to_archives: log.added_to_archives,
+            damage_suffered: log.damage_suffered,
+            window_after_damage: log.window_after_damage,
             same_actions: log.same_actions.iter().flatten().copied().collect(),
             last_action_was_a_play: log.last_action_was_a_play,
         }
@@ -1221,6 +1257,8 @@ impl From<Sparse> for TurnLog {
             installed_in_remotes: sparse.installed_in_remotes,
             click_gains_in_runs: sparse.click_gains_in_runs,
             added_to_archives: sparse.added_to_archives,
+            damage_suffered: sparse.damage_suffered,
+            window_after_damage: sparse.window_after_damage,
             last_action_was_a_play: sparse.last_action_was_a_play,
             ..TurnLog::default()
         };
@@ -1326,6 +1364,13 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
         let points = u8::try_from(printed).unwrap_or(u8::MAX);
         state.this_turn.agenda_points_stolen = state.this_turn.agenda_points_stolen.saturating_add(points);
     }
+    if let GameEvent::DamageTaken { amount, .. } = event
+        && *amount > 0
+    {
+        let amount = u8::try_from(*amount).unwrap_or(u8::MAX);
+        state.this_turn.damage_suffered = state.this_turn.damage_suffered.saturating_add(amount);
+        state.this_turn.window_after_damage = true;
+    }
     if let GameEvent::CardInstalled { side: Side::Corp, from_hq: true, .. } = event {
         state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
     }
@@ -1362,10 +1407,23 @@ pub(crate) fn unfile_resolving_operation(state: &mut GameState, position: usize)
 
 /// An action was finished — see `TurnLog::actions_finished` and
 /// `TurnLog::times_taken`.
-pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction) {
+///
+/// `before` is the log the action began from: the action closed the action
+/// phase's window as it began, so the window after damage is over unless
+/// the damage came during the action itself (`TurnLog::window_after_damage`).
+pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction, before: &TurnLog) {
+    if state.this_turn.damage_suffered == before.damage_suffered {
+        state.this_turn.window_after_damage = false;
+    }
     state.this_turn.actions_finished = state.this_turn.actions_finished.saturating_add(1);
     state.this_turn.last_action_was_a_play = action == SameAction::Play;
     state.this_turn.take(action);
+}
+
+/// A paid ability window closed on two passes — see
+/// `TurnLog::window_after_damage`.
+pub(crate) fn record_window_closed(state: &mut GameState) {
+    state.this_turn.window_after_damage = false;
 }
 
 /// A turn begins: this turn becomes last turn. The one reset, for both
@@ -1433,14 +1491,14 @@ mod tests {
         record(&mut state, &registry, &GameEvent::CardDrawn { side: Side::Runner });
         assert_eq!(Sparse::from(state.this_turn).cells.len(), 2);
 
-        record_action_finished(&mut state, SameAction::GainCredit);
+        record_action_finished(&mut state, SameAction::GainCredit, &TurnLog::default());
         record(&mut state, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0), advancement_tokens: 0 });
         assert_eq!((state.this_turn.actions_finished(), state.this_turn.agenda_points_scored()), (1, 3));
         // The same action is the same basic action, or the same ability on
         // the same card (CR 5.2.5a).
-        record_action_finished(&mut state, SameAction::GainCredit);
-        record_action_finished(&mut state, SameAction::Ability { install: InstallId(7), index: 0 });
-        record_action_finished(&mut state, SameAction::Ability { install: InstallId(8), index: 0 });
+        record_action_finished(&mut state, SameAction::GainCredit, &TurnLog::default());
+        record_action_finished(&mut state, SameAction::Ability { install: InstallId(7), index: 0 }, &TurnLog::default());
+        record_action_finished(&mut state, SameAction::Ability { install: InstallId(8), index: 0 }, &TurnLog::default());
         assert_eq!(state.this_turn.times_taken(SameAction::GainCredit), 2);
         assert_eq!(state.this_turn.times_taken(SameAction::Ability { install: InstallId(7), index: 0 }), 1);
         assert_eq!(state.this_turn.times_taken(SameAction::Draw), 0);
@@ -1450,7 +1508,7 @@ mod tests {
         // of the same clicks into one position compares the states whole.
         let mut other = GameState::new(0);
         for action in [SameAction::Ability { install: InstallId(8), index: 0 }, SameAction::GainCredit, SameAction::Ability { install: InstallId(7), index: 0 }, SameAction::GainCredit] {
-            record_action_finished(&mut other, action);
+            record_action_finished(&mut other, action, &TurnLog::default());
         }
         record(&mut other, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0), advancement_tokens: 0 });
         assert_eq!(other.this_turn.same_actions, state.this_turn.same_actions);
@@ -1484,8 +1542,8 @@ mod tests {
         let mut state = GameState::default();
         assert_eq!(serde_json::to_string(&state.this_turn).unwrap(), "{}");
         record(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::Archives });
-        record_action_finished(&mut state, SameAction::Run);
-        record_action_finished(&mut state, SameAction::FromHand { card: 34125, index: 0 });
+        record_action_finished(&mut state, SameAction::Run, &TurnLog::default());
+        record_action_finished(&mut state, SameAction::FromHand { card: 34125, index: 0 }, &TurnLog::default());
         let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.this_turn).unwrap()).unwrap();
         assert_eq!(read, state.this_turn);
         rotate(&mut state);

@@ -464,7 +464,7 @@ fn apply_action_once(
     // "have not finished an action yet this turn" counts. Before the drain:
     // a deferred trigger is part of the same action, not a new one.
     if let Some((side, action)) = finishes_action {
-        turn_log::record_action_finished(&mut next, action);
+        turn_log::record_action_finished(&mut next, action, &state.this_turn);
         match next.active_run.as_mut() {
             // It began a run, or a breach: it is finished when that is.
             Some(run) if run_was_part_of.is_none() => run.finishes = Some(action),

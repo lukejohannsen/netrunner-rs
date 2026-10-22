@@ -2466,6 +2466,11 @@ pub enum Amount {
     /// moment no card hears, so no cell of the log counts it, and "during a
     /// run" is no `Class`.
     ClickGainsInRunsThisTurn,
+    /// The damage the Runner has suffered this turn, every kind — Salvaged
+    /// Vanadis Armory's X (`TurnLog::damage_suffered`, a sum beside
+    /// `agenda_points_scored`). Composition didn't work: the log's cells
+    /// count the times damage was suffered, not how much.
+    DamageSufferedThisTurn,
     /// The Corp cards added to Archives this turn, by any route —
     /// Regenesis's "if no Corp cards have been added to Archives this
     /// turn" (`TurnLog::added_to_archives`, a sum beside
