@@ -1,0 +1,34 @@
+{
+  "id": "oberth_protocol",
+  "title": "Oberth Protocol",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "rez_alternatives": [
+    {
+      "cost": {
+        "Forfeit": 1
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAdvance",
+      "subject": "Any",
+      "when": "InOrProtectingThisServer",
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PlaceAdvancementCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "The first time each turn you advance a card in the root of or protecting this server, place 1 more advancement counter on that card."
+    }
+  ],
+  "built_from": 12018,
+  "is_playable": true
+}

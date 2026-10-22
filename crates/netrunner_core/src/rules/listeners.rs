@@ -690,6 +690,14 @@ fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener
     let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
     // Installs into a root are counted on the copies in it, the listener
     // among them (`turn_log::record`), as of this install.
+    // Advances in the server are counted on the root copies that listen
+    // for them, the listener among them (`turn_log::record`).
+    if first_time.clone().any(|triggered| triggered.when == Some(EventFilter::InOrProtectingThisServer)) {
+        return listener
+            .install
+            .and_then(|install| state.find_corp_install(install))
+            .is_some_and(|installed| installed.this_turn.count(state.turn, Trigger::OnAdvance) == 1);
+    }
     if first_time.clone().any(|triggered| triggered.when == Some(EventFilter::InRootOfThisServer)) {
         return listener
             .install
@@ -771,6 +779,11 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             && here.is_some()
             && moment.installed_in == here
             && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
+    }
+    // "You advance a card in the root of or protecting **this server**".
+    if let EventFilter::InOrProtectingThisServer = filter {
+        let About::Card { install: Some(about), .. } = moment.about else { return false };
+        return moment.of == Some(Side::Corp) && here.is_some() && state.find_corp_install(about).map(|installed| installed.server) == here;
     }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
