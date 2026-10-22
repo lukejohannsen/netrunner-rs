@@ -1,0 +1,41 @@
+{
+  "id": "sync_bre",
+  "title": "SYNC BRE",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 6,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[2]. If successful, whenever the Runner breaches a server for the remainder of this run, they access 1 fewer card.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "AccessFewer": {
+              "count": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 12015,
+  "is_playable": true
+}

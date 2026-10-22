@@ -2196,6 +2196,12 @@ pub fn evaluate_effect(
             Ok(start_trace(state, base, on_success, on_failure.as_deref(), acting_card.cloned(), ctx.acting_install))
         }
 
+        Effect::AccessFewer { count } => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.fewer_accesses = run.fewer_accesses.saturating_add(*count);
+            Ok(Vec::new())
+        }
+
         Effect::AddAdditionalAccess { server, count } => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             match server {

@@ -110,7 +110,6 @@ pub(crate) const KA_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Daedalus Complex* (`daedalus_complex`): tranche F4 of the FFG plan.
 pub(crate) const DC_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("sync_bre", "SYNC BRE"),
     ("oberth_protocol", "Oberth Protocol"),
 ];
 

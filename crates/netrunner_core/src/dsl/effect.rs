@@ -1968,6 +1968,13 @@ pub enum Effect {
     /// Composition didn't work: `BoostsLast` is declared by the card that
     /// lengthens, and this is given to whichever icebreaker was boosted.
     BoostsLastTheRun,
+    /// SYNC BRE's "whenever the Runner breaches a server for the
+    /// remainder of this run, they access 1 fewer card"
+    /// (`RunState::fewer_accesses`). Not `AddAdditionalAccess` with a
+    /// negative count: that raises the random access limit of HQ or R&D
+    /// alone (CR 7.3.5b) and is a no-op on Archives and a remote, where
+    /// one fewer card still means something. Requires an active run.
+    AccessFewer { count: u32 },
     /// The Runner encounters the ice this resolves as again, without
     /// moving (CR 6.5.9a, a forced encounter) — Sisyphus Protocol's "If you
     /// do, the Runner encounters that ice again", heard as the ice is
@@ -3968,6 +3975,7 @@ impl Effect {
             | Effect::MoveThisIceToOutermost
             | Effect::MoveThisIceToOutermostOf(_)
             | Effect::BoostsLastTheRun
+            | Effect::AccessFewer { .. }
             | Effect::ForceEncounter
             | Effect::MoveThisIceInnermostAndEncounter
             | Effect::PlayOperation { .. }

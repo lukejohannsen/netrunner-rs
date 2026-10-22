@@ -696,6 +696,20 @@ pub struct RunState {
     /// asked, and the accesses had no run to be in.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replacement_parked: bool,
+    /// SYNC BRE's "whenever the Runner breaches a server for the remainder
+    /// of this run, they access 1 fewer card" (`Effect::AccessFewer`): how
+    /// many fewer, summed. It goes with the run, so nothing resets it.
+    /// Public: both players saw the trace.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fewer_accesses: u32,
+    /// How many more cards this breach may access, set where a breach
+    /// begins when `fewer_accesses` lowers it: every candidate the breach
+    /// began with, less that many. The Runner still chooses which to
+    /// forgo, as they choose the order (CR 7.4.3); `None` is no limit
+    /// beyond the breach's own. A field of the run rather than of
+    /// `AccessState`, whose literal is in dozens of fixtures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breach_accesses_left: Option<u32>,
     /// How many cards this run's breach has accessed, counted by
     /// `run::access::present_card_for_access` as each is accessed (CR
     /// 7.3.6: only accesses actually performed; `0` if the run hasn't
@@ -977,6 +991,8 @@ impl Default for RunState {
             access_replacement_card: None,
             access_replacement_install: None,
             replacement_parked: false,
+            fewer_accesses: 0,
+            breach_accesses_left: None,
             cards_accessed_count: 0,
             rnd_cards_accessed_count: 0,
             redirect_on_approach: None,

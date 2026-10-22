@@ -132,6 +132,9 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
     let hq_closed = !outside_breach && server == ServerId::Hq && continuous::cannot(state, registry, Prohibition::AccessCardsInHq);
     let pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
     let set_aside = state.corp.set_aside.clone();
+    // SYNC BRE's "they access 1 fewer card": the breach has taken all it
+    // may (`RunState::breach_accesses_left`).
+    let fewer_and_done = !outside_breach && state.active_run.as_ref().is_some_and(|run| run.breach_accesses_left == Some(0));
     let Some(access) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()) else { return };
     let mut from_zone = Vec::with_capacity(access.from_zone.len());
     for card in &access.from_zone {
@@ -162,7 +165,7 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
         access.candidates.retain(|candidate| matches!(candidate, AccessCandidate::Root(root) if root == only));
     }
     access.candidates.retain(|candidate| !matches!(candidate, AccessCandidate::Root(root) if not_these.contains(root)));
-    if one_card_and_done {
+    if one_card_and_done || fewer_and_done {
         access.from_zone.clear();
         access.candidates.clear();
     }
@@ -189,7 +192,11 @@ fn take_candidate(state: &mut GameState, candidate: &AccessCandidate) -> Option<
         AccessCandidate::Archived(card) | AccessCandidate::SetAside(card) => Some(card.clone()),
         AccessCandidate::Zone => None,
     };
-    let access = state.active_run.as_mut()?.access_state.as_mut()?;
+    let run = state.active_run.as_mut()?;
+    if run.access_state.as_ref().is_some_and(|access| access.outside_breach.is_none()) {
+        run.breach_accesses_left = run.breach_accesses_left.map(|left| left.saturating_sub(1));
+    }
+    let access = run.access_state.as_mut()?;
     if let Some(outside) = access.outside_breach.as_mut() {
         outside.left = outside.left.saturating_sub(1);
     }
@@ -881,7 +888,15 @@ pub fn access_server(
     // how many were facedown.
     let turned_faceup = if server == ServerId::Archives { state.corp.archives.iter().filter(|archived| archived.facedown).count() as u32 } else { 0 };
     let (candidates, from_zone) = begin_breach(state, server);
-    if candidates.is_empty() && from_zone.is_empty() {
+    // SYNC BRE's "they access 1 fewer card": one fewer than every
+    // candidate the breach begins with, the Runner choosing which to
+    // forgo. Set at each breach, so a breach without it has no limit.
+    let fewer = state.active_run.as_ref().map_or(0, |run| run.fewer_accesses);
+    let left = (fewer > 0).then(|| ((candidates.len() + from_zone.len()) as u32).saturating_sub(fewer));
+    if let Some(run) = state.active_run.as_mut() {
+        run.breach_accesses_left = left;
+    }
+    if (candidates.is_empty() && from_zone.is_empty()) || left == Some(0) {
         if let Some(next) = breach_next(state, registry)? {
             events.extend(next);
             return Ok(events);

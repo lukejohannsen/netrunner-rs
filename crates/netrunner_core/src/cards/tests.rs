@@ -41431,3 +41431,95 @@ mod red_sand_stage_44 {
         assert!(!may_use(&state, &registry), "that window has passed");
     }
 }
+
+mod red_sand_stage_45 {
+    use super::*;
+    use crate::rules::GameEvent;
+    use crate::rules::{evaluate_effect, ResolutionContext};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A run on `server` with no ice, SYNC BRE's second subroutine
+    /// resolved `fewer` times and the R&D access raised by `extra`, to
+    /// the breach.
+    fn breach(server: ServerId, fewer: u32, extra: u32, prepare: impl FnOnce(&mut GameState)) -> (GameState, CardRegistry, usize) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        prepare(&mut state);
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..fewer {
+            evaluate_effect(&mut state, &crate::dsl::Effect::AccessFewer { count: 1 }, &mut ResolutionContext::for_card(None), &registry).expect("fewer");
+        }
+        state.active_run.as_mut().unwrap().additional_rd_access = extra;
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("no ice");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success");
+        let first = events.iter().filter(|event| matches!(event, GameEvent::CardAccessed { .. })).count();
+        (close_all_windows(state, &registry).0, registry, first)
+    }
+
+    /// Accesses until the run is over, counting the cards accessed.
+    fn access_all(mut state: GameState, registry: &CardRegistry) -> (GameState, usize) {
+        let mut accessed = 0;
+        for _ in 0..20 {
+            if state.active_run.is_none() {
+                break;
+            }
+            let legal = crate::rules::legal_actions_for(&state, registry, Side::Runner);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. } | PlayerAction::PassAccessedCard { .. }))
+                .cloned()
+                .unwrap_or(PlayerAction::PassPriority { side: Side::Runner });
+            let (after, events) = apply_action(&state, registry, next).expect("access");
+            accessed += events.iter().filter(|event| matches!(event, GameEvent::CardAccessed { .. })).count();
+            state = close_all_windows(after, registry).0;
+        }
+        (state, accessed)
+    }
+
+    #[test]
+    fn sync_bre_takes_one_card_from_a_breach_of_rnd() {
+        let (state, registry, first) = breach(ServerId::RnD, 1, 2, |_| {});
+        let (state, accessed) = access_all(state, &registry);
+        assert_eq!(first + accessed, 2, "three cards less one");
+        assert!(state.active_run.is_none());
+    }
+
+    #[test]
+    fn sync_bre_leaves_a_single_access_nothing() {
+        let (state, registry, first) = breach(ServerId::RnD, 1, 0, |_| {});
+        let (state, accessed) = access_all(state, &registry);
+        assert_eq!(first + accessed, 0);
+        assert!(state.active_run.is_none(), "a breach with nothing to access ends the run");
+    }
+
+    #[test]
+    fn sync_bre_takes_one_card_from_archives_and_twice_two() {
+        let pile = |state: &mut GameState| state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund")), crate::rules::ArchivedCard::faceup(id("ice_wall")), crate::rules::ArchivedCard::faceup(id("enigma"))];
+        let (state, registry, first) = breach(ServerId::Archives, 1, 0, pile);
+        let (_, accessed) = access_all(state, &registry);
+        assert_eq!(first + accessed, 2, "three cards less one");
+        let (state, registry, first) = breach(ServerId::Archives, 2, 0, pile);
+        let (_, accessed) = access_all(state, &registry);
+        assert_eq!(first + accessed, 1, "each subroutine resolved is one fewer");
+    }
+
+    #[test]
+    fn a_breach_without_sync_bre_accesses_as_before() {
+        let (state, registry, first) = breach(ServerId::RnD, 0, 2, |_| {});
+        let (_, accessed) = access_all(state, &registry);
+        assert_eq!(first + accessed, 3);
+    }
+
+    #[test]
+    fn sync_bre_is_in_the_registry_with_both_traces() {
+        let registry = registry();
+        let card = registry.get(&id("sync_bre")).expect("SYNC BRE");
+        assert_eq!(card.subroutines.len(), 2);
+    }
+}
