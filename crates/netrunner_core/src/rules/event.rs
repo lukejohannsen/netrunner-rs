@@ -383,6 +383,11 @@ pub enum GameEvent {
         card: CardId,
         #[serde(default)]
         credits_paid: u32,
+        /// X, for a resource that costs X to install (Bug Out Bag,
+        /// `CardDefinition::additional_install_cost`), which its own
+        /// `OnInstall` reads. Public: the payment was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x: Option<u32>,
     },
     /// `install` names the instance when the accessed card is a root
     /// install (`AccessState::pending_install`), so `Trigger::OnAccessed`

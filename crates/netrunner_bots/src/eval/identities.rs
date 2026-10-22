@@ -600,7 +600,7 @@ pub(super) fn counters_on_score(state: &GameState, registry: &CardRegistry, inst
             Some(_) => false,
         })
         .flat_map(|trigger| &trigger.effects)
-        .map(|effect| if let Effect::AddCounters(n) = effect { *n } else { 0 })
+        .map(|effect| if let Effect::AddCounters(netrunner_core::dsl::Amount::Fixed(n)) = effect { *n } else { 0 })
         .sum()
 }
 

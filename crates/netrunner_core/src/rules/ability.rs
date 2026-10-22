@@ -803,7 +803,10 @@ pub fn evaluate_effect(
             prevention::increase_draw(state, by, then.as_deref(), ctx)
         }
 
-        Effect::AddCounters(amount) => modify_counters(state, ctx, i64::from(*amount)),
+        Effect::AddCounters(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            modify_counters(state, ctx, i64::from(amount))
+        }
 
         Effect::RemoveCounters(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
@@ -3496,6 +3499,7 @@ pub(crate) fn fire_card_triggers(
         // into its own resolution as any chosen number is.
         let played_for_x = match triggering_event {
             Some(GameEvent::OperationPlayed { card, x: Some(x), .. }) if trigger == Trigger::OnPlay && card == card_id => Some(*x),
+            Some(GameEvent::ResourceInstalled { card, x: Some(x), .. }) if trigger == Trigger::OnInstall && card == card_id => Some(*x),
             _ => None,
         };
         let with_x: Vec<Effect>;
@@ -4591,7 +4595,9 @@ pub(crate) fn pay_cost_ctx(
         // X is named before it is paid (CR 1.16.2c): asked by replay,
         // no more than the printed bound or what could be spent.
         Cost::CreditsX { max } => {
-            let most = resolve_amount(max, ctx, state, registry)
+            let most = max
+                .as_ref()
+                .map_or(u32::MAX, |max| resolve_amount(max, ctx, state, registry))
                 .min(payment::available(state, registry, side, purpose))
                 .min(crate::rules::action_mask::MAX_CHOSEN_NUMBER);
             if state.payment_answers.is_empty() {
@@ -7385,7 +7391,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gorman_drip", 0)];
         let acting = CardId("gorman_drip".to_string());
 
-        let events = evaluate_effect(&mut state, &Effect::AddCounters(2), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::AddCounters(crate::dsl::Amount::Fixed(2)), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.rig[0].counters, 2);
         assert_eq!(events, vec![GameEvent::CountersAdded { card: acting, amount: 2 }]);
@@ -7416,7 +7422,7 @@ mod tests {
         }];
         let acting = CardId("some_asset".to_string());
 
-        evaluate_effect(&mut state, &Effect::AddCounters(3), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::AddCounters(crate::dsl::Amount::Fixed(3)), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.installed[0].counters, 3);
     }
@@ -7425,7 +7431,7 @@ mod tests {
     fn add_counters_without_acting_card_errors_unresolved_card_target() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddCounters(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::AddCounters(crate::dsl::Amount::Fixed(1)), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::UnresolvedCardTarget)
         );
     }
@@ -7435,7 +7441,7 @@ mod tests {
         let mut state = game_state();
         let acting = CardId("nowhere".to_string());
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddCounters(1), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::AddCounters(crate::dsl::Amount::Fixed(1)), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()),
             Err(RulesError::CardNotEligibleForCounters(acting))
         );
     }

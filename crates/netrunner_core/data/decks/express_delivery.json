@@ -3,7 +3,7 @@
   "name": "Express Delivery",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ken “Express” Tenma: Disappeared Clone, System Update 2021's Criminal identity, who gains a credit the first time each turn he plays a run event. On Encore's frame, its identity swapped, since Encore plays twelve run events: Carpe Diem, Reprise, Pinhole Threading, Legwork and Dirty Laundry. Two Clot for its two The Price, an Anarch virus that forbids the Corp to score an agenda the turn it was installed and is trashed by a purge, at the same four influence; Encore and Moonlighting keep The Price. Tranche 8 Stage 4. FFG F2 Stage 1: Paragon for one of its two Virtuoso, a console for a console, a credit and a look at the stack on the first successful run each turn; and Office Supplies, a Sunny Lebeau event at 3 influence, for its Sure Gamble. Kitara Stage 6a: two Diversion of Funds for two Pinhole Threading.",
+  "description": "Not a published list: built so the sweeps reach Ken “Express” Tenma: Disappeared Clone, System Update 2021's Criminal identity, who gains a credit the first time each turn he plays a run event. On Encore's frame, its identity swapped, since Encore plays twelve run events: Carpe Diem, Reprise, Pinhole Threading, Legwork and Dirty Laundry. Two Clot for its two The Price, an Anarch virus that forbids the Corp to score an agenda the turn it was installed and is trashed by a purge, at the same four influence; Encore and Moonlighting keep The Price. Tranche 8 Stage 4. FFG F2 Stage 1: Paragon for one of its two Virtuoso, a console for a console, a credit and a look at the stack on the first successful run each turn; and Office Supplies, a Sunny Lebeau event at 3 influence, for its Sure Gamble. Kitara Stage 6a: two Diversion of Funds for two Pinhole Threading. Red Sand Stage 46: two Bug Out Bag for two Career Fair, resource for resource, an install cost of X that a grip played out turns into cards; Encore keeps Career Fair.",
   "style": [
     "pressure"
   ],
@@ -42,7 +42,7 @@
       "count": 2
     },
     {
-      "card": "career_fair",
+      "card": "bug_out_bag",
       "count": 2
     },
     {

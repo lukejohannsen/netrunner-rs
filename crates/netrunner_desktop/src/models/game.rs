@@ -2477,7 +2477,7 @@ mod tests {
             let mut view = build_client_view(&GameState::new(1), &registry, Side::Runner);
             view.pending_decision = Some(PendingDecision::ChooseEffect {
                 chooser: Side::Runner,
-                options: vec![Effect::AddCounters(1), Effect::Sequence(Vec::new())],
+                options: vec![Effect::AddCounters(netrunner_core::dsl::Amount::Fixed(1)), Effect::Sequence(Vec::new())],
                 option_texts: vec!["place 1 virus counter on it".to_string(), String::new()],
                 source_card: Some(cookbook.clone()),
                 prompting_card: None,

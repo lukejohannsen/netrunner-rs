@@ -770,6 +770,11 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
             .get(card_id)
             .and_then(|def| def.additional_play_cost.as_ref())
             .is_some_and(crate::dsl::Cost::may_ask),
+        // An install cost of X asks it (Bug Out Bag).
+        PlayerAction::InstallResource { card_id, .. } => registry
+            .get(card_id)
+            .and_then(|def| def.additional_install_cost.as_ref())
+            .is_some_and(crate::dsl::Cost::may_ask),
         // A steal cost that takes cards asks which: SDS Drone
         // Deployment's "trash 1 installed program" with two installed. Left
         // off this list until the 256-seed view sweep's debug assertion

@@ -542,6 +542,15 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_play_cost: Option<Cost>,
 
+    /// A cost paid in addition to the credits `cost` an install from the
+    /// grip spends — Bug Out Bag's install cost of X, printed as
+    /// `Cost::CreditsX` over a `cost` of 0, the way an operation that costs
+    /// X prints it as its additional cost to play. Its own `OnInstall`
+    /// reads X (`GameEvent::ResourceInstalled::x`). A resource only, the
+    /// one kind that prints one; `validate` refuses it elsewhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_install_cost: Option<Cost>,
+
     /// "Central server only." / "Remote server only." / "HQ or R&D only."
     /// — where an upgrade may be installed, beyond what its type allows (an
     /// agenda or an asset is remote-only by type): any of the kinds listed,
@@ -1348,6 +1357,7 @@ impl Default for CardDefinition {
             install_requirement: None,
             influence_limit: None,
             additional_play_cost: None,
+            additional_install_cost: None,
             install_only_in: Vec::new(),
             click_breakable: false,
             counter_kind: None,
@@ -1865,12 +1875,19 @@ impl CardDefinition {
         if x_to_play && (self.card_type != CardType::Operation || !self.additional_play_cost.as_ref().is_some_and(x_first)) {
             return Err(CardValidationError::XCostNotFirst(self.id.clone()));
         }
+        // An install cost of X (Bug Out Bag) is the same, for a resource,
+        // and its own `OnInstall` reads it.
+        let x_to_install = self.additional_install_cost.as_ref().is_some_and(crate::dsl::Cost::names_x);
+        if self.additional_install_cost.is_some() && (self.card_type != CardType::Resource || !self.additional_install_cost.as_ref().is_some_and(x_first)) {
+            return Err(CardValidationError::XCostNotFirst(self.id.clone()));
+        }
         let x_effects: Vec<&Effect> = self
             .abilities
             .iter()
             .filter(|ability| ability.cost.as_ref().is_some_and(crate::dsl::Cost::names_x))
             .map(|ability| &ability.effect)
             .chain(self.triggers.iter().filter(|triggered| x_to_play && triggered.trigger == crate::dsl::Trigger::OnPlay).flat_map(|triggered| &triggered.effects))
+            .chain(self.triggers.iter().filter(|triggered| x_to_install && triggered.trigger == crate::dsl::Trigger::OnInstall).flat_map(|triggered| &triggered.effects))
             .collect();
         for root in roots {
             root.for_each_effect(&mut |effect| {

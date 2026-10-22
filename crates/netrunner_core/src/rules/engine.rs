@@ -2175,7 +2175,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
             events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
-            let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
+            let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost, x: None };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         _ => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program, hardware or resource" }),
@@ -2493,7 +2493,16 @@ fn install_resource(
     let cost = continuous::install_cost_onto(&next, registry, card_def, host);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
+    // An install cost of X is named first (CR 1.16.2c), so X is the first
+    // answer the payment takes — read before paying takes it, as an
+    // ability's is.
+    let mut paid = Vec::new();
+    let mut x = None;
+    if let Some(additional) = &card_def.additional_install_cost {
+        x = additional.names_x().then(|| next.payment_answers.first().copied()).flatten();
+        paid.extend(ability::pay_cost(&mut next, registry, side, additional, Purpose::Install(card_def), Some(&card_id))?);
+    }
+    paid.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     if let Some(host) = host
@@ -2501,7 +2510,8 @@ fn install_resource(
     {
         installed.hosted_on_rig_card = Some(host);
     }
-    let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
+    let credits_paid = cost + x.unwrap_or(0);
+    let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid, x };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     // Paid off a card, the spend is the Runner's to hear (The Twinning)

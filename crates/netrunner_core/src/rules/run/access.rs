@@ -3967,7 +3967,7 @@ mod tests {
     #[test]
     fn on_accessed_fires_against_the_instance_being_accessed() {
         let trap = CardId("counter_trap".to_string());
-        let registry = CardRegistry::from_cards(vec![card_with_on_accessed("counter_trap", vec![Effect::AddCounters(1)])]);
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed("counter_trap", vec![Effect::AddCounters(crate::dsl::Amount::Fixed(1))])]);
         let installed = vec![
             InstalledCard { card: trap.clone(), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
             InstalledCard { card: trap.clone(), install_id: InstallId(2), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
