@@ -1485,6 +1485,54 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        // Loki: what the chosen ice is, the prompting ice takes on for
+        // the run.
+        Effect::CopiedByPromptingIce => {
+            let (Some(chosen), Some(copier)) = (ctx.acting_install, ctx.prompting_install) else { return Err(RulesError::MissingActingCardContext) };
+            let Some(chosen_card) = state.corp.installed.iter().find(|card| card.install_id == chosen && card.slot == InstallSlot::Ice).map(|card| card.card.clone()) else {
+                return Ok(Vec::new());
+            };
+            let definition = registry.get(&chosen_card).ok_or_else(|| RulesError::CardNotFoundInRegistry(chosen_card.clone()))?;
+            // Ice that cannot gain abilities gains no subroutine (Hush's
+            // host); a subtype is not an ability, and is gained still.
+            let may_gain = crate::rules::active::may_have_granted(state, registry, copier);
+            let types: Vec<crate::dsl::IceType> = [crate::dsl::IceType::Barrier, crate::dsl::IceType::CodeGate, crate::dsl::IceType::Sentry]
+                .into_iter()
+                .filter(|subtype| definition.card_type == crate::dsl::CardType::Ice(*subtype) || crate::rules::continuous::ice_gains_subtype(state, registry, chosen, *subtype))
+                .collect();
+            let subroutines = definition.subroutines.clone();
+            let source = ctx.prompting_card.or(acting_card).cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let until = lingering::until(state, crate::dsl::EffectDuration::Run, Side::Corp, Some(copier))?;
+            for subtype in types {
+                state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(subtype), on: On::Install(copier), until, source: source.clone() });
+            }
+            let Some(run) = state.active_run.as_mut() else { return Ok(Vec::new()) };
+            if !may_gain {
+                return Ok(Vec::new());
+            }
+            // Each is put ahead of the rest as an encounter begins, the
+            // newest first (`run::engine::add_gained_for_the_run`), so the
+            // last is pushed first and the list reads in the chosen ice's
+            // order.
+            for subroutine in subroutines.iter().rev() {
+                run.gained_for_the_run.push(run::GainedForTheRun { ice: copier, subroutine: subroutine.clone(), after: false });
+            }
+            if run.phase != RunPhase::EncounterIce {
+                return Ok(Vec::new());
+            }
+            let position = run.position;
+            let Some(ice) = run.ice.get_mut(position).filter(|ice| ice.install_id == copier) else { return Ok(Vec::new()) };
+            let mut events = Vec::new();
+            for subroutine in subroutines.iter().rev() {
+                ice.subroutines.insert(0, run::EncounteredSubroutine { id: 0, definition: subroutine.clone(), status: SubroutineStatus::Pending, gained: true });
+            }
+            for subroutine in &subroutines {
+                events.push(GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() });
+            }
+            run::renumber_subroutines(ice);
+            Ok(events)
+        }
+
         // "It" is the encountered ice, as the trigger's subject; a
         // resolution that finds the encounter over (a run ended by a
         // trigger ahead of it) has nothing left to add to.

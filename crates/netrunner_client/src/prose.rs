@@ -625,6 +625,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
+        Effect::CopiedByPromptingIce => "for the remainder of this run, the choosing ice gains the subtypes of this ice and its subroutines in order before its other subroutines".to_string(),
         Effect::GainIceSubtype { subtype, for_the_turn: true, .. } => {
             format!("that ice gains {} until the end of the turn", crate::board::facts::ice_type_words(&[*subtype]))
         }

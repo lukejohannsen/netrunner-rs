@@ -1,0 +1,61 @@
+{
+  "id": "loki",
+  "title": "Loki",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 6,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                "NotSourceCard"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": "CopiedByPromptingIce"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, choose another rezzed piece of ice. For the remainder of this run, this ice gains the subtypes of the chosen ice and gains the subroutines of that ice in order before its other subroutines."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner shuffles all cards from the grip into the stack.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "ShuffleIntoDeck": [
+                "OwnGrip"
+              ]
+            },
+            "EndTheRun"
+          ],
+          "texts": [
+            "the Runner shuffles all cards from the grip into the stack",
+            "End the run"
+          ]
+        }
+      }
+    }
+  ],
+  "built_from": 12069,
+  "is_playable": true
+}
