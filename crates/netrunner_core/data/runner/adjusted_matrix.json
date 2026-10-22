@@ -1,0 +1,39 @@
+{
+  "id": "adjusted_matrix",
+  "title": "Adjusted Matrix",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "installs_onto": "Icebreaker",
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → Lose [click]: Break 1 subroutine.",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": "ThisCardsHost",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "BreakSubroutines": {
+              "count": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 12046,
+  "is_playable": true
+}

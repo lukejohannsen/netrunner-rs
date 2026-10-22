@@ -118,7 +118,6 @@ pub(crate) const SO_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Earth's Scion* (`earths_scion`): tranche F4 of the FFG plan.
 pub(crate) const EAS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("adjusted_matrix", "Adjusted Matrix"),
 ];
 
 /// *Blood and Water* (`blood_and_water`): tranche F4 of the FFG plan.
