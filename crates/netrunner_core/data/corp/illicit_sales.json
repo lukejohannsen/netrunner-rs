@@ -1,0 +1,50 @@
+{
+  "id": "illicit_sales",
+  "title": "Illicit Sales",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveBadPublicity": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may take 1 bad publicity",
+              ""
+            ]
+          }
+        },
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Times": {
+                "amount": "BadPublicity",
+                "times": 3
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you score this agenda, you may take 1 bad publicity. Gain 3[credit] for each bad publicity you have."
+    }
+  ],
+  "built_from": 13043,
+  "is_playable": true
+}
