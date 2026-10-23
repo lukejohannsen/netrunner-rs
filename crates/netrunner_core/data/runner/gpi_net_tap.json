@@ -1,0 +1,87 @@
+{
+  "id": "gpi_net_tap",
+  "title": "GPI Net Tap",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnIceApproached",
+      "subject": "Any",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    "BeingApproached",
+                    "Unrezzed"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OpponentInstalled",
+                          "filter": {
+                            "All": [
+                              "BeingApproached",
+                              "Unrezzed"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": "Expose"
+                        }
+                      },
+                      {
+                        "OfferPaidChoice": {
+                          "side": "Runner",
+                          "cost": {
+                            "AllOf": [
+                              "TrashSelf",
+                              "JackOut"
+                            ]
+                          },
+                          "if_paid": {
+                            "Sequence": []
+                          },
+                          "if_declined": {
+                            "Sequence": []
+                          },
+                          "text": "You may then trash GPI Net Tap to jack out"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may expose it",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you approach a piece of ice, you may expose it. You may then trash GPI Net Tap to jack out."
+    }
+  ],
+  "built_from": 11003,
+  "is_playable": true
+}

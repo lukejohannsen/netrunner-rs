@@ -860,6 +860,16 @@ pub struct RunState {
     /// (`engine::rez_install`); public, as every rez is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rezzed: Vec<crate::rules::state::InstallId>,
+    /// The ice the Runner fully broke during this run, by its handle, in
+    /// the order broken (CR 6.5.7a) — The Gauntlet's "for each piece of ice
+    /// protecting HQ that you fully broke during that run"
+    /// (`CardFilter::FullyBrokenDuringThisRun`). Pushed where `fully_broken`
+    /// is set, the one place each encounter's full break is recorded; a
+    /// list rather than a count, because the question is about the ice
+    /// still protecting the server when the breach asks. The engine's, as
+    /// `passed` is: a bot's sample of a run takes nothing as broken.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fully_broken_ice: Vec<crate::rules::state::InstallId>,
     /// The piece of ice encountered last this run, by its handle — set as
     /// each encounter begins and kept into `CompletedRun::last_encountered`
     /// for Always Have a Backup Plan's "the last piece of ice you
@@ -1020,6 +1030,7 @@ impl Default for RunState {
             ice_passed: 0,
             passed: Vec::new(),
             rezzed: Vec::new(),
+            fully_broken_ice: Vec::new(),
             last_encountered: None,
             on_success_card: None,
             on_success_install: None,

@@ -481,6 +481,7 @@ fn instance_matches_filter(
         }
         CardFilter::PassedDuringLastRun => corp_install.is_some_and(|c| passed_during_last_run(state, c.install_id)),
         CardFilter::RezzedDuringLastRun => corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&c.install_id))),
+        CardFilter::FullyBrokenDuringThisRun => corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&c.install_id))),
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
         CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
@@ -636,6 +637,9 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     }
     if let CardFilter::RezzedDuringLastRun = filter {
         return state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));
+    }
+    if let CardFilter::FullyBrokenDuringThisRun = filter {
+        return state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&install));
     }
     if let CardFilter::BeingEncountered | CardFilter::BeingApproached = filter {
         let phase = if matches!(filter, CardFilter::BeingApproached) { crate::rules::run::RunPhase::ApproachIce } else { crate::rules::run::RunPhase::EncounterIce };

@@ -1,0 +1,51 @@
+{
+  "id": "the_gauntlet",
+  "title": "The Gauntlet",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 5,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccessAmount": {
+            "server": "Hq",
+            "amount": {
+              "CorpInstalls": {
+                "All": [
+                  "Ice",
+                  {
+                    "InServer": "Hq"
+                  },
+                  "FullyBrokenDuringThisRun"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ during a run, access 1 additional card for each piece of ice protecting HQ that you fully broke during that run."
+    }
+  ],
+  "built_from": 11063,
+  "is_playable": true
+}

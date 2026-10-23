@@ -256,7 +256,7 @@ fn start_run_paying(state: &mut GameState, registry: &CardRegistry, server: Serv
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { finishes: None, ice_approached: 0, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { finishes: None, ice_approached: 0, suspended: Vec::new(), gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, redirect_at_success: false, on_end: Vec::new(), subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, click_lost_to_break: false, reached_success_phase: false, breached: None, breaches_after: Vec::new(), encounters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), fully_broken_ice: Vec::new(), last_encountered: None, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -418,7 +418,9 @@ fn fully_broken_with_nothing_to_break(run: &mut RunState, position: usize) -> Op
         return None;
     }
     let card_id = ice.card_id.clone();
+    let install = ice.install_id;
     run.fully_broken = true;
+    run.fully_broken_ice.push(install);
     Some(GameEvent::IceFullyBroken { card_id, position: position as u32, by: None })
 }
 
@@ -1733,6 +1735,8 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
     let every_one_broken = run.ice[position].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken);
     if every_one_broken && !run.fully_broken {
         run.fully_broken = true;
+        let install = run.ice[position].install_id;
+        run.fully_broken_ice.push(install);
         events.push(GameEvent::IceFullyBroken { card_id, position: position as u32, by: run.this_encounter.broken_by.object() });
     }
     Ok(events)
