@@ -2817,6 +2817,11 @@ pub enum Amount {
     /// 2[link]", `AmountAtLeast(Link, 2)`. Composition didn't work: link
     /// was asked only by a trace and the view.
     Link,
+    /// The Runner's unused memory units (`memory::available_memory`, the
+    /// one ledger, clamped at zero) — Adept's and Savant's "+1 strength for
+    /// each unused MU", Deep Data Mining's "X is equal to your unused MU".
+    /// Composition didn't work: memory was asked only by an install.
+    UnusedMemory,
     /// `amount` less `by`, never below 0 — Tremolo's "3[credit]: … This
     /// ability costs 1[credit] less to use for each installed piece of
     /// cybernetic hardware", `Cost::CreditsAmount(Reduced { amount: Fixed(3),

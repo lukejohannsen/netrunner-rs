@@ -43130,3 +43130,71 @@ mod flashpoint_stage_9 {
         assert!(apply_action(&used, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).is_err(), "once per turn");
     }
 }
+
+mod flashpoint_stage_10 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        let strength = registry().get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength: strength, ..Default::default() }
+    }
+
+    #[test]
+    fn adept_and_savant_get_plus_one_strength_for_each_unused_mu() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("adept")];
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 2 + 2, "Adept's 2 MU leaves 2 of the 4 unused");
+        state.runner.rig.push(rig("savant"));
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 2, "none unused");
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[1]), 1);
+    }
+
+    #[test]
+    fn deep_data_mining_accesses_the_unused_mu_or_four_additional_cards() {
+        let registry = registry();
+        for (rig_cards, additional) in [(vec!["adept"], 2), (vec![], 4), (vec!["akamatsu_mem_chip"], 4)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.grip = vec![id("deep_data_mining")];
+            state.runner.rig = rig_cards.into_iter().map(rig).collect();
+            let (running, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("deep_data_mining") }).expect("play it");
+            let run = running.active_run.as_ref().expect("a run on R&D");
+            assert_eq!((run.server, run.additional_rd_access), (ServerId::RnD, additional));
+        }
+    }
+
+    #[test]
+    fn watchdog_lowers_the_first_ice_rez_each_turn_by_the_runners_tags() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 2;
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(10), card: id("watchdog"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            crate::rules::InstalledCard { install_id: fixture_install_id("enigma"), card: id("enigma"), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() },
+            crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::RnD, slot: InstallSlot::Ice, ..Default::default() },
+        ];
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, install_of(&state, "enigma")), -2, "lowered by 2 tags");
+        let rez = crate::rules::GameEvent::IceRezzed { card: id("enigma"), server: ServerId::Hq, install: install_of(&state, "enigma") };
+        crate::rules::turn_log::record(&mut state, &registry, &rez);
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, install_of(&state, "ice_wall")), 0, "only the first each turn");
+    }
+
+    #[test]
+    fn paper_trail_traces_six_to_trash_every_connection_and_job() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(10), card: id("paper_trail"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 4, ..Default::default() }];
+        state.runner.rig = vec![rig("data_dealer"), rig("underworld_contact"), rig("liberated_account")];
+        let (tracing, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score it");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(6), "trace[6]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (traced, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner does not");
+        let traced = pass_until_settled(traced, &registry).0;
+        assert_eq!(traced.runner.rig.iter().map(|card| card.card.0.as_str()).collect::<Vec<_>>(), vec!["liberated_account"]);
+    }
+}

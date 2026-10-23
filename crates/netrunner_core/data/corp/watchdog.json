@@ -1,0 +1,40 @@
+{
+  "id": "watchdog",
+  "title": "Watchdog",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -1,
+          "of": "RunnerTags"
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "TimesThisTurnWhen": {
+                "trigger": "OnRez",
+                "when": {
+                  "Card": "Ice"
+                }
+              }
+            },
+            1
+          ]
+        }
+      },
+      "text": "The rez cost of the first piece of ice you rez each turn is lowered by 1 for each tag the Runner has."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11015,
+  "is_playable": true
+}

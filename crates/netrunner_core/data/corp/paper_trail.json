@@ -1,0 +1,45 @@
+{
+  "id": "paper_trail",
+  "title": "Paper Trail",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 6,
+            "on_success": {
+              "ForEach": {
+                "source": "OpponentInstalled",
+                "filter": {
+                  "AnyOf": [
+                    {
+                      "HasSubtype": "Connection"
+                    },
+                    {
+                      "HasSubtype": "Job"
+                    }
+                  ]
+                },
+                "effect": {
+                  "TrashCard": {
+                    "Install": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score Paper Trail, Trace[6]. If successful, trash all connection and job resources."
+    }
+  ],
+  "built_from": 13053,
+  "is_playable": true
+}

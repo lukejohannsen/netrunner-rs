@@ -1,0 +1,58 @@
+{
+  "id": "adept",
+  "title": "Adept",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "UnusedMemory"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each unused MU."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry or barrier subroutine. — sentry",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry or barrier subroutine. — barrier",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 13017,
+  "is_playable": true
+}
