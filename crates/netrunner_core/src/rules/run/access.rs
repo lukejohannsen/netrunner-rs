@@ -395,6 +395,15 @@ pub(crate) fn access_cards(
             cards.sort();
             cards.into_iter().map(AccessCandidate::SetAside).collect()
         }
+        // Cards of R&D by place, top down, neither player seeing them
+        // until each is accessed: Top Hat's "choose 1 of the top 5 cards
+        // in R&D and access it" (`CardFilter::NthFromTop`). The zone's
+        // own candidate, as a breach of R&D offers its cards, so a card
+        // that leaves R&D before its turn is no longer one (CR 7.4.5).
+        CardZoneRef::OpponentDeck => {
+            from_zone = admitted.into_iter().rev().filter_map(|position| state.corp.r_and_d.get(position).cloned()).collect();
+            Vec::new()
+        }
         _ => return Err(RulesError::UnresolvedCardTarget),
     };
     access_candidates(state, registry, candidates, from_zone, count, then, card, install, replacing_breach)

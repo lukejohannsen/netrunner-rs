@@ -1795,9 +1795,10 @@ impl CardDefinition {
                 (Scope::Ice(filter), _) if matches!(effect.kind, ContinuousKind::RezCost(_)) => crate::rules::turn_log::Occurrences::ice_rezzes(filter, self.side),
                 (Scope::Playing(filter), _) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
                 (Scope::Player(_), Some(trigger)) => crate::rules::turn_log::Occurrences::meant_by(trigger, None, self.side),
+                (Scope::Runs(_), _) if matches!(effect.kind, ContinuousKind::RunCost(_)) => crate::rules::turn_log::Occurrences::runs(self.side),
                 _ => {
                     return Err(self.first_time_misfit(
-                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`), a rez of ice (`Ice` with `RezCost`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
+                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`), a rez of ice (`Ice` with `RezCost`), a run's cost (`Runs` with `RunCost`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
                     ));
                 }
             };
@@ -2209,8 +2210,12 @@ impl CardDefinition {
                 // "an agenda … the same turn they installed that agenda"),
                 // asked of the install by `continuous::cannot_install`.
                 (ContinuousKind::Cannot(crate::dsl::Prohibition::ScoreAgendas), Scope::Scoring(_)) => {}
+                // A word about the Corp's installs (Interdiction's "the Corp
+                // cannot rez non-ice cards"), asked of the install by
+                // `continuous::cannot_install`.
+                (ContinuousKind::Cannot(crate::dsl::Prohibition::Rez), Scope::CorpInstalled(_)) => {}
                 (ContinuousKind::Cannot(_), _) => {
-                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), or a card's about the agenda being scored (`Scoring`)");
+                    return misfit("Cannot", "a prohibition is about the player it binds (`Player`), an agenda's about its own score (`This`), a card's about the agenda being scored (`Scoring`), or a rez about the Corp's installs (`CorpInstalled`)");
                 }
             }
         }

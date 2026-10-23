@@ -992,6 +992,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice(CardFilter::Any) => "each piece of ice".to_string(),
         Scope::Ice(filter) => format!("each piece of ice ({})", lower(format!("{filter:?}"))),
+        Scope::CorpInstalled(filter) => format!("each installed Corp card ({})", lower(format!("{filter:?}"))),
         Scope::Rig(filter) => format!("each installed card of the Runner's ({})", lower(format!("{filter:?}"))),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
         Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),

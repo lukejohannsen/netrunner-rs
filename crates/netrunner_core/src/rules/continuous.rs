@@ -214,6 +214,9 @@ fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEf
         // "The first piece of ice the Corp rezzes each turn costs 1[c]
         // more": a rez is priced before it happens, so none counted yet.
         (Scope::Ice(filter), ContinuousKind::RezCost(_)) => turn_log::Occurrences::ice_rezzes(filter, source.side),
+        // Service Outage's "as an additional cost to run for the first
+        // time during their turn": priced before the run is announced.
+        (Scope::Runs(_), ContinuousKind::RunCost(_)) => turn_log::Occurrences::runs(source.side),
         // "The first run each turn cannot be made…": asked before the run
         // is announced, so none counted yet.
         (Scope::Player(_), ContinuousKind::Cannot(what)) => match what.counted_as() {
@@ -288,6 +291,9 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             matches!(card.card_type, CardType::Ice(_))
                 && card_matches_filter(card, filter)
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
+        }
+        (Scope::CorpInstalled(filter), Target::Corp { card, install, .. }) => {
+            card_matches_filter(card, filter) && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)

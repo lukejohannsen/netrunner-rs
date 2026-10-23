@@ -455,6 +455,10 @@ fn instance_matches_filter(
         // Read as the selection was offered (`with_resolution`); left
         // unread, nothing.
         CardFilter::TopOf(_) => false,
+        CardFilter::NthFromTop(n) => match **n {
+            crate::dsl::Amount::Fixed(n) if n > 0 => zone_card_ids(state, chooser, zone, source).len().checked_sub(n as usize) == Some(position),
+            _ => false,
+        },
         // The install the selection acts as is the place.
         CardFilter::SwappableIntoThis => source.is_some_and(|place| {
             zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| crate::rules::run::swappable_into(state, registry, card, place))

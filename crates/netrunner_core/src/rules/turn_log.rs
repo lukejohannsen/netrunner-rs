@@ -525,6 +525,13 @@ impl Occurrences {
         Occurrences::meant_by(Trigger::OnRez, Some(&EventFilter::Card(ice)), controller)
     }
 
+    /// The runs a `Scope::Runs` run cost is about: every run the Runner
+    /// starts, whoever's card prices it — Service Outage's "to run for the
+    /// first time during their turn", a Corp current. Only the Runner runs.
+    pub(crate) fn runs(controller: Side) -> Result<Occurrences, String> {
+        Occurrences::meant_by(Trigger::OnRunStart, Some(&EventFilter::Whose(Side::Runner)), controller)
+    }
+
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
         // A conjunction counts what every part admits: the columns all of
         // them name, of the one player any of them names.

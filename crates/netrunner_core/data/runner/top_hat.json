@@ -1,0 +1,67 @@
+{
+  "id": "top_hat",
+  "title": "Top Hat",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "SetAccessReplacement": {
+                  "server": "RnD",
+                  "effect": {
+                    "ChooseNumber": {
+                      "chooser": "Runner",
+                      "min": 1,
+                      "max": {
+                        "Fixed": 5
+                      },
+                      "of": {
+                        "InZone": {
+                          "zone": "OpponentDeck",
+                          "filter": "Any"
+                        }
+                      },
+                      "then": {
+                        "Access": {
+                          "from": "OpponentDeck",
+                          "filter": {
+                            "NthFromTop": "ChosenNumber"
+                          },
+                          "count": 1
+                        }
+                      },
+                      "text": "choose 1 of the top 5 cards in R&D"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "instead of breaching R&D, you may choose 1 of the top 5 cards in R&D and access it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, instead of breaching R&D, you may choose 1 of the top 5 cards in R&D and access it."
+    }
+  ],
+  "built_from": 11067,
+  "is_playable": true
+}

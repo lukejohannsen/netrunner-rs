@@ -146,7 +146,9 @@ pub enum CardTarget {
     /// the hand. Composition didn't work: a selection's `ThatCard` is a
     /// card the moment is about, and the basic action's moment is about
     /// nothing, so that Verbal Plasticity's "you take the basic action"
-    /// stays a word about a player.
+    /// stays a word about a player. Heard as a draw (`GameEvent::DrewCard`,
+    /// `Trigger::OnCardDrawn`), it is that one card — Find the Truth's
+    /// "Whenever you draw a card, reveal that card".
     DrawnCard,
     /// The card the Runner just passed on, read off the moment the trigger
     /// heard (`GameEvent::AccessPassed::card`) — Aeneas Informant's "you
@@ -3775,7 +3777,7 @@ impl Effect {
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::GiveBadPublicity(a) => Effect::GiveBadPublicity(amount(a)),
             Effect::RemoveBadPublicity(a) => Effect::RemoveBadPublicity(amount(a)),
-            Effect::Access { from, filter, count, then } => Effect::Access { from, filter, count: amount(count), then: then.map(boxed) },
+            Effect::Access { from, filter, count, then } => Effect::Access { from, filter: filter.filled(fill), count: amount(count), then: then.map(boxed) },
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::AddCounters(a) => Effect::AddCounters(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
