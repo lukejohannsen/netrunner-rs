@@ -43198,3 +43198,63 @@ mod flashpoint_stage_10 {
         assert_eq!(traced.runner.rig.iter().map(|card| card.card.0.as_str()).collect::<Vec<_>>(), vec!["liberated_account"]);
     }
 }
+
+mod flashpoint_stage_11 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    /// Installed with its printed strength, as an install seeds it.
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        let base_strength = registry().get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), base_strength, ..Default::default() }
+    }
+
+    /// Mantle with its one recurring credit, the stealth credit.
+    fn mantle() -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { counters: 1, ..rig("mantle", 30) }
+    }
+
+    fn encounter(state: &GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        let mut state = state.clone();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(11), card: id(ice), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, install: u32, ability_index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index }).map(|(state, _)| state)
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        let installed = state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("installed");
+        crate::rules::continuous::breaker_strength(state, registry, installed)
+    }
+
+    #[test]
+    fn blackstone_and_houdini_pump_for_the_run_only_with_a_stealth_credit() {
+        let registry = registry();
+        for (breaker, ice, cost, printed) in [("blackstone", "ice_wall", 3, 3), ("houdini", "enigma", 2, 2)] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig(breaker, 10)];
+            assert!(use_ability(&encounter(&state, &registry, ice), &registry, 10, 1).is_err(), "{breaker}: no stealth credit");
+            state.runner.rig.push(mantle());
+            let pumped = use_ability(&encounter(&state, &registry, ice), &registry, 10, 1).expect("pump with Mantle's credit");
+            assert_eq!(strength(&pumped, &registry, breaker), printed + 4);
+            assert_eq!(pumped.runner.resources.credits, Credits(20 - (cost - 1)), "{breaker}: the rest from the pool");
+            assert_eq!(pumped.runner.rig[1].counters, 0, "Mantle's credit spent");
+        }
+    }
+}

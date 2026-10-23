@@ -158,7 +158,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
     ("peregrine", "Peregrine"),
-    ("houdini", "Houdini"),
     ("net_mercur", "Net Mercur"),
     ("find_the_truth", "Find the Truth"),
     ("project_kusanagi", "Project Kusanagi"),
@@ -173,7 +172,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("saker", "Saker"),
     ("ele_smoke_scovak_cynosure_of_the_net", "Ele \"Smoke\" Scovak: Cynosure of the Net"),
     ("top_hat", "Top Hat"),
-    ("blackstone", "Blackstone"),
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
     ("wetwork_refit", "Wetwork Refit"),
