@@ -1,0 +1,77 @@
+{
+  "id": "macrophage",
+  "title": "Macrophage",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 7,
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, purge virus counters.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": "PurgeVirusCounters"
+        }
+      }
+    },
+    {
+      "text": "Trace[3]. If successful, trash 1 virus.",
+      "effect": {
+        "Trace": {
+          "base": 3,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "HasSubtype": "Virus"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[2]. If successful, remove a virus in the heap from the game.",
+      "effect": {
+        "Trace": {
+          "base": 2,
+          "on_success": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentDiscard",
+              "filter": {
+                "HasSubtype": "Virus"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OpponentRemovedFromGame"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[1]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": 1,
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 11119,
+  "triggers": [],
+  "is_playable": true
+}

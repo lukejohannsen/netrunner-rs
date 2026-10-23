@@ -43088,3 +43088,45 @@ mod flashpoint_stage_8 {
         assert_eq!((done.corp.hq.len(), done.corp.r_and_d.len()), (3, 2));
     }
 }
+
+mod flashpoint_stage_9 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn syn_attack_spends_a_click_and_lets_the_corp_draw_four() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("syn_attack")];
+        state.corp.hq = vec![id("hedge_fund"); 3];
+        state.corp.r_and_d = vec![id("ice_wall"); 6];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("syn_attack") }).expect("play it");
+        assert_eq!(asked.runner.resources.clicks, Clicks(4 - 2), "the play's [click] and the additional one");
+        let (drew, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("draw 4");
+        assert_eq!(drew.corp.hq.len(), 7);
+        let (discard, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("discard 2");
+        let (one, _) = apply_action(&discard, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
+        let (done, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("discard them");
+        assert_eq!((done.corp.hq.len(), done.corp.archives.len()), (1, 2));
+    }
+
+    #[test]
+    fn elective_upgrade_spends_a_click_and_a_counter_for_two_clicks_once_per_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(10), card: id("elective_upgrade"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 5, ..Default::default() }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score it");
+        let scored = pass_until_settled(scored, &registry).0;
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2);
+        let clicks = scored.corp.resources.clicks;
+        let (used, _) = apply_action(&scored, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).expect("gain [click][click]");
+        assert_eq!(used.corp.resources.clicks, Clicks(clicks.0 - 1 + 2));
+        assert_eq!(used.corp.scored_agendas[0].agenda_counters, 1);
+        assert!(apply_action(&used, &registry, PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 }).is_err(), "once per turn");
+    }
+}

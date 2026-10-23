@@ -1,0 +1,64 @@
+{
+  "id": "eli_2_0",
+  "title": "Eli 2.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 4,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 2
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "text": "Lose [click][click]: Break up to 2 subroutines on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may draw 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "You may draw 1 card",
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 13034,
+  "triggers": [],
+  "is_playable": true
+}
