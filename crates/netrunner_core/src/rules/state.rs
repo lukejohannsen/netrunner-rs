@@ -874,6 +874,14 @@ pub struct RunnerState {
     /// for every identity with one side.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// Counters on the Runner's identity — the recurring credits Ele
+    /// "Smoke" Scovak prints (`payment::Pool::Identity`), placed at setup
+    /// and refilled as the Runner's turn begins. `CorpState::
+    /// identity_counters`' twin, for its reason: an identity has no
+    /// install handle, so nothing hosted on one could be found by one.
+    /// Public: tokens on a faceup card.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub identity_counters: u32,
     /// Every server the Runner has initiated a run against this turn, in
     /// order, reset when the Runner's turn starts. Backs Red Team's "Run a
     /// central server you have not run this turn" — a restriction on which

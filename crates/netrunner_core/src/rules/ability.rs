@@ -437,6 +437,13 @@ fn acting_is_corp_identity(state: &GameState, ctx: &ResolutionContext<'_>) -> bo
     ctx.acting_install.is_none() && ctx.acting_card.is_some() && ctx.acting_card == state.corp.identity.as_ref()
 }
 
+/// `acting_is_corp_identity`'s twin: the counters a Runner identity hosts
+/// (Ele "Smoke" Scovak's recurring credits) are `RunnerState::
+/// identity_counters`.
+fn acting_is_runner_identity(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
+    ctx.acting_install.is_none() && ctx.acting_card.is_some() && ctx.acting_card == state.runner.identity.as_ref()
+}
+
 fn acting_corp_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
     match ctx.acting_install {
         Some(install) => state.corp.installed.iter().position(|c| c.install_id == install),
@@ -2505,6 +2512,7 @@ pub fn evaluate_effect(
                         Amount::TriggeringCardPrintedCost
                         | Amount::TriggeringCardTrashCost
                         | Amount::PassedIceSubroutinesResolved
+                        | Amount::UnbrokenSubroutinesThatEncounter
                         | Amount::TriggeringAgendaAdvancementRequirement
                         | Amount::TimesThisActionThisTurn
                         | Amount::AboutToResolve
@@ -4004,6 +4012,8 @@ pub(crate) fn modify_counters(
         &mut acting_scored_mut(state, ctx).expect("found above").agenda_counters
     } else if acting_is_corp_identity(state, ctx) {
         &mut state.corp.identity_counters
+    } else if acting_is_runner_identity(state, ctx) {
+        &mut state.runner.identity_counters
     } else if let Some(run) = state.active_run.as_mut().filter(|run| acting_is_run_event(run, ctx)) {
         &mut run.event_counters
     } else if let Some(condition) = ctx.acting_install.and_then(|install| state.corp.conditions.iter_mut().find(|condition| condition.handle == install)) {
@@ -4246,15 +4256,25 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
     events
 }
 
-pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
+/// Every condition counter on `host` trashed with it (CR 1.13.6d), faceup
+/// into Archives, where every played operation would have gone. Called by
+/// `cascade_trash_hosted_programs`, and by the two doors an agenda leaves
+/// the table by for a score area — a score and a steal — which take no
+/// Trojan with them but did leave Transparency Initiative in play on an
+/// agenda no longer installed (seed 134 of the 256-seed view sweep, Hostile
+/// Bid against Street Gallery).
+pub(crate) fn trash_conditions_on(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
-    // A condition counter goes with its host (CR 1.13.6d), faceup into
-    // Archives, where every played operation would have gone.
     while let Some(position) = state.corp.conditions.iter().position(|condition| condition.host == host) {
         let removed = state.corp.conditions.remove(position);
         crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(removed.card.clone()));
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install: None });
     }
+    events
+}
+
+pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
+    let mut events = trash_conditions_on(state, host);
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
@@ -5889,6 +5909,7 @@ pub(crate) fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Opt
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
         .or_else(|| acting_scored(state, ctx).map(|scored| scored.agenda_counters))
         .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
+        .or_else(|| acting_is_runner_identity(state, ctx).then_some(state.runner.identity_counters))
         .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| ended_run_event_counters(state, ctx))
         .or_else(|| ctx.acting_install.and_then(|install| state.corp.conditions.iter().find(|condition| condition.handle == install)).map(|condition| condition.counters))
@@ -6096,6 +6117,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         },
         Amount::PassedIceSubroutinesResolved => match ctx.triggering_event {
             Some(GameEvent::IcePassed { subroutines_resolved, .. }) => *subroutines_resolved,
+            _ => 0,
+        },
+        Amount::UnbrokenSubroutinesThatEncounter => match ctx.triggering_event {
+            Some(GameEvent::EncounterEnded { unbroken, .. }) => *unbroken,
             _ => 0,
         },
         Amount::TriggeringCardTrashCost => match ctx.triggering_event {
@@ -7027,7 +7052,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false, unbroken: 2 },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

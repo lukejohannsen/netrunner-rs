@@ -125,6 +125,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         servers_run_successfully: _, // engine's: Daily Quest's turn-start gain, asked by the engine and a sample; each success is in the log
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
         identity_flipped: _,    // drawn: hud::identity_side
+        identity_counters: _,   // drawn: hud::identity_facts / identity_chip (Ele "Smoke" Scovak's recurring credit)
         once_per_turn_used: _,  // engine's: as the Corp's
         identity: _,            // drawn: the avatar and its sheet, the terminal's identity line
     } = runner;

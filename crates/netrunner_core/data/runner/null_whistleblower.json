@@ -1,0 +1,43 @@
+{
+  "id": "null_whistleblower",
+  "title": "Null: Whistleblower",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Trash": {
+                "from": "OwnGrip",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "ModifyStrength": {
+                "delta": -2,
+                "duration": "Run"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 card from your grip. If you do, that ice gets –2 strength for the remainder of this run"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, you may trash 1 card from your grip. If you do, that ice gets –2 strength for the remainder of this run."
+    }
+  ],
+  "built_from": 11002,
+  "is_playable": true
+}

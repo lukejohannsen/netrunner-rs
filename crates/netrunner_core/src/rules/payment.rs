@@ -126,13 +126,11 @@ pub enum Pool {
     /// `RunState::bonus_run_credits` — what the card that began this run
     /// brought with it (Overclock), on anything during it.
     Run,
-    /// Credits hosted on the Corp identity (`CorpState::identity_counters`)
-    /// when its `pays_for` covers the purpose — NBN: Making News's, on
-    /// trace attempts. A pool of its own only because an identity has no
-    /// install handle for `Hosted` to name. The Runner's identity hosts
-    /// nothing in this engine, and `CardDefinition::validate` refuses a
-    /// Runner identity that prints recurring credits rather than let one
-    /// silently do nothing.
+    /// Credits hosted on the payer's identity (`CorpState::identity_counters`,
+    /// `RunnerState::identity_counters`) when its `pays_for` covers the
+    /// purpose — NBN: Making News's, on trace attempts; Ele "Smoke"
+    /// Scovak's, on using icebreakers. A pool of its own only because an
+    /// identity has no install handle for `Hosted` to name.
     Identity,
     /// The credit pool itself. Always a source and always last.
     Wallet,
@@ -608,13 +606,13 @@ pub(crate) fn sources(
             push(Pool::Run, run.bonus_run_credits);
         }
     }
-    let identity_pays = side == Side::Corp
-        && admits(state.corp.identity.as_ref())
-        && state.corp.identity.as_ref().and_then(|identity| registry.get(identity)).is_some_and(|definition| {
+    let identity = identity_of(state, side);
+    let identity_pays = admits(identity)
+        && identity.and_then(|identity| registry.get(identity)).is_some_and(|definition| {
             definition.pays_for.iter().any(|word| covers(word, purpose, None, state, registry))
         });
     if identity_pays {
-        push(Pool::Identity, state.corp.identity_counters);
+        push(Pool::Identity, identity_counters(state, side));
     }
     // Nor can it while Aircheck locks it: "you cannot lose or spend
     // credits from your credit pool" for the run it makes.
@@ -808,7 +806,7 @@ fn during_a_central_run(state: &GameState) -> bool {
 
 fn pools_could_ask(state: &GameState) -> bool {
     let run_pool = state.active_run.as_ref().is_some_and(|run| run.bad_publicity_credits > 0 || run.bonus_run_credits > 0);
-    let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0 || card.credits > 0).count();
+    let runner = usize::from(run_pool) + usize::from(state.runner.identity_counters > 0) + state.runner.rig.iter().filter(|card| card.counters > 0 || card.credits > 0).count();
     let corp = usize::from(state.corp.identity_counters > 0) + state.corp.installed.iter().filter(|card| card.rezzed && card.counters > 0).count();
     runner >= 2 || corp >= 2
 }
@@ -840,7 +838,7 @@ pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, p
             Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map(|c| &c.card),
             Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| &c.card),
         }),
-        Pool::Identity => of_card(state.corp.identity.as_ref()),
+        Pool::Identity => of_card(identity_of(state, side)),
         Pool::Run => Class {
             breadth: match state.active_run.as_ref().and_then(|run| run.run_credits_pay_for.clone()) {
                 Some(word) => Breadth::Words(vec![word]),
@@ -1047,12 +1045,28 @@ pub(crate) fn pay_from(
             }
             Pool::Identity => {
                 from_hosted += spend;
-                let identity = state.corp.identity.clone().ok_or(RulesError::MissingActingCardContext)?;
+                let identity = identity_of(state, side).cloned().ok_or(RulesError::MissingActingCardContext)?;
                 events.extend(ability::modify_counters(state, &ResolutionContext::for_card(Some(&identity)), -i64::from(spend))?);
             }
         }
     }
     Ok(events)
+}
+
+/// `side`'s identity, which hosts credits as `identity_counters` (`Pool::
+/// Identity`).
+fn identity_of(state: &GameState, side: Side) -> Option<&crate::dsl::CardId> {
+    match side {
+        Side::Corp => state.corp.identity.as_ref(),
+        Side::Runner => state.runner.identity.as_ref(),
+    }
+}
+
+fn identity_counters(state: &GameState, side: Side) -> u32 {
+    match side {
+        Side::Corp => state.corp.identity_counters,
+        Side::Runner => state.runner.identity_counters,
+    }
 }
 
 /// Comprehensive Rules 1.10.5a, second half: "Before abilities meet their
@@ -1072,10 +1086,9 @@ pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side)
         Side::Runner => active::runner(state, registry).collect::<Vec<_>>(),
     }
     .into_iter()
-    // A scored agenda's counters are agenda counters, and the Runner's
-    // identity hosts nothing: neither prints recurring credits in this
-    // pool, and `validate` refuses the second.
-    .filter(|card| card.place == Place::Installed || (card.place == Place::Identity && side == Side::Corp))
+    // A scored agenda's counters are agenda counters, and no agenda prints
+    // recurring credits in this pool.
+    .filter(|card| matches!(card.place, Place::Installed | Place::Identity))
     // "N[recurring-credit]" is an ability, and a card that has lost its
     // abilities is not refilled (CR 9.1.9a).
     .filter(|card| card.install.is_none_or(|install| !active::lost_abilities(state, registry, install)))
@@ -1127,7 +1140,7 @@ fn raise_to(
     let credits = recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes);
     let held = match install {
         Some(install) => hosted_credits(state, registry, side, install),
-        None => state.corp.identity_counters,
+        None => identity_counters(state, side),
     };
     if held >= credits {
         return Ok(Vec::new());

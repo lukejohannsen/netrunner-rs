@@ -120,9 +120,11 @@ impl GameState {
 
         // An identity is active from the start of the game, so the
         // recurring credits it prints are placed now (Comprehensive Rules
-        // 1.10.5b; NBN: Making News). Hosted on the identity like any
-        // other card's — they were a pair of fields on `CorpState`.
+        // 1.10.5b; NBN: Making News, Ele "Smoke" Scovak). Hosted on the
+        // identity like any other card's — they were a pair of fields on
+        // `CorpState`.
         events.extend(crate::rules::payment::place_recurring(&mut state, registry, Side::Corp, None, &corp_deck.identity)?);
+        events.extend(crate::rules::payment::place_recurring(&mut state, registry, Side::Runner, None, &runner_deck.identity)?);
 
         // Printed link needs nothing here: `continuous::link` reads it off
         // the identity whenever a trace asks, with whatever the rig adds.

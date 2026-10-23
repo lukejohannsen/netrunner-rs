@@ -371,8 +371,16 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // A lockdown in the play area (CR 3.5.1c) until the Corp's next
             // turn begins.
             .chain(corp.play_area.iter().map(|played| &played.card))
+            // A condition counter on its host (CR 1.13.6d: Eavesdrop,
+            // Transparency Initiative), in no other zone.
+            .chain(corp.conditions.iter().map(|condition| &condition.card))
             .chain(hosted_corp),
     );
+    // …and only while its host is on the table: a condition goes with it.
+    for condition in &corp.conditions {
+        let hosted = corp.installed.iter().any(|card| card.install_id == condition.host) || state.runner.rig.iter().any(|card| card.install_id == condition.host);
+        assert!(hosted, "seed {seed} ({matchup}): {} is a condition on a host no longer installed", condition.card.0);
+    }
     assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
 
     let runner = &state.runner;
@@ -606,6 +614,14 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardNameChosen { card, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // A played operation or event finishing its resolution was played
+        // faceup, and a condition it hosts as it finishes is that same card
+        // (Transparency Initiative, whose play an earlier entry showed),
+        // though another copy may be in HQ (seed 134, Hostile Bid against
+        // Street Gallery, first reached on Flashpoint Stage 15's branch).
+        if let GameEvent::FinishedResolving { card, .. } = event {
+            visible.insert(card.0.as_str());
+        }
         // A reveal is a reveal (Esca accessed in R&D).
         if let GameEvent::CardRevealed { card, .. } = event {
             visible.insert(card.0.as_str());
@@ -751,6 +767,8 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     }
     visible.extend(view.corp.archives.iter().filter_map(|a| a.card.as_ref()).map(|c| c.0.as_str()));
     visible.extend(view.corp.scored_agendas.iter().map(|c| c.card.0.as_str()));
+    // A condition counter is faceup on its host (Transparency Initiative).
+    visible.extend(view.corp.conditions.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.corp.removed_from_game.iter().map(|c| c.0.as_str()));
     visible.extend(view.corp.set_aside.iter().map(|c| c.0.as_str()));
     visible.extend(view.corp.play_area.iter().map(|played| played.card.0.as_str()));

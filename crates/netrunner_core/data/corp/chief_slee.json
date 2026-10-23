@@ -1,0 +1,46 @@
+{
+  "id": "chief_slee",
+  "title": "Chief Slee",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": "UnbrokenSubroutinesThatEncounter"
+        }
+      ],
+      "text": "Whenever an encounter with a piece of ice ends, place 1 power counter on Chief Slee for each unbroken subroutine on the encountered piece of ice."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 5
+          }
+        ]
+      },
+      "effect": {
+        "DealDamage": [
+          "Meat",
+          5
+        ]
+      },
+      "text": "[click], 5 hosted power counters: Do 5 meat damage."
+    }
+  ],
+  "built_from": 11077,
+  "is_playable": true
+}

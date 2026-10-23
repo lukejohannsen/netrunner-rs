@@ -610,6 +610,11 @@ mod tests {
             // Red Sand Stage 47: AgInfusion's deck, on A Thousand Cuts'
             // list; Red Sand is in neither pool.
             ("zymurgy", &neither),
+            // FFG F5 Stage 15: Ele "Smoke" Scovak's and Null: Whistleblower's
+            // decks, on Head Start's and Pure Anarchy's lists; Flashpoint is
+            // in neither pool.
+            ("zoom_lens", &neither),
+            ("zydeco", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

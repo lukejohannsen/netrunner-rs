@@ -571,7 +571,7 @@ pub struct CardDefinition {
     /// there are fewer than N credits on this card, place credits on it
     /// until there are N credits on it." The credits are the card's hosted
     /// `counters` (`counter_kind: Credit`; an identity's are
-    /// `CorpState::identity_counters`), and what they may be spent on is
+    /// `CorpState::identity_counters` or `RunnerState::identity_counters`), and what they may be spent on is
     /// `pays_for`.
     ///
     /// **A declaration, never a trigger.** It was an `OnInstall`/`OnRez` and
@@ -1254,8 +1254,6 @@ pub enum CardValidationError {
     PaysForWithoutHostedCredits(CardId),
     #[error("card {0:?} prints recurring credits but hosts no credits (`counter_kind: Credit`) or says nothing they may be spent on (`pays_for`)")]
     RecurringCreditsWithNowhereToGo(CardId),
-    #[error("Runner identity {0:?} prints recurring credits, and only the Corp's identity can host credits in this engine (`CorpState::identity_counters`)")]
-    RunnerIdentityHostsNothing(CardId),
     #[error("card {0:?} refers to other identities and prints an ability of its own: the identity it hosts gains it abilities by its install (`GameState::rig_abilities_card`), so it can print none (CR 1.5.4)")]
     OtherIdentitiesBesideAbilities(CardId),
     #[error("card {0:?} trashes itself when a payment empties it (`trash_when_empty`) but no payment can take its credits (`pays_for` is empty)")]
@@ -1575,11 +1573,6 @@ impl CardDefinition {
         let beside_on_the_corp = self.hosts_credits_beside_counters() && self.side == Side::Corp;
         if self.recurring_credits.is_some() && (!hosts_credits || self.pays_for.is_empty() || beside_on_the_corp) {
             return Err(CardValidationError::RecurringCreditsWithNowhereToGo(self.id.clone()));
-        }
-        // No Runner identity in the pool prints them, and there is nowhere
-        // to put them: refused, rather than a pool that silently never fills.
-        if self.recurring_credits.is_some() && self.card_type == CardType::Identity && self.side == Side::Runner {
-            return Err(CardValidationError::RunnerIdentityHostsNothing(self.id.clone()));
         }
         // "Access →" is a flag on a Runner's paid ability (CR 9.3.6b), used
         // only by the Runner in the mid-access window: on anything else it
@@ -3073,7 +3066,7 @@ mod tests {
         assert_eq!(card(|c| c.counter_kind = None), Err(CardValidationError::PaysForWithoutHostedCredits(id())));
         assert_eq!(card(|c| c.card_type = CardType::Event), Err(CardValidationError::PaysForWithoutHostedCredits(id())), "an event is never installed");
         assert_eq!(card(|c| c.pays_for.clear()), Err(CardValidationError::RecurringCreditsWithNowhereToGo(id())), "credits nothing may be spent on");
-        assert_eq!(card(|c| c.card_type = CardType::Identity), Err(CardValidationError::RunnerIdentityHostsNothing(id())));
+        assert_eq!(card(|c| c.card_type = CardType::Identity), Ok(()), "a Runner identity hosts them since Ele \"Smoke\" Scovak");
         assert_eq!(
             card(|c| {
                 c.card_type = CardType::Identity;

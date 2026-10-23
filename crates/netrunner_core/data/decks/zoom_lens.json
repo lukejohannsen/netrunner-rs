@@ -1,0 +1,97 @@
+{
+  "id": "zoom_lens",
+  "name": "Zoom Lens",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15.",
+  "style": [
+    "rig"
+  ],
+  "identity": "ele_smoke_scovak_cynosure_of_the_net",
+  "cards": [
+    {
+      "card": "dinosaurus",
+      "count": 2
+    },
+    {
+      "card": "dyson_mem_chip",
+      "count": 3
+    },
+    {
+      "card": "gordian_blade",
+      "count": 2
+    },
+    {
+      "card": "battering_ram",
+      "count": 2
+    },
+    {
+      "card": "pipeline",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 2
+    },
+    {
+      "card": "underworld_contact",
+      "count": 2
+    },
+    {
+      "card": "creative_commission",
+      "count": 2
+    },
+    {
+      "card": "jailbreak",
+      "count": 2
+    },
+    {
+      "card": "notoriety",
+      "count": 2
+    },
+    {
+      "card": "infiltration",
+      "count": 2
+    },
+    {
+      "card": "diesel",
+      "count": 2
+    },
+    {
+      "card": "net_shield",
+      "count": 2
+    },
+    {
+      "card": "system_seizure",
+      "count": 2
+    },
+    {
+      "card": "spec_work",
+      "count": 1
+    },
+    {
+      "card": "kongamato",
+      "count": 2
+    },
+    {
+      "card": "cyberdelia",
+      "count": 2
+    },
+    {
+      "card": "takobi",
+      "count": 2
+    },
+    {
+      "card": "emergent_creativity",
+      "count": 2
+    },
+    {
+      "card": "rng_key",
+      "count": 1
+    },
+    {
+      "card": "gebrselassie",
+      "count": 1
+    }
+  ]
+}

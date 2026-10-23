@@ -1,0 +1,138 @@
+{
+  "id": "zydeco",
+  "name": "Zydeco",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Null: Whistleblower, the 23 Seconds Anarch identity that trashes a card from the grip once a turn to give the ice it meets –2 strength for the run, and Another Day, Another Paycheck, the Sunny Lebeau current that forces a Trace[0] after each steal. Pure Anarchy's list, the grip it fills feeding the identity, with two Another Day, Another Paycheck (6 of its 15 influence) for its two Crypt. Eternal-legal only: 23 Seconds is in neither pool. FFG F5 Stage 15.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "null_whistleblower",
+  "cards": [
+    {
+      "card": "chain_reaction",
+      "count": 1
+    },
+    {
+      "card": "darwin",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 1
+    },
+    {
+      "card": "counter_surveillance",
+      "count": 2
+    },
+    {
+      "card": "yog_0",
+      "count": 2
+    },
+    {
+      "card": "datasucker",
+      "count": 2
+    },
+    {
+      "card": "djinn",
+      "count": 2
+    },
+    {
+      "card": "exer",
+      "count": 2
+    },
+    {
+      "card": "musaazi",
+      "count": 2
+    },
+    {
+      "card": "yusuf",
+      "count": 2
+    },
+    {
+      "card": "knobkierie",
+      "count": 1
+    },
+    {
+      "card": "imp",
+      "count": 2
+    },
+    {
+      "card": "plague",
+      "count": 2
+    },
+    {
+      "card": "trypano",
+      "count": 2
+    },
+    {
+      "card": "hippo",
+      "count": 2
+    },
+    {
+      "card": "contaminate",
+      "count": 2
+    },
+    {
+      "card": "clan_vengeance",
+      "count": 2
+    },
+    {
+      "card": "deuces_wild",
+      "count": 1
+    },
+    {
+      "card": "the_archivist",
+      "count": 1
+    },
+    {
+      "card": "pushing_the_envelope",
+      "count": 1
+    },
+    {
+      "card": "jarogniew_mercs",
+      "count": 1
+    },
+    {
+      "card": "respirocytes",
+      "count": 1
+    },
+    {
+      "card": "persephone",
+      "count": 1
+    },
+    {
+      "card": "maw",
+      "count": 1
+    },
+    {
+      "card": "severnius_stim_implant",
+      "count": 2
+    },
+    {
+      "card": "nfr",
+      "count": 1
+    },
+    {
+      "card": "sunya",
+      "count": 1
+    },
+    {
+      "card": "black_orchestra",
+      "count": 1
+    },
+    {
+      "card": "mkultra",
+      "count": 1
+    },
+    {
+      "card": "paperclip",
+      "count": 1
+    },
+    {
+      "card": "another_day_another_paycheck",
+      "count": 2
+    }
+  ]
+}

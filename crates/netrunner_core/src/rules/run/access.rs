@@ -1281,7 +1281,10 @@ fn remove_from_corp_zone(
 ) -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
     let from_the_table = |state: &mut GameState, install: InstallId| -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
         Ok(match uninstall::corp_install(state, registry, install)? {
-            Some((removed, announced)) => (RemovedFrom::Installed { slot: removed.slot, rezzed: removed.rezzed }, announced),
+            Some((removed, mut announced)) => {
+                announced.extend(crate::rules::ability::trash_conditions_on(state, install));
+                (RemovedFrom::Installed { slot: removed.slot, rezzed: removed.rezzed }, announced)
+            }
             None => (RemovedFrom::Nowhere, Vec::new()),
         })
     };

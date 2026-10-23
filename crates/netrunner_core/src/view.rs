@@ -189,6 +189,9 @@ pub struct RunnerClientView {
     /// `PublicRunnerState::identity_flipped`.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `PublicRunnerState::identity_counters`.
+    #[serde(default)]
+    pub identity_counters: u32,
     /// `PublicRunnerState::once_per_turn_used`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once_per_turn_used: Vec<crate::rules::OncePerTurnKey>,
@@ -490,6 +493,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         servers_run_successfully: public.runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
         identity_flipped: public.runner.identity_flipped,
+        identity_counters: public.runner.identity_counters,
         once_per_turn_used: public.runner.once_per_turn_used,
         identity: public.runner.identity,
         scored_worth: state

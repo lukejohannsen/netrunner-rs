@@ -3,7 +3,7 @@
   "name": "Family Business",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach The Outfit: Family Owned and Operated, Reign and Reverie's Weyland identity, which gains 3[credit] whenever it takes bad publicity. Hostile Bid's frame of bad publicity, with two Broad Daylight for its two Azef Protocol, point for point, an agenda that takes a bad publicity and counts every one into meat damage. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5. FFG F2 Stage 8: two Drudge Work for its two Wall to Wall, asset for asset. FFG F2 Stage 10: two Formicary for its two Shadow, ice for ice. Kitara Stage 2 took two Masvingo, an Oduduwa and two Forced Connection for its Valentãos, Colossus and Crisium Grids. Kitara Stage 5a: two Wake Up Call for a Building Blocks and an Under the Bus. Kitara Stage 12a: two Death and Taxes for two Security Subcontract, a current that pays the Corp for each Runner install and each installed card the Runner trashes; Hostile Bid keeps Security Subcontract. Red Sand Stage 1: two Battlement and two Watchtower for two Hadrian's Wall and two Hortum. Red Sand Stage 2: two Fractal Threat Matrix for two Forced Connection. Red Sand Stage 3: two Meteor Mining for two Sacrifice Zone Expansion, two Priority Construction for two Punitive Counterstrike, and a Mass Commercialization for the Too Big to Fail. Red Sand Stage 49: two Oberth Protocol for two Drudge Work, an upgrade that adds a counter to the first advance each turn in its server; Zugzwang and Yield Curve keep Drudge Work. Flashpoint Stage 4: Scarcity of Resources, Financial Collapse and Prisec for a second Battlement, Watchtower and Fractal Threat Matrix. Flashpoint Stage 5: Tribunal for a second Masvingo. Flashpoint Stage 6: Crisis Management for a Hostile Takeover, point for point; Door to Door for the Mass Commercialization; Liquidation, Stock Buy-Back and Sandburg for a Priority Construction, a Wake Up Call and the Research Station. Flashpoint Stage 7: Show of Force for a Broad Daylight, point for point; Best Defense, Enforced Curfew and Preemptive Action for a Shipment from Kaguya, a Death and Taxes and a Hostile Architecture. Flashpoint Stage 8: Illicit Sales for a Hostile Takeover, point for point; Mr. Stone, Hunter Seeker and Hailstorm for the Elizabeth Mills, the GRNDL Refinery and a Blockchain; Graft and a second Hailstorm for the Transport Monopoly and the Greenmail, point for point. Flashpoint Stage 9: Bloodletter for a Formicary. K. P. Lynn came in for Fractal Threat Matrix (Flashpoint Stage 14).",
+  "description": "Not a published list: built so the sweeps reach The Outfit: Family Owned and Operated, Reign and Reverie's Weyland identity, which gains 3[credit] whenever it takes bad publicity. Hostile Bid's frame of bad publicity, with two Broad Daylight for its two Azef Protocol, point for point, an agenda that takes a bad publicity and counts every one into meat damage. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 5. FFG F2 Stage 8: two Drudge Work for its two Wall to Wall, asset for asset. FFG F2 Stage 10: two Formicary for its two Shadow, ice for ice. Kitara Stage 2 took two Masvingo, an Oduduwa and two Forced Connection for its Valentãos, Colossus and Crisium Grids. Kitara Stage 5a: two Wake Up Call for a Building Blocks and an Under the Bus. Kitara Stage 12a: two Death and Taxes for two Security Subcontract, a current that pays the Corp for each Runner install and each installed card the Runner trashes; Hostile Bid keeps Security Subcontract. Red Sand Stage 1: two Battlement and two Watchtower for two Hadrian's Wall and two Hortum. Red Sand Stage 2: two Fractal Threat Matrix for two Forced Connection. Red Sand Stage 3: two Meteor Mining for two Sacrifice Zone Expansion, two Priority Construction for two Punitive Counterstrike, and a Mass Commercialization for the Too Big to Fail. Red Sand Stage 49: two Oberth Protocol for two Drudge Work, an upgrade that adds a counter to the first advance each turn in its server; Zugzwang and Yield Curve keep Drudge Work. Flashpoint Stage 4: Scarcity of Resources, Financial Collapse and Prisec for a second Battlement, Watchtower and Fractal Threat Matrix. Flashpoint Stage 5: Tribunal for a second Masvingo. Flashpoint Stage 6: Crisis Management for a Hostile Takeover, point for point; Door to Door for the Mass Commercialization; Liquidation, Stock Buy-Back and Sandburg for a Priority Construction, a Wake Up Call and the Research Station. Flashpoint Stage 7: Show of Force for a Broad Daylight, point for point; Best Defense, Enforced Curfew and Preemptive Action for a Shipment from Kaguya, a Death and Taxes and a Hostile Architecture. Flashpoint Stage 8: Illicit Sales for a Hostile Takeover, point for point; Mr. Stone, Hunter Seeker and Hailstorm for the Elizabeth Mills, the GRNDL Refinery and a Blockchain; Graft and a second Hailstorm for the Transport Monopoly and the Greenmail, point for point. Flashpoint Stage 9: Bloodletter for a Formicary. K. P. Lynn came in for Fractal Threat Matrix (Flashpoint Stage 14). FFG F5 Stage 15: one Chief Slee for one of its two Superdeep Borehole, a power counter for each subroutine a Runner lets through and five of them for five meat damage.",
   "style": [
     "traps"
   ],
@@ -35,7 +35,7 @@
     },
     {
       "card": "superdeep_borehole",
-      "count": 2
+      "count": 1
     },
     {
       "card": "broad_daylight",
@@ -167,6 +167,10 @@
     },
     {
       "card": "k_p_lynn",
+      "count": 1
+    },
+    {
+      "card": "chief_slee",
       "count": 1
     }
   ]
