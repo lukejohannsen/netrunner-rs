@@ -1,0 +1,37 @@
+{
+  "id": "hard_hitting_news",
+  "title": "Hard-Hitting News",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnRunStart"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 4,
+            "on_success": {
+              "GiveTags": {
+                "Fixed": 4
+              }
+            }
+          }
+        },
+        "EndActionPhase"
+      ],
+      "text": "Trace[4]. If successful, give the Runner 4 tags."
+    }
+  ],
+  "built_from": 11016,
+  "is_playable": true
+}

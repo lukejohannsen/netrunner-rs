@@ -1,0 +1,55 @@
+{
+  "id": "hellion_beta_test",
+  "title": "Hellion Beta Test",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnTrashedFromAccess"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 2,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "Not": {
+                    "CardType": "Program"
+                  }
+                },
+                "min": 0,
+                "max": 0,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard",
+                "count": {
+                  "Fixed": 2
+                }
+              }
+            },
+            "on_failure": {
+              "GiveBadPublicity": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trace[2]. If successful, trash 2 installed non-program cards. If unsuccessful, take 1 bad publicity."
+    }
+  ],
+  "built_from": 11051,
+  "is_playable": true
+}

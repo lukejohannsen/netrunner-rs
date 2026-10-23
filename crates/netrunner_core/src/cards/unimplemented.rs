@@ -141,11 +141,7 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
     ("watchdog", "Watchdog"),
-    ("hard_hitting_news", "Hard-Hitting News"),
     ("nbn_controlling_the_message", "NBN: Controlling the Message"),
-    ("crisis_management", "Crisis Management"),
-    ("stock_buy_back", "Stock Buy-Back"),
-    ("sandburg", "Sandburg"),
 ];
 
 /// *Blood Money* (`blood_money`): tranche F5 of the FFG plan.
@@ -156,8 +152,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
     ("data_breach", "Data Breach"),
     ("enforcing_loyalty", "Enforcing Loyalty"),
-    ("special_report", "Special Report"),
-    ("liquidation", "Liquidation"),
     ("weyland_consortium_builder_of_nations", "Weyland Consortium: Builder of Nations"),
 ];
 
@@ -168,13 +162,10 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("houdini", "Houdini"),
     ("net_mercur", "Net Mercur"),
     ("find_the_truth", "Find the Truth"),
-    ("ark_lockdown", "Ark Lockdown"),
-    ("hellion_beta_test", "Hellion Beta Test"),
     ("project_kusanagi", "Project Kusanagi"),
     ("jinteki_potential_unleashed", "Jinteki: Potential Unleashed"),
     ("alexa_belsky", "Alexa Belsky"),
     ("service_outage", "Service Outage"),
-    ("door_to_door", "Door to Door"),
 ];
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.

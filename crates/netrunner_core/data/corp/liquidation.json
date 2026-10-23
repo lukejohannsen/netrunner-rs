@@ -1,0 +1,44 @@
+{
+  "id": "liquidation",
+  "title": "Liquidation",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Rezzed",
+            "min": 0,
+            "max": 50,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "GainCreditsAmount": [
+                "Corp",
+                {
+                  "Times": {
+                    "amount": "CardsSelected",
+                    "times": 3
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Trash any number of your rezzed cards and gain 3[credit] for each card trashed."
+    }
+  ],
+  "built_from": 11037,
+  "is_playable": true
+}

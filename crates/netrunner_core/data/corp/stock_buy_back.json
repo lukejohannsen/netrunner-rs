@@ -1,0 +1,32 @@
+{
+  "id": "stock_buy_back",
+  "title": "Stock Buy-Back",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "Times": {
+                "amount": {
+                  "AgendasInScoreArea": "Runner"
+                },
+                "times": 3
+              }
+            }
+          ]
+        },
+        "EndActionPhase"
+      ],
+      "text": "After you resolve this operation, end your action phase. Gain 3[credit] for each agenda in the Runner's score area."
+    }
+  ],
+  "built_from": 11019,
+  "is_playable": true
+}

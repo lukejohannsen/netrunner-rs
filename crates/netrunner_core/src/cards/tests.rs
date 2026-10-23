@@ -42826,3 +42826,112 @@ mod flashpoint_stage_5 {
         assert_eq!(fired.runner.resources.credits, Credits(10 - 2));
     }
 }
+
+mod flashpoint_stage_6 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).map(|(state, _)| state)
+    }
+
+    fn rezzed(card: &str, install: u32, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed: true, ..Default::default() }
+    }
+
+    #[test]
+    fn stock_buy_back_pays_three_for_each_stolen_agenda_and_ends_the_action_phase() {
+        let registry = registry();
+        let mut state = corp_turn(&["stock_buy_back"]);
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover")), crate::rules::ScoredAgenda::plain(id("priority_requisition"))];
+        let (done, events) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("stock_buy_back") }).expect("play it");
+        assert_eq!(done.corp.resources.credits, Credits(10 - 1 + 6));
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::ActionPhaseEnded { side: Side::Corp })), "the action phase ended");
+    }
+
+    #[test]
+    fn hard_hitting_news_needs_a_run_last_turn() {
+        let registry = registry();
+        let state = corp_turn(&["hard_hitting_news"]);
+        assert!(play(&state, &registry, "hard_hitting_news").is_err(), "no run last turn");
+    }
+
+    #[test]
+    fn special_report_draws_as_many_as_it_shuffled_back() {
+        let registry = registry();
+        let state = corp_turn(&["special_report", "ice_wall", "enigma", "pad_campaign"]);
+        let asked = play(&state, &registry, "special_report").expect("play it");
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
+        let (done, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle them in");
+        assert_eq!(done.corp.hq.len(), 3, "two shuffled in, two drawn");
+        assert_eq!(done.corp.r_and_d.len(), 5);
+    }
+
+    #[test]
+    fn liquidation_trashes_rezzed_cards_for_three_credits_each() {
+        let registry = registry();
+        let mut state = corp_turn(&["liquidation"]);
+        state.corp.installed = vec![rezzed("pad_campaign", 10, ServerId::Remote(0), InstallSlot::Root), rezzed("ice_wall", 11, ServerId::Hq, InstallSlot::Ice)];
+        let asked = play(&state, &registry, "liquidation").expect("play it");
+        assert_eq!(asked.corp.resources.clicks, Clicks(3 - 2), "the play's [click] and the additional one");
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
+        let (done, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("trash them");
+        assert!(done.corp.installed.is_empty());
+        assert_eq!(done.corp.resources.credits, Credits(10 - 1 + 6));
+    }
+
+    #[test]
+    fn ark_lockdown_removes_every_copy_of_the_named_card_from_the_heap() {
+        let registry = registry();
+        let mut state = corp_turn(&["ark_lockdown"]);
+        state.runner.heap = vec![id("sure_gamble"), id("daily_casts"), id("sure_gamble")];
+        let asked = play(&state, &registry, "ark_lockdown").expect("play it");
+        let named = pass_until_settled(apply_action(&asked, &registry, PlayerAction::ChooseCardName { card: id("sure_gamble") }).expect("name it").0, &registry).0;
+        let (one, _) = apply_action(&named, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the first copy");
+        assert!(apply_action(&one, &registry, PlayerAction::ConfirmCardSelection).is_err(), "every copy, not one");
+        let (both, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("the second copy");
+        let (done, _) = apply_action(&both, &registry, PlayerAction::ConfirmCardSelection).expect("remove them");
+        assert_eq!(done.runner.heap, vec![id("daily_casts")]);
+        assert_eq!(done.runner.removed_from_game, vec![id("sure_gamble"), id("sure_gamble")]);
+    }
+
+    #[test]
+    fn sandburg_strengthens_ice_by_one_for_every_five_credits_from_ten() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![rezzed("ice_wall", 11, ServerId::Hq, InstallSlot::Ice), rezzed("sandburg", 12, ServerId::Remote(0), InstallSlot::Root)];
+        state.corp.resources.credits = Credits(9);
+        let (run, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&run, &registry, 0), 1, "under 10[credit]");
+        let mut rich = run.clone();
+        rich.corp.resources.credits = Credits(14);
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&rich, &registry, 0), 1 + 2);
+    }
+
+    #[test]
+    fn crisis_management_does_meat_damage_as_the_corps_turn_begins_while_the_runner_is_tagged() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("crisis_management"))];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let mut untagged = state.clone();
+        crate::rules::test_support::enter_start_of_turn(&mut untagged, &registry, Side::Corp);
+        assert_eq!(close_all_windows(untagged, &registry).0.runner.grip.len(), 3);
+        state.runner.tags = 1;
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        assert_eq!(close_all_windows(state, &registry).0.runner.grip.len(), 2);
+    }
+}
