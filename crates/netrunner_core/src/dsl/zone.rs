@@ -672,6 +672,15 @@ pub enum CardFilter {
     /// the run ends (`CompletedRun::rezzed`). Instance-level, a handle, as
     /// `PassedDuringLastRun` is.
     RezzedDuringLastRun,
+    /// A piece of ice the Runner fully broke during the run in progress
+    /// (`RunState::fully_broken_ice`, CR 6.5.7a) — The Gauntlet's "each
+    /// piece of ice protecting HQ that you fully broke during that run",
+    /// asked as HQ is breached. Instance-level, a handle, as
+    /// `RezzedDuringLastRun` is: a second copy of the same ice the run did
+    /// not break is not it. Composition didn't work: no word read a full
+    /// break but the moment it happened (`Trigger::OnIceFullyBroken`), and
+    /// the breach asks after the run has passed every piece.
+    FullyBrokenDuringThisRun,
     /// The piece of ice the Runner is encountering right now — Ice
     /// Carver's "While you are encountering a piece of ice, **it** gets −1
     /// strength", as the filter of a `Scope::Ice`. Instance-level: a
@@ -846,6 +855,7 @@ impl CardFilter {
                 | CardFilter::AccessedDuringLastRun
                 | CardFilter::PassedDuringLastRun
                 | CardFilter::RezzedDuringLastRun
+                | CardFilter::FullyBrokenDuringThisRun
                 | CardFilter::RezzedThisTurn
                 | CardFilter::InAttackedServer
                 | CardFilter::InLastRunServer
@@ -1041,6 +1051,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::LastEncounteredLastRun => true,
         CardFilter::PassedDuringLastRun => true,
         CardFilter::RezzedDuringLastRun => true,
+        CardFilter::FullyBrokenDuringThisRun => true,
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,
         CardFilter::SwappableIntoThis => true,

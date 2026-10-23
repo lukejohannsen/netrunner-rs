@@ -134,7 +134,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.
 pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_outage", "System Outage"),
-    ("gpi_net_tap", "GPI Net Tap"),
     ("mirror", "Mirror"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
@@ -160,7 +159,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("the_gauntlet", "The Gauntlet"),
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
     ("fumiko_yamamori", "Fumiko Yamamori"),

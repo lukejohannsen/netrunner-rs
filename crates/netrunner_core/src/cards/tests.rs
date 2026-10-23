@@ -44035,3 +44035,117 @@ mod flashpoint_stage_16 {
         assert!(!crate::rules::legal_actions_for(&no_bioroid, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("wetwork_refit") }));
     }
 }
+
+/// Flashpoint Stage 17: The Gauntlet and GPI Net Tap.
+mod flashpoint_stage_17 {
+    use super::*;
+    use crate::rules::InstalledCard;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), ..Default::default() }
+    }
+
+    fn ice(card: &str, install: u32, server: ServerId, rezzed: bool) -> InstalledCard {
+        InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// Steps the run on, passing every window, until something is asked or
+    /// the run is over; `CompleteRun` at the success phase.
+    fn on(mut state: GameState, registry: &CardRegistry, stop_at_encounter: bool) -> GameState {
+        for _ in 0..80 {
+            if state.pending_decision.is_some() || state.pending_paid_choice.is_some() {
+                break;
+            }
+            let phase = state.active_run.as_ref().map(|run| run.phase);
+            if stop_at_encounter && phase == Some(crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match (&state.paid_ability_window, phase) {
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(crate::rules::RunPhase::Success)) => PlayerAction::CompleteRun,
+                (None, Some(_)) => PlayerAction::ContinueRun,
+                (None, None) => break,
+            };
+            state = apply_action(&state, registry, action).expect("on through the run").0;
+        }
+        state
+    }
+
+    fn accessed_in_hq(registry: &CardRegistry, break_the_ice: bool) -> u32 {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("the_gauntlet", 2001), crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder", 2002) }];
+        // Unrezzed, Ice Wall is passed without an encounter: protecting HQ, but not broken.
+        state.corp.installed = vec![ice("ice_wall", 11, ServerId::Hq, break_the_ice)];
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        if break_the_ice {
+            state = on(state, registry, true);
+            state = apply_action(&state, registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 1 }).expect("break Ice Wall's subroutine").0;
+            assert!(state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice == vec![InstallId(11)]), "fully broken");
+        }
+        let mut accessed = 0;
+        for _ in 0..120 {
+            if state.active_run.is_none() && state.pending_decision.is_none() && state.paid_ability_window.is_none() {
+                break;
+            }
+            let phase = state.active_run.as_ref().map(|run| run.phase);
+            let action = match (&state.paid_ability_window, phase) {
+                _ if state.pending_decision.is_some() || state.pending_paid_choice.is_some() => crate::rules::legal_actions_for(&state, registry, Side::Runner)
+                    .into_iter()
+                    .find(|action| matches!(action, PlayerAction::PassAccessedCard { .. } | PlayerAction::ResolvePendingChoice { .. } | PlayerAction::DeclinePendingPaidChoice))
+                    .expect("move on"),
+                (Some(window), _) => PlayerAction::PassPriority { side: window.active_priority },
+                (None, Some(crate::rules::RunPhase::Success)) => PlayerAction::CompleteRun,
+                (None, Some(crate::rules::RunPhase::AccessingCard)) => crate::rules::legal_actions_for(&state, registry, Side::Runner)
+                    .into_iter()
+                    .find(|action| matches!(action, PlayerAction::PassAccessedCard { .. }))
+                    .expect("pass the card"),
+                (None, Some(_)) => PlayerAction::ContinueRun,
+                (None, None) => break,
+            };
+            let (next, events) = apply_action(&state, registry, action).expect("on through the run");
+            accessed += events.iter().filter(|event| matches!(event, crate::rules::GameEvent::CardAccessed { .. })).count() as u32;
+            state = next;
+        }
+        accessed
+    }
+
+    #[test]
+    fn the_gauntlet_accesses_one_more_hq_card_for_each_piece_of_ice_protecting_it_fully_broken_this_run() {
+        let registry = registry();
+        assert_eq!(accessed_in_hq(&registry, true), 2, "1, and 1 more for Ice Wall");
+        assert_eq!(accessed_in_hq(&registry, false), 1, "Ice Wall protects HQ but was not broken");
+    }
+
+    #[test]
+    fn gpi_net_tap_exposes_the_approached_ice_and_may_trash_itself_to_jack_out() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("gpi_net_tap", 2001)];
+        state.corp.installed = vec![ice("ice_wall", 11, ServerId::Hq, false)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let asked = on(state, &registry, false);
+        assert!(asked.pending_decision.is_some(), "you may expose it");
+        let (exposing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("expose it");
+        let (exposing, _) = apply_action(&exposing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Ice Wall");
+        let (exposed, events) = apply_action(&exposing, &registry, PlayerAction::ConfirmCardSelection).expect("exposed");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardExposed { .. })), "{events:?}");
+        assert!(exposed.pending_paid_choice.is_some(), "you may then trash GPI Net Tap to jack out");
+        let (out, _) = apply_action(&exposed, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out");
+        let (out, _) = close_all_windows(out, &registry);
+        assert!(out.active_run.is_none(), "jacked out");
+        assert!(out.runner.heap.contains(&id("gpi_net_tap")) && out.runner.rig.is_empty());
+        let (stayed, _) = apply_action(&exposed, &registry, PlayerAction::DeclinePendingPaidChoice).expect("stay in");
+        assert!(stayed.active_run.is_some() && stayed.runner.rig.len() == 1);
+    }
+}
