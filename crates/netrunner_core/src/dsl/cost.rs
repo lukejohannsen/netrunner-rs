@@ -46,9 +46,20 @@ pub enum Cost {
     ///
     /// `max` left off is no bound but what the payer could spend — Bug
     /// Out Bag's install cost of X, which prints none.
+    ///
+    /// `at_least_one_from` is Fawkes's "X[credit]: +X strength … Use this
+    /// ability only by spending at least 1 credit from a **stealth**
+    /// card": X is at least 1, and the first credit is paid from a card
+    /// it matches (as `CreditsFrom` pays) before the rest are paid from
+    /// wherever credits may be. Not `CreditsX` beside a `CreditsFrom`:
+    /// X is first in the cost (CR 1.16.2c) and is spent from the
+    /// narrowest pool, which is the stealth credit itself, so the part
+    /// after it found nothing to pay with.
     CreditsX {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max: Option<Amount>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at_least_one_from: Option<CardFilter>,
     },
     Clicks(u32),
     /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
@@ -271,6 +282,15 @@ pub enum Cost {
     /// installed. Composition didn't work: every other way off the table is
     /// a trash or a removal from the game.
     AddSelfToHq,
+    /// The acting rig card goes back to the grip — Golden's, Peregrine's
+    /// and Saker's "2[credit], **add this program to your grip**: Derez 1
+    /// sentry this program fully broke during this encounter".
+    /// `AddSelfToHq`'s Runner side, through the same door off the rig as
+    /// `AddInstalledToHand` (`pending_choice::remove_installed_card`), so
+    /// what it hosted goes with it. Payable while the card is in the rig.
+    /// Composition didn't work: `AddInstalledToHand` picks from a filter,
+    /// and no filter names the paying card.
+    AddSelfToGrip,
     /// `count` of the payer's own installed cards that `filter` admits go
     /// back to their hand — Rejig's "As an additional cost to play this
     /// event, add 1 installed program or piece of hardware to your grip".

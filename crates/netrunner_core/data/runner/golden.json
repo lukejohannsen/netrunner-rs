@@ -1,0 +1,72 @@
+{
+  "id": "golden",
+  "title": "Golden",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 sentry subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +4 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 4,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit], add this program to your grip: Derez 1 sentry this program fully broke during this encounter.",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 2
+          },
+          "AddSelfToGrip"
+        ]
+      },
+      "effect": {
+        "DerezCard": "EncounteredIce"
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "And": [
+              {
+                "Encountering": "Sentry"
+              },
+              "FullyBrokeTheEncounteredIce"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 11025,
+  "is_playable": true
+}

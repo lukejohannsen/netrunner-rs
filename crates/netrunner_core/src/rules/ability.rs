@@ -4560,8 +4560,9 @@ pub(crate) fn cost_is_affordable(
             payment::available_from(state, registry, side, purpose, Some(from)) >= resolve_amount(amount, ctx, state, registry)
         }
         Cost::CreditsAmount(amount) => payment::available(state, registry, side, purpose) >= resolve_amount(amount, ctx, state, registry),
-        // X may be 0.
-        Cost::CreditsX { .. } => true,
+        // X may be 0, unless a credit of it must come from a card.
+        Cost::CreditsX { at_least_one_from: None, .. } => true,
+        Cost::CreditsX { at_least_one_from: Some(from), .. } => payment::available_from(state, registry, side, purpose, Some(from)) >= 1,
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
         Cost::ClicksAmount(amount) => state.resources(side).clicks.0 >= resolve_amount(amount, ctx, state, registry),
         Cost::LoseAllClicks => state.resources(side).clicks.0 >= 1,
@@ -4604,6 +4605,7 @@ pub(crate) fn cost_is_affordable(
         Cost::TurnHostedFacedown => side == Side::Runner && acting_rig_card(state, ctx).is_some_and(|card| card.faceup_hosted() > 0),
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
         Cost::DerezSelf => side == Side::Corp && acting_corp_install(state, ctx).is_some_and(|installed| installed.is_rezzed(registry)),
+        Cost::AddSelfToGrip => side == Side::Runner && acting_rig_card(state, ctx).is_some(),
         // Payable while the card is in its owner's hand.
         Cost::RevealAndTrashSelf => ctx.acting_card.is_some_and(|card| match side {
             Side::Corp => state.corp.hq.contains(card),
@@ -4677,7 +4679,7 @@ pub(crate) fn pay_cost_ctx(
 
         // X is named before it is paid (CR 1.16.2c): asked by replay,
         // no more than the printed bound or what could be spent.
-        Cost::CreditsX { max } => {
+        Cost::CreditsX { max, at_least_one_from } => {
             let most = max
                 .as_ref()
                 .map_or(u32::MAX, |max| resolve_amount(max, ctx, state, registry))
@@ -4687,10 +4689,18 @@ pub(crate) fn pay_cost_ctx(
                 return Err(RulesError::PaymentChoiceNeeded { side, amount: most, question: payment::Ask::X { max: most } });
             }
             let x = state.payment_answers.remove(0);
-            if x > most {
-                return Err(RulesError::ChosenNumberOutOfRange { amount: x, min: 0, max: most });
+            let least = u32::from(at_least_one_from.is_some());
+            if x > most || x < least {
+                return Err(RulesError::ChosenNumberOutOfRange { amount: x, min: least, max: most });
             }
-            payment::pay(state, registry, side, x, purpose)
+            // The one credit only a matching card may pay, before the
+            // narrowest pool spends it on the rest.
+            let mut events = match at_least_one_from {
+                Some(from) => payment::pay_from(state, registry, side, 1, purpose, Some(from))?,
+                None => Vec::new(),
+            };
+            events.extend(payment::pay(state, registry, side, x - least, purpose)?);
+            Ok(events)
         }
 
         Cost::ClicksAmount(amount) => {
@@ -4820,6 +4830,17 @@ pub(crate) fn pay_cost_ctx(
             let (removed, mut events) = uninstall::corp_install(state, registry, install)?.ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             state.corp.hq.push(removed.card.clone());
             events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install, faceup: removed.rezzed });
+            Ok(events)
+        }
+
+        Cost::AddSelfToGrip => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let install = acting_rig_card(state, ctx).map(|installed| installed.install_id).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            let removed = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, install)?
+                .ok_or(RulesError::InstallNotFound(install))?;
+            let mut events = removed.cascade;
+            state.runner.grip.push(removed.card.clone());
+            events.push(GameEvent::CardAddedToHand { side: Side::Runner, card: Some(removed.card), install, faceup: true });
             Ok(events)
         }
 
@@ -5584,6 +5605,12 @@ pub fn check_requirement(
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::FullyBrokeTheEncounteredIce => {
+            let broke = state.active_run.as_ref().is_some_and(|run| {
+                run.phase == RunPhase::EncounterIce && run.fully_broken && ctx.acting_install.is_some_and(|install| run.this_encounter.broken_by.object() == Some(install))
+            });
+            if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::EncounteringOutermostIce => {
             let matches = state.active_run.as_ref().is_some_and(|run| {
@@ -6435,6 +6462,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
         | EffectRequirement::EncounteringOutermostIce
+        | EffectRequirement::FullyBrokeTheEncounteredIce
         | EffectRequirement::EncounteringChosenIce
         | EffectRequirement::EncounteringChosenIceType
         | EffectRequirement::ResolvingThisIcesSubroutines

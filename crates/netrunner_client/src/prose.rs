@@ -228,6 +228,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::ShuffleInstalledIntoDeck { filter, count } => format!("shuffle {} installed {} into your deck", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::RemoveInstalledFromGame { filter, count } => format!("remove {} installed {} from the game", count, humanize(format!("{filter:?}")).to_lowercase()),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
+        Cost::AddSelfToGrip => "add this card to your grip".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::TurnHostedFacedown => "turn 1 hosted card facedown".to_string(),
         Cost::AddRandomFromGripToBottom(n) => format!("add {} from your grip at random to the bottom of your stack", plural(*n, "card", "cards")),

@@ -147,7 +147,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
     ("rumor_mill", "Rumor Mill"),
-    ("golden", "Golden"),
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
     ("data_breach", "Data Breach"),
     ("enforcing_loyalty", "Enforcing Loyalty"),
@@ -157,7 +156,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
-    ("peregrine", "Peregrine"),
     ("net_mercur", "Net Mercur"),
     ("find_the_truth", "Find the Truth"),
     ("project_kusanagi", "Project Kusanagi"),
@@ -169,7 +167,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_gauntlet", "The Gauntlet"),
-    ("saker", "Saker"),
     ("ele_smoke_scovak_cynosure_of_the_net", "Ele \"Smoke\" Scovak: Cynosure of the Net"),
     ("top_hat", "Top Hat"),
     ("government_investigations", "Government Investigations"),
@@ -198,7 +195,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("recon_drone", "Recon Drone"),
     ("tracker", "Tracker"),
     ("encore", "Encore"),
-    ("fawkes", "Fawkes"),
     ("sensor_net_activation", "Sensor Net Activation"),
     ("psychokinesis", "Psychokinesis"),
     ("net_quarantine", "Net Quarantine"),

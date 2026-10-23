@@ -43258,3 +43258,77 @@ mod flashpoint_stage_11 {
         }
     }
 }
+mod flashpoint_stage_12 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(20);
+        state
+    }
+
+    /// Installed with its printed strength, as an install seeds it.
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        let base_strength = registry().get(&id(card)).and_then(|definition| definition.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), base_strength, ..Default::default() }
+    }
+
+    /// Mantle with its one recurring credit, the stealth credit.
+    fn mantle() -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { counters: 1, ..rig("mantle", 30) }
+    }
+
+    fn encounter(state: &GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        let mut state = state.clone();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(11), card: id(ice), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    fn use_ability(state: &GameState, registry: &CardRegistry, install: u32, ability_index: usize) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: InstallId(install), ability_index }).map(|(state, _)| state)
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        let installed = state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("installed");
+        crate::rules::continuous::breaker_strength(state, registry, installed)
+    }
+
+    #[test]
+    fn fawkes_pumps_by_x_with_at_least_one_credit_from_a_stealth_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("fawkes", 10)];
+        assert!(use_ability(&encounter(&state, &registry, "ice_wall"), &registry, 10, 1).is_err(), "no stealth credit");
+        state.runner.rig.push(mantle());
+        let asked = use_ability(&encounter(&state, &registry, "ice_wall"), &registry, 10, 1).expect("choose X");
+        assert!(apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }).is_err(), "X is at least the stealth credit");
+        let (pumped, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 3 }).expect("1 from Mantle, 2 from the pool");
+        assert_eq!(strength(&pumped, &registry, "fawkes"), 1 + 3);
+        assert_eq!((pumped.runner.resources.credits, pumped.runner.rig[1].counters), (Credits(18), 0));
+    }
+
+    #[test]
+    fn peregrine_goes_back_to_the_grip_to_derez_a_code_gate_it_fully_broke() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("peregrine", 10)];
+        let at_enigma = encounter(&state, &registry, "enigma");
+        assert!(use_ability(&at_enigma, &registry, 10, 2).is_err(), "nothing broken yet");
+        let corp_passes = |state: GameState| apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes").0;
+        let once = corp_passes(use_ability(&at_enigma, &registry, 10, 0).expect("break 1"));
+        let twice = corp_passes(use_ability(&once, &registry, 10, 0).expect("break the other"));
+        let derezzed = use_ability(&twice, &registry, 10, 2).expect("2[credit], add this program to your grip: derez");
+        assert!(derezzed.runner.rig.is_empty() && derezzed.runner.grip.contains(&id("peregrine")));
+        assert!(!derezzed.corp.installed.iter().find(|card| card.card == id("enigma")).expect("installed").rezzed, "Enigma derezzed");
+        assert_eq!(derezzed.runner.resources.credits, Credits(20 - 1 - 1 - 2));
+    }
+}
