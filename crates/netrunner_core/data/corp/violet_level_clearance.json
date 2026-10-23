@@ -1,0 +1,32 @@
+{
+  "id": "violet_level_clearance",
+  "title": "Violet Level Clearance",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 5,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            8
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            4
+          ]
+        },
+        "EndActionPhase"
+      ],
+      "text": "Gain 8[credit] and draw 4 cards."
+    }
+  ],
+  "built_from": 11111,
+  "is_playable": true
+}

@@ -180,10 +180,7 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("wetwork_refit", "Wetwork Refit"),
     ("fumiko_yamamori", "Fumiko Yamamori"),
     ("hasty_relocation", "Hasty Relocation"),
-    ("drone_screen", "Drone Screen"),
     ("chief_slee", "Chief Slee"),
-    ("best_defense", "Best Defense"),
-    ("preemptive_action", "Preemptive Action"),
 ];
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.
@@ -192,14 +189,10 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("cold_read", "Cold Read"),
     ("interdiction", "Interdiction"),
     ("baba_yaga", "Baba Yaga"),
-    ("friends_in_high_places", "Friends in High Places"),
-    ("manta_grid", "Manta Grid"),
     ("mind_game", "Mind Game"),
     ("nihongai_grid", "Nihongai Grid"),
     ("anson_rose", "Anson Rose"),
     ("sapper", "Sapper"),
-    ("show_of_force", "Show of Force"),
-    ("enforced_curfew", "Enforced Curfew"),
 ];
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
@@ -210,8 +203,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("encore", "Encore"),
     ("fawkes", "Fawkes"),
     ("sensor_net_activation", "Sensor Net Activation"),
-    ("violet_level_clearance", "Violet Level Clearance"),
-    ("chiyashi", "Chiyashi"),
     ("psychokinesis", "Psychokinesis"),
     ("net_quarantine", "Net Quarantine"),
     ("herald", "Herald"),

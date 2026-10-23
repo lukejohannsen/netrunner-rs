@@ -42935,3 +42935,78 @@ mod flashpoint_stage_6 {
         assert_eq!(close_all_windows(state, &registry).0.runner.grip.len(), 2);
     }
 }
+
+mod flashpoint_stage_7 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) })
+    }
+
+    #[test]
+    fn violet_level_clearance_gains_eight_draws_four_and_ends_the_action_phase() {
+        let registry = registry();
+        let state = corp_turn(&["violet_level_clearance"]);
+        let (done, events) = play(&state, &registry, "violet_level_clearance").expect("play it");
+        assert_eq!((done.corp.resources.credits, done.corp.hq.len()), (Credits(10 - 5 + 8), 4));
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::ActionPhaseEnded { side: Side::Corp })));
+    }
+
+    #[test]
+    fn preemptive_action_shuffles_three_from_archives_and_leaves_the_game() {
+        let registry = registry();
+        let mut state = corp_turn(&["preemptive_action"]);
+        state.corp.archives = ["ice_wall", "enigma", "pad_campaign", "hostile_takeover"].iter().map(|card| crate::rules::ArchivedCard::faceup(id(card))).collect();
+        let (asked, _) = play(&state, &registry, "preemptive_action").expect("play it");
+        let mut picked = asked;
+        for position in 0..3 {
+            picked = apply_action(&picked, &registry, PlayerAction::ToggleCardSelection { position }).expect("pick").0;
+        }
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle them in");
+        assert_eq!((done.corp.archives.len(), done.corp.r_and_d.len()), (1, 8));
+        assert!(done.corp.removed_from_game.contains(&id("preemptive_action")));
+    }
+
+    #[test]
+    fn best_defense_trashes_only_a_card_no_dearer_than_the_runners_tags() {
+        let registry = registry();
+        let mut state = corp_turn(&["best_defense"]);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: InstallId(20), card: id("daily_casts"), ..Default::default() }];
+        state.runner.tags = 3;
+        let (asked, _) = play(&state, &registry, "best_defense").expect("play it");
+        let (runner_side, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("the Runner's cards");
+        let (chosen, _) = apply_action(&runner_side, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Daily Casts costs 3");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(done.runner.rig.is_empty() && done.runner.heap.contains(&id("daily_casts")));
+    }
+
+    #[test]
+    fn show_of_force_does_two_meat_damage_when_scored() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(10), card: id("show_of_force"), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens: 4, ..Default::default() }];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score it");
+        assert_eq!(pass_until_settled(done, &registry).0.runner.grip.len(), 1);
+    }
+
+    #[test]
+    fn enforced_curfew_takes_one_from_the_runners_hand_size() {
+        let registry = registry();
+        let state = corp_turn(&["enforced_curfew"]);
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
+        let (done, _) = play(&state, &registry, "enforced_curfew").expect("play the current");
+        assert_eq!(crate::rules::continuous::hand_size(&done, &registry, Side::Runner), before - 1);
+    }
+}

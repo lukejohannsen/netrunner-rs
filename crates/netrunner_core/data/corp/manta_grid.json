@@ -1,0 +1,50 @@
+{
+  "id": "manta_grid",
+  "title": "Manta Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "This",
+      "requirement": {
+        "And": [
+          "LastRunSuccessful",
+          {
+            "Not": {
+              "And": [
+                {
+                  "AmountAtLeast": [
+                    {
+                      "Credits": "Runner"
+                    },
+                    6
+                  ]
+                },
+                {
+                  "AmountAtLeast": [
+                    "ClicksRemaining",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "AllottedClicksNextTurn": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "If the Runner has fewer than 6[credit] or no unspent clicks when a successful run on this server ends, you have 1 additional [click] to spend your next turn."
+    }
+  ],
+  "built_from": 11091,
+  "is_playable": true
+}
