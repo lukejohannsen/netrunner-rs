@@ -224,8 +224,20 @@ pub fn identity_facts(view: &ClientView, side: Side, registry: &CardRegistry) ->
         } else if corp.identity_counters > 0 {
             facts.push(super::facts::counter_word(kind, corp.identity_counters));
         }
+    } else if let Some(max) = runner_recurring_max(view, registry) {
+        let left = view.runner.identity_counters;
+        facts.push(format!("{left} of {max} recurring credit{} left", if max == 1 { "" } else { "s" }));
     }
     facts
+}
+
+/// What Ele "Smoke" Scovak's recurring credits refill to — the Runner
+/// identity's printed N, read off the card, since the view carries only
+/// the credits left (`RunnerView::identity_counters`). `None` for a Runner
+/// identity that prints none.
+fn runner_recurring_max(view: &ClientView, registry: &CardRegistry) -> Option<u32> {
+    let identity = view.runner.identity.as_ref().and_then(|id| registry.get(id))?;
+    identity.recurring_credits.and_then(netrunner_core::dsl::RecurringCredits::printed).filter(|max| *max > 0)
 }
 
 /// The words on the avatar's chip: the side up for a flip identity, else
@@ -237,7 +249,7 @@ pub fn identity_chip(view: &ClientView, side: Side, registry: &CardRegistry) -> 
     }
     let corp = &view.corp;
     if side != Side::Corp {
-        return None;
+        return runner_recurring_max(view, registry).map(|max| format!("{} of {max}", view.runner.identity_counters));
     }
     if corp.recurring_credits_max > 0 {
         return Some(format!("{} of {}", corp.recurring_credits, corp.recurring_credits_max));

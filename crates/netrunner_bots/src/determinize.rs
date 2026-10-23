@@ -1111,6 +1111,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         servers_run_successfully: view.runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
+        identity_counters: view.runner.identity_counters,
     };
 
     let mut active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
@@ -1523,7 +1524,7 @@ mod tests {
                 play_area: Vec::new(),
                 in_play: Vec::new(),
                 heap: Vec::new(),
-                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), servers_run_successfully: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false, identity_counters: 0,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

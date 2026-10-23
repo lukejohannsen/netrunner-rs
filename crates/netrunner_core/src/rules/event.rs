@@ -170,6 +170,15 @@ pub enum GameEvent {
         /// time anybody hears this one end.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         fully_broken: bool,
+        /// How many of the ice's subroutines the Runner had not broken when
+        /// the encounter ended, resolved or not, gained ones with them —
+        /// Chief Slee's "place 1 power counter on Chief Slee for each
+        /// unbroken subroutine on the encountered piece of ice" (`Amount::
+        /// UnbrokenSubroutinesThatEncounter`). Carried for `fully_broken`'s
+        /// reason: the run's list is the next encounter's by the time
+        /// anybody hears this one end. Public, as the list is.
+        #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+        unbroken: u32,
     },
     /// `card`, `side`'s, is shown to both players and goes back to where it
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while

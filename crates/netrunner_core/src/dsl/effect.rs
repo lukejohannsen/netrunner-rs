@@ -2574,6 +2574,13 @@ pub enum Amount {
     /// next encounter's by the time the pass is heard, and the turn log
     /// counts resolutions by the turn, not by the encounter.
     PassedIceSubroutinesResolved,
+    /// How many of the encountered ice's subroutines were unbroken when
+    /// the triggering encounter ended — Chief Slee's "place 1 power counter
+    /// on Chief Slee for each unbroken subroutine on the encountered piece
+    /// of ice", read off `GameEvent::EncounterEnded::unbroken`. 0 for any
+    /// other event. Composition didn't work for `PassedIceSubroutinesResolved`'s
+    /// reason, and an encounter that ends with the run is never passed.
+    UnbrokenSubroutinesThatEncounter,
     /// The printed agenda points of the acting card — Drudge Work's
     /// "Reveal an agenda in HQ or Archives. Gain credits equal to its agenda
     /// points", read in the reveal's `then`, which resolves as the card

@@ -807,7 +807,7 @@ mod tests {
                     effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false, unbroken: 1 },
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default(), rezzed_bioroid: false, subroutines_resolved: 1, fully_broken_by: None },
             ]
         );
@@ -885,7 +885,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false, unbroken: 1 },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

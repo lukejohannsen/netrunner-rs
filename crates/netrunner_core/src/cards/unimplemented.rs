@@ -134,10 +134,8 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.
 pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_outage", "System Outage"),
-    ("null_whistleblower", "Null: Whistleblower"),
     ("gpi_net_tap", "GPI Net Tap"),
     ("mirror", "Mirror"),
-    ("another_day_another_paycheck", "Another Day, Another Paycheck"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
     ("nbn_controlling_the_message", "NBN: Controlling the Message"),
@@ -165,12 +163,10 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_gauntlet", "The Gauntlet"),
-    ("ele_smoke_scovak_cynosure_of_the_net", "Ele \"Smoke\" Scovak: Cynosure of the Net"),
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
     ("wetwork_refit", "Wetwork Refit"),
     ("fumiko_yamamori", "Fumiko Yamamori"),
-    ("chief_slee", "Chief Slee"),
 ];
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.

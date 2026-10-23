@@ -335,6 +335,10 @@ pub struct PublicRunnerState {
     /// `RunnerState::identity_flipped` — a flip identity's side is public.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `RunnerState::identity_counters` — the recurring credits on Ele
+    /// "Smoke" Scovak. Never masked, as the Corp's are not.
+    #[serde(default)]
+    pub identity_counters: u32,
     /// `RunnerState::once_per_turn_used`, whole: the rig is faceup. See
     /// `PublicCorpState::once_per_turn_used`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1137,6 +1141,15 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::PendingCardSelectionOffered { side, min, max, source: Some(card) } if concealed(card) => {
             Some(GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: None })
         }
+        // Accessed in HQ or R&D, as the trace that asks it is: Intake's
+        // trace succeeds and the Corp is asked to choose, and the card that
+        // asks is one the Runner saw and a spectator did not (the view
+        // sweep at 256 seeds, seed 252).
+        GameEvent::PendingCardSelectionOffered { side, min, max, source: Some(card) }
+            if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
+        {
+            Some(GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: None })
+        }
         GameEvent::PendingCardSelectionOffered { .. } => visible(),
         // A Runner card hosted on a piece of ice the viewer cannot identify.
         GameEvent::CardHosted { card, host: Some(host) } if concealed(host) => Some(GameEvent::CardHosted { card: card.clone(), host: None }),
@@ -1697,6 +1710,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         servers_run_successfully: runner.servers_run_successfully.clone(),
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
+        identity_counters: runner.identity_counters,
         once_per_turn_used: runner.once_per_turn_used.iter().cloned().collect(),
     }
 }

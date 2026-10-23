@@ -1,0 +1,46 @@
+{
+  "id": "another_day_another_paycheck",
+  "title": "Another Day, Another Paycheck",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "Trace": {
+            "base": 0,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "Sequence": [
+                {
+                  "GainCreditsAmount": [
+                    "Runner",
+                    {
+                      "AgendaPoints": "Corp"
+                    }
+                  ]
+                },
+                {
+                  "GainCreditsAmount": [
+                    "Runner",
+                    {
+                      "AgendaPoints": "Runner"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you steal an agenda, force the Corp to \"Trace[0]. If unsuccessful, the Runner gains credits equal to the number of agenda points in both players' score areas.\""
+    }
+  ],
+  "built_from": 11007,
+  "is_playable": true
+}
