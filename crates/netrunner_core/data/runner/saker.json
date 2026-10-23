@@ -1,0 +1,72 @@
+{
+  "id": "saker",
+  "title": "Saker",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit], add this program to your grip: Derez 1 barrier this program fully broke during this encounter.",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 2
+          },
+          "AddSelfToGrip"
+        ]
+      },
+      "effect": {
+        "DerezCard": "EncounteredIce"
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "And": [
+              {
+                "Encountering": "Barrier"
+              },
+              "FullyBrokeTheEncounteredIce"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 11064,
+  "is_playable": true
+}

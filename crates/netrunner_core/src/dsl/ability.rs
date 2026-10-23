@@ -490,6 +490,13 @@ pub enum EffectRequirement {
     /// other encounter word names the ice by its relation to the acting
     /// card, or by its type.
     EncounteringOutermostIce,
+    /// The acting program fully broke the ice being encountered, in this
+    /// encounter (`RunState::fully_broken`, with `EncounterTally::
+    /// broken_by` this install alone) — Golden's, Peregrine's and Saker's
+    /// "Derez 1 sentry this program fully broke during this encounter".
+    /// Composition didn't work: `IceFullyBrokenThatEncounter` is read off
+    /// the encounter's end, and these are used inside it.
+    FullyBrokeTheEncounteredIce,
     /// The active run is encountering a piece of ICE right now
     /// (`RunPhase::EncounterIce`) — any ICE, unlike
     /// `EncounteringHostIce`'s "the one my host is."

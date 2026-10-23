@@ -1,0 +1,72 @@
+{
+  "id": "peregrine",
+  "title": "Peregrine",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "3[credit]: +3 strength.",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit], add this program to your grip: Derez 1 code gate this program fully broke during this encounter.",
+      "cost": {
+        "AllOf": [
+          {
+            "Credits": 2
+          },
+          "AddSelfToGrip"
+        ]
+      },
+      "effect": {
+        "DerezCard": "EncounteredIce"
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "And": [
+              {
+                "Encountering": "CodeGate"
+              },
+              "FullyBrokeTheEncounteredIce"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 11044,
+  "is_playable": true
+}
