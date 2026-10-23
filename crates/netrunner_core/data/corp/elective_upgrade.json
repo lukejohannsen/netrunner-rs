@@ -1,0 +1,46 @@
+{
+  "id": "elective_upgrade",
+  "title": "Elective Upgrade",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you score this agenda, place 2 agenda counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "GainClicks": [
+          "Corp",
+          2
+        ]
+      },
+      "text": "Gain [click][click]."
+    }
+  ],
+  "built_from": 13030,
+  "is_playable": true
+}

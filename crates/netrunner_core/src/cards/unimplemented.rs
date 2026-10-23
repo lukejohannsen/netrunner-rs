@@ -208,7 +208,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("herald", "Herald"),
     ("bryan_stinson", "Bryan Stinson"),
     ("nasx", "NASX"),
-    ("macrophage", "Macrophage"),
 ];
 
 /// *Terminal Directive Cards* (`terminal_directive_cards`): tranche F5 of the FFG
@@ -217,7 +216,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("brute_force_hack", "Brute-Force-Hack"),
     ("spear_phishing", "Spear Phishing"),
-    ("syn_attack", "SYN Attack"),
     ("polyhistor", "Polyhistor"),
     ("charlatan", "Charlatan"),
     ("maxwell_james", "Maxwell James"),
@@ -230,18 +228,13 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_shadow_net", "The Shadow Net"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("brain_rewiring", "Brain Rewiring"),
-    ("elective_upgrade", "Elective Upgrade"),
     ("successful_field_test", "Successful Field Test"),
     ("estelle_moon", "Estelle Moon"),
-    ("eli_2_0", "Eli 2.0"),
-    ("holmegaard", "Holmegaard"),
-    ("tapestry", "Tapestry"),
     ("black_level_clearance", "Black Level Clearance"),
     ("mason_bellamy", "Mason Bellamy"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
     ("armored_servers", "Armored Servers"),
     ("illegal_arms_factory", "Illegal Arms Factory"),
-    ("bloodletter", "Bloodletter"),
     ("k_p_lynn", "K. P. Lynn"),
     ("paper_trail", "Paper Trail"),
     ("long_term_investment", "Long-Term Investment"),

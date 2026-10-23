@@ -1,0 +1,53 @@
+{
+  "id": "syn_attack",
+  "title": "SYN Attack",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": "Any",
+                  "min": 0,
+                  "max": 0,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OwnArchives",
+                  "count": {
+                    "Fixed": 2
+                  }
+                }
+              },
+              {
+                "DrawCards": [
+                  "Corp",
+                  4
+                ]
+              }
+            ],
+            "texts": [
+              "The Corp must either discard 2 cards",
+              "or draw 4 cards"
+            ]
+          }
+        }
+      ],
+      "text": "The Corp must either discard 2 cards or draw 4 cards."
+    }
+  ],
+  "built_from": 13004,
+  "is_playable": true
+}
