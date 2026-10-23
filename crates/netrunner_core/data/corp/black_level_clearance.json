@@ -1,0 +1,51 @@
+{
+  "id": "black_level_clearance",
+  "title": "Black Level Clearance",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "JackOut",
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    5
+                  ]
+                },
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "TrashCard": "ThisCard"
+                }
+              ]
+            },
+            "if_declined": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            },
+            "text": "they must either suffer 1 core damage or jack out"
+          }
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on this server, they must either suffer 1 core damage or jack out. If the Runner jacks out this way, gain 5[credit], draw 1 card, and trash this upgrade."
+    }
+  ],
+  "built_from": 13039,
+  "is_playable": true
+}

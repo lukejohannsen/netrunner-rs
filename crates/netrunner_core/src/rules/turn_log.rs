@@ -632,7 +632,7 @@ impl Occurrences {
             Some(EventFilter::Host) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }
-            Some(EventFilter::InRootOfThisServer | EventFilter::InOrProtectingThisServer) => {
+            Some(EventFilter::InRootOfThisServer | EventFilter::InOrProtectingThisServer | EventFilter::ProtectingThisServer) => {
                 return Err(format!("the turn counts a {trigger:?} without which server it went into; the copies in a root count those"));
             }
             Some(EventFilter::ByThis) => {

@@ -631,6 +631,19 @@ pub struct IceFacts {
     /// the log the bit means one fact.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ap: bool,
+    /// "Passes **all of the ice** protecting this server" — K.P. Lynn: the
+    /// ice passed had no position more inward (CR 6.9.4a: "If there are
+    /// no positions more inward than the ice just passed, conditions
+    /// related to passing all of the ice protecting a server are also
+    /// met"), so a server with no ice is never passed this way. Read off
+    /// the run as the pass is heard (`listeners::moments`), since the run
+    /// is still at that position.
+    ///
+    /// **It shares a column bit with `printed_subroutine`**, as the two
+    /// before it share theirs: that is a break's fact and this a pass's
+    /// (`stated_by`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub innermost: bool,
 }
 
 impl IceFacts {
@@ -643,13 +656,14 @@ impl IceFacts {
             && (!self.printed_subroutine || moment.printed_subroutine)
             && (!self.rezzed_bioroid || moment.rezzed_bioroid)
             && (!self.ap || moment.ap)
+            && (!self.innermost || moment.innermost)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
     /// since the rest are always `false` there (`CardDefinition::validate`).
     pub fn stated_by(trigger: Trigger) -> IceFacts {
         match trigger {
-            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, rezzed_bioroid: true, ..IceFacts::default() },
+            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, rezzed_bioroid: true, innermost: true, ..IceFacts::default() },
             Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ap: true, ..IceFacts::default() },
             // Hippo's "fully break the outermost piece of ice".
             Trigger::OnIceFullyBroken => IceFacts { outermost: true, ..IceFacts::default() },
@@ -658,7 +672,8 @@ impl IceFacts {
     }
 
     /// How many columns of the turn log the facts take: five bits, the
-    /// sixth and seventh facts sharing one each (`rezzed_bioroid`, `ap`).
+    /// sixth, seventh and eighth facts sharing one each (`rezzed_bioroid`,
+    /// `ap`, `innermost`).
     pub const COLUMNS: usize = 32;
 
     /// The facts as a number, 0..`COLUMNS` — a column of the turn log's row
@@ -669,16 +684,16 @@ impl IceFacts {
             | usize::from(self.after_fully_breaking) << 1
             | usize::from(self.at_most_zero_strength || self.rezzed_bioroid) << 2
             | usize::from(self.rezzed_code_gate_or_sentry || self.ap) << 3
-            | usize::from(self.printed_subroutine) << 4
+            | usize::from(self.printed_subroutine || self.innermost) << 4
     }
 
-    /// Every combination of the seven, the sixth and seventh in the top
-    /// bits of the index.
-    pub const ALL: [IceFacts; 128] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false };
-        let mut all = [none; 128];
+    /// Every combination of the eight, the sixth, seventh and eighth in
+    /// the top bits of the index.
+    pub const ALL: [IceFacts; 256] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false, innermost: false };
+        let mut all = [none; 256];
         let mut bits = 0;
-        while bits < 128 {
+        while bits < 256 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
@@ -687,6 +702,7 @@ impl IceFacts {
                 printed_subroutine: bits & 16 != 0,
                 rezzed_bioroid: bits & 32 != 0,
                 ap: bits & 64 != 0,
+                innermost: bits & 128 != 0,
             };
             bits += 1;
         }
@@ -955,6 +971,14 @@ pub enum EventFilter {
     /// `Card` filter naming this server is finer than any column the turn
     /// keeps.
     InOrProtectingThisServer,
+    /// The piece of ice the moment is about protects the listener's own
+    /// server — K.P. Lynn's "whenever the Runner passes all of the ice
+    /// **protecting this server**", beside `Ice { innermost }`. Only on
+    /// `OnIcePassed`, whose moment names the ice passed. Composition didn't
+    /// work: `Subject::This` reads "this server" only for a moment about a
+    /// server, and a pass is about the ice; `InOrProtectingThisServer`
+    /// is the advance's word, counted on the root's copies.
+    ProtectingThisServer,
     /// The card was trashed from one of these places — Strike Fund's
     /// "When this event is trashed **from your grip or stack**". Read off
     /// the moment, which the event states (`GameEvent::CardTrashed::from`),

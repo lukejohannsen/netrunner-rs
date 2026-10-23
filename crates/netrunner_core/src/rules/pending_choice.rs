@@ -1586,6 +1586,11 @@ pub(crate) fn resolve_confirm_card_selection(
     // Positions already taken, to read later positions past them.
     let from_deck = !shuffle_after && matches!(source, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::OpponentDeck);
     let mut taken: Vec<usize> = Vec::new();
+    // Levy Advanced Research Lab's "add the rest of the cards to the bottom
+    // of your stack": a deck's own cards put under it, each in front of
+    // every position still to be taken, which moves them all up by one.
+    let under_the_same_deck = from_deck && matches!(destination, Some(CardZoneRef::BottomOfOwnDeck)) && destination.as_ref().is_some_and(|dest| owning_side(side, &source) == owning_side(side, dest));
+    let mut put_under = 0;
     // How many of the selection landed on a deck, to put the first chosen
     // on top (below).
     let mut onto_deck = 0usize;
@@ -1653,7 +1658,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     // looked-at card on top for the next draw.
                     let from_top = matches!(source, CardZoneRef::TopOfOwnStack);
                     let chosen = positions[index];
-                    let at = chosen - taken.iter().filter(|earlier| **earlier < chosen).count();
+                    let at = chosen - taken.iter().filter(|earlier| **earlier < chosen).count() + put_under;
                     if let Some(zone) = plain_zone_mut(state, side, &source, source_install)
                         && let Some(pos) = if from_top {
                             zone.iter().rposition(|c| c == card_id)
@@ -1694,6 +1699,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     // front; each card goes under the ones chosen before it.
                     if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                         zone.insert(0, card_id.clone());
+                        put_under += usize::from(under_the_same_deck);
                     }
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());

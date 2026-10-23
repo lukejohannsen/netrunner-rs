@@ -321,6 +321,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
                 after_fully_breaking: *after_fully_breaking,
                 rezzed_code_gate_or_sentry: rezzed_as.iter().any(|ice_type| matches!(ice_type, crate::dsl::IceType::CodeGate | crate::dsl::IceType::Sentry)),
                 rezzed_bioroid: *rezzed_bioroid,
+                innermost: state.active_run.as_ref().is_some_and(|run| *position as usize + 1 >= run.ice.len()),
                 ..IceFacts::default()
             },
         ) }],
@@ -784,6 +785,12 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::InOrProtectingThisServer = filter {
         let About::Card { install: Some(about), .. } = moment.about else { return false };
         return moment.of == Some(Side::Corp) && here.is_some() && state.find_corp_install(about).map(|installed| installed.server) == here;
+    }
+    // "Passes all of the ice protecting **this server**": the ice the
+    // moment is about is in the listener's server.
+    if let EventFilter::ProtectingThisServer = filter {
+        let About::Card { install: Some(about), .. } = moment.about else { return false };
+        return moment.ice.is_some() && here.is_some() && state.find_corp_install(about).map(|installed| installed.server) == here;
     }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));

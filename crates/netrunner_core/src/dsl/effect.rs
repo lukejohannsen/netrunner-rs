@@ -3740,6 +3740,18 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
+            // Successful Field Test's "install any number of cards from
+            // HQ": a selection of the next card, then its install, then the
+            // process again.
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => {
+                Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then: then.map(boxed), count, up_to }
+            }
+            mut install @ Effect::PromptInstallCorpCard { .. } => {
+                if let Effect::PromptInstallCorpCard { then, .. } = &mut install {
+                    *then = then.take().map(boxed);
+                }
+                install
+            }
             // A process inside this one repeats itself, not this.
             other => other,
         }
@@ -3773,6 +3785,7 @@ impl Effect {
         match self {
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
+            Effect::AddAtRandomToBottomOfDeck { side, count } => Effect::AddAtRandomToBottomOfDeck { side, count: amount(count) },
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::GiveBadPublicity(a) => Effect::GiveBadPublicity(amount(a)),

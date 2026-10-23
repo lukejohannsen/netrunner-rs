@@ -817,6 +817,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
         EventFilter::InRootOfThisServer => "by the Corp, in the root of this server".to_string(),
         EventFilter::InOrProtectingThisServer => "by the Corp, in or protecting this server".to_string(),
+        EventFilter::ProtectingThisServer => "protecting this server".to_string(),
         EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
         EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
         EventFilter::Successful => "that was successful".to_string(),
@@ -857,6 +858,7 @@ fn describe_when(filter: &EventFilter) -> String {
                 (facts.rezzed_code_gate_or_sentry, "a rezzed code gate or sentry"),
                 (facts.printed_subroutine, "a printed subroutine"),
                 (facts.rezzed_bioroid, "a rezzed piece of bioroid ice"),
+                (facts.innermost, "all of the ice"),
             ]
             .into_iter()
             .filter_map(|(holds, word)| holds.then_some(word))
