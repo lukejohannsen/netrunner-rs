@@ -1,0 +1,47 @@
+{
+  "id": "k_p_lynn",
+  "title": "K. P. Lynn",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Ice": {
+              "innermost": true
+            }
+          },
+          "ProtectingThisServer"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "GiveTags": {
+                  "Fixed": 1
+                }
+              },
+              "EndTheRun"
+            ],
+            "texts": [
+              "take 1 tag",
+              "end the run"
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes all of the ice protecting this server, they must take 1 tag or end the run."
+    }
+  ],
+  "built_from": 13052,
+  "is_playable": true
+}

@@ -1,0 +1,37 @@
+{
+  "id": "dean_lister",
+  "title": "Dean Lister",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": "Icebreaker",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "BoostStrengthAmount": {
+              "amount": {
+                "CardsInHand": "Runner"
+              },
+              "duration": "Run"
+            }
+          }
+        }
+      },
+      "text": "[trash]: Choose an icebreaker. Until the end of the run, that icebreaker has +1 strength for each card in your grip."
+    }
+  ],
+  "built_from": 13025,
+  "is_playable": true
+}

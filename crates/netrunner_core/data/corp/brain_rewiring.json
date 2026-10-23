@@ -1,0 +1,62 @@
+{
+  "id": "brain_rewiring",
+  "title": "Brain Rewiring",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Credits": "Corp"
+            },
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ChosenNumber",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "LoseCreditsAmount": [
+                        "Corp",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "AddAtRandomToBottomOfDeck": {
+                        "side": "Runner",
+                        "count": "ChosenNumber"
+                      }
+                    },
+                    {
+                      "DrawCards": [
+                        "Runner",
+                        1
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "text": "you may spend any number of credits"
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may spend any number of credits. If you do, the Runner adds that many cards from the grip to the bottom of the stack at random, then draws 1 card."
+    }
+  ],
+  "built_from": 13029,
+  "is_playable": true
+}

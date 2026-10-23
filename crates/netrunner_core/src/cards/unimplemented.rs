@@ -207,20 +207,12 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("polyhistor", "Polyhistor"),
     ("charlatan", "Charlatan"),
     ("maxwell_james", "Maxwell James"),
-    ("careful_planning", "Careful Planning"),
-    ("levy_advanced_research_lab", "Levy Advanced Research Lab"),
-    ("dean_lister", "Dean Lister"),
     ("the_shadow_net", "The Shadow Net"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("brain_rewiring", "Brain Rewiring"),
-    ("successful_field_test", "Successful Field Test"),
-    ("black_level_clearance", "Black Level Clearance"),
     ("mason_bellamy", "Mason Bellamy"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
     ("armored_servers", "Armored Servers"),
     ("illegal_arms_factory", "Illegal Arms Factory"),
-    ("k_p_lynn", "K. P. Lynn"),
-    ("long_term_investment", "Long-Term Investment"),
 ];
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
@@ -1098,7 +1090,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("successful_field_test", "Successful Field Test"),
     ("turing", "Turing"),
     ("blue_level_clearance", "Blue Level Clearance"),
     ("mason_bellamy", "Mason Bellamy"),

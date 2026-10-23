@@ -1,0 +1,70 @@
+{
+  "id": "levy_advanced_research_lab",
+  "title": "Levy Advanced Research Lab",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "TopOfDeck": {
+              "deck": "Runner",
+              "count": 4,
+              "reveal": true
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnStack",
+              "filter": {
+                "All": [
+                  {
+                    "TopOfZone": 4
+                  },
+                  {
+                    "CardType": "Program"
+                  }
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OwnGrip",
+              "then": {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnStack",
+                  "filter": {
+                    "TopOf": {
+                      "RemainingAfterSelection": 4
+                    }
+                  },
+                  "min": 0,
+                  "max": 0,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "BottomOfOwnDeck",
+                  "count": {
+                    "RemainingAfterSelection": 4
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click]: Reveal the top 4 cards of your stack. If any of those cards are programs, you may add 1 to your grip. Add the rest of the cards to the bottom of your stack in any order."
+    }
+  ],
+  "built_from": 13021,
+  "is_playable": true
+}

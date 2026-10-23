@@ -1488,6 +1488,9 @@ impl CardDefinition {
             // Only an advance is counted on the root's copies, and only a
             // Corp card is in a server.
             EventFilter::InOrProtectingThisServer => triggered.trigger == Trigger::OnAdvance && self.side == crate::rules::Side::Corp,
+            // Only a pass names the ice passed, and only a Corp card is in
+            // a server.
+            EventFilter::ProtectingThisServer => triggered.trigger == Trigger::OnIcePassed && self.side == crate::rules::Side::Corp,
             // Only a trash says which pile the card left.
             EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
             // Only a trash says where a card was trashed from, and only a

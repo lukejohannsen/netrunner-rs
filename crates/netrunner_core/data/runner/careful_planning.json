@@ -1,0 +1,55 @@
+{
+  "id": "careful_planning",
+  "title": "Careful Planning",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "play_requirement": "NoActionTakenThisTurn",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": {
+              "All": [
+                {
+                  "Not": {
+                    "InServer": "Hq"
+                  }
+                },
+                {
+                  "Not": {
+                    "InServer": "RnD"
+                  }
+                },
+                {
+                  "Not": {
+                    "InServer": "Archives"
+                  }
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Prohibit": {
+                "what": "Rez",
+                "until": "Turn",
+                "this_install": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Choose 1 card installed in the root of or protecting a remote server. That card cannot be rezzed this turn."
+    }
+  ],
+  "built_from": 13013,
+  "is_playable": true
+}

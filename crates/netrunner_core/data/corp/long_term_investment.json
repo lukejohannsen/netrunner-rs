@@ -1,0 +1,55 @@
+{
+  "id": "long_term_investment",
+  "title": "Long-Term Investment",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When your turn begins, place 2[credit] on Long-Term Investment."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 8
+      },
+      "effect": {
+        "ChooseNumber": {
+          "chooser": "Corp",
+          "min": 0,
+          "max": "HostedCounters",
+          "then": {
+            "Sequence": [
+              {
+                "RemoveCounters": "ChosenNumber"
+              },
+              {
+                "GainCreditsAmount": [
+                  "Corp",
+                  "ChosenNumber"
+                ]
+              }
+            ]
+          },
+          "text": "Take any number of credits from Long-Term Investment"
+        }
+      },
+      "text": "[click]: Take any number of credits from Long-Term Investment."
+    }
+  ],
+  "built_from": 13055,
+  "is_playable": true
+}
