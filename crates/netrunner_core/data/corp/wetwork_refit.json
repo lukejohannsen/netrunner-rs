@@ -1,0 +1,81 @@
+{
+  "id": "wetwork_refit",
+  "title": "Wetwork Refit",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "All": [
+          "Ice",
+          "Rezzed",
+          {
+            "HasSubtype": "Bioroid"
+          }
+        ]
+      }
+    }
+  },
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "Do 1 core damage.",
+            "effect": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            }
+          },
+          "count": {
+            "per": 1
+          },
+          "before": true
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains \"[subroutine] Do 1 core damage.\" before all its other subroutines."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "Bioroid"
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "HostThisAsCondition": {
+                "condition": 0,
+                "host": 0
+              }
+            }
+          }
+        }
+      ],
+      "text": "Host this operation on a rezzed piece of bioroid ice as a condition counter"
+    }
+  ],
+  "built_from": 11071,
+  "is_playable": true
+}

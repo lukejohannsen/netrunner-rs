@@ -419,8 +419,8 @@ fn instance_matches_filter(
         // Only a card in Archives lies facedown in a zone a selection reads.
         CardFilter::Facedown => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| archived.facedown),
         CardFilter::Faceup => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| !archived.facedown),
-        CardFilter::MatchesOwnIdentitysFaction => {
-            let identity = match chooser {
+        CardFilter::MatchesOwnersIdentityFaction => {
+            let identity = match owning_side(chooser, zone) {
                 Side::Corp => state.corp.identity.as_ref(),
                 Side::Runner => state.runner.identity.as_ref(),
             };

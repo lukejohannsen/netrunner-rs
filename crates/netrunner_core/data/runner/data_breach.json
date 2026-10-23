@@ -1,0 +1,52 @@
+{
+  "id": "data_breach",
+  "title": "Data Breach",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "SetRunEndedEffect": {
+            "EffectIf": {
+              "condition": "LastRunSuccessful",
+              "effect": {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "PromptChooseServer": {
+                        "chooser": "Runner",
+                        "rez_cost_delta": 0,
+                        "bonus_run_credits": 0,
+                        "allowed_servers": [
+                          "RnD"
+                        ]
+                      }
+                    },
+                    {
+                      "Sequence": []
+                    }
+                  ],
+                  "texts": [
+                    "you may run R&D again",
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, when that run ends, you may run R&D again."
+    }
+  ],
+  "built_from": 11028,
+  "is_playable": true
+}

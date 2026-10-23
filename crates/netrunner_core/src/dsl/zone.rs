@@ -575,15 +575,19 @@ pub enum CardFilter {
     /// trashes nothing. Composition didn't work: the type is chosen as the
     /// game goes, and `CardType` is written in the card file.
     OfChosenCardType,
-    /// A card of the faction printed on the chooser's own identity —
-    /// District 99's "add a card that **matches the faction of your
-    /// identity** from your heap to your grip". Instance-level: which
-    /// faction is the identity in play, so `card_matches_filter` lets every
-    /// definition through and `pending_choice`'s instance check compares
-    /// the two. A neutral card matches only a neutral identity. Composition
-    /// didn't work: no filter read a faction, and a faction written in the
-    /// card file would be wrong in every deck that splashes the card.
-    MatchesOwnIdentitysFaction,
+    /// A card of the faction printed on the identity of the player whose
+    /// card it is — District 99's "add a card that **matches the faction of
+    /// your identity** from your heap to your grip", and Enforcing
+    /// Loyalty's "trash an installed card that **does not match the faction
+    /// of the Runner's identity**" (`Not`), the Corp choosing among the
+    /// Runner's cards. The identity is the zone's owner's, never simply the
+    /// chooser's, so one word says both. Instance-level: which faction is
+    /// the identity in play, so `card_matches_filter` lets every definition
+    /// through and `pending_choice`'s instance check compares the two. A
+    /// neutral card matches only a neutral identity. Composition didn't
+    /// work: no filter read a faction, and a faction written in the card
+    /// file would be wrong in every deck that splashes the card.
+    MatchesOwnersIdentityFaction,
     /// A card in this server, its root or its ice. `InRootOf` is the root
     /// alone; a card "protecting" a server is `All([Ice, InServer(..)])`.
     InServer(ServerId),
@@ -826,7 +830,7 @@ impl CardFilter {
         matches!(
             self,
             CardFilter::DiscardedThisDiscardPhase
-                | CardFilter::MatchesOwnIdentitysFaction
+                | CardFilter::MatchesOwnersIdentityFaction
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::NotThisCardsHost
@@ -986,7 +990,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Written over before it is read; unresolved, nothing was chosen.
         CardFilter::OfChosenCardType => false,
         // Instance-level: the identity in play is state.
-        CardFilter::MatchesOwnIdentitysFaction => true,
+        CardFilter::MatchesOwnersIdentityFaction => true,
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),

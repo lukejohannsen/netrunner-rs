@@ -21,7 +21,7 @@
                   "HasSubtype": "G-mod"
                 },
                 {
-                  "Not": "MatchesOwnIdentitysFaction"
+                  "Not": "MatchesOwnersIdentityFaction"
                 }
               ]
             },

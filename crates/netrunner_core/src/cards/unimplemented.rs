@@ -146,8 +146,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
     ("rumor_mill", "Rumor Mill"),
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
-    ("data_breach", "Data Breach"),
-    ("enforcing_loyalty", "Enforcing Loyalty"),
     ("weyland_consortium_builder_of_nations", "Weyland Consortium: Builder of Nations"),
 ];
 
@@ -165,7 +163,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_gauntlet", "The Gauntlet"),
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
-    ("wetwork_refit", "Wetwork Refit"),
     ("fumiko_yamamori", "Fumiko Yamamori"),
 ];
 
@@ -187,7 +184,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tracker", "Tracker"),
     ("encore", "Encore"),
     ("sensor_net_activation", "Sensor Net Activation"),
-    ("psychokinesis", "Psychokinesis"),
     ("net_quarantine", "Net Quarantine"),
     ("herald", "Herald"),
     ("bryan_stinson", "Bryan Stinson"),
