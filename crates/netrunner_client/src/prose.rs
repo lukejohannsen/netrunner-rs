@@ -136,6 +136,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
         Amount::Link => "the Runner's link".to_string(),
+        Amount::UnusedMemory => "the Runner's unused MU".to_string(),
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::RnDCardsAccessedLastRun => "the cards accessed in R&D during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),

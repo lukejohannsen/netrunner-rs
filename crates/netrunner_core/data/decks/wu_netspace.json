@@ -3,7 +3,7 @@
   "name": "Netspace Thrill",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Kabonesa Wu: Netspace Thrillseeker, Kitara's Shaper identity, whose click searches the stack for a non-virus program and installs it 1[credit] cheaper, removing it from the game if it is still installed when the turn ends. On Level Pegging's list, its identity swapped; named to sort after every other deck, so the sweep schedule of those before it does not move. Kitara Stage 12f: two Compile for two Rejig, a run that installs a program from the stack or heap for nothing at its first encounter; Level Pegging keeps Rejig. Kitara Stage 15: two Flame-out for its two Tinkering, a host whose credits pay for the program on it. Kitara Stage 20 takes two Marathon for two Armitage Codebusting. Red Sand Stage 7 takes two Maven and two NanoTK for two Battering Ram and two Euler. Red Sand Stage 13 Network Exchange (Red Sand Stage 14) Red Sand Stage 19: two Dedicated Processor for two In the Groove, a mod hosted on a non-AI icebreaker that pumps it +4 for 2[credit]. Red Sand Stage 20: two Inversificator for two Living Mural, a decoder that swaps the ice it alone fully broke once it is passed. Mass-Driver (Red Sand Stage 21) takes Engolo's code gate slot Daredevil (Red Sand Stage 27) Red Sand Stage 53: one Adjusted Matrix for one NanoTK, a mod that lets its host break any subroutine for a click.",
+  "description": "Not a published list: built so the sweeps reach Kabonesa Wu: Netspace Thrillseeker, Kitara's Shaper identity, whose click searches the stack for a non-virus program and installs it 1[credit] cheaper, removing it from the game if it is still installed when the turn ends. On Level Pegging's list, its identity swapped; named to sort after every other deck, so the sweep schedule of those before it does not move. Kitara Stage 12f: two Compile for two Rejig, a run that installs a program from the stack or heap for nothing at its first encounter; Level Pegging keeps Rejig. Kitara Stage 15: two Flame-out for its two Tinkering, a host whose credits pay for the program on it. Kitara Stage 20 takes two Marathon for two Armitage Codebusting. Red Sand Stage 7 takes two Maven and two NanoTK for two Battering Ram and two Euler. Red Sand Stage 13 Network Exchange (Red Sand Stage 14) Red Sand Stage 19: two Dedicated Processor for two In the Groove, a mod hosted on a non-AI icebreaker that pumps it +4 for 2[credit]. Red Sand Stage 20: two Inversificator for two Living Mural, a decoder that swaps the ice it alone fully broke once it is passed. Mass-Driver (Red Sand Stage 21) takes Engolo's code gate slot Daredevil (Red Sand Stage 27) Red Sand Stage 53: one Adjusted Matrix for one NanoTK, a mod that lets its host break any subroutine for a click. Adept, Savant and Deep Data Mining are here for the unused memory they count (Flashpoint Stage 10).",
   "style": [
     "rig"
   ],
@@ -14,16 +14,8 @@
       "count": 1
     },
     {
-      "card": "blueberry_diesel",
-      "count": 2
-    },
-    {
       "card": "sacrificial_construct",
       "count": 3
-    },
-    {
-      "card": "gordian_blade",
-      "count": 1
     },
     {
       "card": "lampades",
@@ -39,10 +31,6 @@
     },
     {
       "card": "beatriz_friere_gonzalez",
-      "count": 2
-    },
-    {
-      "card": "atman",
       "count": 2
     },
     {
@@ -112,6 +100,18 @@
     {
       "card": "daredevil",
       "count": 1
+    },
+    {
+      "card": "adept",
+      "count": 2
+    },
+    {
+      "card": "savant",
+      "count": 1
+    },
+    {
+      "card": "deep_data_mining",
+      "count": 2
     }
   ]
 }

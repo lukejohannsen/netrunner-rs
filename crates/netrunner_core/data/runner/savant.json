@@ -1,0 +1,58 @@
+{
+  "id": "savant",
+  "title": "Savant",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "UnusedMemory"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each unused MU."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry or 2 code gate subroutines. — sentry",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break 1 sentry or 2 code gate subroutines. — code gate",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 13018,
+  "is_playable": true
+}

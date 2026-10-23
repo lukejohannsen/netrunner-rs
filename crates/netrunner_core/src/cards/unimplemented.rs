@@ -140,7 +140,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("another_day_another_paycheck", "Another Day, Another Paycheck"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
-    ("watchdog", "Watchdog"),
     ("nbn_controlling_the_message", "NBN: Controlling the Message"),
 ];
 
@@ -220,9 +219,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("charlatan", "Charlatan"),
     ("maxwell_james", "Maxwell James"),
     ("careful_planning", "Careful Planning"),
-    ("deep_data_mining", "Deep Data Mining"),
-    ("adept", "Adept"),
-    ("savant", "Savant"),
     ("levy_advanced_research_lab", "Levy Advanced Research Lab"),
     ("dean_lister", "Dean Lister"),
     ("the_shadow_net", "The Shadow Net"),
@@ -236,7 +232,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("armored_servers", "Armored Servers"),
     ("illegal_arms_factory", "Illegal Arms Factory"),
     ("k_p_lynn", "K. P. Lynn"),
-    ("paper_trail", "Paper Trail"),
     ("long_term_investment", "Long-Term Investment"),
 ];
 
@@ -1133,5 +1128,4 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("public_support", "Public Support"),
     ("spiderweb", "Spiderweb"),
     ("oversight_ai", "Oversight AI"),
-    ("paper_trail", "Paper Trail"),
 ];

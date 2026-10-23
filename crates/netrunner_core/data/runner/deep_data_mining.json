@@ -1,0 +1,39 @@
+{
+  "id": "deep_data_mining",
+  "title": "Deep Data Mining",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "AddAdditionalAccessAmount": {
+            "server": "RnD",
+            "amount": {
+              "Reduced": {
+                "amount": "UnusedMemory",
+                "by": {
+                  "Reduced": {
+                    "amount": "UnusedMemory",
+                    "by": {
+                      "Fixed": 4
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run R&D. If successful, access X additional cards when you breach R&D. X is equal to your unused MU or 4, whichever is less."
+    }
+  ],
+  "built_from": 13014,
+  "is_playable": true
+}
