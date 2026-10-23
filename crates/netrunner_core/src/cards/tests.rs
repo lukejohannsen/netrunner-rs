@@ -43909,3 +43909,129 @@ mod flashpoint_stage_15 {
         assert_eq!(resolved.runner.resources.credits, Credits(1), "unsuccessful: gain the agenda points in both score areas, Hostile Takeover's 1");
     }
 }
+
+/// Flashpoint Stage 16: Data Breach, Enforcing Loyalty, Psychokinesis and
+/// Wetwork Refit.
+mod flashpoint_stage_16 {
+    use super::*;
+    use crate::rules::InstalledCard;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rezzed_ice(card: &str, install: u32, server: ServerId) -> InstalledCard {
+        InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card");
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection").0
+    }
+
+    #[test]
+    fn data_breach_runs_r_and_d_and_may_run_it_again_when_a_successful_run_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("data_breach")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("data_breach") }).expect("play Data Breach");
+        assert_eq!(played.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD), "run R&D");
+        let (at_success, _) = crate::rules::test_support::through_movement(&played, &registry).expect("continue run");
+        let (ended, _) = apply_action(&at_success, &registry, PlayerAction::CompleteRun).expect("complete run");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.active_run.is_none() && ended.pending_decision.is_some(), "you may run R&D again");
+        let (again, _) = apply_action(&ended, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("run again");
+        let offered: Vec<_> = crate::rules::legal_actions_for(&again, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![ServerId::RnD], "R&D, and only R&D");
+        let (second, _) = apply_action(&again, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("run R&D again");
+        assert_eq!(second.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD));
+        assert_eq!(second.runner.resources.clicks, Clicks(3), "the second run costs no click");
+        let (declined, _) = apply_action(&ended, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("or not");
+        assert!(declined.active_run.is_none() && declined.pending_decision.is_none());
+    }
+
+    #[test]
+    fn enforcing_loyalty_trashes_an_installed_card_out_of_the_runners_faction_on_a_successful_trace() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("enforcing_loyalty")];
+        state.runner.identity = Some(id("kate_mac_mccaffrey_digital_tinker"));
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: InstallId(2001), card: id("akamatsu_mem_chip"), ..Default::default() },
+            crate::rules::InstalledRunnerCard { install_id: InstallId(2002), card: id("corroder"), ..Default::default() },
+        ];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("enforcing_loyalty") }).expect("play it");
+        assert_eq!(played.corp.resources.clicks, Clicks(1), "[click] to play, and [click] as an additional cost");
+        assert_eq!(played.active_trace.as_ref().map(|trace| trace.base_strength), Some(3), "Trace[3]");
+        let (bid, _) = apply_action(&played, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (choosing, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids");
+        assert_eq!(toggles(&choosing, &registry), vec![1], "Corroder is Anarch; Akamatsu Mem Chip matches Kate's Shaper");
+        let trashed = pick(&choosing, &registry, 1);
+        let (trashed, _) = close_all_windows(trashed, &registry);
+        assert!(trashed.runner.heap.contains(&id("corroder")) && trashed.runner.rig.len() == 1);
+    }
+
+    #[test]
+    fn psychokinesis_installs_an_agenda_asset_or_upgrade_of_the_top_five_in_a_remote_and_ends_the_action_phase() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("psychokinesis")];
+        // The top of R&D is the end of the list; Hedge Fund at the bottom is sixth.
+        state.corp.r_and_d = vec![id("pad_campaign"), id("ice_wall"), id("hedge_fund"), id("hostile_takeover"), id("enigma"), id("hedge_fund")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("psychokinesis") }).expect("play it");
+        assert_eq!(toggles(&played, &registry), vec![3], "Hostile Takeover; PAD Campaign is sixth from the top");
+        let choosing_server = pick(&played, &registry, 3);
+        let servers: Vec<_> = crate::rules::legal_actions_for(&choosing_server, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert!(!servers.is_empty() && servers.iter().all(|server| matches!(server, ServerId::Remote(_))), "in a remote server: {servers:?}");
+        let (installed, _) = apply_action(&choosing_server, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("install it");
+        assert!(installed.corp.installed.iter().any(|card| card.card == id("hostile_takeover") && card.server == ServerId::Remote(0)));
+        let (installed, _) = close_all_windows(installed, &registry);
+        assert!(!matches!(installed.phase, GamePhase::Action(Side::Corp)), "the action phase is over with clicks left: {:?}", installed.phase);
+    }
+
+    #[test]
+    fn wetwork_refit_gives_its_host_bioroid_a_core_damage_subroutine_before_the_others() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("wetwork_refit")];
+        state.corp.installed = vec![rezzed_ice("viktor_1_0", 11, ServerId::Hq), rezzed_ice("ice_wall", 12, ServerId::RnD)];
+        let printed = crate::rules::continuous::subroutine_count(&state, &registry, InstallId(11));
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("wetwork_refit") }).expect("play it");
+        assert_eq!(toggles(&played, &registry), vec![0], "rezzed bioroid ice only");
+        let hosted = pick(&played, &registry, 0);
+        assert_eq!(hosted.corp.conditions.first().map(|condition| condition.host), Some(InstallId(11)), "a condition counter on Viktor 1.0");
+        let own = crate::rules::continuous::own_subroutines(&hosted, &registry, InstallId(11));
+        assert_eq!(own.granted_before.iter().map(|sub| sub.text.as_str()).collect::<Vec<_>>(), vec!["Do 1 core damage."]);
+        assert_eq!(crate::rules::continuous::subroutine_count(&hosted, &registry, InstallId(11)), printed + 1);
+        assert_eq!(crate::rules::continuous::subroutine_count(&hosted, &registry, InstallId(12)), 1, "only its host");
+
+        let mut no_bioroid = base_state();
+        no_bioroid.corp.hq = vec![id("wetwork_refit")];
+        no_bioroid.corp.installed = vec![rezzed_ice("ice_wall", 12, ServerId::RnD)];
+        assert!(!crate::rules::legal_actions_for(&no_bioroid, &registry, Side::Corp).contains(&PlayerAction::PlayOperation { card_id: id("wetwork_refit") }));
+    }
+}

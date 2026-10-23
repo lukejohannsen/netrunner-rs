@@ -1,0 +1,40 @@
+{
+  "id": "enforcing_loyalty",
+  "title": "Enforcing Loyalty",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "trash_cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Trace": {
+            "base": 3,
+            "on_success": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "Not": "MatchesOwnersIdentityFaction"
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 11033,
+  "is_playable": true
+}

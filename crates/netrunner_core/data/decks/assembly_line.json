@@ -3,7 +3,7 @@
   "name": "Assembly Line",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built in tranche 8 Stage 7d so the sweeps reach Haas-Bioroid: Architects of Tomorrow, System Update 2021's Haas-Bioroid identity, which rezzes a bioroid card for 4[credit] less the first time each turn the Runner passes a rezzed piece of bioroid ice. Retirement Package's frame, whose Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are bioroids, with two Ravana 1.0 for its two Pulse, a bioroid code gate that resolves a subroutine on another rezzed bioroid; Endless Loop keeps Pulse. Tranche 8 Stage 11c: two Ichi 1.0 for its two Drafter, a sentry for a sentry, and two Heimdall 1.0 for its two Hákarl 1.0, a bioroid barrier for a bioroid barrier; both stay in other decks. Red Sand Stage 4: two Defense Construct for two Corporate Hospitality.",
+  "description": "Not a published list: built in tranche 8 Stage 7d so the sweeps reach Haas-Bioroid: Architects of Tomorrow, System Update 2021's Haas-Bioroid identity, which rezzes a bioroid card for 4[credit] less the first time each turn the Runner passes a rezzed piece of bioroid ice. Retirement Package's frame, whose Eli 1.0, Hákarl 1.0, Ansel 1.0 and Týr are bioroids, with two Ravana 1.0 for its two Pulse, a bioroid code gate that resolves a subroutine on another rezzed bioroid; Endless Loop keeps Pulse. Tranche 8 Stage 11c: two Ichi 1.0 for its two Drafter, a sentry for a sentry, and two Heimdall 1.0 for its two Hákarl 1.0, a bioroid barrier for a bioroid barrier; both stay in other decks. Red Sand Stage 4: two Defense Construct for two Corporate Hospitality. Flashpoint Stage 16 put two Wetwork Refit in for its two Big Deal.",
   "style": [
     "glacier"
   ],
@@ -62,10 +62,6 @@
       "count": 2
     },
     {
-      "card": "big_deal",
-      "count": 2
-    },
-    {
       "card": "bass_ch1r180g4",
       "count": 2
     },
@@ -103,6 +99,10 @@
     },
     {
       "card": "defense_construct",
+      "count": 2
+    },
+    {
+      "card": "wetwork_refit",
       "count": 2
     }
   ]

@@ -2190,8 +2190,12 @@ impl CardDefinition {
                 // a gain — only the ice's own text loses its printed copies
                 // (Hive's, 9.8.2b).
                 (ContinuousKind::Subroutines { count, .. }, Scope::Ice(_)) if !matches!(self.card_type, CardType::Ice(_)) && count.per > 0 => {}
+                // A condition counter's grant to the ice it is hosted on
+                // (Wetwork Refit's "Host ice gains ... before all its other
+                // subroutines"): the same gain, about the one host.
+                (ContinuousKind::Subroutines { count, .. }, Scope::Host) if self.card_type == CardType::Operation && count.per > 0 => {}
                 (ContinuousKind::Subroutines { .. }, _) => {
-                    return misfit("Subroutines", "a subroutine a piece of ice gains by its own static ability is said by the ice of itself (`This`, CR 9.8.3b/d), and another card's standing grant is a gain about ice (`Ice`, 9.8.3a/e); a grant for a duration is `GainSubroutine`");
+                    return misfit("Subroutines", "a subroutine a piece of ice gains by its own static ability is said by the ice of itself (`This`, CR 9.8.3b/d), another card's standing grant is a gain about ice (`Ice`, 9.8.3a/e), and a condition counter's is about its host (`Host`); a grant for a duration is `GainSubroutine`");
                 }
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host | Scope::Hosted) => {}
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
