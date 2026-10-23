@@ -1,0 +1,24 @@
+{
+  "id": "mr_stone",
+  "title": "Mr. Stone",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTagsGiven",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner takes 1 or more tags, do 1 meat damage."
+    }
+  ],
+  "built_from": 13046,
+  "is_playable": true
+}

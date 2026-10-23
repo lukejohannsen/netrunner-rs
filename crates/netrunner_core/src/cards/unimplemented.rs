@@ -234,27 +234,17 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("successful_field_test", "Successful Field Test"),
     ("estelle_moon", "Estelle Moon"),
     ("eli_2_0", "Eli 2.0"),
-    ("executive_functioning", "Executive Functioning"),
     ("holmegaard", "Holmegaard"),
     ("tapestry", "Tapestry"),
-    ("ultraviolet_clearance", "Ultraviolet Clearance"),
     ("black_level_clearance", "Black Level Clearance"),
     ("mason_bellamy", "Mason Bellamy"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
     ("armored_servers", "Armored Servers"),
-    ("illicit_sales", "Illicit Sales"),
-    ("graft", "Graft"),
     ("illegal_arms_factory", "Illegal Arms Factory"),
-    ("mr_stone", "Mr. Stone"),
     ("bloodletter", "Bloodletter"),
-    ("hailstorm", "Hailstorm"),
-    ("hunter_seeker", "Hunter Seeker"),
     ("k_p_lynn", "K. P. Lynn"),
     ("paper_trail", "Paper Trail"),
-    ("honeyfarm", "Honeyfarm"),
     ("long_term_investment", "Long-Term Investment"),
-    ("weir", "Weir"),
-    ("ipo", "IPO"),
 ];
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
@@ -1151,5 +1141,4 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("spiderweb", "Spiderweb"),
     ("oversight_ai", "Oversight AI"),
     ("paper_trail", "Paper Trail"),
-    ("ipo", "IPO"),
 ];

@@ -1,0 +1,29 @@
+{
+  "id": "executive_functioning",
+  "title": "Executive Functioning",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 1,
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, do 1 core damage.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 13035,
+  "triggers": [],
+  "is_playable": true
+}

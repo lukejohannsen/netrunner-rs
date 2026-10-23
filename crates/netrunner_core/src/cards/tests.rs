@@ -43010,3 +43010,81 @@ mod flashpoint_stage_7 {
         assert_eq!(crate::rules::continuous::hand_size(&done, &registry, Side::Runner), before - 1);
     }
 }
+
+mod flashpoint_stage_8 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<crate::rules::GameEvent>), RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) })
+    }
+
+    fn agenda(card: &str, advancement_tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(10), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, advancement_tokens, ..Default::default() }
+    }
+
+    #[test]
+    fn ipo_gains_thirteen_and_ends_the_action_phase() {
+        let registry = registry();
+        let mut state = corp_turn(&["ipo"]);
+        state.corp.resources.credits = Credits(8);
+        let (done, events) = play(&state, &registry, "ipo").expect("play it");
+        assert_eq!(done.corp.resources.credits, Credits(13));
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::ActionPhaseEnded { side: Side::Corp })));
+    }
+
+    #[test]
+    fn ultraviolet_clearance_spends_two_more_clicks() {
+        let registry = registry();
+        let state = corp_turn(&["ultraviolet_clearance"]);
+        let (done, _) = play(&state, &registry, "ultraviolet_clearance").expect("play it");
+        let done = pass_until_settled(done, &registry).0;
+        assert_eq!(done.corp.resources.clicks, Clicks(0), "the play's [click] and the two additional");
+        assert_eq!(done.corp.resources.credits, Credits(10 - 6 + 10));
+    }
+
+    #[test]
+    fn hunter_seeker_needs_a_steal_last_turn() {
+        let registry = registry();
+        let state = corp_turn(&["hunter_seeker"]);
+        assert!(play(&state, &registry, "hunter_seeker").is_err());
+    }
+
+    #[test]
+    fn illicit_sales_pays_three_for_each_bad_publicity_after_the_optional_one() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![agenda("illicit_sales", 3)];
+        state.corp.bad_publicity = 1;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score it");
+        let asked = pass_until_settled(asked, &registry).0;
+        let (took, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take one");
+        let took = pass_until_settled(took, &registry).0;
+        assert_eq!(took.corp.bad_publicity, 2);
+        assert!(took.corp.resources.credits >= Credits(10 + 6), "3[credit] for each of two, and The Outfit-free");
+    }
+
+    #[test]
+    fn graft_searches_up_to_three_cards_into_hq() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![agenda("graft", 5)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(10) }).expect("score it");
+        let mut picked = pass_until_settled(asked, &registry).0;
+        for position in 0..3 {
+            picked = apply_action(&picked, &registry, PlayerAction::ToggleCardSelection { position }).expect("pick").0;
+        }
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("add them");
+        assert_eq!((done.corp.hq.len(), done.corp.r_and_d.len()), (3, 2));
+    }
+}

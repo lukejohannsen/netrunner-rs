@@ -1,0 +1,36 @@
+{
+  "id": "weir",
+  "title": "Weir",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "The Runner loses [click].",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "The Runner trashes 1 card from their grip.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap"
+        }
+      }
+    }
+  ],
+  "built_from": 13056,
+  "triggers": [],
+  "is_playable": true
+}

@@ -1,0 +1,35 @@
+{
+  "id": "honeyfarm",
+  "title": "Honeyfarm",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner accesses this asset, they lose 1[credit]."
+    }
+  ],
+  "built_from": 13054,
+  "is_playable": true
+}
