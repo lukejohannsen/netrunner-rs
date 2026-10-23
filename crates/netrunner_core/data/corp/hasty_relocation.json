@@ -1,0 +1,45 @@
+{
+  "id": "hasty_relocation",
+  "title": "Hasty Relocation",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnRAndD",
+      "filter": {
+        "TopOfZone": 1
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 3,
+            "max": 3,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnRAndD"
+          }
+        }
+      ],
+      "text": "Draw 3 cards. Add 3 cards from HQ to the top of R&D in any order."
+    }
+  ],
+  "built_from": 11074,
+  "is_playable": true
+}

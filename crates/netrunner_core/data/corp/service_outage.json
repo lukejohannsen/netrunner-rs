@@ -1,0 +1,36 @@
+{
+  "id": "service_outage",
+  "title": "Service Outage",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "RunCost": {
+          "Credits": 1
+        }
+      },
+      "applies_to": {
+        "Runs": "Central"
+      },
+      "first_each_turn": true,
+      "text": "As an additional cost to run for the first time during their turn, the Runner must spend 1[credit]."
+    },
+    {
+      "kind": {
+        "RunCost": {
+          "Credits": 1
+        }
+      },
+      "applies_to": {
+        "Runs": "Remote"
+      },
+      "first_each_turn": true,
+      "text": "As an additional cost to run for the first time during their turn, the Runner must spend 1[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11057,
+  "is_playable": true
+}

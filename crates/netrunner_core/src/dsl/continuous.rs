@@ -554,6 +554,13 @@ pub enum Scope {
     /// anywhere on the table, and `IceProtectingThisServer` is about one
     /// server.
     Ice(CardFilter),
+    /// Each installed Corp card matching the filter, ice or root alike —
+    /// Interdiction's "The Corp cannot rez **non-ice cards** during the
+    /// Runner's turn" (`Not(Ice)`, under `Cannot(Rez)`). The filter is read
+    /// off the definition and the copy, as `Ice`'s is. Composition didn't
+    /// work: `Ice` admits only ice and `RootOfThisServer` one server's
+    /// root, and a Runner current is in no server.
+    CorpInstalled(CardFilter),
     /// Each card in the root of the server this one is installed in,
     /// matching the filter.
     RootOfThisServer(CardFilter),

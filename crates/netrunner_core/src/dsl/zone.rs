@@ -444,6 +444,15 @@ pub enum CardFilter {
     /// re-finds the card by) the whole of R&D. The top of R&D and of the
     /// stack is the *end* of the `Vec` — see `zone_card_ids`.
     TopOfZone(u32),
+    /// The one card `n` from the top of the zone, the top being 1 — Top
+    /// Hat's "choose 1 of the top 5 cards in R&D and access it", the
+    /// Runner choosing a position (`Effect::ChooseNumber`, written in as
+    /// `Fixed` by `with_chosen_number`) among cards neither player sees.
+    /// Instance-level; an amount not yet a number matches nothing.
+    /// Composition didn't work: `TopOfZone` is the top `n` together, and a
+    /// `Not` of a place is read off the definition, where every place
+    /// matches.
+    NthFromTop(Box<crate::dsl::Amount>),
     /// `TopOfZone` of a number read as the selection is offered — The
     /// Class Act's "look at the top X cards of your stack", X the cards
     /// about to be drawn plus 1 (`Amount::AboutToResolve`). Written over
@@ -762,6 +771,7 @@ impl CardFilter {
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(amount(exactly)),
             CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
+            CardFilter::NthFromTop(n) => CardFilter::NthFromTop(amount(n)),
             CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
                 CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(amount(of)))
             }
@@ -843,6 +853,7 @@ impl CardFilter {
                 | CardFilter::Unadvanced
                 | CardFilter::TopOfZone(_)
                 | CardFilter::TopOf(_)
+                | CardFilter::NthFromTop(_)
                 | CardFilter::HostsCounters(crate::dsl::CounterKind::Virus)
                 | CardFilter::Revealed
                 | CardFilter::NotInstalledThisTurn
@@ -1009,7 +1020,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) | CardFilter::TopOf(_) | CardFilter::Revealed => true,
+        CardFilter::TopOfZone(_) | CardFilter::TopOf(_) | CardFilter::NthFromTop(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc

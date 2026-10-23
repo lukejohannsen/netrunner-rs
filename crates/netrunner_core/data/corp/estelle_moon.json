@@ -1,0 +1,60 @@
+{
+  "id": "estelle_moon",
+  "title": "Estelle Moon",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCreditsAmount": [
+              "Corp",
+              {
+                "Increased": {
+                  "amount": "HostedCounters",
+                  "by": "HostedCounters"
+                }
+              }
+            ]
+          },
+          {
+            "DrawCardsAmount": [
+              "Corp",
+              "HostedCounters"
+            ]
+          }
+        ]
+      },
+      "text": "[trash]: For each power counter on this asset, gain 2[credit] and draw 1 card."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "All": [
+          "InRoot",
+          {
+            "InstalledIn": "Remote"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you install a card in the root of a remote server, place 1 power counter on this asset."
+    }
+  ],
+  "built_from": 13032,
+  "is_playable": true
+}

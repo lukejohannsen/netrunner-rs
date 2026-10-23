@@ -157,23 +157,19 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
     ("net_mercur", "Net Mercur"),
-    ("find_the_truth", "Find the Truth"),
     ("project_kusanagi", "Project Kusanagi"),
     ("jinteki_potential_unleashed", "Jinteki: Potential Unleashed"),
     ("alexa_belsky", "Alexa Belsky"),
-    ("service_outage", "Service Outage"),
 ];
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_gauntlet", "The Gauntlet"),
     ("ele_smoke_scovak_cynosure_of_the_net", "Ele \"Smoke\" Scovak: Cynosure of the Net"),
-    ("top_hat", "Top Hat"),
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
     ("wetwork_refit", "Wetwork Refit"),
     ("fumiko_yamamori", "Fumiko Yamamori"),
-    ("hasty_relocation", "Hasty Relocation"),
     ("chief_slee", "Chief Slee"),
 ];
 
@@ -181,7 +177,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("on_the_lam", "On the Lam"),
     ("cold_read", "Cold Read"),
-    ("interdiction", "Interdiction"),
     ("baba_yaga", "Baba Yaga"),
     ("mind_game", "Mind Game"),
     ("nihongai_grid", "Nihongai Grid"),
@@ -219,7 +214,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("brain_rewiring", "Brain Rewiring"),
     ("successful_field_test", "Successful Field Test"),
-    ("estelle_moon", "Estelle Moon"),
     ("black_level_clearance", "Black Level Clearance"),
     ("mason_bellamy", "Mason Bellamy"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),

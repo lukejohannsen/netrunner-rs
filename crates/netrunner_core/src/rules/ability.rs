@@ -684,9 +684,14 @@ pub fn evaluate_effect(
         Effect::RemoveFromGame(_) => Err(RulesError::UnresolvedCardTarget),
 
         // Corporate Defector's "reveal that card": the card the basic
-        // action drew, if it is still in the hand it was drawn to.
+        // action drew, if it is still in the hand it was drawn to — or,
+        // heard as a draw, the one card it is (Find the Truth's "whenever
+        // you draw a card, reveal that card").
         Effect::Reveal(CardTarget::DrawnCard) => {
-            let Some(GameEvent::BasicDrawActionTaken { side, card: Some(card) }) = ctx.triggering_event else { return Ok(Vec::new()) };
+            let (side, card) = match ctx.triggering_event {
+                Some(GameEvent::BasicDrawActionTaken { side, card: Some(card) }) | Some(GameEvent::DrewCard { side, card }) => (side, card),
+                _ => return Ok(Vec::new()),
+            };
             let in_hand = match side {
                 Side::Corp => state.corp.hq.contains(card),
                 Side::Runner => state.runner.grip.contains(card),

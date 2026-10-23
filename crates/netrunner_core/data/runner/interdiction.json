@@ -1,0 +1,24 @@
+{
+  "id": "interdiction",
+  "title": "Interdiction",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "Rez"
+      },
+      "applies_to": {
+        "CorpInstalled": {
+          "Not": "Ice"
+        }
+      },
+      "while": "DuringYourTurn",
+      "text": "The Corp cannot rez non-ice cards during the Runner's turn."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11087,
+  "is_playable": true
+}
