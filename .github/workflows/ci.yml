@@ -115,9 +115,9 @@ jobs:
           skip=false
           tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || tree=
           candidates=$( {
-            gh api "repos/$REPO/commits/$SHA" --jq '.parents[].sha'
-            gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha'
-          } 2>/dev/null | sort -u)
+            gh api "repos/$REPO/commits/$SHA" --jq '.parents[].sha' || true
+            gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha' || true
+          } | sort -u)
           # A push that moves the dependency tree still runs: the test job
           # is what saves main's build cache, and every PR starts from it.
           changed=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --jq '.files[].filename') || tree=
