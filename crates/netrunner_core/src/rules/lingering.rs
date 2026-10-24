@@ -35,7 +35,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, EffectDuration, EndRunPrevention, Prohibition};
+use crate::dsl::{CardId, CostedStep, EffectDuration, EndRunPrevention, Prohibition};
 use crate::rules::run::RunPhase;
 use crate::rules::state::{GameState, InstallId, InstalledRunnerCard};
 use crate::rules::{RulesError, ServerId, Side};
@@ -156,6 +156,12 @@ pub enum Lingering {
     /// `CorpState::cannot_score_agendas_this_turn` (cleared by the turn
     /// code, carried by no view) and `RunState::runner_cannot_steal_or_trash`.
     Cannot(Prohibition),
+    /// Armored Servers' "the Runner must trash 1 card from the grip as an
+    /// additional cost to jack out or break a subroutine", about the
+    /// Runner, one entry per step (`Effect::ImposeAdditionalCost`). Read
+    /// by `additional_costs` at every payment, so nothing ends it but its
+    /// duration.
+    AdditionalCost { to: CostedStep, cost: crate::dsl::Cost },
     /// Shred's "The first time the Corp would end that run, prevent the run
     /// from ending unless…" — a prevention that stands for a duration
     /// rather than one a player uses, so it is here and not an interrupt
@@ -417,7 +423,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -472,7 +478,7 @@ pub fn ice_strength_terms(state: &GameState, on: InstallId) -> impl Iterator<Ite
         .filter(move |effect| (effect.on == On::Install(on) || effect.on == On::EachIce || server.is_some_and(|server| effect.on == On::Server(server))) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
 }
 
@@ -485,7 +491,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced | Lingering::ChosenCard(_) | Lingering::ChosenCardType(_) | Lingering::ChosenIceType(_) | Lingering::BoostsLastTheRun | Lingering::HandSize(_) | Lingering::AdditionalCost { .. } => 0,
         })
         .sum()
 }
@@ -636,6 +642,28 @@ pub(crate) fn forget_rezzed_period(state: &mut GameState, install: InstallId) {
 
 /// Whether a prohibition is in force. Who it binds is the prohibition's
 /// own (`Prohibition::binds`), which is what the entry's `on` says.
+/// The additional costs in force on `to` (Armored Servers'), in the order
+/// they were made: each is paid as the step is taken.
+pub(crate) fn additional_costs(state: &GameState, to: CostedStep) -> Vec<crate::dsl::Cost> {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| effect.on == On::Player(Side::Runner) && effect.holds(state))
+        .filter_map(|effect| match &effect.what {
+            Lingering::AdditionalCost { to: step, cost } if *step == to => Some(cost.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether an additional cost in force could ask its payer something — a
+/// card out of the grip, with more than one there. The necessary condition
+/// `payment::could_ask` reads, for any action, since a break or a jack-out
+/// may be the continuation of nearly anything.
+pub(crate) fn additional_costs_could_ask(state: &GameState) -> bool {
+    state.lingering.iter().any(|effect| matches!(&effect.what, Lingering::AdditionalCost { cost, .. } if cost.may_ask()))
+}
+
 pub fn prohibits(state: &GameState, what: Prohibition) -> bool {
     in_force(&state.lingering, what, |effect| effect.holds(state))
 }

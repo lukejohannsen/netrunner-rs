@@ -1452,7 +1452,15 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
         paid_ability::require_no_window(state)?;
     }
     let mut next = state.clone();
-    let mut events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
+    // Armored Servers' "as an additional cost to jack out": paid by the
+    // Runner's own decision to jack out, and only once the run allows one
+    // (`run::jack_out`'s refusals are asked of the state before paying).
+    if state.active_run.as_ref().is_some_and(|run| !run.jack_out_permitted) {
+        return Err(RulesError::IllegalJackOutWindow { phase: state.active_run.as_ref().map_or(RunPhase::Ended, |run| run.phase) });
+    }
+    let cost_events = ability::pay_additional_costs(&mut next, registry, crate::dsl::CostedStep::JackOut)?;
+    let mut events = cost_events.clone();
+    events.extend(run::advance_run(&mut next, RunAction::JackOut, registry)?);
     run::end_run(&mut next);
 
     let jacked_out_event = events
@@ -1461,6 +1469,7 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
         .cloned()
         .expect("run::advance_run(RunAction::JackOut) always emits RunJackedOut on success");
     events.extend(dispatcher::dispatch_event(&mut next, registry, &jacked_out_event)?);
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
     Ok((next, events))
 }
@@ -2626,10 +2635,15 @@ fn break_subroutine_with_click(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
+    // Armored Servers' additional cost to break, as an icebreaker's break
+    // pays it (`ability::break_pending`).
+    let cost_events = ability::pay_additional_costs(&mut next, registry, crate::dsl::CostedStep::BreakSubroutine)?;
+    events.extend(cost_events.clone());
     if limit.is_some() && let Some(run) = next.active_run.as_mut() {
         run.this_encounter.limited_breaks += 1;
     }
     events.extend(run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?);
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))

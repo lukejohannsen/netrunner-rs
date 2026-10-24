@@ -180,7 +180,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maxwell_james", "Maxwell James"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
-    ("armored_servers", "Armored Servers"),
 ];
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.

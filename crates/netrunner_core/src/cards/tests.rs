@@ -45011,3 +45011,98 @@ mod flashpoint_stage_29 {
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("the_shadow_net"), ability_index: 0 }).is_err(), "no agenda to forfeit");
     }
 }
+
+mod flashpoint_stage_30 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A run on HQ past Ice Wall's approach, with Armored Servers' counter
+    /// spent in the Corp's window there, and the Runner holding `grip`.
+    fn armored_run(grip: &[&str], registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { agenda_counters: 1, ..crate::rules::ScoredAgenda::plain(id("armored_servers")) }];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("corroder"), card: id("corroder"), base_strength: 2, ..Default::default() }];
+        state.runner.grip = grip.iter().map(|card| id(card)).collect();
+        let armored = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        assert!(apply_action(&state, registry, armored.clone()).is_err(), "only during a run");
+        let (running, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (approaching, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        let (corp_window, _) = apply_action(&approaching, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (armored, _) = apply_action(&corp_window, registry, armored).expect("hosted agenda counter");
+        assert_eq!(armored.corp.scored_agendas[0].agenda_counters, 0);
+        armored
+    }
+
+    fn encountering(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    /// Each break costs a card from the grip, which the Runner chooses when
+    /// there are two; with an empty grip nothing can be broken.
+    #[test]
+    fn armored_servers_makes_the_runner_trash_a_card_to_break_a_subroutine() {
+        let registry = registry();
+        let break_it = PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 };
+
+        let at_ice = encountering(armored_run(&["sure_gamble", "easy_mark"], &registry), &registry);
+        let (asked, _) = apply_action(&at_ice, &registry, break_it.clone()).expect("break with Corroder");
+        assert!(asked.pending_payment.is_some(), "which card to trash");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("trash Easy Mark");
+        let run = chosen.active_run.as_ref().expect("encountering");
+        assert_eq!(run.ice[run.position].subroutines[0].status, crate::rules::SubroutineStatus::Broken);
+        assert_eq!(chosen.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(chosen.runner.heap, vec![id("easy_mark")]);
+
+        let empty = encountering(armored_run(&[], &registry), &registry);
+        assert!(apply_action(&empty, &registry, break_it).is_err(), "no card to pay with");
+    }
+
+    /// Jacking out costs a card from the grip too, and is refused with
+    /// none: past Ice Wall, at the server, the Runner who paid their last
+    /// card to break it cannot leave.
+    #[test]
+    fn armored_servers_makes_the_runner_trash_a_card_to_jack_out() {
+        let registry = registry();
+        let break_it = PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 };
+        let at_server = |grip: &[&str]| {
+            let at_ice = encountering(armored_run(grip, &registry), &registry);
+            let (broken, _) = apply_action(&at_ice, &registry, break_it.clone()).expect("break with Corroder");
+            let broken = if broken.pending_payment.is_some() {
+                apply_action(&broken, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("trash Sure Gamble").0
+            } else {
+                broken
+            };
+            let mut state = broken;
+            for _ in 0..8 {
+                if crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&PlayerAction::JackOut)
+                    || state.active_run.as_ref().is_some_and(|run| run.jack_out_permitted && run.phase != crate::rules::RunPhase::EncounterIce)
+                {
+                    break;
+                }
+                let actor = crate::rules::current_actor(&state).expect("someone acts");
+                state = apply_action(&state, &registry, PlayerAction::PassPriority { side: actor }).expect("pass").0;
+            }
+            state
+        };
+
+        let decided = at_server(&["sure_gamble", "easy_mark"]);
+        assert!(crate::rules::legal_actions_for(&decided, &registry, Side::Runner).contains(&PlayerAction::JackOut), "{:?}", decided.active_run.as_ref().map(|run| run.phase));
+        let (out, _) = apply_action(&decided, &registry, PlayerAction::JackOut).expect("jack out");
+        assert!(out.active_run.is_none());
+        assert!(out.runner.grip.is_empty());
+        assert_eq!(out.runner.heap.len(), 2, "one card to break, one to jack out");
+
+        let stuck = at_server(&["sure_gamble"]);
+        assert!(stuck.runner.grip.is_empty());
+        assert!(stuck.active_run.as_ref().is_some_and(|run| run.jack_out_permitted), "the run would allow it");
+        assert!(!crate::rules::legal_actions_for(&stuck, &registry, Side::Runner).contains(&PlayerAction::JackOut), "nothing to pay with");
+    }
+}
