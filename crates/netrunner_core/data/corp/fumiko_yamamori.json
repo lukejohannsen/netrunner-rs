@@ -1,0 +1,59 @@
+{
+  "id": "fumiko_yamamori",
+  "title": "Fumiko Yamamori",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSecretCreditsRevealed",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "And": [
+                  {
+                    "Not": {
+                      "MoreThan": [
+                        {
+                          "RevealedBid": "Corp"
+                        },
+                        {
+                          "RevealedBid": "Runner"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "Not": {
+                      "MoreThan": [
+                        {
+                          "RevealedBid": "Runner"
+                        },
+                        {
+                          "RevealedBid": "Corp"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "effect": {
+              "DealDamage": [
+                "Meat",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you and the Runner reveal secretly spent credits, do 1 meat damage if you and the Runner spent a different number of credits."
+    }
+  ],
+  "built_from": 11073,
+  "is_playable": true
+}

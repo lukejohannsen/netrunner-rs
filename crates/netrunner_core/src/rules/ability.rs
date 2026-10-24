@@ -2513,6 +2513,7 @@ pub fn evaluate_effect(
                         | Amount::TriggeringCardTrashCost
                         | Amount::PassedIceSubroutinesResolved
                         | Amount::UnbrokenSubroutinesThatEncounter
+                        | Amount::RevealedBid(_)
                         | Amount::TriggeringAgendaAdvancementRequirement
                         | Amount::TimesThisActionThisTurn
                         | Amount::AboutToResolve
@@ -6121,6 +6122,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         },
         Amount::UnbrokenSubroutinesThatEncounter => match ctx.triggering_event {
             Some(GameEvent::EncounterEnded { unbroken, .. }) => *unbroken,
+            _ => 0,
+        },
+        Amount::RevealedBid(side) => match ctx.triggering_event {
+            Some(GameEvent::PsiBidsRevealed { corp, runner }) => match side {
+                Side::Corp => *corp,
+                Side::Runner => *runner,
+            },
             _ => 0,
         },
         Amount::TriggeringCardTrashCost => match ctx.triggering_event {

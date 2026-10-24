@@ -1,0 +1,145 @@
+{
+  "id": "zygote",
+  "name": "Zygote",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: Flashpoint Stage 21's deck for Khan: Savvy Skiptracer, on Hit List's list, so the sweeps meet a Runner who may install an icebreaker for 1[credit] less the first time each turn they pass a piece of ice. Eternal-legal only.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "khan_savvy_skiptracer",
+  "cards": [
+    {
+      "card": "wake_implant_v2a_jrj",
+      "count": 2
+    },
+    {
+      "card": "poison_vial",
+      "count": 1
+    },
+    {
+      "card": "tremolo",
+      "count": 1
+    },
+    {
+      "card": "jeitinho",
+      "count": 1
+    },
+    {
+      "card": "peacock",
+      "count": 1
+    },
+    {
+      "card": "pheromones",
+      "count": 1
+    },
+    {
+      "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "inside_job",
+      "count": 2
+    },
+    {
+      "card": "asmund_pudlat",
+      "count": 2
+    },
+    {
+      "card": "matryoshka",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "hq_interface",
+      "count": 2
+    },
+    {
+      "card": "fall_guy",
+      "count": 2
+    },
+    {
+      "card": "lemuria_codecracker",
+      "count": 2
+    },
+    {
+      "card": "cats_cradle",
+      "count": 2
+    },
+    {
+      "card": "networking",
+      "count": 2
+    },
+    {
+      "card": "swift",
+      "count": 1
+    },
+    {
+      "card": "the_back",
+      "count": 1
+    },
+    {
+      "card": "prognostic_q_loop",
+      "count": 1
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "easy_mark",
+      "count": 1
+    },
+    {
+      "card": "special_order",
+      "count": 1
+    },
+    {
+      "card": "tycoon",
+      "count": 2
+    },
+    {
+      "card": "faerie",
+      "count": 2
+    },
+    {
+      "card": "data_dealer",
+      "count": 2
+    },
+    {
+      "card": "puffer",
+      "count": 2
+    },
+    {
+      "card": "corporate_grant",
+      "count": 2
+    },
+    {
+      "card": "tapwrm",
+      "count": 1
+    },
+    {
+      "card": "reaver",
+      "count": 1
+    },
+    {
+      "card": "officer_frank",
+      "count": 1
+    },
+    {
+      "card": "first_responders",
+      "count": 1
+    },
+    {
+      "card": "the_gauntlet",
+      "count": 1
+    }
+  ]
+}

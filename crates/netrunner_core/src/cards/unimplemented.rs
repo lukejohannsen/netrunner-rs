@@ -135,14 +135,12 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("system_outage", "System Outage"),
     ("mirror", "Mirror"),
-    ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
 ];
 
 /// *Blood Money* (`blood_money`): tranche F5 of the FFG plan.
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
-    ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
 ];
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
@@ -157,7 +155,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
-    ("fumiko_yamamori", "Fumiko Yamamori"),
 ];
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.

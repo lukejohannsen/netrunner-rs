@@ -380,6 +380,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnCardExposed => false,
         // A boosted card is installed faceup in the rig.
         Trigger::OnStrengthBoosted => false,
+        // A psi game's bids are revealed to both players (CR 10.14.6c).
+        Trigger::OnSecretCreditsRevealed => false,
         // A score area is public.
         Trigger::OnAgendaAddedToScoreArea => false,
         // An operation resolves in the open, and an expendable card is
