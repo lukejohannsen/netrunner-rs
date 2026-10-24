@@ -336,6 +336,16 @@ pub enum ContinuousKind {
     /// work: nothing limited the servers, and a new remote is not an
     /// install a `Cannot` could name without its count.
     RemoteServerLimit(u32),
+    /// The player bids at most this many credits when secretly spending —
+    /// Government Investigations' "While secretly spending credits, players
+    /// cannot spend 2[credit]" (1, about each player: `Scope::Player`, an
+    /// entry for each side). Asked as a psi game fixes what each player may
+    /// bid (`continuous::bid_limit`, CR 10.14.3: "a player cannot bid a
+    /// number of credits they are unable to spend"). A number rather than a
+    /// `Cannot`: every prohibition binds one side, and what is refused is
+    /// an amount, not an action. Composition didn't work: nothing limited
+    /// a bid but the credits a player had.
+    BidAtMost(u32),
     /// During a run it applies to, the Runner cannot access more than this
     /// many cards other than the card that says so — Flagship's "the Runner
     /// cannot access more than 1 card other than this upgrade". Once they

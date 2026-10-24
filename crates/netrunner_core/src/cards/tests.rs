@@ -44456,3 +44456,47 @@ mod flashpoint_stage_21 {
         assert_eq!(twice.corp.resources.credits, Credits(3), "the first time each turn");
     }
 }
+
+mod flashpoint_stage_22 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    #[test]
+    fn government_investigations_keeps_both_players_from_bidding_two_while_it_is_in_play() {
+        let mut registry = registry();
+        registry.insert(
+            serde_json::from_str(
+                r#"{"id": "a_psi_operation", "title": "A Psi Operation", "side": "Corp", "card_type": "Operation", "cost": 0,
+                    "triggers": [{"trigger": "OnPlay", "subject": "This", "effects": [{"PsiGame": {"on_match": {"Sequence": []}, "on_differ": {"Sequence": []}}}]}]}"#,
+            )
+            .expect("a card file"),
+        );
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("government_investigations")];
+        state.runner.resources.credits = Credits(5);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("a_psi_operation")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("government_investigations") }).expect("play");
+        let (mut played, _) = close_all_windows(played, &registry);
+        assert!(played.runner.in_play.iter().any(|current| current.card == id("government_investigations")), "a current stays in play");
+        played.phase = GamePhase::Action(Side::Corp);
+        let bids = |state: &GameState, side| -> Vec<u32> {
+            crate::rules::legal_actions_for(state, &registry, side)
+                .into_iter()
+                .filter_map(|action| match action {
+                    PlayerAction::ChooseNumber { amount } => Some(amount),
+                    _ => None,
+                })
+                .collect()
+        };
+        let (bidding, _) = apply_action(&played, &registry, PlayerAction::PlayOperation { card_id: id("a_psi_operation") }).expect("play");
+        assert_eq!(bids(&bidding, Side::Corp), vec![0, 1], "the Corp cannot spend 2[credit]");
+        assert!(apply_action(&bidding, &registry, PlayerAction::ChooseNumber { amount: 2 }).is_err());
+        let (bidding, _) = apply_action(&bidding, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Corp bids");
+        assert_eq!(bids(&bidding, Side::Runner), vec![0, 1], "nor can the Runner");
+    }
+}

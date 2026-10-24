@@ -1037,6 +1037,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
+        ContinuousKind::BidAtMost(most) => format!("cannot spend more than {most} [credit] secretly in a psi game"),
         ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),

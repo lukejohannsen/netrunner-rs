@@ -2108,6 +2108,8 @@ impl CardDefinition {
                 }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
                 (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
+                (ContinuousKind::BidAtMost(_), Scope::Player(_)) => {}
+                (ContinuousKind::BidAtMost(_), _) => return misfit("BidAtMost", "a limit on a bid is about the player bidding (`Player`)"),
                 (ContinuousKind::RemoteServerLimit(_), _) => return misfit("RemoteServerLimit", "a limit on remote servers is its controller's"),
                 (ContinuousKind::AdditionalTrashCost(_), Scope::This) => {}
                 (ContinuousKind::AdditionalTrashCost(_), _) => {
@@ -2165,7 +2167,7 @@ impl CardDefinition {
                 (ContinuousKind::Tags(_), Scope::Player(Side::Runner)) if self.side == Side::Corp => {}
                 (ContinuousKind::Tags(_), _) => return misfit("Tags", "tags a Runner is considered to have are said of the Runner by a Corp card (`Player`)"),
                 (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
-                    return misfit("Player", "only a prohibition or the other player's hand size is about a player named by side");
+                    return misfit("Player", "only a prohibition, the other player's hand size or a limit on a bid is about a player named by side");
                 }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_) | ContinuousKind::CannotBeBrokenUsing(_) | ContinuousKind::StrengthCannotBeLowered | ContinuousKind::CannotHost | ContinuousKind::InsteadOfPassing(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}

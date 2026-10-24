@@ -1,0 +1,30 @@
+{
+  "id": "government_investigations",
+  "title": "Government Investigations",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "BidAtMost": 1
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "While secretly spending credits, players cannot spend 2[credit]."
+    },
+    {
+      "kind": {
+        "BidAtMost": 1
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "text": "While secretly spending credits, players cannot spend 2[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11069,
+  "is_playable": true
+}

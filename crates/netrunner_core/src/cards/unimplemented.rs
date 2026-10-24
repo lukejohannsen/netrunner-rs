@@ -153,7 +153,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("government_investigations", "Government Investigations"),
     ("citadel_sanctuary", "Citadel Sanctuary"),
 ];
 

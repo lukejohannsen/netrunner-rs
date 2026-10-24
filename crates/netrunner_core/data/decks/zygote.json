@@ -3,7 +3,7 @@
   "name": "Zygote",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 21's deck for Khan: Savvy Skiptracer, on Hit List's list, so the sweeps meet a Runner who may install an icebreaker for 1[credit] less the first time each turn they pass a piece of ice. Eternal-legal only.",
+  "description": "Not a published list: Flashpoint Stage 21's deck for Khan: Savvy Skiptracer, on Hit List's list, so the sweeps meet a Runner who may install an icebreaker for 1[credit] less the first time each turn they pass a piece of ice. Eternal-legal only. Flashpoint Stage 22 traded First Responders for Government Investigations, so the sweeps meet a current that keeps both players from spending 2[credit] on a psi game.",
   "style": [
     "pressure"
   ],
@@ -134,11 +134,11 @@
       "count": 1
     },
     {
-      "card": "first_responders",
+      "card": "the_gauntlet",
       "count": 1
     },
     {
-      "card": "the_gauntlet",
+      "card": "government_investigations",
       "count": 1
     }
   ]
