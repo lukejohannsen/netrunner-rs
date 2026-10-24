@@ -342,11 +342,17 @@ pub enum GameEvent {
     /// program added to the grip, Sell Out's resource trashed), so its own
     /// resolution can read them (`ResolutionContext::paid_with`). Every one
     /// was an installed Runner card, and so public.
+    ///
+    /// `x`: the X an event that costs X to play was played for
+    /// (Brute-Force-Hack), as `OperationPlayed::x` is an operation's, and
+    /// for its reason.
     EventPlayed {
         side: Side,
         card: CardId,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         paid_with: Vec<CardId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x: Option<u32>,
     },
     /// `from_archives`: the card was played out of Archives rather than
     /// HQ (`CardDefinition::playable_from_archives`, Petty Cash) — read by

@@ -1272,7 +1272,7 @@ pub enum CardValidationError {
     TraceMarginWithoutATrace(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
-    #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost or an operation's additional cost to play; X is chosen before anything is paid (CR 1.16.2c)")]
+    #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost or an operation's or event's additional cost to play; X is chosen before anything is paid (CR 1.16.2c)")]
     XCostNotFirst(CardId),
     #[error("card {0:?} resolves something for each card of a random reveal or a deck's top (`Effect::RevealAtRandom::each`, `Effect::TopOfDeck::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
     RevealedCardsCannotWait(CardId),
@@ -1883,11 +1883,12 @@ impl CardDefinition {
         if self.abilities.iter().filter_map(|ability| ability.cost.as_ref()).any(|cost| cost.names_x() && !x_first(cost)) {
             return Err(CardValidationError::XCostNotFirst(self.id.clone()));
         }
-        // An operation that costs X to play (Psychographics) prints it as
-        // its additional cost, and its own `OnPlay` reads it
-        // (`GameEvent::OperationPlayed::x`); nothing else hears a play's X.
+        // An operation or event that costs X to play (Psychographics,
+        // Brute-Force-Hack) prints it as its additional cost, and its own
+        // `OnPlay` reads it (`GameEvent::OperationPlayed::x`,
+        // `EventPlayed::x`); nothing else hears a play's X.
         let x_to_play = self.additional_play_cost.as_ref().is_some_and(crate::dsl::Cost::names_x);
-        if x_to_play && (self.card_type != CardType::Operation || !self.additional_play_cost.as_ref().is_some_and(x_first)) {
+        if x_to_play && (!matches!(self.card_type, CardType::Operation | CardType::Event) || !self.additional_play_cost.as_ref().is_some_and(x_first)) {
             return Err(CardValidationError::XCostNotFirst(self.id.clone()));
         }
         // An install cost of X (Bug Out Bag) is the same, for a resource,

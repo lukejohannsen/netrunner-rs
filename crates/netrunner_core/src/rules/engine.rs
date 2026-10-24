@@ -1641,7 +1641,49 @@ fn play_event(
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-    take_from_grip(&mut next, side, &card_id)?;
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(play_event_card(&mut next, registry, card_id, false, false)?);
+    Ok((next, events))
+}
+
+/// Whether the Runner could play `card_id` out of the heap right now,
+/// click aside — the offer half of The Shadow Net's "Play an event from
+/// your heap, ignoring all costs", as `can_play_operation` is Plutus's.
+/// Only the heap: the click action plays from the grip and asks its own
+/// questions.
+pub(crate) fn can_play_event_from_heap(state: &GameState, registry: &CardRegistry, card_id: &CardId, ignoring_costs: bool) -> bool {
+    let Some(card_def) = registry.get(card_id) else { return false };
+    state.runner.heap.contains(card_id)
+        && card_def.card_type == CardType::Event
+        && (ignoring_costs || payment::available(state, registry, Side::Runner, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
+        && (ignoring_costs || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
+            ability::cost_is_affordable(state, registry, Side::Runner, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
+        }))
+        && card_def.play_requirement.as_ref().is_none_or(|requirement| {
+            ability::check_requirement(state, requirement, Side::Runner, &ability::ResolutionContext::for_card(Some(card_id)), registry).is_ok()
+        })
+}
+
+/// The play half every event shares — the click action above and
+/// `Effect::PlayOperation` from the heap (The Shadow Net), which spends no
+/// click: `play_operation_card`'s Runner twin. "Ignoring all costs" pays neither the price nor a
+/// printed additional cost, and the `play_requirement` still holds (CR
+/// 1.16.6), as Bryan Stinson's operation does.
+pub(crate) fn play_event_card(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    from_heap: bool,
+    ignoring_costs: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Runner;
+    let scored_before = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count();
+    if from_heap {
+        let position = next.runner.heap.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+        next.runner.heap.remove(position);
+    } else {
+        take_from_grip(next, side, &card_id)?;
+    }
 
     let card_def = registry
         .get(&card_id)
@@ -1655,26 +1697,31 @@ fn play_event(
     // tagged") — checked before its credit cost is paid, mirroring
     // `activate_ability`'s identical placement for `AbilityDef::requirement`.
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
+        ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
-    let mut events = vec![GameEvent::ClickSpent { side }];
+    let mut events = Vec::new();
     // Priced as the table stands (`continuous::play_cost_of`): Tailgate's
     // own discount is read here and by nothing else.
-    let price = continuous::play_cost_of(&next, registry, card_def);
-    let additional = continuous::additional_play_cost_of(&next, registry, card_def);
+    let price = if ignoring_costs { 0 } else { continuous::play_cost_of(next, registry, card_def) };
+    let additional = if ignoring_costs { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
     // The price's events too are dispatched after the effect, as every
     // payer's are: Mystic Maemi's credits spent on the play are credits
     // spent from an installed card (Keiko, The Twinning).
-    let price_events = ability::pay_cost(&mut next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
+    let price_events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
     events.extend(price_events.clone());
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands here with the credits — before
     // `OnPlay` — and an unaffordable one fails the play before anything
     // resolves, which is what makes `legal_actions`' probe drop it.
     let mut cost_events = Vec::new();
+    let mut x = None;
     if let Some(additional) = &additional {
-        cost_events = ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?;
+        // Brute-Force-Hack costs X: read as `play_operation_card` reads
+        // Psychographics', and spent to play.
+        let purpose = if additional.names_x() { Purpose::Play(card_def) } else { Purpose::Other };
+        x = additional.names_x().then(|| next.payment_answers.first().copied()).flatten();
+        cost_events = ability::pay_cost(next, registry, side, additional, purpose, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
     let paid_with: Vec<CardId> = cost_events
@@ -1688,13 +1735,13 @@ fn play_event(
     // one, so it is in play while its play is heard (`rules::current`).
     let current = crate::rules::current::is_current(card_def) && !card_def.removed_after_play;
     if current {
-        crate::rules::current::file(&mut next, registry, &mut events, side, card_id.clone())?;
+        crate::rules::current::file(next, registry, &mut events, side, card_id.clone())?;
     }
-    let played_event = GameEvent::EventPlayed { side, card: card_id.clone(), paid_with };
-    dispatcher::emit(&mut next, registry, &mut events, played_event)?;
+    let played_event = GameEvent::EventPlayed { side, card: card_id.clone(), paid_with, x };
+    dispatcher::emit(next, registry, &mut events, played_event)?;
     // As `play_operation_card` does: the cost's events after.
-    events.extend(ability::dispatch_cost_events(&mut next, registry, &price_events)?);
-    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
+    events.extend(ability::dispatch_cost_events(next, registry, &price_events)?);
+    events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
     // A played Event is trashed once it resolves — it goes to the Heap,
     // faceup, exactly as `play_operation` archives an Operation. This used
     // to be missing, so every Event the Runner played left the game: the
@@ -1704,7 +1751,7 @@ fn play_event(
     // One its own text added to the score area as an agenda (Notoriety)
     // left the play as it resolved, and is trashed by nothing.
     let scored_as_it_resolved = next.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count()
-        > state.runner.scored_agendas.iter().filter(|scored| scored.card == card_id).count();
+        > scored_before;
     if scored_as_it_resolved || current {
         // Nothing to file: it is where it will stay.
     } else if card_def.removed_after_play {
@@ -1714,10 +1761,10 @@ fn play_event(
         // Trashed as it finishes resolving (CR 3.7.1): the rules' trash,
         // and a moment (Aniccam's "an event is trashed"), heard with the
         // card already in the heap — once whatever it parked has resolved.
-        dispatcher::event_trashed(&mut next, registry, &mut events, side, card_id)?;
+        dispatcher::event_trashed(next, registry, &mut events, side, card_id)?;
     }
 
-    Ok((next, events))
+    Ok(events)
 }
 
 /// Corp-only mirror of `play_event`: spends 1 click and the card's
@@ -5167,7 +5214,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new() },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id.clone(), paid_with: Vec::new(), x: None },
                 // Trashed as it finishes resolving (CR 3.7.1).
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::PlayArea, by: None, install: None },
                 GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
@@ -5203,7 +5250,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
-                GameEvent::EventPlayed { side: Side::Runner, card: card_id, paid_with: Vec::new() },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id, paid_with: Vec::new(), x: None },
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },

@@ -2078,6 +2078,12 @@ pub enum Effect {
     /// printed additional cost is paid, and the `play_requirement` still
     /// holds (CR 1.16.6). A field and not an effect of its own, because
     /// the play is otherwise the same play.
+    ///
+    /// `from: OwnHeap` is the Runner's play of an event out of the heap —
+    /// The Shadow Net's "Play an event from your heap, ignoring all
+    /// costs" (`engine::play_event_card`). The same variant and not a
+    /// `PlayEvent` beside it: the zone already says which side's card is
+    /// played, and what is left — whether to pay — is this field's.
     PlayOperation {
         from: CardZoneRef,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
