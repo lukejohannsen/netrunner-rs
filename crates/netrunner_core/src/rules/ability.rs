@@ -3274,6 +3274,25 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts }, ctx, registry)
         }
 
+        Effect::ModifyHandSize { side, by, until } => {
+            let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            state.lingering.push(LingeringEffect { what: Lingering::HandSize(*by), on: On::Player(*side), until, source });
+            Ok(Vec::new())
+        }
+
+        Effect::LowerEncounteredIceStrengthTo { to, duration } => {
+            let ice = state
+                .active_run
+                .as_ref()
+                .filter(|run| run.phase == RunPhase::EncounterIce)
+                .and_then(|run| run.ice.get(run.position))
+                .cloned()
+                .ok_or(RulesError::NotInEncounter)?;
+            let delta = (*to - continuous::ice_strength(state, registry, &ice)).min(0);
+            evaluate_effect(state, &Effect::ModifyStrength { delta, ice: crate::dsl::StrengthOf::Encountered, duration: *duration }, ctx, registry)
+        }
+
         Effect::AllottedClicksNextTurn(side, delta) => {
             let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
             state.lingering.push(LingeringEffect {

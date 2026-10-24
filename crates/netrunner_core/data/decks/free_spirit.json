@@ -3,7 +3,7 @@
   "name": "Free Spirit",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Ice Carver for two Crash Space, which lowers the strength of the ice being encountered and no other. Pay As You Go keeps Crash Space. Tranche 8 Stage 11u: two En Passant for its two Running Hot, an event for an event; Rez Tax and Burn Rate keep Running Hot. Reign and Reverie Stage 13: two Patchwork for two The Tungsten Tailor; four other decks keep the Tailor. Two Consume for two Valentina Ferreira Carvalho (FFG F3 Stage 8).",
+  "description": "Not a published list: built so the sweeps reach Quetzal: Free Spirit, System Update 2021's Anarch identity, who breaks one barrier subroutine for nothing once per turn. On Pay As You Go's frame, its identity swapped, at six influence of fifteen. Tranche 8 Stage 5a. Tranche 8 Stage 6a: two Ice Carver for two Crash Space, which lowers the strength of the ice being encountered and no other. Pay As You Go keeps Crash Space. Tranche 8 Stage 11u: two En Passant for its two Running Hot, an event for an event; Rez Tax and Burn Rate keep Running Hot. Reign and Reverie Stage 13: two Patchwork for two The Tungsten Tailor; four other decks keep the Tailor. Two Consume for two Valentina Ferreira Carvalho (FFG F3 Stage 8). Flashpoint Stage 25 traded a Marrow for Sifr, so the sweeps meet a console that lowers an encountered piece of ice to strength 0 for a card of hand size.",
   "style": [
     "rig",
     "dismantle"
@@ -72,7 +72,7 @@
     },
     {
       "card": "marrow",
-      "count": 2
+      "count": 1
     },
     {
       "card": "utae",
@@ -109,6 +109,10 @@
     {
       "card": "consume",
       "count": 2
+    },
+    {
+      "card": "sifr",
+      "count": 1
     }
   ]
 }

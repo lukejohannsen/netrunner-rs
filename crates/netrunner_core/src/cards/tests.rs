@@ -44670,3 +44670,51 @@ mod flashpoint_stage_24 {
         assert_eq!(crate::rules::payment::spent_recurring(&replaced, &registry, Side::Runner, fixture_install_id("cyberfeeder"), &id("cyberfeeder")), 0);
     }
 }
+
+mod flashpoint_stage_25 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn encountering_ice_wall(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("sifr"), card: id("sifr"), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (running, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (running, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        let asked = pass_until_settled(running, registry).0;
+        assert!(asked.pending_decision.is_some(), "Sifr asks as the Runner encounters Ice Wall");
+        asked
+    }
+
+    fn ice_strength(state: &GameState, registry: &CardRegistry) -> i32 {
+        let run = state.active_run.as_ref().expect("encountering");
+        crate::rules::continuous::ice_strength(state, registry, &run.ice[run.position])
+    }
+
+    /// Accepted, the encountered ice is strength 0 for the encounter and the
+    /// Runner's hand is a card smaller until their next turn begins.
+    #[test]
+    fn sifr_trades_a_card_of_hand_size_for_the_encountered_ice_at_strength_zero() {
+        let registry = registry();
+        let asked = encountering_ice_wall(&registry);
+        assert!(ice_strength(&asked, &registry) > 0);
+        let (taken, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("get –1 maximum hand size");
+        assert_eq!(ice_strength(&taken, &registry), 0, "lowered to 0 for the remainder of the encounter");
+        assert_eq!(crate::rules::continuous::hand_size(&taken, &registry, Side::Runner), -1);
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(ice_strength(&declined, &registry) > 0);
+        assert_eq!(crate::rules::continuous::hand_size(&declined, &registry, Side::Runner), 0);
+    }
+}

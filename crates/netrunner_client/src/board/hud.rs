@@ -386,6 +386,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let credits = n.unsigned_abs();
                     format!("each piece of ice costs {credits} credit{} {} to rez", if credits == 1 { "" } else { "s" }, if *n >= 0 { "more" } else { "less" })
                 }
+                // Sifr: the Runner's hand, until their next turn begins.
+                (Lingering::HandSize(n), on) => {
+                    let whose = if *on == On::Player(Side::Corp) { "the Corp's" } else { "the Runner's" };
+                    format!("{whose} maximum hand size is {} {}", n.unsigned_abs(), if *n >= 0 { "more" } else { "less" })
+                }
                 (Lingering::Cannot(what), On::CopiesOf(card)) => match what {
                     Prohibition::StealOrTrash => format!("the Runner cannot steal or trash copies of {}", title(card)),
                     Prohibition::ScoreAgendas => format!("the Corp cannot score copies of {}", title(card)),
