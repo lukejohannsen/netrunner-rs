@@ -1743,7 +1743,7 @@ fn play_operation(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(play_operation_card(&mut next, registry, card_id, from_archives)?);
+    events.extend(play_operation_card(&mut next, registry, card_id, from_archives, false)?);
     Ok((next, events))
 }
 
@@ -1756,19 +1756,19 @@ fn play_operation(
 /// card carries Petty Cash's own permission to be played from Archives:
 /// that is the click action's rule, and Plutus grants the permission
 /// itself.
-pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_archives: bool) -> bool {
+pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_archives: bool, ignoring_costs: bool) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
     let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
     present
         && card_def.card_type == CardType::Operation
-        && payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def)
+        && (ignoring_costs || payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
         // Touch-ups' additional click, which the Corp must still have
         // after the one this play costs — `Effect::PlayOperationFromHq`
         // spends no click, so what is checked is simply that the cost is
         // payable now.
-        && continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
+        && (ignoring_costs || continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
             ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
-        })
+        }))
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
             ability::check_requirement(state, requirement, Side::Corp, &ability::ResolutionContext::for_card(Some(card_id)), registry).is_ok()
         })
@@ -1785,6 +1785,7 @@ pub(crate) fn play_operation_card(
     registry: &CardRegistry,
     card_id: CardId,
     from_archives: bool,
+    ignoring_costs: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     take_operation(next, &card_id, from_archives)?;
@@ -1801,8 +1802,10 @@ pub(crate) fn play_operation_card(
 
     // Priced before the play is counted, so Synchrocyclotron's "the first
     // double operation you play each turn" reads a turn with none yet.
-    let price = continuous::play_cost_of(next, registry, card_def);
-    let additional = continuous::additional_play_cost_of(next, registry, card_def);
+    // "Ignoring all costs" (Bryan Stinson): no price and no printed
+    // additional cost, the requirement above still asked.
+    let price = if ignoring_costs { 0 } else { continuous::play_cost_of(next, registry, card_def) };
+    let additional = if ignoring_costs { None } else { continuous::additional_play_cost_of(next, registry, card_def) };
     let price_events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Play(card_def), Some(&card_id))?;
     let mut events = price_events.clone();
     // A Double's extra click (or any other printed additional cost) is

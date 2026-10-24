@@ -1,0 +1,57 @@
+{
+  "id": "bryan_stinson",
+  "title": "Bryan Stinson",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 5,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "Credits": "Runner"
+            },
+            6
+          ]
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Operation"
+              },
+              {
+                "HasSubtype": "Transaction"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlayOperation": {
+              "from": "OwnArchives",
+              "ignoring_costs": true
+            }
+          }
+        }
+      },
+      "text": "[click]: Play a transaction operation from Archives, ignoring all costs. Remove that transaction from the game instead of trashing it."
+    }
+  ],
+  "built_from": 11117,
+  "is_playable": true
+}

@@ -508,7 +508,7 @@ fn instance_matches_filter(
                 _ => None,
             };
             chooser == Side::Corp
-                && card.is_some_and(|card| crate::rules::engine::can_play_operation(state, registry, &card, from_archives))
+                && card.is_some_and(|card| crate::rules::engine::can_play_operation(state, registry, &card, from_archives, false))
         }
         CardFilter::AccessedDuringLastRun => {
             let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();

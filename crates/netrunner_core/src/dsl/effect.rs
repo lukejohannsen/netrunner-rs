@@ -2046,8 +2046,16 @@ pub enum Effect {
     /// be played from there differs by who is asking — Petty Cash prints
     /// its own permission (`CardDefinition::playable_from_archives`, the
     /// click action's rule), where Plutus grants it to any transaction.
+    ///
+    /// `ignoring_costs` is Bryan Stinson's "Play a transaction operation
+    /// from Archives, **ignoring all costs**": neither the play cost nor a
+    /// printed additional cost is paid, and the `play_requirement` still
+    /// holds (CR 1.16.6). A field and not an effect of its own, because
+    /// the play is otherwise the same play.
     PlayOperation {
         from: CardZoneRef,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignoring_costs: bool,
     },
     /// Presents the acting card's own subroutines as a choice and resolves
     /// the one picked, as that card — Mycoweb's "resolve 1 subroutine on a

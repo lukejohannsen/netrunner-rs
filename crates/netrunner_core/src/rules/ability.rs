@@ -3082,17 +3082,17 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::PlayOperation { from } => {
+        Effect::PlayOperation { from, ignoring_costs } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let from_archives = matches!(from, crate::dsl::CardZoneRef::OwnArchives);
             // Lenient, like every other "you may" here: an operation whose
             // cost or `play_requirement` has stopped holding since the
             // offer resolves to nothing rather than failing the action
             // that got here.
-            if !crate::rules::engine::can_play_operation(state, registry, &card_id, from_archives) {
+            if !crate::rules::engine::can_play_operation(state, registry, &card_id, from_archives, *ignoring_costs) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::play_operation_card(state, registry, card_id, from_archives)
+            crate::rules::engine::play_operation_card(state, registry, card_id, from_archives, *ignoring_costs)
         }
 
         Effect::RezInstalled { install, pay_cost, discount } => {
