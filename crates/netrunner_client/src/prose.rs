@@ -975,6 +975,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::UsingHosted => "to pay for using the hosted program".to_string(),
         PaysFor::TrashCostsOfInstalledCards => "to pay the trash cost of an installed card".to_string(),
         PaysFor::DuringRuns => "during runs".to_string(),
+        PaysFor::Anything => "for anything".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),
         PaysFor::DuringRunsOnCentralServers => "during runs on central servers".to_string(),
         PaysFor::DuringRunsOn(server) => format!("during runs on {}", crate::board::action_map::server_name(*server)),

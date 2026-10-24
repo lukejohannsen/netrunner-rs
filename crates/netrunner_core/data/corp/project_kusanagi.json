@@ -1,0 +1,71 @@
+{
+  "id": "project_kusanagi",
+  "title": "Project Kusanagi",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 0,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "Repeat": {
+            "times": {
+              "Reduced": {
+                "amount": "HostedAdvancementTokens",
+                "by": {
+                  "Fixed": 2
+                }
+              }
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When you score Project Kusanagi, place 1 agenda counter on it for each advancement token on it over 2."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Ice",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "GainSubroutine": {
+              "subroutine": {
+                "text": "Do 1 net damage.",
+                "effect": {
+                  "DealDamage": [
+                    "Net",
+                    1
+                  ]
+                }
+              },
+              "after": true,
+              "duration": "Run"
+            }
+          }
+        }
+      },
+      "text": "Hosted agenda counter: Choose 1 piece of ice to gain \"[subroutine] Do 1 net damage.\" after all its other subroutines for the remainder of this run."
+    }
+  ],
+  "built_from": 11052,
+  "is_playable": true
+}

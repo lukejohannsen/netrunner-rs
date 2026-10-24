@@ -3,7 +3,7 @@
   "name": "Zyzzyva",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty.",
+  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi.",
   "style": [
     "traps"
   ],
@@ -91,7 +91,7 @@
     },
     {
       "card": "genotyping",
-      "count": 2
+      "count": 1
     },
     {
       "card": "reverse_infection",
@@ -127,6 +127,10 @@
     },
     {
       "card": "hyoubu_research_facility",
+      "count": 1
+    },
+    {
+      "card": "project_kusanagi",
       "count": 1
     }
   ]
