@@ -181,10 +181,8 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("recon_drone", "Recon Drone"),
     ("tracker", "Tracker"),
     ("encore", "Encore"),
-    ("sensor_net_activation", "Sensor Net Activation"),
     ("net_quarantine", "Net Quarantine"),
     ("herald", "Herald"),
-    ("bryan_stinson", "Bryan Stinson"),
     ("nasx", "NASX"),
 ];
 

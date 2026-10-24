@@ -44149,3 +44149,63 @@ mod flashpoint_stage_17 {
         assert!(stayed.active_run.is_some() && stayed.runner.rig.len() == 1);
     }
 }
+
+/// Flashpoint Stage 18: Bryan Stinson and Sensor Net Activation.
+mod flashpoint_stage_18 {
+    use super::*;
+    use crate::rules::InstalledCard;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn bryan() -> GameState {
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(21), card: id("bryan_stinson"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        state
+    }
+
+    #[test]
+    fn bryan_stinson_plays_a_transaction_from_archives_ignoring_all_costs_while_the_runner_is_poor() {
+        let registry = registry();
+        let state = bryan();
+        let fire = PlayerAction::ActivateAbility { target: InstallId(21), ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&fire), "fewer than 6[credit]");
+        let (choosing, _) = apply_action(&state, &registry, fire.clone()).expect("[click]");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Hedge Fund");
+        let (played, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("play it");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.corp.resources.credits, Credits(9), "Hedge Fund's 9[credit], its 5[credit] ignored");
+        assert_eq!(played.corp.resources.clicks, Clicks(2));
+        assert!(played.corp.removed_from_game.contains(&id("hedge_fund")) && played.corp.archives.is_empty(), "removed from the game instead of trashed");
+
+        let mut rich = bryan();
+        rich.runner.resources.credits = Credits(6);
+        assert!(!crate::rules::legal_actions_for(&rich, &registry, Side::Corp).contains(&fire), "the Runner has 6[credit]");
+    }
+
+    #[test]
+    fn sensor_net_activation_spends_its_counter_to_rez_a_bioroid_free_and_derezzes_it_as_the_turn_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(11), card: id("viktor_1_0"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda { install_id: InstallId(31), agenda_counters: 1, ..crate::rules::ScoredAgenda::plain(id("sensor_net_activation")) }];
+        let (choosing, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(31), ability_index: 0 }).expect("hosted agenda counter");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Viktor 1.0");
+        let (rezzed, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        let (rezzed, _) = close_all_windows(rezzed, &registry);
+        assert!(rezzed.corp.installed[0].rezzed, "rezzed, ignoring all costs");
+        assert_eq!(rezzed.corp.resources.credits, Credits(0));
+        assert_eq!(rezzed.corp.scored_agendas[0].agenda_counters, 0);
+        assert_eq!(rezzed.delayed.len(), 1, "the derez waits for the turn's end");
+
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&rezzed), &registry, PlayerAction::EndTurn).expect("the Corp ends the turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(!ended.corp.installed[0].rezzed, "derezzed as the turn ended");
+        assert!(ended.delayed.is_empty());
+    }
+}
