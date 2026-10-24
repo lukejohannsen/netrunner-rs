@@ -44849,3 +44849,101 @@ mod flashpoint_stage_27 {
         assert_eq!(paid.corp.resources.credits, Credits(3), "PAD Campaign's rez cost");
     }
 }
+
+mod flashpoint_stage_28 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    /// From a run's start, up to the encounter with its outermost ice.
+    fn to_encounter(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let (approaching, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        state = apply_action(&approaching, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach").0;
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach")
+    }
+
+    /// Trashed by the Runner while rezzed, it gives the Corp a bad
+    /// publicity; trashed facedown, it does not.
+    #[test]
+    fn illegal_arms_factory_gives_bad_publicity_when_the_runner_trashes_it_rezzed() {
+        let registry = registry();
+        let trashed = |rezzed: bool| {
+            let mut state = runner_turn();
+            state.runner.resources.credits = Credits(6);
+            state.corp.installed = vec![installed("illegal_arms_factory", ServerId::Remote(0), InstallSlot::Root, rezzed)];
+            let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+            let (at_success, _) = pass_until_settled(running, &registry);
+            let (accessing, _) = apply_action(&at_success, &registry, PlayerAction::CompleteRun).expect("the run is successful");
+            let (accessing, _) = pass_until_settled(accessing, &registry);
+            let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("illegal_arms_factory") }).expect("pay 6[credit] to trash it");
+            pass_until_settled(trashed, &registry).0.corp.bad_publicity
+        };
+        assert_eq!(trashed(true), 1);
+        assert_eq!(trashed(false), 0);
+    }
+
+    /// Of two pieces of ice, the outer one is encountered and the inner one
+    /// bypassed.
+    #[test]
+    fn spear_phishing_bypasses_the_innermost_ice_alone() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("spear_phishing")];
+        state.runner.resources.credits = Credits(2);
+        state.corp.installed = vec![installed("ice_wall", ServerId::Hq, InstallSlot::Ice, true), installed("enigma", ServerId::Hq, InstallSlot::Ice, true)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("spear_phishing") }).expect("play Spear Phishing");
+        let (running, _) = apply_action(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (outer, events) = to_encounter(running, &registry);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IceBypassed { .. })), "the outer ice is encountered: {events:?}");
+        let run = outer.active_run.as_ref().expect("encountering");
+        assert_eq!((run.phase, run.position), (crate::rules::RunPhase::EncounterIce, 0), "at the outer ice");
+
+        let (broken, _) = apply_action(&outer, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        let (fired, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("its subroutine fires");
+        assert!(fired.active_run.is_none(), "the outer ice ends the run");
+
+        let mut one_ice = state.clone();
+        one_ice.corp.installed.truncate(1);
+        let (played, _) = apply_action(&one_ice, &registry, PlayerAction::PlayEvent { card_id: id("spear_phishing") }).expect("play Spear Phishing");
+        let (running, _) = apply_action(&played, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (_, events) = to_encounter(running, &registry);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceBypassed { .. })), "a lone piece of ice is the innermost: {events:?}");
+    }
+
+    /// Breaking a subroutine on ice protecting Mason Bellamy's server costs
+    /// the Runner a click as the encounter ends; breaking none costs
+    /// nothing.
+    #[test]
+    fn mason_bellamy_takes_a_click_when_the_runner_broke_a_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![installed("mason_bellamy", ServerId::Hq, InstallSlot::Root, true), installed("eli_1_0", ServerId::Hq, InstallSlot::Ice, true)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (at_ice, _) = to_encounter(running, &registry);
+        let clicks = at_ice.runner.resources.clicks.0;
+        let (broken, _) = apply_action(&at_ice, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("eli_1_0"), ability_index: 0 }).expect("lose [click]: break 1 subroutine");
+        let (broken, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (ended, _) = apply_action(&broken, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none(), "the other subroutine ended the run");
+        assert_eq!(ended.runner.resources.clicks.0, clicks - 2, "one click to break, one to Mason Bellamy");
+
+        let (unbroken, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (unbroken, _) = pass_until_settled(unbroken, &registry);
+        assert!(unbroken.active_run.is_none());
+        assert_eq!(unbroken.runner.resources.clicks.0, clicks, "nothing broken, nothing lost");
+    }
+}

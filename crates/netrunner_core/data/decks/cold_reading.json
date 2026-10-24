@@ -3,7 +3,7 @@
   "name": "Cold Reading",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Steve Cambridge: Master Grifter, System Update 2021's Criminal identity, who on the first successful run on HQ each turn chooses 2 cards in the heap, the Corp removes 1 from the game and the Runner takes the other. On Hit List's frame after Tranche 8 Stage 11l, its identity swapped, a Criminal for a Criminal at the same fifteen influence; Hit List runs HQ every turn for Gabriel Santiago, and its events fill the heap Steve draws on. Tranche 8 Stage 11v. FFG F1 Stage 2: Doppelgänger for its Desperado, a console for a console, which runs again once a turn when a successful run ends; and two Mr. Li for its two Asmund Pudlat, a resource that draws two and puts one back. Hit List keeps both. FFG F2 Stage 1: two Bankroll for its two Data Dealer, a credit banked on every successful run and taken all at once by trashing it; and two Hot Pursuit for its two Inside Job, a run event for a run event: HQ, 9[credit] and a tag. Hit List keeps both. FFG F2 Stage 6: Thunder Art Gallery for its The Back, a card installed a credit cheaper the first time each turn a tag is avoided or removed; The Back is still in other decks. Kitara Stage 6a: two Credit Kiting for two WAKE Implant v2A-JRJ. Kitara Stage 7a: two Amina for two Jeitinho. Kitara Stage 14a: two Slipstream for its two Networking, so a passed piece of ice can carry the Runner to a central server's ice in the same position. Kitara Stage 19: two Jackpot! for its two Penumbral Toolkit, a resource for a resource that saves a credit a turn and pays out on the next steal; two decks keep Penumbral Toolkit. Red Sand Stage 18: two Rubicon Switch for two Lemuria Codecracker. Flashpoint Stage 1: one Temüjin Contract, Blockade Runner and Aaron Marrón for one Poison Vial, Tremolo and Cat's Cradle. Flashpoint Stage 3: Demara, Lustig and Mammon for a second Shibboleth, Laser Pointer and Saci. Flashpoint Stage 9: SYN Attack for a Hot Pursuit. Golden, Saker and Peregrine return to the grip to derez the ice they fully broke (Flashpoint Stage 12).",
+  "description": "Not a published list: built so the sweeps reach Steve Cambridge: Master Grifter, System Update 2021's Criminal identity, who on the first successful run on HQ each turn chooses 2 cards in the heap, the Corp removes 1 from the game and the Runner takes the other. On Hit List's frame after Tranche 8 Stage 11l, its identity swapped, a Criminal for a Criminal at the same fifteen influence; Hit List runs HQ every turn for Gabriel Santiago, and its events fill the heap Steve draws on. Tranche 8 Stage 11v. FFG F1 Stage 2: Doppelgänger for its Desperado, a console for a console, which runs again once a turn when a successful run ends; and two Mr. Li for its two Asmund Pudlat, a resource that draws two and puts one back. Hit List keeps both. FFG F2 Stage 1: two Bankroll for its two Data Dealer, a credit banked on every successful run and taken all at once by trashing it; and two Hot Pursuit for its two Inside Job, a run event for a run event: HQ, 9[credit] and a tag. Hit List keeps both. FFG F2 Stage 6: Thunder Art Gallery for its The Back, a card installed a credit cheaper the first time each turn a tag is avoided or removed; The Back is still in other decks. Kitara Stage 6a: two Credit Kiting for two WAKE Implant v2A-JRJ. Kitara Stage 7a: two Amina for two Jeitinho. Kitara Stage 14a: two Slipstream for its two Networking, so a passed piece of ice can carry the Runner to a central server's ice in the same position. Kitara Stage 19: two Jackpot! for its two Penumbral Toolkit, a resource for a resource that saves a credit a turn and pays out on the next steal; two decks keep Penumbral Toolkit. Red Sand Stage 18: two Rubicon Switch for two Lemuria Codecracker. Flashpoint Stage 1: one Temüjin Contract, Blockade Runner and Aaron Marrón for one Poison Vial, Tremolo and Cat's Cradle. Flashpoint Stage 3: Demara, Lustig and Mammon for a second Shibboleth, Laser Pointer and Saci. Flashpoint Stage 9: SYN Attack for a Hot Pursuit. Golden, Saker and Peregrine return to the grip to derez the ice they fully broke (Flashpoint Stage 12). Flashpoint Stage 28 swapped two Credit Kitings for Spear Phishing.",
   "style": [
     "pressure"
   ],
@@ -98,10 +98,6 @@
       "count": 1
     },
     {
-      "card": "credit_kiting",
-      "count": 2
-    },
-    {
       "card": "amina",
       "count": 2
     },
@@ -156,6 +152,10 @@
     {
       "card": "peregrine",
       "count": 1
+    },
+    {
+      "card": "spear_phishing",
+      "count": 2
     }
   ]
 }

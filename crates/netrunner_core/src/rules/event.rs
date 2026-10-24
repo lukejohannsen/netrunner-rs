@@ -179,6 +179,14 @@ pub enum GameEvent {
         /// anybody hears this one end. Public, as the list is.
         #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
         unbroken: u32,
+        /// How many of its subroutines the Runner broke during the
+        /// encounter, by any means — a breaker's, a click's — Mason
+        /// Bellamy's "if the Runner broke at least 1 subroutine during that
+        /// encounter" (`EffectRequirement::SubroutineBrokenThatEncounter`).
+        /// `broken_with` names only the installs that broke, and a click
+        /// spent on a bioroid's subroutine is a break by no install.
+        #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+        broken: u32,
     },
     /// `card`, `side`'s, is shown to both players and goes back to where it
     /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
