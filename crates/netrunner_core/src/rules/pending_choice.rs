@@ -440,6 +440,14 @@ fn instance_matches_filter(
             let on_corp = |c: &crate::rules::InstalledCard| if registry.get(&c.card).and_then(|card| card.counter_kind) == Some(*kind) { c.counters } else { 0 };
             corp_install.map(on_corp).or(rig_card.map(on_rig)).is_some_and(|counters| counters > 0)
         }
+        CardFilter::SpentRecurringCredit => {
+            let side = owning_side(chooser, zone);
+            let install = match side {
+                Side::Corp => corp_install.map(|c| (c.install_id, &c.card)),
+                Side::Runner => installed_zone.then(|| state.runner.rig.get(position)).flatten().map(|c| (c.install_id, &c.card)),
+            };
+            install.is_some_and(|(install, card)| crate::rules::payment::spent_recurring(state, registry, side, install, card) > 0)
+        }
         CardFilter::AgendaPointsAtMostRunnerTags => zone_card_ids(state, chooser, zone, source)
             .get(position)
             .and_then(|card| registry.get(card))

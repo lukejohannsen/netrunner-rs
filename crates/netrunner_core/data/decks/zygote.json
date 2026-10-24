@@ -3,7 +3,7 @@
   "name": "Zygote",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 21's deck for Khan: Savvy Skiptracer, on Hit List's list, so the sweeps meet a Runner who may install an icebreaker for 1[credit] less the first time each turn they pass a piece of ice. Eternal-legal only. Flashpoint Stage 22 traded First Responders for Government Investigations, so the sweeps meet a current that keeps both players from spending 2[credit] on a psi game. Stage 23 traded Officer Frank for Tracker, so the sweeps meet a run whose first subroutine to resolve does not.",
+  "description": "Not a published list: Flashpoint Stage 21's deck for Khan: Savvy Skiptracer, on Hit List's list, so the sweeps meet a Runner who may install an icebreaker for 1[credit] less the first time each turn they pass a piece of ice. Eternal-legal only. Flashpoint Stage 22 traded First Responders for Government Investigations, so the sweeps meet a current that keeps both players from spending 2[credit] on a psi game. Stage 23 traded Officer Frank for Tracker, so the sweeps meet a run whose first subroutine to resolve does not. Stage 24 traded its Swift for Mirror, so the sweeps meet a console that puts a spent recurring credit back on Pheromones after a successful run on R&D.",
   "style": [
     "pressure"
   ],
@@ -74,10 +74,6 @@
       "count": 2
     },
     {
-      "card": "swift",
-      "count": 1
-    },
-    {
       "card": "the_back",
       "count": 1
     },
@@ -139,6 +135,10 @@
     },
     {
       "card": "tracker",
+      "count": 1
+    },
+    {
+      "card": "mirror",
       "count": 1
     }
   ]

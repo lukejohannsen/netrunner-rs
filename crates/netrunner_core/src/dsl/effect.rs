@@ -2173,6 +2173,16 @@ pub enum Effect {
     /// first successful run on a chosen remote could not be told from the
     /// first on any remote.
     SpendChosenServer,
+    /// One credit back on the acting card, where one of its "N[recurring-
+    /// credit]" was spent — Mirror's "you may replace 1 spent recurring
+    /// credit", in the `then` of a choice of the card
+    /// (`CardFilter::SpentRecurringCredit`). Through the payment's own
+    /// count and placement (`payment::replace_recurring`), so it lands
+    /// where the refill would put it: beside another kind of counter on
+    /// Pheromones. Composition didn't work: `AddCounters` adds the card's
+    /// own kind, which for Pheromones is a virus counter, and nothing
+    /// capped it at N.
+    ReplaceSpentRecurringCredit,
     /// Moves the run to the outermost position of `ServerId` — Proprionegation's
     /// "the Runner moves to the outermost position of Archives. (They
     /// approach any ice in that position.)". The run's ice list is rebuilt
@@ -4142,6 +4152,7 @@ impl Effect {
             | Effect::ChooseServer { then: None, .. }
             | Effect::ReplaceSubroutines
             | Effect::SpendChosenServer
+            | Effect::ReplaceSpentRecurringCredit
             | Effect::MoveRunToOutermost(..)
             | Effect::MoveRunToOutermostAndEncounter(..)
             | Effect::MoveRunToIce(..)

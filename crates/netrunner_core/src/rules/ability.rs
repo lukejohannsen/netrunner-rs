@@ -3217,6 +3217,11 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser }])
         }
 
+        Effect::ReplaceSpentRecurringCredit => {
+            let side = if ctx.acting_install.is_some_and(|install| state.find_rig_install(install).is_some()) { Side::Runner } else { Side::Corp };
+            crate::rules::payment::replace_recurring(state, registry, side, ctx)
+        }
+
         Effect::SpendChosenServer => {
             let card = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             lingering::spend_chosen_server(state, &card, ctx.acting_install);

@@ -550,6 +550,15 @@ pub enum CardFilter {
     /// decides (`is_about_the_copy_alone`) and `Not` says "with no hosted
     /// virus counters".
     HostsCounters(crate::dsl::CounterKind),
+    /// A card with "N[recurring-credit]" holding fewer than N — Mirror's
+    /// "you may replace 1 spent recurring credit", which may go only where
+    /// one was spent (CR 1.10.5). The definition says the card prints
+    /// recurring credits; how many it holds is instance-level, counted as
+    /// the refill counts it (`payment::spent_recurring`). Composition
+    /// didn't work: `HostsCounters` asks whether a card holds any, and a
+    /// card's recurring credits may sit beside counters of another kind
+    /// (Pheromones').
+    SpentRecurringCredit,
     /// A card in the server the acting card is in, its root or its ice —
     /// Isaac Liberdade's "a piece of ice protecting that server" (with
     /// `Ice`). A placeholder, as `InRootOfThisServer` is: written over as
@@ -1011,6 +1020,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // (Contaminate's), so for a virus counter the definition decides
         // only for a Corp card.
         CardFilter::HostsCounters(kind) => card.counter_kind == Some(*kind) || (*kind == crate::dsl::CounterKind::Virus && card.side == crate::rules::Side::Runner),
+        CardFilter::SpentRecurringCredit => card.recurring_credits.is_some(),
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),

@@ -1148,6 +1148,28 @@ fn raise_to(
     change_hosted(state, registry, &ctx, i64::from(credits - held))
 }
 
+/// How many of the "N[recurring-credit]" an installed card prints are not
+/// on it now — spent, since the last placement or refill raised it to N
+/// (`raise_to`, which counts N the same way). 0 for a card that prints none.
+pub(crate) fn spent_recurring(state: &GameState, registry: &CardRegistry, side: Side, install: InstallId, card: &crate::dsl::CardId) -> u32 {
+    let Some(recurring) = registry.get(card).and_then(|definition| definition.recurring_credits) else { return 0 };
+    let ctx = ResolutionContext::for_parked(Some(install), Some(card));
+    let ice = |server| state.corp.installed.iter().filter(|installed| installed.server == server && installed.slot == crate::rules::InstallSlot::Ice).count() as u32;
+    let remotes = crate::rules::legal_actions::existing_remote_ids(state).len() as u32;
+    recurring.of(ability::counters_of(state, &ctx).unwrap_or(0), ice, remotes).saturating_sub(hosted_credits(state, registry, side, install))
+}
+
+/// Mirror's "replace 1 spent recurring credit": 1 credit back on the card
+/// `ctx` acts as, where one of its recurring credits was spent, and
+/// nothing where none was.
+pub(crate) fn replace_recurring(state: &mut GameState, registry: &CardRegistry, side: Side, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    let (Some(install), Some(card)) = (ctx.acting_install, ctx.acting_card) else { return Err(RulesError::UnresolvedCardTarget) };
+    if spent_recurring(state, registry, side, install, card) == 0 {
+        return Ok(Vec::new());
+    }
+    change_hosted(state, registry, ctx, 1)
+}
+
 /// Puts `delta` credits on (or, negative, takes them off) the card `ctx`
 /// acts as: its `counters` through `ability::modify_counters`, or its
 /// `credits` when it keeps them beside another kind of counter, recorded
