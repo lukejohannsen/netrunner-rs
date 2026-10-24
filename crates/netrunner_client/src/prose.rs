@@ -404,6 +404,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::AllottedClicksNextTurn(side, n) => {
             format!("{} gets {}{} allotted {} next turn", who(*side), if *n < 0 { "−" } else { "+" }, n.unsigned_abs(), if n.unsigned_abs() == 1 { "click" } else { "clicks" })
         }
+        Effect::ModifyHandSize { side, by, .. } => format!("{} gets {}{} maximum hand size", who(*side), if *by < 0 { "−" } else { "+" }, by.unsigned_abs()),
+        Effect::LowerEncounteredIceStrengthTo { to, .. } => format!("the strength of the ice you are encountering is lowered to {to}"),
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
         Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL, leaving }) if *leaving > 0 => match kind {
             Some(kind) => format!("prevent all but {leaving} {} damage", format!("{kind:?}").to_lowercase()),

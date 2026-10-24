@@ -168,7 +168,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Quorum* (`quorum`): tranche F5 of the FFG plan.
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("sifr", "Şifr"),
     ("recon_drone", "Recon Drone"),
     ("encore", "Encore"),
     ("net_quarantine", "Net Quarantine"),

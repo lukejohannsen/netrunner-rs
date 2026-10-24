@@ -456,6 +456,23 @@ pub enum Effect {
     /// next turn a click short — and a no-op for the Runner, which had no
     /// field. Signed, because Caveat Emptor takes a click away.
     AllottedClicksNextTurn(Side, i32),
+    /// `side`'s maximum hand size changes by `by` for `until` — Sifr's
+    /// "you may get –1 maximum hand size until your next turn begins"
+    /// (`Lingering::HandSize` on the player). Composition didn't work: a
+    /// hand size was only ever declared (`ContinuousKind::HandSize`), for
+    /// as long as the card that declares it is active, and this one is
+    /// paid for once and outlasts nothing but its duration.
+    ModifyHandSize { side: Side, by: i32, until: EffectDuration },
+    /// The encountered piece of ice's strength is lowered to `to` for
+    /// `duration` — Sifr's "the strength of that ice is lowered to 0 for
+    /// the remainder of the encounter". Resolved to the change that makes
+    /// it `to` when it is made (a `Lingering::Strength`, as a lingering
+    /// effect always is), so a piece of ice whose strength cannot be
+    /// lowered (Lotus Field) drops it as it drops any lowering, and one
+    /// already at `to` or below is not raised. Composition didn't work:
+    /// `ModifyStrength` takes a number the card file writes, and this
+    /// number is the ice's own.
+    LowerEncounteredIceStrengthTo { to: i32, duration: EffectDuration },
     /// Initiates a run on `server`, exactly like `PlayerAction::InitiateRun`
     /// (same `RunState` shape, `RulesError::RunAlreadyInProgress` guard) but
     /// without spending a click — the enclosing `PlayEvent`/`PlayOperation`
@@ -4159,6 +4176,8 @@ impl Effect {
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
+            | Effect::ModifyHandSize { .. }
+            | Effect::LowerEncounteredIceStrengthTo { .. }
             | Effect::EndActionPhase
             | Effect::TurnFaceup
             | Effect::Score

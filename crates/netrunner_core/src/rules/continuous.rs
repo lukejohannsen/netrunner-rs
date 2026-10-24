@@ -418,7 +418,7 @@ pub fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 
             _ => None,
         }
     }
-    sum(state, registry, Target::Player(side), hand_size) + sum(state, registry, Target::Bound(side), hand_size)
+    sum(state, registry, Target::Player(side), hand_size) + sum(state, registry, Target::Bound(side), hand_size) + crate::rules::lingering::hand_size(state, side)
 }
 
 /// How many tags the Runner has, as anything that counts them or asks
