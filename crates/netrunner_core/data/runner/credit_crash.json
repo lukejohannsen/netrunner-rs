@@ -1,0 +1,47 @@
+{
+  "id": "credit_crash",
+  "title": "Credit Crash",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnAccessed",
+                "filter": {
+                  "Card": "NonAgenda"
+                },
+                "this_run": true,
+                "effect": {
+                  "OfferPaidChoice": {
+                    "side": "Corp",
+                    "cost": {
+                      "CreditsAmount": "AccessedCardPrintedCost"
+                    },
+                    "if_paid": {
+                      "Sequence": []
+                    },
+                    "if_declined": "TrashCurrentlyAccessedCard",
+                    "text": "The Corp can spend credits equal to the rez or play cost of the accessed card to prevent this trash"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. Trash the first non-agenda card you access during this run at no cost. The Corp can spend credits equal to the rez or play cost of the accessed card to prevent this trash."
+    }
+  ],
+  "built_from": 11021,
+  "is_playable": true
+}
