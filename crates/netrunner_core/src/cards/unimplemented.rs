@@ -139,7 +139,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Blood Money* (`blood_money`): tranche F5 of the FFG plan.
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("credit_crash", "Credit Crash"),
 ];
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.

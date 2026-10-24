@@ -44801,3 +44801,51 @@ mod flashpoint_stage_26 {
         assert_eq!((drew.runner.rig[0].counters, drew.runner.grip.len()), (0, 1));
     }
 }
+
+mod flashpoint_stage_27 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// Credit Crash's run on a remote with PAD Campaign: the Corp is asked
+    /// whether to spend its rez cost, and declining trashes it at no cost.
+    fn accessing_pad_campaign(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("credit_crash")];
+        state.runner.resources.credits = Credits(1);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (played, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("credit_crash") }).expect("play Credit Crash");
+        let (running, _) = apply_action(&played, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run the remote");
+        let (at_success, _) = pass_until_settled(running, registry);
+        let (accessing, _) = apply_action(&at_success, registry, PlayerAction::CompleteRun).expect("the run is successful");
+        let (asked, _) = pass_until_settled(accessing, registry);
+        assert!(asked.pending_paid_choice.is_some(), "the Corp may spend PAD Campaign's rez cost");
+        asked
+    }
+
+    #[test]
+    fn credit_crash_trashes_the_first_non_agenda_card_accessed_unless_the_corp_pays_its_cost() {
+        let registry = registry();
+        let asked = accessing_pad_campaign(&registry);
+        let in_play = |state: &GameState| state.corp.installed.iter().any(|card| card.card == id("pad_campaign"));
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let (declined, _) = pass_until_settled(declined, &registry);
+        assert!(!in_play(&declined), "trashed at no cost");
+        assert_eq!((declined.runner.resources.credits, declined.corp.resources.credits), (Credits(0), Credits(5)));
+
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend 2[credit]");
+        assert!(in_play(&paid), "the trash is prevented");
+        assert_eq!(paid.corp.resources.credits, Credits(3), "PAD Campaign's rez cost");
+    }
+}
