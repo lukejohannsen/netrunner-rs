@@ -1,0 +1,49 @@
+{
+  "id": "net_mercur",
+  "title": "Net Mercur",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "Anything"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCreditsSpentFromInstalledCard",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "HasSubtype": "Stealth"
+        }
+      },
+      "requirement": "OncePerRun",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "DrawCards": [
+                  "Runner",
+                  1
+                ]
+              }
+            ],
+            "texts": [
+              "place 1[credit] on this resource",
+              "draw 1 card"
+            ]
+          }
+        }
+      ],
+      "text": "The first time you spend credits from a stealth card during each run, place 1[credit] on this resource or draw 1 card."
+    }
+  ],
+  "built_from": 11046,
+  "is_playable": true
+}

@@ -473,6 +473,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::UsingHosted, Purpose::Ability(_, Some(using))) => {
             host.is_some() && state.find_rig_install(using).is_some_and(|card| card.hosted_on_rig_card == host)
         }
+        (PaysFor::Anything, _) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
         (PaysFor::DuringRunsOn(server), _) => during_a_run_on(state, server),
@@ -824,12 +825,14 @@ pub(crate) fn class_of(state: &GameState, registry: &CardRegistry, side: Side, p
         // pool is only ever classed for a payment it covers — so during a
         // run it is as broad as the credit pool, and Cyberfeeder's credit
         // goes before Methuselah's unasked, as it would before the pool's.
-        let during_a_run = (state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun)))
+        // Net Mercur's "for anything" is that breadth at any time.
+        let as_broad_as_the_pool = words.contains(&PaysFor::Anything)
+            || (state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun)))
             || (during_a_central_run(state) && words.contains(&PaysFor::DuringRunsOnCentralServers))
             || words.iter().any(|word| matches!(word, PaysFor::DuringRunsOn(server) if during_a_run_on(state, server)))
             || (during_a_successful_run(state) && words.contains(&PaysFor::DuringSuccessfulRuns));
         Class {
-            breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
+            breadth: if as_broad_as_the_pool { Breadth::Anything } else { Breadth::Words(words) },
             life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },
         }
     };

@@ -1207,6 +1207,12 @@ pub enum PaysFor {
     /// `Using` *and* `DuringRuns`; a program's ability used outside a run
     /// (Stargate's, Self-modifying Code's) is not covered.
     UsingDuringRuns(crate::dsl::CardFilter),
+    /// Anything, at any time — Net Mercur's "You can spend hosted credits
+    /// for anything". As broad as the credit pool, which is how its class
+    /// reads, so it is spent before the pool unasked. A word of its own
+    /// because every other word narrows a payment, and a card printing none
+    /// has credits only its own text spends.
+    Anything,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1300,7 +1306,7 @@ pub enum CardValidationError {
     ProhibitionForAnEncounter(CardId),
     #[error("card {0:?}: which kind of icebreaker broke the printed subroutines (`BrokePrintedSubroutineWith`) is read off a pass, so only an `OnIcePassed` trigger asks it, and only about an icebreaker subtype (AI, decoder, fracter, killer)")]
     BrokenWithOutsideAPass(CardId),
-    #[error("card {0:?}: a subroutine is gained by the ice being encountered, so only an `OnEncounter` trigger that `acts_on_subject` can say it")]
+    #[error("card {0:?}: a subroutine is gained by the ice being encountered, so only an `OnEncounter` trigger that `acts_on_subject` can say it, or a piece of ice chosen for the rest of the run")]
     GainedSubroutineWithNoEncounter(CardId),
 }
 
@@ -1951,11 +1957,24 @@ impl CardDefinition {
         // that acts on its subject: for the encounter, as the ice is
         // encountered; for the rest of the run, as it is encountered or
         // rezzed. Anywhere else it would find no ice, or no encounter, and
-        // do nothing, and nothing is encountered outside a run.
+        // do nothing, and nothing is encountered outside a run. The one
+        // other way to name the ice is to choose it: Project Kusanagi's
+        // "Choose 1 piece of ice to gain … for the remainder of this run",
+        // a selection of ice whose `then` acts as the card chosen — for the
+        // run only, since the chosen ice need not be the one encountered.
         let gains = |effect: &Effect| {
             let mut found = Vec::new();
             effect.for_each_effect(&mut |e| if let Effect::GainSubroutine { duration, .. } = e { found.push(*duration) });
             found
+        };
+        let on_chosen_ice_for_the_run = |effect: &Effect| {
+            let mut chosen = Vec::new();
+            effect.for_each_effect(&mut |e| {
+                if let Effect::PromptChooseCards { filter: crate::dsl::CardFilter::Ice, then: Some(then), .. } = e {
+                    chosen.extend(gains(then));
+                }
+            });
+            chosen.len() == gains(effect).len() && chosen.iter().all(|duration| *duration == EffectDuration::Run)
         };
         let fits = |triggered: &TriggeredEffect, duration: EffectDuration| {
             triggered.acts_on_subject
@@ -1966,7 +1985,7 @@ impl CardDefinition {
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
-            || self.abilities.iter().any(|ability| !gains(&ability.effect).is_empty())
+            || self.abilities.iter().any(|ability| !on_chosen_ice_for_the_run(&ability.effect))
             || self.subroutines.iter().any(|subroutine| !gains(&subroutine.effect).is_empty())
             || self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects).any(|effect| !gains(effect).is_empty())
         {
@@ -2845,6 +2864,33 @@ mod tests {
         let refused = Err(CardValidationError::GainedSubroutineWithNoEncounter(CardId("gainer".to_string())));
         assert_eq!(resource(Trigger::OnEncounter, false).validate(), refused);
         assert_eq!(resource(Trigger::OnCardInstalled, true).validate(), refused);
+
+        // Or a piece of ice an ability chooses, for the rest of the run.
+        let choosing = |filter: crate::dsl::CardFilter, duration: EffectDuration| CardDefinition {
+            id: CardId("gainer".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Asset,
+            abilities: vec![AbilityDef {
+                trigger: Trigger::Paid,
+                text: Some("Choose 1 piece of ice.".to_string()),
+                cost: None,
+                requirement: None,
+                effect: serde_json::from_value(serde_json::json!({"PromptChooseCards": {
+                    "side": "Corp", "source": "OwnInstalled", "filter": filter, "min": 1, "max": 1, "reveal": false, "shuffle_after": false,
+                    "then": Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: true, duration, count: None },
+                }}))
+                .expect("a selection"),
+                cost_discount_if: None,
+                used_by: None,
+                access: false,
+                from_hand: false,
+                part_of: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(choosing(crate::dsl::CardFilter::Ice, EffectDuration::Run).validate(), Ok(()));
+        assert_eq!(choosing(crate::dsl::CardFilter::Ice, EffectDuration::Encounter).validate(), refused);
+        assert_eq!(choosing(crate::dsl::CardFilter::Any, EffectDuration::Run).validate(), refused);
     }
 
     #[test]

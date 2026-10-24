@@ -44718,3 +44718,86 @@ mod flashpoint_stage_25 {
         assert_eq!(crate::rules::continuous::hand_size(&declined, &registry, Side::Runner), 0);
     }
 }
+
+mod flashpoint_stage_26 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot, rezzed: slot == InstallSlot::Ice, ..Default::default() }
+    }
+
+    /// Scored with 4 advancement tokens, Kusanagi has 2 counters; one of
+    /// them gives the chosen ice a net damage subroutine after its others
+    /// for the rest of the run.
+    #[test]
+    fn project_kusanagi_gives_chosen_ice_a_net_damage_subroutine_for_the_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..installed("project_kusanagi", ServerId::Remote(0), InstallSlot::Root) }];
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("project_kusanagi") }).expect("score");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 2, "4 advancement tokens are 2 over 2");
+        let kusanagi = PlayerAction::ActivateAbility { target: scored.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (mut running, _) = close_all_windows(scored, &registry);
+        assert!(apply_action(&running, &registry, kusanagi.clone()).is_err(), "no run to gain it for");
+
+        running.phase = GamePhase::Action(Side::Runner);
+        running.corp.installed = vec![installed("ice_wall", ServerId::Hq, InstallSlot::Ice)];
+        let (approaching, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (approaching, _) = crate::rules::test_support::continue_run(&approaching, &registry).expect("approach the ice");
+        let (corp_window, _) = apply_action(&approaching, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (choosing, _) = apply_action(&corp_window, &registry, kusanagi).expect("hosted agenda counter");
+        let positions: Vec<usize> = crate::rules::legal_actions_for(&choosing, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(positions.len(), 1, "Ice Wall is the only ice");
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: positions[0] }).expect("Ice Wall");
+        let (gained, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(gained.corp.scored_agendas[0].agenda_counters, 1);
+        let run = gained.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.gained_for_the_run.len(), 1);
+        assert!(run.gained_for_the_run[0].after && run.gained_for_the_run[0].ice == fixture_install_id("ice_wall"));
+
+        let (encountering, _) = apply_action(&gained, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes again");
+        let (encountering, _) = apply_action(&encountering, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let run = encountering.active_run.as_ref().expect("encountering");
+        let texts: Vec<&str> = run.ice[run.position].subroutines.iter().map(|subroutine| subroutine.definition.text.as_str()).collect();
+        assert_eq!(texts.last(), Some(&"Do 1 net damage."), "after all its other subroutines: {texts:?}");
+    }
+
+    /// Net Mercur's credits pay for anything, and the first time in a run
+    /// the Runner spends credits from a stealth card, they place 1 credit
+    /// on it or draw 1 card.
+    #[test]
+    fn net_mercur_pays_for_anything_and_rewards_the_first_stealth_spend_each_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("net_mercur"), card: id("net_mercur"), counters: 4, ..Default::default() }];
+        let purpose = crate::rules::payment::Purpose::Install(registry.get(&id("sure_gamble")).expect("a card"));
+        assert_eq!(crate::rules::payment::available(&state, &registry, Side::Runner, purpose), 4, "for anything");
+
+        state.runner.stack = vec![id("sure_gamble")];
+        state.corp.installed = vec![installed("pad_campaign", ServerId::Remote(0), InstallSlot::Root)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+        let (at_success, _) = pass_until_settled(running, &registry);
+        let (accessing, _) = apply_action(&at_success, &registry, PlayerAction::CompleteRun).expect("the run is successful");
+        let (accessing, _) = pass_until_settled(accessing, &registry);
+        let (asked, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash it with Net Mercur's credits");
+        assert_eq!(asked.runner.rig[0].counters, 0);
+        let (asked, _) = pass_until_settled(asked, &registry);
+        assert!(asked.pending_decision.is_some(), "a credit or a card");
+        let (placed, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("place 1[credit]");
+        assert_eq!(placed.runner.rig[0].counters, 1);
+        let (drew, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("draw 1 card");
+        assert_eq!((drew.runner.rig[0].counters, drew.runner.grip.len()), (0, 1));
+    }
+}
