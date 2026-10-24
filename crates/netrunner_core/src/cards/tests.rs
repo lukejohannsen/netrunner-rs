@@ -44285,3 +44285,72 @@ mod flashpoint_stage_19 {
         assert!(!crate::rules::active::lost_abilities(&played, &registry, InstallId(22)), "PAD Campaign is not unique");
     }
 }
+
+mod flashpoint_stage_20 {
+    use super::*;
+    use crate::rules::InstalledCard;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..16 {
+            if done(&state) {
+                return state;
+            }
+            let side = state.paid_ability_window.as_ref().expect("a window to pass in").active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        panic!("never reached: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    /// A run on HQ through its one piece of ice, until the run is over.
+    fn run_through_hq(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let state = pass_until(state, registry, |state| state.active_run.is_none() || state.pending_decision.is_some());
+        close_all_windows(state, registry).0
+    }
+
+    fn builder(advanced: u32) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(id("weyland_consortium_builder_of_nations"));
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(11), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, advancement_tokens: advanced, ..Default::default() }];
+        state
+    }
+
+    #[test]
+    fn builder_of_nations_does_one_meat_damage_the_first_time_each_turn_an_encounter_with_advanced_ice_ends() {
+        let registry = registry();
+        let once = run_through_hq(&builder(1), &registry);
+        assert_eq!(once.runner.grip.len(), 2, "do 1 meat damage");
+        let twice = run_through_hq(&once, &registry);
+        assert_eq!(twice.runner.grip.len(), 2, "the first time each turn");
+        assert_eq!(run_through_hq(&builder(0), &registry).runner.grip.len(), 3, "an advanced piece of ice");
+    }
+
+    #[test]
+    fn jinteki_potential_unleashed_trashes_the_top_of_the_stack_whenever_the_runner_takes_net_damage() {
+        let mut registry = registry();
+        registry.insert(
+            serde_json::from_str(
+                r#"{"id": "a_damaging_operation", "title": "A Damaging Operation", "side": "Corp", "card_type": "Operation", "cost": 0,
+                    "triggers": [{"trigger": "OnPlay", "subject": "This", "effects": [{"DealDamage": ["Net", 2]}, {"DealDamage": ["Meat", 1]}]}]}"#,
+            )
+            .expect("a card file"),
+        );
+        let mut state = base_state();
+        state.corp.identity = Some(id("jinteki_potential_unleashed"));
+        state.corp.hq = vec![id("a_damaging_operation")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.runner.stack = vec![id("corroder"), id("sure_gamble"), id("sure_gamble")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("a_damaging_operation") }).expect("play");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.grip.len(), 2, "3 damage taken");
+        assert_eq!(played.runner.stack.len(), 2, "trash the top card of the stack once, for the net damage only");
+        assert_eq!(played.runner.heap.len(), 4, "three from the grip and one from the stack");
+    }
+}

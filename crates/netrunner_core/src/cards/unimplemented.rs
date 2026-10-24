@@ -143,7 +143,6 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
-    ("weyland_consortium_builder_of_nations", "Weyland Consortium: Builder of Nations"),
 ];
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
@@ -151,7 +150,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
     ("net_mercur", "Net Mercur"),
     ("project_kusanagi", "Project Kusanagi"),
-    ("jinteki_potential_unleashed", "Jinteki: Potential Unleashed"),
     ("alexa_belsky", "Alexa Belsky"),
 ];
 

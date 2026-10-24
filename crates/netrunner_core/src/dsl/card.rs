@@ -1508,7 +1508,7 @@ impl CardDefinition {
             // Only what the moment states: a pass says whether the ice
             // was outermost and fully broken, a break its strength.
             EventFilter::Ice(required) => {
-                triggered.trigger.is_about_ice_in_a_run() && required.admits(crate::dsl::IceFacts::stated_by(triggered.trigger))
+                triggered.trigger.states_ice_facts() && required.admits(crate::dsl::IceFacts::stated_by(triggered.trigger))
             }
             // `validate` reads a conjunction part by part, and refuses one
             // nested in another.
