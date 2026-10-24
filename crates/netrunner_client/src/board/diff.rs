@@ -400,13 +400,22 @@ mod tests {
                                 _ => None,
                             });
                             let seen: HashSet<CardId> = nameable(&before[i]).union(&nameable(&after)).cloned().chain(shown).collect();
-                            for t in &ts {
+                            for (at, t) in ts.iter().enumerate() {
                                 match t {
                                     Transition::CardMoved { card, install, from, to } => {
                                         moved += 1;
+                                        // A card that moves twice in one action — Sand
+                                        // Storm moved to another server and then trashed —
+                                        // is where its last move left it.
+                                        let moves_again = ts[at + 1..].iter().any(|later| match later {
+                                            Transition::CardMoved { card: again, install: again_install, .. } => {
+                                                (card.is_some() && again == card) || (install.is_some() && again_install == install)
+                                            }
+                                            _ => false,
+                                        });
                                         if let Some(card) = card {
                                             assert!(seen.contains(card), "seed {seed} {viewer:?}: {t:?} names a card the viewer never saw");
-                                            assert!(holds(&after, *to, card), "seed {seed} {viewer:?}: {t:?} but the card is not there after");
+                                            assert!(moves_again || holds(&after, *to, card), "seed {seed} {viewer:?}: {t:?} but the card is not there after");
                                             // A departure is checked where the viewer could see
                                             // the place: their own hand, and the open board.
                                             let visible_from = match from {
@@ -432,10 +441,10 @@ mod tests {
                                         }
                                         if let (Some(id), Zone::Server(server, slot)) = (install, to) {
                                             let there = after.corp.servers.iter().filter(|s| s.server == *server).flat_map(|s| s.ice.iter().chain(s.root.iter())).any(|c| c.install_id == *id && c.slot == *slot);
-                                            assert!(there, "seed {seed} {viewer:?}: {t:?} but no such install after");
+                                            assert!(moves_again || there, "seed {seed} {viewer:?}: {t:?} but no such install after");
                                         }
                                         if let (Some(id), Zone::Rig) = (install, to) {
-                                            assert!(after.runner.rig.iter().any(|c| c.install_id == *id), "seed {seed}: {t:?}");
+                                            assert!(moves_again || after.runner.rig.iter().any(|c| c.install_id == *id), "seed {seed}: {t:?}");
                                         }
                                     }
                                     Transition::Revealed { install, card } => {

@@ -1,0 +1,50 @@
+{
+  "id": "brute_force_hack",
+  "title": "Brute-Force-Hack",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "AllOf": [
+      {
+        "CreditsX": {}
+      },
+      {
+        "Clicks": 1
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "PrintedCostAtMost": "ChosenNumber"
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "DerezCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "Derez a piece of ice that has a rez cost of X or lower."
+    }
+  ],
+  "built_from": 13002,
+  "is_playable": true
+}

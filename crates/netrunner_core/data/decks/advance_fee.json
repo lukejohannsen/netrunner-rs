@@ -3,7 +3,7 @@
   "name": "Advance Fee",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a). No One Home (Kitara Stage 10c) in for Cat's Cradle: the trace an interrupt starts. Kitara Stage 18: two Zamba for its two Jeitinho, a console that pays 1[credit] for each card the 419's exposes and Lemuria Codecracker turn over; three decks keep Jeitinho. Rip Deal (Red Sand Stage 28) Flashpoint Stage 1: one Peace in Our Time and Process Automation for one Shibboleth and Laser Pointer.",
+  "description": "Not a published list: built so the sweeps reach 419: Amoral Scammer, Kitara's Criminal identity, who may expose the Corp's first install each turn unless the Corp pays 1[credit]. Cold Reading's frame at Kitara Stage 6b, its identity swapped, a Criminal for a Criminal at the same fifteen influence; its Credit Kiting, Falsified Credentials and runs on HQ are what an exposed card is worth to. Lewi Guilherme, two Rogue Trading, two PAD Tap and Kasi String for Easy Mark, Special Order, Prognostic Q-Loop, Mu Safecracker, Swift and a Jeitinho (FFG F3 Stage 9a). No One Home (Kitara Stage 10c) in for Cat's Cradle: the trace an interrupt starts. Kitara Stage 18: two Zamba for its two Jeitinho, a console that pays 1[credit] for each card the 419's exposes and Lemuria Codecracker turn over; three decks keep Jeitinho. Rip Deal (Red Sand Stage 28) Flashpoint Stage 1: one Peace in Our Time and Process Automation for one Shibboleth and Laser Pointer. Flashpoint Stage 29 swapped two Networking and a Mr. Li for two Brute-Force-Hack and The Shadow Net.",
   "style": [
     "pressure"
   ],
@@ -31,7 +31,7 @@
     },
     {
       "card": "mr_li",
-      "count": 2
+      "count": 1
     },
     {
       "card": "matryoshka",
@@ -55,10 +55,6 @@
     },
     {
       "card": "penumbral_toolkit",
-      "count": 2
-    },
-    {
-      "card": "networking",
       "count": 2
     },
     {
@@ -123,6 +119,14 @@
     },
     {
       "card": "process_automation",
+      "count": 1
+    },
+    {
+      "card": "brute_force_hack",
+      "count": 2
+    },
+    {
+      "card": "the_shadow_net",
       "count": 1
     }
   ]

@@ -44947,3 +44947,67 @@ mod flashpoint_stage_28 {
         assert_eq!(unbroken.runner.resources.clicks.0, clicks, "nothing broken, nothing lost");
     }
 }
+
+mod flashpoint_stage_29 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn rezzed_ice(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// X is chosen as the event is played and spent with a second click;
+    /// only ice whose rez cost is X or lower may be derezzed.
+    #[test]
+    fn brute_force_hack_derezzes_ice_whose_rez_cost_is_x_or_lower() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("brute_force_hack")];
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![rezzed_ice("ice_wall"), rezzed_ice("enigma")];
+        let clicks = state.runner.resources.clicks.0;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("brute_force_hack") }).expect("play it");
+        assert!(asked.pending_payment.is_some(), "X is chosen before paying");
+        let (played, events) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("X = 1");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::EventPlayed { x: Some(1), .. })), "{events:?}");
+        assert_eq!(played.runner.resources.credits, Credits(4));
+        assert_eq!(played.runner.resources.clicks.0, clicks - 2, "the play's click and the additional one");
+        assert!(apply_action(&played, &registry, PlayerAction::ToggleCardSelection { position: 1 }).is_err(), "Enigma's rez cost is 3");
+        let (chosen, _) = apply_action(&played, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Ice Wall");
+        let (derezzed, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("derez it");
+        assert!(!derezzed.corp.installed[0].rezzed, "Ice Wall is derezzed");
+        assert!(derezzed.corp.installed[1].rezzed, "Enigma is not");
+    }
+
+    /// An agenda forfeited plays Sure Gamble out of the heap without its
+    /// 5[credit], and it goes back to the heap once it resolves.
+    #[test]
+    fn the_shadow_net_plays_an_event_from_the_heap_ignoring_all_costs() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("the_shadow_net"), card: id("the_shadow_net"), ..Default::default() }];
+        state.runner.heap = vec![id("sure_gamble")];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        state.runner.resources.credits = Credits(0);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("the_shadow_net"), ability_index: 0 }).expect("[click], forfeit an agenda");
+        assert!(asked.runner.scored_agendas.is_empty(), "the agenda is forfeited");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("choose Sure Gamble");
+        let (played, events) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("play it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::EventPlayed { .. })), "{events:?}");
+        assert_eq!(played.runner.resources.credits, Credits(9), "nothing paid to play it");
+        assert_eq!(played.runner.heap, vec![id("sure_gamble")], "trashed as it resolves");
+
+        state.runner.scored_agendas.clear();
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("the_shadow_net"), ability_index: 0 }).is_err(), "no agenda to forfeit");
+    }
+}

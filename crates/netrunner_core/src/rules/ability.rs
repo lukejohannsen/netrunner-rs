@@ -3096,6 +3096,13 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::PlayOperation { from: crate::dsl::CardZoneRef::OwnHeap, ignoring_costs } => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            if !crate::rules::engine::can_play_event_from_heap(state, registry, &card_id, *ignoring_costs) {
+                return Ok(Vec::new());
+            }
+            crate::rules::engine::play_event_card(state, registry, card_id, true, *ignoring_costs)
+        }
         Effect::PlayOperation { from, ignoring_costs } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let from_archives = matches!(from, crate::dsl::CardZoneRef::OwnArchives);
@@ -3629,10 +3636,11 @@ pub(crate) fn fire_card_triggers(
         // "That card", the one the moment is about, is written in too, so
         // it outlives a choice parked ahead of it (Divested Trust's "add
         // the stolen agenda to HQ", behind its forfeit).
-        // X, for the play of a card that costs X (Psychographics), written
+        // X, for the play of a card that costs X (Psychographics,
+        // Brute-Force-Hack), written
         // into its own resolution as any chosen number is.
         let played_for_x = match triggering_event {
-            Some(GameEvent::OperationPlayed { card, x: Some(x), .. }) if trigger == Trigger::OnPlay && card == card_id => Some(*x),
+            Some(GameEvent::OperationPlayed { card, x: Some(x), .. } | GameEvent::EventPlayed { card, x: Some(x), .. }) if trigger == Trigger::OnPlay && card == card_id => Some(*x),
             Some(GameEvent::ResourceInstalled { card, x: Some(x), .. }) if trigger == Trigger::OnInstall && card == card_id => Some(*x),
             _ => None,
         };
