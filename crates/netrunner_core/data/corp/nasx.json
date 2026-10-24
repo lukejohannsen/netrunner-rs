@@ -1,0 +1,93 @@
+{
+  "id": "nasx",
+  "title": "NASX",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Gain 1[credit] when your turn begins."
+    },
+    {
+      "trigger": "OnAbilityGainedCredits",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "Not": {
+            "AmongCards": [
+              "nasx"
+            ]
+          }
+        }
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": {
+              "Fixed": 2
+            },
+            "of": {
+              "Credits": "Corp"
+            },
+            "then": {
+              "Sequence": [
+                {
+                  "LoseCreditsAmount": [
+                    "Corp",
+                    "ChosenNumber"
+                  ]
+                },
+                {
+                  "Repeat": {
+                    "times": "ChosenNumber",
+                    "effect": {
+                      "AddCounters": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "text": "you may spend up to 2[credit] to place that many power counters on NASX"
+          }
+        }
+      ],
+      "text": "Whenever you gain credits through a card ability other than from NASX, you may spend up to 2[credit] to place that many power counters on NASX."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsPerCounter": {
+          "side": "Corp",
+          "credits_per_counter": 2
+        }
+      },
+      "text": "[click],[trash]: Gain 2[credit] for each power counter on NASX."
+    }
+  ],
+  "built_from": 11118,
+  "is_playable": true
+}

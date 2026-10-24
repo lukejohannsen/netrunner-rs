@@ -385,6 +385,22 @@ pub(crate) fn withholds_subroutine(state: &GameState, id: usize) -> bool {
         })
 }
 
+/// Tracker's "The first time a subroutine would resolve during that run,
+/// prevent it from resolving" (`Prohibition::ResolveFirstSubroutine`):
+/// whether one holds, taken off the list as it answers yes, so the next
+/// subroutine to resolve finds none.
+pub(crate) fn take_first_subroutine(state: &mut GameState) -> bool {
+    let Some(position) = state
+        .lingering
+        .iter()
+        .position(|effect| effect.what == Lingering::Cannot(Prohibition::ResolveFirstSubroutine) && effect.holds(state))
+    else {
+        return false;
+    };
+    state.lingering.remove(position);
+    true
+}
+
 /// What the lingering effects that still hold add to the strength of `on`.
 pub fn strength(state: &GameState, on: InstallId) -> i32 {
     state

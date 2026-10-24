@@ -683,6 +683,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::AccessCardsInHq, _) => "the Runner cannot access cards in HQ",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
+                (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
                 (Prohibition::CorpInstall, _) => "the Corp cannot install cards",
             };
             format!("{what} {}", duration(until))
@@ -1103,6 +1104,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::AccessCardsInHq => "cannot access cards in HQ",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
+            Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

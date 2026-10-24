@@ -171,11 +171,9 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sifr", "Şifr"),
     ("recon_drone", "Recon Drone"),
-    ("tracker", "Tracker"),
     ("encore", "Encore"),
     ("net_quarantine", "Net Quarantine"),
     ("herald", "Herald"),
-    ("nasx", "NASX"),
 ];
 
 /// *Terminal Directive Cards* (`terminal_directive_cards`): tranche F5 of the FFG
