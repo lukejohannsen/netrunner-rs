@@ -382,6 +382,14 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 (Lingering::Strength(_), _) => return None,
                 // One line per piece of ice for every type it gained, below.
                 (Lingering::GainSubtype(_), _) => return None,
+                // Armored Servers: one line per step it is a cost to.
+                (Lingering::AdditionalCost { to, cost }, _) => {
+                    let step = match to {
+                        netrunner_core::dsl::CostedStep::JackOut => "jack out",
+                        netrunner_core::dsl::CostedStep::BreakSubroutine => "break each subroutine",
+                    };
+                    format!("the Runner must {} to {step}", crate::prose::describe_cost(cost))
+                }
                 (Lingering::RezCost(n), _) => {
                     let credits = n.unsigned_abs();
                     format!("each piece of ice costs {credits} credit{} {} to rez", if credits == 1 { "" } else { "s" }, if *n >= 0 { "more" } else { "less" })

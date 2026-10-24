@@ -690,6 +690,16 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             };
             format!("{what} {}", duration(until))
         }
+        Effect::ImposeAdditionalCost { on, cost, until } => {
+            let steps: Vec<&str> = on
+                .iter()
+                .map(|step| match step {
+                    netrunner_core::dsl::CostedStep::JackOut => "jack out",
+                    netrunner_core::dsl::CostedStep::BreakSubroutine => "break a subroutine",
+                })
+                .collect();
+            format!("the Runner must {} as an additional cost to {} {}", describe_cost(cost), steps.join(" or "), duration(until))
+        }
         Effect::PlaceAdvancementCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
         Effect::PlaceAdvancementCounters(amount) => format!("place advancement tokens equal to {}", describe_amount(amount)),
         Effect::RemoveAdvancementCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "advancement token", "advancement tokens")),

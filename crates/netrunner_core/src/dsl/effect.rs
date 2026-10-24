@@ -1665,6 +1665,20 @@ pub enum Effect {
     /// no view carried, so no bot sample ever saw it. `validate` refuses
     /// `Encounter` but for Banner's, about the encountered ice: the guards
     /// every other prohibition answers are not asked during an encounter.
+    /// "For the remainder of this run, the Runner must trash 1 card from
+    /// the grip as an additional cost to jack out or break a subroutine"
+    /// (Armored Servers): a `rules::lingering` entry per step, about the
+    /// Runner, paid by the step's own payer for as long as `until` runs
+    /// (`ability::pay_additional_costs`), CR 1.16.10: "A player must pay
+    /// all additional costs along with any regular costs in order to
+    /// initiate an effect." Composition didn't work: a
+    /// `Prohibit` forbids the step, and a cost in a card file is the price
+    /// of that card's own ability, never of an action the Runner takes.
+    ImposeAdditionalCost {
+        on: Vec<CostedStep>,
+        cost: crate::dsl::Cost,
+        until: EffectDuration,
+    },
     Prohibit {
         what: Prohibition,
         until: EffectDuration,
@@ -3259,6 +3273,21 @@ pub enum MovedTo {
     ThisCard,
 }
 
+/// What an additional cost made for a duration is a cost to
+/// (`Effect::ImposeAdditionalCost`): Armored Servers' "as an additional cost
+/// to **jack out** or **break a subroutine**". Only what a card in the pool
+/// prints; both are the Runner's, so the Runner pays. Mind Game's jack-out
+/// and Dedicated Neural Net's break are the next to read for whether their
+/// words are one of these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CostedStep {
+    /// Paid as the Runner jacks out (`PlayerAction::JackOut`).
+    JackOut,
+    /// Paid for each subroutine the Runner breaks, by an icebreaker or a
+    /// click (`ability::break_pending`, `engine::break_subroutine_with_click`).
+    BreakSubroutine,
+}
+
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
 /// card in the pool prints; each is asked through `continuous::cannot`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4154,6 +4183,7 @@ impl Effect {
             | Effect::HostOtherIdentity { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
+            | Effect::ImposeAdditionalCost { .. }
             | Effect::PlaceAdvancementCounters(..)
             | Effect::RemoveAdvancementCounters(..)
             | Effect::MoveAllAdvancementCountersHere

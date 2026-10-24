@@ -1,6 +1,6 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
-    card_matches_filter, Amount, EffectDuration, CardFilter, CardId, CardSubtype, CardTarget, Cost, Effect,
+    card_matches_filter, Amount, CostedStep, EffectDuration, CardFilter, CardId, CardSubtype, CardTarget, Cost, Effect,
     EffectRequirement, HostedCardOrigin, StackZone, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
 use crate::rules::continuous;
@@ -2065,6 +2065,15 @@ pub fn evaluate_effect(
                 return Ok(Vec::new());
             }
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
+        }
+
+        Effect::ImposeAdditionalCost { on, cost, until } => {
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
+            for step in on {
+                state.lingering.push(LingeringEffect { what: Lingering::AdditionalCost { to: *step, cost: cost.clone() }, on: On::Player(Side::Runner), until, source: source.clone() });
+            }
+            Ok(Vec::new())
         }
 
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice, attacked_server } => {
@@ -6122,13 +6131,43 @@ fn break_pending(
         }
     };
     let mut events = Vec::new();
-    for (idx, limited) in pending.into_iter().take(take) {
+    for (broken, (idx, limited)) in pending.into_iter().take(take).enumerate() {
+        // Armored Servers' "as an additional cost to … break a
+        // subroutine", paid for each: an ability that breaks several stops
+        // at the first the Runner can no longer pay for, and one that
+        // cannot pay for any is refused by the payment.
+        if broken > 0 && !additional_costs_affordable(state, registry, CostedStep::BreakSubroutine) {
+            break;
+        }
+        let cost_events = pay_additional_costs(state, registry, CostedStep::BreakSubroutine)?;
+        events.extend(cost_events.clone());
         if limited && let Some(run) = state.active_run.as_mut() {
             run.this_encounter.limited_breaks += 1;
         }
         for event in run::break_subroutine(state, registry, idx, by)? {
             dispatcher::emit(state, registry, &mut events, event)?;
         }
+        events.extend(dispatch_cost_events(state, registry, &cost_events)?);
+    }
+    Ok(events)
+}
+
+/// Whether the Runner can pay every additional cost in force on `step`
+/// (`lingering::additional_costs`) — true with none.
+pub(crate) fn additional_costs_affordable(state: &GameState, registry: &CardRegistry, step: CostedStep) -> bool {
+    lingering::additional_costs(state, step)
+        .iter()
+        .all(|cost| cost_is_affordable(state, registry, Side::Runner, cost, Purpose::Other, &ResolutionContext::default()))
+}
+
+/// Pays every additional cost in force on `step`, as the step is taken,
+/// and returns the cost's events for the payer to dispatch after the step
+/// (`dispatch_cost_events`), as every payer does. A cost that takes cards
+/// asks by replay, like any other (`payment::could_ask` admits it).
+pub(crate) fn pay_additional_costs(state: &mut GameState, registry: &CardRegistry, step: CostedStep) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    for cost in lingering::additional_costs(state, step) {
+        events.extend(pay_cost(state, registry, Side::Runner, &cost, Purpose::Other, None)?);
     }
     Ok(events)
 }

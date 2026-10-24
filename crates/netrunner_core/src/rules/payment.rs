@@ -657,6 +657,7 @@ pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &cra
         || crate::rules::install_trash::could_ask(state, registry, action)
         || a_text_rez_could_ask(state, registry, action)
         || an_interrupt_could_ask(state, registry)
+        || crate::rules::lingering::additional_costs_could_ask(state)
 }
 
 /// A card's text that rezzes a card and pays for it meets the card's own

@@ -1,0 +1,49 @@
+{
+  "id": "armored_servers",
+  "title": "Armored Servers",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you score this agenda, place 1 agenda counter on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "ImposeAdditionalCost": {
+          "on": [
+            "JackOut",
+            "BreakSubroutine"
+          ],
+          "cost": {
+            "Trash": {
+              "from": "OwnGrip",
+              "filter": "Any",
+              "count": 1
+            }
+          },
+          "until": "Run"
+        }
+      },
+      "text": "Hosted agenda counter: For the remainder of this run, the Runner must trash 1 card from the grip as an additional cost to jack out or break a subroutine."
+    }
+  ],
+  "built_from": 13042,
+  "is_playable": true
+}
