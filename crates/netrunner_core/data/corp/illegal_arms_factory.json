@@ -1,0 +1,67 @@
+{
+  "id": "illegal_arms_factory",
+  "title": "Illegal Arms Factory",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 6,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit] and draw 1 card."
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "This",
+      "requirement": {
+        "CurrentlyAccessingInstalledCard": {
+          "rezzed_only": true
+        }
+      },
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset (while it is rezzed), take 1 bad publicity."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          "TrashedRezzed"
+        ]
+      },
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner trashes this asset (while it is rezzed), take 1 bad publicity."
+    }
+  ],
+  "built_from": 13045,
+  "is_playable": true
+}

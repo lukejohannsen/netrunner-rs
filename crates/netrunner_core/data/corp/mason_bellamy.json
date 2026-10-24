@@ -1,0 +1,32 @@
+{
+  "id": "mason_bellamy",
+  "title": "Mason Bellamy",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "InThisServer"
+          ]
+        }
+      },
+      "requirement": "SubroutineBrokenThatEncounter",
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "Whenever an encounter with a piece of ice protecting this server ends, if the Runner broke at least 1 subroutine during that encounter, they lose [click]."
+    }
+  ],
+  "built_from": 13040,
+  "is_playable": true
+}

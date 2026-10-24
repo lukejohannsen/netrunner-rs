@@ -176,16 +176,13 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// in both pools.
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("brute_force_hack", "Brute-Force-Hack"),
-    ("spear_phishing", "Spear Phishing"),
     ("polyhistor", "Polyhistor"),
     ("charlatan", "Charlatan"),
     ("maxwell_james", "Maxwell James"),
     ("the_shadow_net", "The Shadow Net"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("mason_bellamy", "Mason Bellamy"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
     ("armored_servers", "Armored Servers"),
-    ("illegal_arms_factory", "Illegal Arms Factory"),
 ];
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
@@ -1056,7 +1053,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("lamprey", "Lamprey"),
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),
-    ("spear_phishing", "Spear Phishing"),
     ("r_d_interface", "R&D Interface"),
     ("deus_x", "Deus X"),
     ("ice_analyzer", "Ice Analyzer"),
@@ -1065,7 +1061,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("turing", "Turing"),
     ("blue_level_clearance", "Blue Level Clearance"),
-    ("mason_bellamy", "Mason Bellamy"),
     ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
     ("philotic_entanglement", "Philotic Entanglement"),

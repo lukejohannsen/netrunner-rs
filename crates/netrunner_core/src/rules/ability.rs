@@ -5675,6 +5675,10 @@ pub fn check_requirement(
             });
             if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::EncounteringInnermostIce => {
+            let matches = state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce && run.position + 1 == run.ice.len());
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::EncounteringOutermostIce => {
             let matches = state.active_run.as_ref().is_some_and(|run| {
                 run.phase == RunPhase::EncounterIce
@@ -5817,6 +5821,10 @@ pub fn check_requirement(
         }
         EffectRequirement::IceFullyBrokenThatEncounter => {
             let broke = matches!(ctx.triggering_event, Some(GameEvent::EncounterEnded { fully_broken: true, .. }));
+            if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::SubroutineBrokenThatEncounter => {
+            let broke = matches!(ctx.triggering_event, Some(GameEvent::EncounterEnded { broken, .. }) if *broken > 0);
             if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::BrokeASubroutineThatEncounter => {
@@ -6537,6 +6545,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
         | EffectRequirement::EncounteringOutermostIce
+        | EffectRequirement::EncounteringInnermostIce
         | EffectRequirement::FullyBrokeTheEncounteredIce
         | EffectRequirement::EncounteringChosenIce
         | EffectRequirement::EncounteringChosenIceType
@@ -6555,6 +6564,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::PassedIceWas(_)
         | EffectRequirement::TookNothingInTheBreach
         | EffectRequirement::BrokeASubroutineThatEncounter
+        | EffectRequirement::SubroutineBrokenThatEncounter
         | EffectRequirement::IceFullyBrokenThatEncounter
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
@@ -7097,7 +7107,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
-                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false, unbroken: 2 },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0), broken_with: Vec::new(), fully_broken: false, unbroken: 2, broken: 0 },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

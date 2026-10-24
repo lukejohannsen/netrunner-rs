@@ -429,6 +429,15 @@ pub enum EffectRequirement {
     /// live tally, which is reset by the time the end is heard, and asks
     /// about any breaker rather than this one.
     BrokeASubroutineThatEncounter,
+    /// The Runner broke at least 1 subroutine, by any means, during the
+    /// encounter whose end is being heard (`GameEvent::EncounterEnded::
+    /// broken`) — Mason Bellamy's "Whenever an encounter with a piece of
+    /// ice protecting this server ends, if the Runner broke at least 1
+    /// subroutine during that encounter". False off any other event.
+    /// Composition didn't work: `BrokeASubroutineThatEncounter` is about
+    /// the acting install's breaks, and a click spent on a bioroid's
+    /// subroutine is a break by no install.
+    SubroutineBrokenThatEncounter,
     /// The ice whose encounter just ended was fully broken during it
     /// (`GameEvent::EncounterEnded::fully_broken`) — Chum's "When that
     /// encounter ends, if the Runner did not fully break that ice", under a
@@ -490,6 +499,13 @@ pub enum EffectRequirement {
     /// other encounter word names the ice by its relation to the acting
     /// card, or by its type.
     EncounteringOutermostIce,
+    /// The run is encountering the innermost piece of ice protecting the
+    /// server it is against — Spear Phishing's "When you encounter the
+    /// innermost piece of ice protecting that server, bypass it". The ice
+    /// at the run's last position (CR 6.2.3), read off the run as the
+    /// encounter is heard. Composition didn't work: the `innermost` ice
+    /// fact is a pass's, and `EncounteringOutermostIce` is the other end.
+    EncounteringInnermostIce,
     /// The acting program fully broke the ice being encountered, in this
     /// encounter (`RunState::fully_broken`, with `EncounterTally::
     /// broken_by` this install alone) — Golden's, Peregrine's and Saker's
