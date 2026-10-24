@@ -1,0 +1,98 @@
+{
+  "id": "nbn_controlling_the_message",
+  "title": "NBN: Controlling the Message",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": {
+        "InstalledCard": "Any"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Trace": {
+                  "base": 4,
+                  "on_success": {
+                    "Unpreventable": {
+                      "GiveTags": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trace[4]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Runner trashes an installed Corp card each turn, you may trace[4]. If successful, give the Runner 1 tag (cannot be avoided)."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "OwnedBy": {
+              "owner": "Corp",
+              "whose": "Runner"
+            }
+          },
+          {
+            "TrashedFrom": [
+              "Installed"
+            ]
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Trace": {
+                  "base": 4,
+                  "on_success": {
+                    "Unpreventable": {
+                      "GiveTags": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trace[4]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Runner trashes an installed Corp card each turn, you may trace[4]. If successful, give the Runner 1 tag (cannot be avoided)."
+    }
+  ],
+  "built_from": 11017,
+  "is_playable": true
+}

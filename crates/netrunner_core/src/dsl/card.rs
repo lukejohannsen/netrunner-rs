@@ -2198,8 +2198,14 @@ impl CardDefinition {
                     return misfit("Subroutines", "a subroutine a piece of ice gains by its own static ability is said by the ice of itself (`This`, CR 9.8.3b/d), another card's standing grant is a gain about ice (`Ice`, 9.8.3a/e), and a condition counter's is about its host (`Host`); a grant for a duration is `GainSubroutine`");
                 }
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host | Scope::Hosted) => {}
+                // A current's loss about the Corp's installs (Rumor Mill's
+                // "Each unique (◆) non-region asset and upgrade loses its
+                // printed abilities"), read by `rules::active::current_takes`
+                // off the play areas, which is the only place it is asked;
+                // only a current waits there, and its `while` is not read.
+                (ContinuousKind::LosesAbilities, Scope::CorpInstalled(_)) if matches!(self.card_type, CardType::Event | CardType::Operation) && effect.condition.is_none() => {}
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
-                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`) or the ice hosting it (`Hosted`)");
+                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`), the ice hosting it (`Hosted`) or, of the Corp's installs, a current with no `while` (`CorpInstalled`)");
                 }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
                 // An agenda about its own score (Vulnerability Audit's "You
