@@ -345,7 +345,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // About the ice by its install, which the event carries: an
         // encounter "end the run" ended is heard after the run is gone.
         GameEvent::EncounterEnded { card_id, install, .. } => {
-            vec![moment(Trigger::OnEncounterEnded, &card(card_id, Some(*install)), Some(Side::Runner))]
+            // Builder of Nations' "an encounter with an **advanced** piece of
+            // ice": the ice is still on the table as its encounter ends.
+            let advanced = state.find_corp_install(*install).is_some_and(|ice| ice.advancement_tokens > 0);
+            vec![Moment { ice: Some(IceFacts { advanced, ..IceFacts::default() }), ..moment(Trigger::OnEncounterEnded, &card(card_id, Some(*install)), Some(Side::Runner)) }]
         }
         // Only the Runner's spending is anyone's trigger, and only during a
         // run: Shackleton Grid's "during a run against this server" is the

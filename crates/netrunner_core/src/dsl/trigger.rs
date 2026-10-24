@@ -644,6 +644,17 @@ pub struct IceFacts {
     /// (`stated_by`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub innermost: bool,
+    /// "An encounter with an **advanced** piece of ice ends" — The
+    /// Weyland Consortium: Builder of Nations, the first time each turn.
+    /// Advancement counters are public. Read off the ice as the end is
+    /// heard (`listeners::moments`), since the ice is still on the table
+    /// then, as `innermost` is read off the run.
+    ///
+    /// **It shares a column bit with `outermost`**: that is a pass's and a
+    /// full break's fact and this an encounter's end's (`stated_by`), so
+    /// within any row of the log the bit means one fact.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub advanced: bool,
 }
 
 impl IceFacts {
@@ -657,6 +668,7 @@ impl IceFacts {
             && (!self.rezzed_bioroid || moment.rezzed_bioroid)
             && (!self.ap || moment.ap)
             && (!self.innermost || moment.innermost)
+            && (!self.advanced || moment.advanced)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
@@ -667,6 +679,7 @@ impl IceFacts {
             Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, printed_subroutine: true, ap: true, ..IceFacts::default() },
             // Hippo's "fully break the outermost piece of ice".
             Trigger::OnIceFullyBroken => IceFacts { outermost: true, ..IceFacts::default() },
+            Trigger::OnEncounterEnded => IceFacts { advanced: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }
@@ -680,20 +693,20 @@ impl IceFacts {
     /// for the trigger. `rezzed_bioroid` and `at_most_zero_strength` are
     /// the same bit, which no one trigger states both of.
     pub fn bits(self) -> usize {
-        usize::from(self.outermost)
+        usize::from(self.outermost || self.advanced)
             | usize::from(self.after_fully_breaking) << 1
             | usize::from(self.at_most_zero_strength || self.rezzed_bioroid) << 2
             | usize::from(self.rezzed_code_gate_or_sentry || self.ap) << 3
             | usize::from(self.printed_subroutine || self.innermost) << 4
     }
 
-    /// Every combination of the eight, the sixth, seventh and eighth in
-    /// the top bits of the index.
-    pub const ALL: [IceFacts; 256] = {
-        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false, innermost: false };
-        let mut all = [none; 256];
+    /// Every combination of the nine, the sixth to the ninth in the top
+    /// bits of the index.
+    pub const ALL: [IceFacts; 512] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false, printed_subroutine: false, rezzed_bioroid: false, ap: false, innermost: false, advanced: false };
+        let mut all = [none; 512];
         let mut bits = 0;
-        while bits < 256 {
+        while bits < 512 {
             all[bits] = IceFacts {
                 outermost: bits & 1 != 0,
                 after_fully_breaking: bits & 2 != 0,
@@ -703,6 +716,7 @@ impl IceFacts {
                 rezzed_bioroid: bits & 32 != 0,
                 ap: bits & 64 != 0,
                 innermost: bits & 128 != 0,
+                advanced: bits & 256 != 0,
             };
             bits += 1;
         }
@@ -1311,6 +1325,17 @@ impl Trigger {
         matches!(self, Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnSubroutineResolved | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed)
     }
 
+    /// Whether this trigger's moment says what was true of the ice
+    /// (`IceFacts`), so a `when` may ask it (`EventFilter::Ice`) and the
+    /// turn counts it by those facts: every moment about ice in a run, and
+    /// an encounter's end (Builder of Nations' "an encounter with an
+    /// advanced piece of ice ends"). The end is not among the former
+    /// because the ice hears it as the subject even when it has been
+    /// derezzed mid-encounter, which a pass or a break is never heard.
+    pub fn states_ice_facts(self) -> bool {
+        self.is_about_ice_in_a_run() || self == Trigger::OnEncounterEnded
+    }
+
     /// Whether a `TriggeredEffect` using this trigger must say which
     /// occurrences it hears (`TriggeredEffect::subject`) — and one using any
     /// other trigger must not, because there is no "this one" for a turn
@@ -1429,6 +1454,8 @@ mod tests {
             let stated = IceFacts::stated_by(trigger);
             assert!(!(stated.rezzed_bioroid && stated.at_most_zero_strength), "{trigger:?} states both");
             assert!(!(stated.ap && stated.rezzed_code_gate_or_sentry), "{trigger:?} states both");
+            assert!(!(stated.printed_subroutine && stated.innermost), "{trigger:?} states both");
+            assert!(!(stated.outermost && stated.advanced), "{trigger:?} states both");
         }
         assert!(IceFacts::ALL.iter().all(|facts| facts.bits() < IceFacts::COLUMNS));
     }

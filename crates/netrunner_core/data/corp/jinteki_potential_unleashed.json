@@ -1,0 +1,36 @@
+{
+  "id": "jinteki_potential_unleashed",
+  "title": "Jinteki: Potential Unleashed",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDamageSuffered",
+      "when": {
+        "All": [
+          {
+            "Whose": "Runner"
+          },
+          {
+            "Damage": "Net"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 1
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner takes at least 1 net damage, trash the top card of the stack."
+    }
+  ],
+  "built_from": 11054,
+  "is_playable": true
+}

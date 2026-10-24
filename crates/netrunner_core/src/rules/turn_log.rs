@@ -669,7 +669,7 @@ impl Occurrences {
                 Some(IceFacts::ALL.iter().filter(|facts| required.admits(**facts)).map(|facts| bit(Class::Ice(*facts))).fold(0, |mask, column| mask | column))
             }
             // A moment about ice is counted by its facts, not its type.
-            Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if trigger.is_about_ice_in_a_run() => {
+            Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if trigger.states_ice_facts() => {
                 return Err(format!("the turn counts a {trigger:?} by what was true of the ice, not by the card, so \"the first\" is narrowed with `Ice`"));
             }
             Some(EventFilter::Card(filter) | EventFilter::InstalledCard(filter))
