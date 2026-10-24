@@ -610,6 +610,9 @@ mod tests {
             // Red Sand Stage 47: AgInfusion's deck, on A Thousand Cuts'
             // list; Red Sand is in neither pool.
             ("zymurgy", &neither),
+            // FFG F5 Stage 19: NBN: Controlling the Message's deck, on Paid
+            // Content's list; Flashpoint is in neither pool.
+            ("zythum", &neither),
             // FFG F5 Stage 15: Ele "Smoke" Scovak's and Null: Whistleblower's
             // decks, on Head Start's and Pure Anarchy's lists; Flashpoint is
             // in neither pool.

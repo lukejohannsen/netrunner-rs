@@ -137,13 +137,11 @@ pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mirror", "Mirror"),
     ("hyoubu_research_facility", "Hyoubu Research Facility"),
     ("chrysalis", "Chrysalis"),
-    ("nbn_controlling_the_message", "NBN: Controlling the Message"),
 ];
 
 /// *Blood Money* (`blood_money`): tranche F5 of the FFG plan.
 pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("credit_crash", "Credit Crash"),
-    ("rumor_mill", "Rumor Mill"),
     ("khan_savvy_skiptracer", "Khan: Savvy Skiptracer"),
     ("weyland_consortium_builder_of_nations", "Weyland Consortium: Builder of Nations"),
 ];

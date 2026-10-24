@@ -1,0 +1,149 @@
+{
+  "id": "zythum",
+  "name": "Zythum",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "nbn_controlling_the_message",
+  "cards": [
+    {
+      "card": "increased_drop_rates",
+      "count": 2
+    },
+    {
+      "card": "pop_up_window",
+      "count": 1
+    },
+    {
+      "card": "sansan_city_grid",
+      "count": 1
+    },
+    {
+      "card": "the_powers_that_be",
+      "count": 1
+    },
+    {
+      "card": "kingmaking",
+      "count": 1
+    },
+    {
+      "card": "project_beale",
+      "count": 2
+    },
+    {
+      "card": "digital_rights_management",
+      "count": 2
+    },
+    {
+      "card": "sweeps_week",
+      "count": 1
+    },
+    {
+      "card": "sync_bre",
+      "count": 2
+    },
+    {
+      "card": "license_acquisition",
+      "count": 2
+    },
+    {
+      "card": "focus_group",
+      "count": 2
+    },
+    {
+      "card": "reversed_accounts",
+      "count": 1
+    },
+    {
+      "card": "bellona",
+      "count": 2
+    },
+    {
+      "card": "loot_box",
+      "count": 1
+    },
+    {
+      "card": "daily_business_show",
+      "count": 2
+    },
+    {
+      "card": "ghost_branch",
+      "count": 2
+    },
+    {
+      "card": "breaking_news",
+      "count": 1
+    },
+    {
+      "card": "astroscript_pilot_program",
+      "count": 2
+    },
+    {
+      "card": "matrix_analyzer",
+      "count": 1
+    },
+    {
+      "card": "cpc_generator",
+      "count": 2
+    },
+    {
+      "card": "observe_and_destroy",
+      "count": 1
+    },
+    {
+      "card": "hatchet_job",
+      "count": 1
+    },
+    {
+      "card": "ip_block",
+      "count": 1
+    },
+    {
+      "card": "thoth",
+      "count": 1
+    },
+    {
+      "card": "data_ward",
+      "count": 1
+    },
+    {
+      "card": "hard_hitting_news",
+      "count": 1
+    },
+    {
+      "card": "special_report",
+      "count": 1
+    },
+    {
+      "card": "drone_screen",
+      "count": 1
+    },
+    {
+      "card": "ipo",
+      "count": 1
+    },
+    {
+      "card": "weir",
+      "count": 1
+    },
+    {
+      "card": "honeyfarm",
+      "count": 1
+    },
+    {
+      "card": "macrophage",
+      "count": 1
+    },
+    {
+      "card": "watchdog",
+      "count": 1
+    },
+    {
+      "card": "paper_trail",
+      "count": 1
+    }
+  ]
+}

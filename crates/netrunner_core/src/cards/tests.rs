@@ -44209,3 +44209,79 @@ mod flashpoint_stage_18 {
         assert!(ended.delayed.is_empty());
     }
 }
+
+mod flashpoint_stage_19 {
+    use super::*;
+    use crate::rules::{InstalledCard, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn pad(install: u32, remote: u32) -> InstalledCard {
+        InstalledCard { install_id: InstallId(install), card: id("pad_campaign"), server: ServerId::Remote(remote), slot: InstallSlot::Root, ..Default::default() }
+    }
+
+    /// Runs remote `remote` (no ice) and trashes the PAD Campaign in its root.
+    fn trash_on_access(state: &GameState, registry: &CardRegistry, remote: u32) -> GameState {
+        let (state, _) = close_all_windows(state.clone(), registry);
+        let (state, _) = run_to_completion(state, registry, ServerId::Remote(remote));
+        apply_action(&state, registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash it").0
+    }
+
+    fn asked(state: &GameState) -> bool {
+        matches!(state.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Corp, .. }))
+    }
+
+    #[test]
+    fn nbn_controlling_the_message_may_trace_four_for_a_tag_the_first_time_each_turn_the_runner_trashes_an_installed_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(id("nbn_controlling_the_message"));
+        state.runner.resources.credits = Credits(20);
+        state.corp.installed = vec![pad(81, 0), pad(82, 1)];
+
+        let once = trash_on_access(&state, &registry, 0);
+        assert!(asked(&once), "you may trace[4]");
+        let (tracing, _) = apply_action(&once, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trace");
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(4), "trace[4]");
+        let (bid, _) = apply_action(&tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (tagged, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("the Runner bids");
+        assert_eq!(tagged.runner.tags, 1, "give the Runner 1 tag");
+
+        let (tagged, _) = close_all_windows(tagged, &registry);
+        let twice = trash_on_access(&tagged, &registry, 1);
+        assert!(!asked(&twice), "the first time each turn");
+
+        let (declined, _) = apply_action(&once, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert!(declined.active_trace.is_none() && declined.runner.tags == 0, "you may");
+    }
+
+    #[test]
+    fn rumor_mill_takes_the_printed_abilities_of_each_unique_non_region_asset_and_upgrade_while_it_is_in_play() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("rumor_mill")];
+        state.runner.resources.credits = Credits(5);
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![
+            InstalledCard { install_id: InstallId(21), card: id("bryan_stinson"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            InstalledCard { install_id: InstallId(22), card: id("pad_campaign"), server: ServerId::Remote(1), slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+        ];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        let bryan = PlayerAction::ActivateAbility { target: InstallId(21), ability_index: 0 };
+        let mut corp_turn = state.clone();
+        corp_turn.phase = GamePhase::Action(Side::Corp);
+        assert!(crate::rules::legal_actions_for(&corp_turn, &registry, Side::Corp).contains(&bryan), "before Rumor Mill");
+
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("rumor_mill") }).expect("play");
+        let (mut played, _) = close_all_windows(played, &registry);
+        assert!(played.runner.in_play.iter().any(|current| current.card == id("rumor_mill")), "a current stays in play");
+        played.phase = GamePhase::Action(Side::Corp);
+        assert!(!crate::rules::legal_actions_for(&played, &registry, Side::Corp).contains(&bryan), "a unique upgrade loses its printed abilities");
+        assert!(crate::rules::active::lost_abilities(&played, &registry, InstallId(21)));
+        assert!(!crate::rules::active::lost_abilities(&played, &registry, InstallId(22)), "PAD Campaign is not unique");
+    }
+}

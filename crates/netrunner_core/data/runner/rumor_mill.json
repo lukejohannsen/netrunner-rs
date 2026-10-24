@@ -1,0 +1,38 @@
+{
+  "id": "rumor_mill",
+  "title": "Rumor Mill",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": "LosesAbilities",
+      "applies_to": {
+        "CorpInstalled": {
+          "All": [
+            "Unique",
+            {
+              "Not": {
+                "HasSubtype": "Region"
+              }
+            },
+            {
+              "AnyOf": [
+                {
+                  "CardType": "Asset"
+                },
+                {
+                  "CardType": "Upgrade"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "text": "Each unique (♦) non-region asset and upgrade loses its printed abilities."
+    }
+  ],
+  "triggers": [],
+  "built_from": 11022,
+  "is_playable": true
+}

@@ -20,7 +20,7 @@
 //! Word on the Street in the Corp's score area is a −1, not a resource.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, ContinuousKind};
+use crate::dsl::{card_matches_filter, CardFilter, CardId, CardType, ContinuousKind, Scope};
 use crate::rules::run::ServerId;
 use crate::rules::state::{GameState, InstallId, Side};
 
@@ -157,7 +157,9 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
 /// Whether the install `install` has lost all its abilities (CR 9.1.9a):
 /// a card hosted on it says so for as long as it stays there (Hush's
 /// `ContinuousKind::LosesAbilities`, about its `Host`), the ice it is
-/// hosted on says so of what it hosts (Magnet's, `Scope::Hosted`), or a lingering
+/// hosted on says so of what it hosts (Magnet's, `Scope::Hosted`), a
+/// current in play says so of the Corp installs it names (Rumor Mill's,
+/// `Scope::CorpInstalled`, [`current_takes`]), or a lingering
 /// effect does (Klevetnik's, `lingering::loses_abilities`). **The one
 /// question**, put by everything that reads what a card can do: who hears
 /// an event (`listeners`), whose standing effects apply (`continuous`), who
@@ -176,6 +178,7 @@ pub(crate) fn lost_abilities(state: &GameState, registry: &CardRegistry, install
     crate::rules::lingering::loses_abilities(state, install)
         || hosted_says(state, registry, install, ContinuousKind::LosesAbilities)
         || host_takes(state, registry, install, ContinuousKind::LosesAbilities)
+        || current_takes(state, registry, install)
 }
 
 /// Whether the install `install` may have an ability another card gives it
@@ -202,6 +205,9 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
             _ => Vec::new(),
         })
         .collect();
+    if currents_taking(state, registry).next().is_some() {
+        lost.extend(state.corp.installed.iter().map(|card| card.install_id).filter(|install| current_takes(state, registry, *install)));
+    }
     for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {
         if host_takes(state, registry, card.install_id, ContinuousKind::LosesAbilities) {
             lost.push(card.install_id);
@@ -214,6 +220,36 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
         }
     }
     lost
+}
+
+/// The filters of every current in play that takes away the abilities of
+/// the Corp installs they match — Rumor Mill's "Each unique (◆) non-region
+/// asset and upgrade loses its printed abilities". A current is the one
+/// card that says this of a Corp install from outside the table, and it is
+/// in a play area, never an install, so its own loss is never asked and
+/// nothing here can loop (CR 9.12.1e's worry is a host and what it hosts).
+fn currents_taking<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = &'a CardFilter> + 'a {
+    state
+        .runner
+        .in_play
+        .iter()
+        .chain(state.corp.play_area.iter())
+        .filter_map(|played| registry.get(&played.card))
+        .flat_map(|definition| definition.continuous.iter())
+        .filter_map(|effect| match &effect.applies_to {
+            Scope::CorpInstalled(filter) if effect.kind == ContinuousKind::LosesAbilities => Some(filter),
+            _ => None,
+        })
+}
+
+/// Whether a current in play takes the abilities of the Corp install
+/// `install` ([`currents_taking`]). The filter is a definition's words, as
+/// every other `CorpInstalled` is read, and the copy's.
+fn current_takes(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    let Some(definition) = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)) else {
+        return false;
+    };
+    currents_taking(state, registry).any(|filter| card_matches_filter(definition, filter) && crate::rules::pending_choice::copy_matches(state, filter, Some(install)))
 }
 
 /// Whether a card hosted on `install` declares `kind` about its host.
