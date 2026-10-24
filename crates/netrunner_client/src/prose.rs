@@ -106,6 +106,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::TriggeringCardTrashCost => "the trashed card's trash cost".to_string(),
         Amount::PassedIceSubroutinesResolved => "the number of subroutines that resolved on the passed ice".to_string(),
         Amount::UnbrokenSubroutinesThatEncounter => "the number of unbroken subroutines on the encountered ice".to_string(),
+        Amount::RevealedBid(side) => format!("the credits {} revealed they had secretly spent", who(*side)),
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),

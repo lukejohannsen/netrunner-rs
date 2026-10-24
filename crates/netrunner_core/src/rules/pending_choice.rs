@@ -1368,6 +1368,10 @@ pub(crate) fn finish_psi_game(
     // installed card, which The Twinning and Keiko hear. Never dispatched
     // until the sweep paired a hosted pool with a psi game (UR Stage 2).
     events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
+    // "Revealing secretly spent credits" is met at the next checkpoint
+    // after the bids are revealed and paid for (CR 10.14.5): Fumiko
+    // Yamamori and Hyoubu Research Facility hear it after the outcome.
+    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid })?);
     if resume == PendingChoiceResume::ResumeSubroutines {
         mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

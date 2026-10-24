@@ -1,0 +1,28 @@
+{
+  "id": "hyoubu_research_facility",
+  "title": "Hyoubu Research Facility",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSecretCreditsRevealed",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "RevealedBid": "Corp"
+            }
+          ]
+        }
+      ],
+      "text": "The first time each turn you reveal secretly spent credits, gain that many credits."
+    }
+  ],
+  "built_from": 11012,
+  "is_playable": true
+}

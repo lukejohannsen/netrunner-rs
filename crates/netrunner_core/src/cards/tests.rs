@@ -44354,3 +44354,105 @@ mod flashpoint_stage_20 {
         assert_eq!(played.runner.heap.len(), 4, "three from the grip and one from the stack");
     }
 }
+
+mod flashpoint_stage_21 {
+    use super::*;
+    use crate::rules::{InstalledCard, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// A run on HQ up to the first decision, or until it is over.
+    fn run_hq_until_asked(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..24 {
+            if state.pending_decision.is_some() || state.active_run.is_none() {
+                return state;
+            }
+            state = match state.paid_ability_window.as_ref() {
+                Some(window) => apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => match crate::rules::test_support::continue_run(&state, registry) {
+                    Ok((next, _)) => next,
+                    // Past the ice, at the server: nothing more to ask.
+                    Err(_) => return state,
+                },
+            };
+        }
+        panic!("never asked: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    #[test]
+    fn khan_may_install_an_icebreaker_for_one_less_the_first_time_each_turn_the_runner_passes_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("khan_savvy_skiptracer"));
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("corroder"), id("sure_gamble")];
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(11), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: false, ..Default::default() }];
+        let asked = run_hq_until_asked(&state, &registry);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may install an icebreaker");
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install one");
+        let (choosing, _) = apply_action(&choosing, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (installed, _) = apply_action(&choosing, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(installed.runner.resources.credits, Credits(4), "lowering the install cost by 1");
+
+        // A second run the same turn, the first one set aside.
+        let mut ended = installed;
+        ended.active_run = None;
+        ended.paid_ability_window = None;
+        ended.runner.resources.clicks = Clicks(3);
+        let again = run_hq_until_asked(&ended, &registry);
+        assert!(!matches!(again.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "the first time each turn");
+    }
+
+    fn with_a_psi_operation() -> CardRegistry {
+        let mut registry = registry();
+        registry.insert(
+            serde_json::from_str(
+                r#"{"id": "a_psi_operation", "title": "A Psi Operation", "side": "Corp", "card_type": "Operation", "cost": 0,
+                    "triggers": [{"trigger": "OnPlay", "subject": "This", "effects": [{"PsiGame": {"on_match": {"Sequence": []}, "on_differ": {"Sequence": []}}}]}]}"#,
+            )
+            .expect("a card file"),
+        );
+        registry
+    }
+
+    /// The Corp plays a psi game and both bid.
+    fn psi(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let (bidding, _) = apply_action(state, registry, PlayerAction::PlayOperation { card_id: id("a_psi_operation") }).expect("play");
+        let (bidding, _) = apply_action(&bidding, registry, PlayerAction::ChooseNumber { amount: corp }).expect("the Corp bids");
+        let (revealed, _) = apply_action(&bidding, registry, PlayerAction::ChooseNumber { amount: runner }).expect("the Runner bids");
+        close_all_windows(revealed, registry).0
+    }
+
+    fn psi_table(card: &str) -> GameState {
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.runner.resources.credits = Credits(5);
+        state.corp.hq = vec![id("a_psi_operation"), id("a_psi_operation")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(21), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state
+    }
+
+    #[test]
+    fn fumiko_yamamori_does_a_meat_damage_whenever_revealed_secret_spending_differs() {
+        let registry = with_a_psi_operation();
+        let differ = psi(&psi_table("fumiko_yamamori"), &registry, 1, 0);
+        assert_eq!(differ.runner.grip.len(), 2, "a different number of credits: 1 meat damage");
+        let matched = psi(&differ, &registry, 1, 1);
+        assert_eq!(matched.runner.grip.len(), 2, "the same number: nothing");
+    }
+
+    #[test]
+    fn hyoubu_research_facility_gains_what_the_corp_revealed_the_first_time_each_turn() {
+        let registry = with_a_psi_operation();
+        let once = psi(&psi_table("hyoubu_research_facility"), &registry, 2, 0);
+        assert_eq!(once.corp.resources.credits, Credits(5), "spent 2, gained 2");
+        let twice = psi(&once, &registry, 2, 0);
+        assert_eq!(twice.corp.resources.credits, Credits(3), "the first time each turn");
+    }
+}

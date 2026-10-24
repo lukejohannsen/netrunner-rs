@@ -920,8 +920,10 @@ pub enum GameEvent {
     CardNameChosen { chooser: Side, card: CardId },
     /// Both bids of a psi game, revealed together once the Runner has bid
     /// (CR 10.14.6c) and spent after this (10.14.4) — the first moment the
-    /// Runner learns the Corp's (`Effect::PsiGame`). Heard by no card: none
-    /// in the pool triggers on a revealed bid (10.14.5).
+    /// Runner learns the Corp's (`Effect::PsiGame`). Heard as "revealing
+    /// secretly spent credits" (`Trigger::OnSecretCreditsRevealed`, CR
+    /// 10.14.5), dispatched once the bids are paid for and the outcome has
+    /// resolved (`pending_choice::finish_psi_game`).
     PsiBidsRevealed { corp: u32, runner: u32 },
     /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
     /// awaiting `PlayerAction::AcceptPendingPaidChoice`/

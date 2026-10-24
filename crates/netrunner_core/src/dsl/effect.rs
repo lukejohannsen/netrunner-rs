@@ -2589,6 +2589,15 @@ pub enum Amount {
     /// other event. Composition didn't work for `PassedIceSubroutinesResolved`'s
     /// reason, and an encounter that ends with the run is never passed.
     UnbrokenSubroutinesThatEncounter,
+    /// What the named player revealed they had secretly spent in the
+    /// triggering psi game — Hyoubu Research Facility's "the first time
+    /// each turn you reveal secretly spent credits, gain that many
+    /// credits" (the Corp's), and with the other side's, Fumiko Yamamori's
+    /// "if you and the Runner spent a different number of credits" (`More
+    /// Than` either way). Read off `GameEvent::PsiBidsRevealed`; 0 for any
+    /// other event. Composition didn't work: a bid is spent and gone by
+    /// the time anybody hears it revealed.
+    RevealedBid(crate::rules::Side),
     /// The printed agenda points of the acting card — Drudge Work's
     /// "Reveal an agenda in HQ or Archives. Gain credits equal to its agenda
     /// points", read in the reveal's `then`, which resolves as the card
