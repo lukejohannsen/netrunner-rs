@@ -2573,6 +2573,7 @@ pub fn evaluate_effect(
             let most = |side| {
                 crate::rules::payment::available(state, registry, side, crate::rules::payment::Purpose::Other)
                     .min(crate::rules::pending_choice::PSI_MAX_BID)
+                    .min(crate::rules::continuous::bid_limit(state, registry, side).unwrap_or(u32::MAX))
             };
             let (corp_max, runner_max) = (most(Side::Corp), most(Side::Runner));
             state.pending_decision = Some(PendingDecision::PsiGame {

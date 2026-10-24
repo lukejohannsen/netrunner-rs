@@ -352,6 +352,19 @@ pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option
     limit
 }
 
+/// The most `side` may bid when secretly spending (Government
+/// Investigations: `ContinuousKind::BidAtMost`), or `None` with no limit
+/// but their credits.
+pub(crate) fn bid_limit(state: &GameState, registry: &CardRegistry, side: Side) -> Option<u32> {
+    let mut limit: Option<u32> = None;
+    for_each_applying(state, registry, Target::Bound(side), |kind| matches!(kind, ContinuousKind::BidAtMost(_)), |effect, _, _| {
+        if let ContinuousKind::BidAtMost(most) = effect.kind {
+            limit = Some(limit.map_or(most, |limit| limit.min(most)));
+        }
+    });
+    limit
+}
+
 /// Every "cannot access more than N cards other than this one" standing on
 /// the run against `server` (`ContinuousKind::AccessOthersAtMost`): the
 /// number, the card that says it, and its install while it is still on
