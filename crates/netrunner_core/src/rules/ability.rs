@@ -2736,6 +2736,7 @@ pub fn evaluate_effect(
             only_protected_by_ice,
             only_in,
             last_run_server,
+            chosen_server,
             ignore_additional_costs,
         } => {
             // A parked `ChooseServer` is only ever resolved by
@@ -2777,16 +2778,27 @@ pub fn evaluate_effect(
             let any_barred = state.lingering.iter().any(|effect| matches!(effect.on, crate::rules::lingering::On::Server(_)));
             // "Run the attacked server again": the last run's, if there was
             // one and it is still a server to run.
-            let allowed_servers = if *last_run_server {
-                let last = state.last_completed_run.as_ref().map(|run| run.server).ok_or(RulesError::NoServerLeftToRun)?;
-                let exists = match last {
+            // The one server a card names may since have gone, or be one
+            // the Runner may not run.
+            let runnable = |server: ServerId| {
+                let exists = match server {
                     ServerId::Remote(id) => crate::rules::legal_actions::existing_remote_ids(state).contains(&id),
                     _ => true,
                 };
-                if !exists || (no_remote && matches!(last, ServerId::Remote(_))) || barred(&last) {
+                if !exists || (no_remote && matches!(server, ServerId::Remote(_))) || barred(&server) {
                     return Err(RulesError::NoServerLeftToRun);
                 }
-                Some(vec![last])
+                Ok(Some(vec![server]))
+            };
+            let allowed_servers = if *last_run_server {
+                runnable(state.last_completed_run.as_ref().map(|run| run.server).ok_or(RulesError::NoServerLeftToRun)?)?
+            } else if *chosen_server {
+                // "Run the chosen server" (Tracker): the server the card chose.
+                runnable(
+                    acting_card
+                        .and_then(|card| crate::rules::lingering::chosen_server(state, card, ctx.acting_install))
+                        .ok_or(RulesError::NoServerLeftToRun)?,
+                )?
             } else {
                 allowed_servers.clone()
             };

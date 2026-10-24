@@ -1640,6 +1640,10 @@ pub(crate) fn transition_subroutine(
     // run do not resolve": resolving one resolves nothing.
     if to == SubroutineStatus::Resolved && crate::rules::lingering::withholds_subroutine(state, index) {
         effect = crate::dsl::Effect::Sequence(Vec::new());
+    } else if to == SubroutineStatus::Resolved && crate::rules::lingering::take_first_subroutine(state) {
+        // Tracker's "the first time a subroutine would resolve during that
+        // run, prevent it from resolving".
+        effect = crate::dsl::Effect::Sequence(Vec::new());
     } else if to == SubroutineStatus::Resolved
         && let Some(instead) = crate::rules::lingering::subroutines_replaced_by(state, install)
             .and_then(|card| registry.get(card))

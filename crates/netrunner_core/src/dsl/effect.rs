@@ -747,6 +747,15 @@ pub enum Effect {
         /// offer's, and no card file can name a server a run chose.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         last_run_server: bool,
+        /// Offer only the server the acting card chose (`Lingering::
+        /// ChosenServer`) — Tracker's "When your turn begins, you may choose
+        /// a server. [click], 2[credit]: Run the chosen server." With none
+        /// chosen there is nothing to run and the effect fails rather than
+        /// park, as `last_run_server` does with no last run. A field for
+        /// `last_run_server`'s reason: no card file can name a server a
+        /// card chose.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        chosen_server: bool,
         /// The run is made "ignoring any additional costs to run" (Always
         /// Have a Backup Plan): no run cost is paid as the server is
         /// announced (`run::start_run_ignoring_costs`), and none narrows
@@ -3427,12 +3436,24 @@ pub enum Prohibition {
     /// be broken until then. Its 3 is the only number the pool prints
     /// there, so it is no payload, as `AccessMoreThanOneCard`'s 1 is not.
     ResolveFirstThreeSubroutines,
+    /// The Corp cannot resolve the first subroutine that would resolve
+    /// during this run — Tracker's "The first time a subroutine would
+    /// resolve during that run, prevent it from resolving", made as the run
+    /// starts (`PromptChooseServer::on_start`) for `EffectDuration::Run`.
+    /// Asked where a subroutine resolves (`run::transition_subroutine`,
+    /// `lingering::take_first_subroutine`) and taken off the list when it
+    /// withholds one, which is what makes it the first time, as Shred's
+    /// `Lingering::PreventRunEnding` is taken off when it is asked.
+    /// Composition didn't work: `ResolveFirstThreeSubroutines` counts the
+    /// subroutines of one encounter, and the first to resolve in a run may
+    /// be on any piece of ice, or any position on it.
+    ResolveFirstSubroutine,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 23] = [
+    pub const ALL: [Prohibition; 24] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3456,12 +3477,13 @@ impl Prohibition {
         Prohibition::AccessCardsInHq,
         Prohibition::Install,
         Prohibition::ResolveFirstThreeSubroutines,
+        Prohibition::ResolveFirstSubroutine,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install => Side::Runner,
         }
     }
@@ -3473,7 +3495,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine => None,
         }
     }
 }

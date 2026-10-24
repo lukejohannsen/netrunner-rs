@@ -1,0 +1,65 @@
+{
+  "id": "tracker",
+  "title": "Tracker",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "ChooseServer": {}
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may choose a server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may choose a server."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 2
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0,
+          "chosen_server": true,
+          "on_start": {
+            "Prohibit": {
+              "what": "ResolveFirstSubroutine",
+              "until": "Run"
+            }
+          }
+        }
+      },
+      "text": "[click], 2[credit]: Run the chosen server. The first time a subroutine would resolve during that run, prevent it from resolving."
+    }
+  ],
+  "built_from": 11105,
+  "is_playable": true
+}

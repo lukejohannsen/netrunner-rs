@@ -44500,3 +44500,130 @@ mod flashpoint_stage_22 {
         assert_eq!(bids(&bidding, Side::Runner), vec![0, 1], "nor can the Runner");
     }
 }
+
+mod flashpoint_stage_23 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn offered(state: &GameState, registry: &CardRegistry) -> Vec<u32> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn nasx_buys_up_to_two_counters_whenever_another_card_gains_the_corp_credits_and_cashes_them_in_at_two_each() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("nasx"),
+            card: id("nasx"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("play Hedge Fund");
+        assert_eq!(offered(&asked, &registry), vec![0, 1, 2], "up to 2[credit]");
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("2");
+        let paid = close_all_windows(paid, &registry).0;
+        assert_eq!((paid.corp.installed[0].counters, paid.corp.resources.credits), (2, Credits(7)), "Hedge Fund nets 4[credit], 2 of them spent");
+
+        let (cashed, _) =
+            apply_action(&paid, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("nasx"), ability_index: 0 }).expect("[click],[trash]");
+        let cashed = close_all_windows(cashed, &registry).0;
+        assert!(cashed.corp.installed.is_empty(), "NASX is trashed to pay");
+        assert_eq!(cashed.corp.resources.credits, Credits(7 + 4), "2[credit] for each power counter");
+        assert!(offered(&cashed, &registry).is_empty(), "NASX's own credits buy it nothing");
+    }
+
+    #[test]
+    fn nasx_hears_nothing_of_its_own_turn_start_credit() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("nasx"),
+            card: id("nasx"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.corp.resources.credits = Credits(5);
+        state.phase = GamePhase::Action(Side::Corp);
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&ended), &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (ended, _) = apply_action(&ended, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = apply_action(&ended, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes into their turn");
+        let (ended, _) = apply_action(&ended, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        let begun = apply_action(&ended, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins").0;
+        assert_eq!(begun.corp.resources.credits, Credits(5 + 1));
+        assert!(offered(&begun, &registry).is_empty(), "the credit is from NASX");
+    }
+
+    fn ice_wall_at_hq(install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    /// Chosen as the turn begins, the run Tracker makes on HQ resolves
+    /// nothing for the first subroutine that would resolve, and the next
+    /// one resolves as printed.
+    fn tracked(ice: Vec<crate::rules::InstalledCard>) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("tracker"), card: id("tracker"), ..Default::default() }];
+        state.corp.installed = ice;
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let asked = close_all_windows(state, &registry).0;
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose a server");
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let (mut ready, _) = close_all_windows(chosen, &registry);
+        ready.runner.resources.credits = Credits(5);
+        let (running, _) = apply_action(&ready, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("tracker"), ability_index: 0 }).expect("[click], 2[credit]");
+        let (running, _) = close_all_windows(running, &registry);
+        assert_eq!(running.runner.resources.credits, Credits(3));
+        let offered: Vec<ServerId> = crate::rules::legal_actions_for(&running, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![ServerId::Hq], "the chosen server");
+        let (run, _) = apply_action(&running, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        pass_until_settled(run, &registry)
+    }
+
+    #[test]
+    fn tracker_runs_the_chosen_server_and_the_first_subroutine_to_resolve_does_not() {
+        let (done, _) = tracked(vec![ice_wall_at_hq(4242)]);
+        assert!(
+            done.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success),
+            "Ice Wall's \"End the run.\" was prevented, and the run reached HQ"
+        );
+        assert!(!done.lingering.iter().any(|effect| effect.what == crate::rules::lingering::Lingering::Cannot(crate::dsl::Prohibition::ResolveFirstSubroutine)));
+        let (done, _) = tracked(vec![ice_wall_at_hq(4242), ice_wall_at_hq(4243)]);
+        assert!(done.active_run.is_none(), "only the first: the inner Ice Wall ends the run");
+    }
+
+    #[test]
+    fn tracker_runs_nothing_with_no_server_chosen() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("tracker"), card: id("tracker"), ..Default::default() }];
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("tracker"), ability_index: 0 }).is_err());
+    }
+}

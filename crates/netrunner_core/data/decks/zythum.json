@@ -3,7 +3,7 @@
   "name": "Zythum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only.",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits.",
   "style": [
     "fast-advance"
   ],
@@ -87,7 +87,7 @@
     },
     {
       "card": "cpc_generator",
-      "count": 2
+      "count": 1
     },
     {
       "card": "observe_and_destroy",
@@ -143,6 +143,10 @@
     },
     {
       "card": "paper_trail",
+      "count": 1
+    },
+    {
+      "card": "nasx",
       "count": 1
     }
   ]
