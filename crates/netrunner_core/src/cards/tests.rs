@@ -44627,3 +44627,46 @@ mod flashpoint_stage_23 {
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("tracker"), ability_index: 0 }).is_err());
     }
 }
+
+mod flashpoint_stage_24 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), counters, ..Default::default() }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A successful run on R&D puts 1 credit back on a card whose
+    /// recurring credit was spent, and offers no card whose was not.
+    #[test]
+    fn mirror_replaces_one_spent_recurring_credit_after_a_successful_run_on_rnd() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("mirror", 0), rig("cyberfeeder", 0), rig("azimat", 0)];
+        let azimat = crate::rules::payment::spent_recurring(&state, &registry, Side::Runner, fixture_install_id("azimat"), &id("azimat"));
+        state.runner.rig[2].counters = azimat;
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (at_success, _) = pass_until_settled(running, &registry);
+        let (asked, _) = apply_action(&at_success, &registry, PlayerAction::CompleteRun).expect("the run is successful");
+        let (asked, _) = pass_until_settled(asked, &registry);
+        assert_eq!(toggles(&asked, &registry), vec![1], "only Cyberfeeder's recurring credit was spent");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Cyberfeeder");
+        let (replaced, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(replaced.runner.rig[1].counters, 1, "1 credit back on Cyberfeeder");
+        assert_eq!(crate::rules::payment::spent_recurring(&replaced, &registry, Side::Runner, fixture_install_id("cyberfeeder"), &id("cyberfeeder")), 0);
+    }
+}

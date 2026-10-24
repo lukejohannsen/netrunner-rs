@@ -727,6 +727,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::ReplaceSubroutines => "for this encounter, the Corp resolves this card's subroutine instead of each subroutine on the ice".to_string(),
         Effect::SpendChosenServer => "the chosen server is spent for this turn".to_string(),
+        Effect::ReplaceSpentRecurringCredit => "replace 1 spent recurring credit on it".to_string(),
         Effect::MoveRunToOutermost(Some(server)) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::MoveRunToOutermost(None) => "move the run to the outermost ice of the attacked server".to_string(),
         Effect::MoveRunToOutermostAndEncounter(Some(server)) => format!("move the run to the outermost position of {} and encounter any ice there", describe_server(*server)),
