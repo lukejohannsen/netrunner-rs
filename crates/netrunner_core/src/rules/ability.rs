@@ -5474,6 +5474,9 @@ pub fn check_requirement(
         EffectRequirement::InTheWindowAfterDamage => {
             if state.this_turn.window_after_damage() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::InTheWindowAfterARun => {
+            if state.this_turn.window_after_run() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::SubroutineBrokenThisEncounter => {
             let broken = state
                 .active_run
@@ -5644,10 +5647,9 @@ pub fn check_requirement(
             let trashed = ctx.damage_discarded.iter().any(|card_id| registry.get(card_id).is_some_and(|card| crate::dsl::card_matches_filter(card, &filter)));
             if trashed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::LastRunWasOnHqOrRnD => match state.last_completed_run.as_ref().map(|run| run.server) {
-            Some(ServerId::Hq | ServerId::RnD) => Ok(()),
-            _ => Err(RulesError::RequirementNotMet),
-        },
+        EffectRequirement::LastRunWasOn(servers) => {
+            if state.last_completed_run.as_ref().is_some_and(|run| servers.contains(&run.server)) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::ArchivesHasFacedownCard => {
             if state.corp.has_facedown_in_archives() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -6567,6 +6569,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ClickLostToBreakThisRun
         | EffectRequirement::AfterAPlay
         | EffectRequirement::InTheWindowAfterDamage
+        | EffectRequirement::InTheWindowAfterARun
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::LastRunSuccessful
@@ -6579,7 +6582,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::RunAgainstThisServer
         | EffectRequirement::LastDamageTrashedOddCostCard
         | EffectRequirement::LastDamageTrashed(_)
-        | EffectRequirement::LastRunWasOnHqOrRnD
+        | EffectRequirement::LastRunWasOn(_)
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
         | EffectRequirement::AccessingIn(_)
@@ -8416,13 +8419,13 @@ mod tests {
         let mut state = game_state();
         state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, rnd_cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), last_encountered: None });
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::LastRunWasOn(vec![ServerId::Hq, ServerId::RnD]), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
         state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, rnd_cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, successful: false, breached: None, initiated_by: None, event_counters: 0, ice_passed: 0, passed: Vec::new(), rezzed: Vec::new(), last_encountered: None });
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::LastRunWasOn(vec![ServerId::Hq, ServerId::RnD]), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())
         );
     }

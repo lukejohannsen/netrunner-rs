@@ -385,7 +385,7 @@ fn met(state: &GameState, registry: &CardRegistry, side: Side, ctx: &ResolutionC
     match requirement {
         EffectRequirement::And(a, b) => met(state, registry, side, ctx, a, at) && met(state, registry, side, ctx, b, at),
         EffectRequirement::Not(a) => !met(state, registry, side, ctx, a, at),
-        EffectRequirement::LastRunWasOnHqOrRnD => matches!(at.server, ServerId::Hq | ServerId::RnD),
+        EffectRequirement::LastRunWasOn(servers) => servers.contains(&at.server),
         EffectRequirement::AccessedAnyCardDuringLastRun => at.accesses > 0,
         EffectRequirement::Breaching(server) => *server == at.server,
         EffectRequirement::CurrentlyAccessingNonAgenda => at.accessing.is_some_and(|card| !card.agenda),

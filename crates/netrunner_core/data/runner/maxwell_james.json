@@ -1,0 +1,76 @@
+{
+  "id": "maxwell_james",
+  "title": "Maxwell James",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": {
+        "And": [
+          "InTheWindowAfterARun",
+          {
+            "And": [
+              "LastRunSuccessful",
+              {
+                "LastRunWasOn": ["Hq"]
+              }
+            ]
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              "Rezzed",
+              {
+                "Not": {
+                  "InServer": "Hq"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "RnD"
+                }
+              },
+              {
+                "Not": {
+                  "InServer": "Archives"
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "DerezCard": "ThisCard"
+          }
+        }
+      },
+      "text": "[trash]: Derez a piece of ice protecting a remote server. Use this ability only during the next paid ability window after a successful run on HQ ends."
+    }
+  ],
+  "built_from": 13011,
+  "is_playable": true
+}

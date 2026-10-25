@@ -1918,7 +1918,7 @@ pub struct GameState {
     /// `RunCompleted`/`RunJackedOut`/`RunEndedByEffect` conclusions only —
     /// see `dispatcher::dispatch_event`'s `Trigger::OnRunEnded` arm doc
     /// comment), set right before `active_run` is cleared. Backs
-    /// `EffectRequirement::LastRunWasOnHqOrRnD`/`StoleAgendaDuringLastRun`
+    /// `EffectRequirement::LastRunWasOn`/`StoleAgendaDuringLastRun`
     /// and `Effect::GainCreditsPerCardAccessedThisRun` — e.g. Zahya
     /// Sadeghi, AMAZE Amusements. Overwritten each time a run concludes;
     /// `None` before any run has ever finished.

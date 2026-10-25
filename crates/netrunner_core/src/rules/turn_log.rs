@@ -967,6 +967,16 @@ pub struct TurnLog {
     /// without passes (a run ended under it, CR 6.8.2a) leaves it set,
     /// which errs toward the Runner for one window.
     window_after_damage: bool,
+    /// A run has ended and no priority window has closed since — Maxwell
+    /// James's "Use this ability only during the next paid ability window
+    /// after a successful run on HQ ends" (`EffectRequirement::
+    /// InTheWindowAfterARun`). `window_after_damage`'s bit for a run's end
+    /// (`GameEvent::RunCompleted`, `RunJackedOut`, `RunEndedByEffect`), set,
+    /// read and cleared the same way: a run ends inside the action that
+    /// began it, so the action's own end keeps it, and the next action or
+    /// a window closed on two passes ends it. Which run, and whether it
+    /// was successful, is `GameState::last_completed_run`'s to say.
+    window_after_run: bool,
     /// The times each action was taken this turn, by what makes two
     /// actions the same (`SameAction`, CR 5.2.5a) — Wage Workers' "if you
     /// have taken that action exactly 3 times this turn". Beside the cells,
@@ -1033,6 +1043,7 @@ impl Default for TurnLog {
             added_to_archives: 0,
             damage_suffered: 0,
             window_after_damage: false,
+            window_after_run: false,
             same_actions: [None; SAME_ACTIONS],
             last_action_was_a_play: false,
         }
@@ -1153,6 +1164,12 @@ impl TurnLog {
         self.window_after_damage
     }
 
+    /// Whether a run has ended and no window has closed since
+    /// (`EffectRequirement::InTheWindowAfterARun`).
+    pub fn window_after_run(&self) -> bool {
+        self.window_after_run
+    }
+
     /// How many of `trigger`'s moments this turn its `when` admits, as a
     /// card on `controller`'s side means them (`Occurrences::meant_by`);
     /// 0 for a filter finer than the log counts, which `validate` refuses.
@@ -1217,6 +1234,8 @@ struct Sparse {
     damage_suffered: u8,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     window_after_damage: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    window_after_run: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     same_actions: Vec<(SameAction, u8)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1250,6 +1269,7 @@ impl From<TurnLog> for Sparse {
             added_to_archives: log.added_to_archives,
             damage_suffered: log.damage_suffered,
             window_after_damage: log.window_after_damage,
+            window_after_run: log.window_after_run,
             same_actions: log.same_actions.iter().flatten().copied().collect(),
             last_action_was_a_play: log.last_action_was_a_play,
         }
@@ -1268,6 +1288,7 @@ impl From<Sparse> for TurnLog {
             added_to_archives: sparse.added_to_archives,
             damage_suffered: sparse.damage_suffered,
             window_after_damage: sparse.window_after_damage,
+            window_after_run: sparse.window_after_run,
             last_action_was_a_play: sparse.last_action_was_a_play,
             ..TurnLog::default()
         };
@@ -1380,6 +1401,9 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
         state.this_turn.damage_suffered = state.this_turn.damage_suffered.saturating_add(amount);
         state.this_turn.window_after_damage = true;
     }
+    if let GameEvent::RunCompleted { .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunEndedByEffect { .. } = event {
+        state.this_turn.window_after_run = true;
+    }
     if let GameEvent::CardInstalled { side: Side::Corp, from_hq: true, .. } = event {
         state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
     }
@@ -1424,6 +1448,9 @@ pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction, 
     if state.this_turn.damage_suffered == before.damage_suffered {
         state.this_turn.window_after_damage = false;
     }
+    if state.this_turn.times(Trigger::OnRunEnded) == before.times(Trigger::OnRunEnded) {
+        state.this_turn.window_after_run = false;
+    }
     state.this_turn.actions_finished = state.this_turn.actions_finished.saturating_add(1);
     state.this_turn.last_action_was_a_play = action == SameAction::Play;
     state.this_turn.take(action);
@@ -1433,6 +1460,7 @@ pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction, 
 /// `TurnLog::window_after_damage`.
 pub(crate) fn record_window_closed(state: &mut GameState) {
     state.this_turn.window_after_damage = false;
+    state.this_turn.window_after_run = false;
 }
 
 /// A turn begins: this turn becomes last turn. The one reset, for both

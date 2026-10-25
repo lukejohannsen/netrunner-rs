@@ -177,7 +177,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("polyhistor", "Polyhistor"),
     ("charlatan", "Charlatan"),
-    ("maxwell_james", "Maxwell James"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
 ];

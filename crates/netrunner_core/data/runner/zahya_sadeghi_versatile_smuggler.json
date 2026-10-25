@@ -11,7 +11,7 @@
       "subject": "Any",
       "requirement": {
         "And": [
-          "LastRunWasOnHqOrRnD",
+          { "LastRunWasOn": ["Hq", "RnD"] },
           {
             "And": [
               "AccessedAnyCardDuringLastRun",
