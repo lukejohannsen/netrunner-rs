@@ -45841,3 +45841,70 @@ mod flashpoint_stage_39 {
         assert!(ended.runner.heap.contains(&id("cold_read")));
     }
 }
+
+/// FFG F5 Stage 40: Nihongai Grid.
+mod flashpoint_stage_40 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const DECK: [&str; 6] = ["hedge_fund", "ice_wall", "enigma", "pad_campaign", "project_junebug", "sting"];
+
+    /// Nihongai Grid in the root of a remote, six cards in R&D and two in
+    /// HQ, and the Runner with `grip` cards and `credits`.
+    fn grid(grip: usize, credits: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.grip = (0..grip).map(|n| id(&format!("card_{n}"))).collect();
+        state.corp.r_and_d = DECK.iter().map(|card| id(card)).collect();
+        state.corp.hq = vec![id("daruma"), id("bamboo_dome")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9400), card: id("nihongai_grid"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        (state, registry)
+    }
+
+    fn corp_toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A Runner short of 2 cards and 6[credit]: the Corp swaps one of the
+    /// top 5 cards of R&D with a card in HQ, each taking the other's place.
+    #[test]
+    fn nihongai_grid_swaps_a_card_of_the_top_five_with_one_in_hq() {
+        let (state, registry) = grid(1, 10);
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert!(matches!(asked.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "the Corp may");
+        let (looking, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("look");
+        let offered = corp_toggles(&looking, &registry);
+        assert_eq!(offered.len(), 5, "the top 5 cards of R&D");
+        let deep = offered[2];
+        let taken = looking.corp.r_and_d[deep].clone();
+        let (chosen, _) = apply_action(&looking, &registry, PlayerAction::ToggleCardSelection { position: deep }).expect("one of them");
+        let (in_hq, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(corp_toggles(&in_hq, &registry), vec![0, 1], "a card in HQ");
+        let (chosen, _) = apply_action(&in_hq, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Bamboo Dome");
+        let (swapped, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("swap");
+        assert_eq!(swapped.corp.r_and_d.len(), 6);
+        assert_eq!(swapped.corp.r_and_d[deep], id("bamboo_dome"), "the HQ card takes the R&D card's place");
+        assert_eq!(swapped.corp.hq, vec![id("daruma"), taken]);
+    }
+
+    /// A Runner with 2 cards and 6[credit] is not asked about.
+    #[test]
+    fn nihongai_grid_asks_nothing_of_a_runner_with_two_cards_and_six_credits() {
+        let (state, registry) = grid(2, 6);
+        let (after, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert!(!matches!(after.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
+        assert_eq!(after.corp.r_and_d, DECK.iter().map(|card| id(card)).collect::<Vec<_>>());
+    }
+}

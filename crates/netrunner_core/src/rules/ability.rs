@@ -1131,6 +1131,20 @@ pub fn evaluate_effect(
             run.redirect_at_success = false;
             Ok(Vec::new())
         }
+        // Both places are the selections' (`Effect::with_swap_position`);
+        // with either unwritten nothing was chosen, and nothing moves.
+        Effect::SwapDeckCardWithHq { deck: Some(deck), hq: Some(hq) } => {
+            let (deck, hq) = (*deck as usize, *hq as usize);
+            if deck >= state.corp.r_and_d.len() {
+                return Err(RulesError::CardNotEligibleForSelection(deck));
+            }
+            if hq >= state.corp.hq.len() {
+                return Err(RulesError::CardNotEligibleForSelection(hq));
+            }
+            std::mem::swap(&mut state.corp.r_and_d[deck], &mut state.corp.hq[hq]);
+            Ok(Vec::new())
+        }
+        Effect::SwapDeckCardWithHq { .. } => Ok(Vec::new()),
         Effect::RedirectRunOnSuccess(target) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.redirect_on_approach = Some(*target);

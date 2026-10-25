@@ -1808,6 +1808,13 @@ pub(crate) fn resolve_confirm_card_selection(
     if let Some(effect) = then {
         // "The chosen cards", for a second chooser (Jua).
         let effect = if selected_installs.is_empty() { effect } else { Box::new(effect.with_chosen_installs(&selected_installs)) };
+        // The place in R&D or HQ a swap takes the card from (Nihongai
+        // Grid), written before anything else moves.
+        let effect = match (&source, positions.as_slice()) {
+            (CardZoneRef::OwnRAndD, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(true, *position as u32)),
+            (CardZoneRef::OwnHq, [position]) if side == Side::Corp => Box::new(effect.with_swap_position(false, *position as u32)),
+            _ => effect,
+        };
         let acting = selected.first().or(source_card.as_ref());
         // …and the *install* the `then` acts as: the selected install when
         // the selection was over installs (Seamless Launch advances the
