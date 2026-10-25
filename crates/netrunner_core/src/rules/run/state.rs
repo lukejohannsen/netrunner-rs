@@ -860,6 +860,15 @@ pub struct RunState {
     /// (`engine::rez_install`); public, as every rez is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rezzed: Vec<crate::rules::state::InstallId>,
+    /// The Runner's installs whose abilities were used during this run, in
+    /// the order first used — Cold Read's "trash 1 installed program you
+    /// used during that run" (`CardFilter::UsedDuringLastRun`), read off
+    /// `CompletedRun` as the run ends. Set where an installed card's
+    /// ability is activated (`engine::activate_ability`), which every
+    /// break, pump and paid ability goes through. The engine's, as
+    /// `rezzed` is: no view carries it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub used: Vec<crate::rules::state::InstallId>,
     /// The ice the Runner fully broke during this run, by its handle, in
     /// the order broken (CR 6.5.7a) — The Gauntlet's "for each piece of ice
     /// protecting HQ that you fully broke during that run"
@@ -1030,6 +1039,7 @@ impl Default for RunState {
             ice_passed: 0,
             passed: Vec::new(),
             rezzed: Vec::new(),
+            used: Vec::new(),
             fully_broken_ice: Vec::new(),
             last_encountered: None,
             on_success_card: None,

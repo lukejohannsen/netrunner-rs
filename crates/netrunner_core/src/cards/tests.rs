@@ -45744,3 +45744,100 @@ mod flashpoint_stage_38 {
         assert!(apply_action(&done, &registry, OMAR).is_err(), "once per turn");
     }
 }
+
+/// FFG F5 Stage 39: Cold Read.
+mod flashpoint_stage_39 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const CORRODER: InstallId = InstallId(9390);
+    const GORDIAN: InstallId = InstallId(9391);
+
+    /// Cold Read in the grip, Corroder and Gordian Blade installed, and a
+    /// rezzed Ice Wall on HQ.
+    fn cold_read() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("cold_read")];
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: CORRODER, card: id("corroder"), ..Default::default() },
+            crate::rules::InstalledRunnerCard { install_id: GORDIAN, card: id("gordian_blade"), ..Default::default() },
+        ];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9392), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        (state, registry)
+    }
+
+    /// Cold Read played on HQ, up to the approach of the Ice Wall.
+    fn approaching(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (asked, _) = apply_action(state, registry, PlayerAction::PlayEvent { card_id: id("cold_read") }).expect("play");
+        let (running, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (approaching, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        assert!(approaching.active_run.as_ref().is_some_and(|run| run.bonus_run_credits == 4), "4[credit] to spend during the run");
+        approaching
+    }
+
+    /// Passes every window and takes every step of the run until it ends
+    /// or something is asked.
+    fn to_the_end(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while let Some(run) = state.active_run.as_ref() {
+            if state.pending_decision.is_some() {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if run.phase == crate::rules::RunPhase::Success => PlayerAction::CompleteRun,
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("the run goes on").0;
+        }
+        let (state, _) = close_all_windows(state, registry);
+        assert!(state.active_run.is_none(), "the run is over");
+        state
+    }
+
+    /// A program used during the run is trashed when it ends, and one that
+    /// was not stays; the use was paid with the event's credits.
+    #[test]
+    fn cold_read_trashes_a_program_used_during_the_run() {
+        let (state, registry) = cold_read();
+        let at_ice = approaching(&state, &registry);
+        let (encountering, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (encountering, _) = apply_action(&encountering, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (pumped, _) = apply_action(&encountering, &registry, PlayerAction::ActivateAbility { target: CORRODER, ability_index: 0 }).expect("1[credit]: +1 strength");
+        // After a use, priority passes to the Corp, who passes it back.
+        let (pumped, _) = apply_action(&pumped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (broken, _) = apply_action(&pumped, &registry, PlayerAction::ActivateAbility { target: CORRODER, ability_index: 1 }).expect("1[credit]: break 1 barrier subroutine");
+        assert_eq!(broken.runner.resources.credits, Credits(5), "paid from Cold Read's credits");
+        assert_eq!(broken.active_run.as_ref().map(|run| run.used.clone()), Some(vec![CORRODER]));
+        let ended = to_the_end(broken, &registry);
+        let offered = crate::rules::legal_actions_for(&ended, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(offered, vec![0], "Corroder, and not the Gordian Blade nobody used");
+        let (chosen, _) = apply_action(&ended, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(done.runner.heap.contains(&id("corroder")));
+        assert!(done.runner.rig.iter().any(|card| card.install_id == GORDIAN));
+    }
+
+    /// A run in which no program was used trashes nothing.
+    #[test]
+    fn cold_read_trashes_nothing_when_no_program_was_used() {
+        let (state, registry) = cold_read();
+        let at_ice = approaching(&state, &registry);
+        let ended = to_the_end(at_ice, &registry);
+        assert!(ended.pending_decision.is_none(), "nothing to choose");
+        assert_eq!(ended.runner.rig.len(), 2);
+        assert!(ended.runner.heap.contains(&id("cold_read")));
+    }
+}

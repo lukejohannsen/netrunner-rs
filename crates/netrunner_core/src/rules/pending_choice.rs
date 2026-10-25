@@ -489,6 +489,9 @@ fn instance_matches_filter(
         }
         CardFilter::PassedDuringLastRun => corp_install.is_some_and(|c| passed_during_last_run(state, c.install_id)),
         CardFilter::RezzedDuringLastRun => corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&c.install_id))),
+        CardFilter::UsedDuringLastRun => zone_install_ids(state, chooser, zone)
+            .and_then(|installs| installs.get(position).copied())
+            .is_some_and(|install| owning_side(chooser, zone) == Side::Runner && used_during_last_run(state, install)),
         CardFilter::FullyBrokenDuringThisRun => corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&c.install_id))),
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
@@ -634,6 +637,10 @@ fn passed_during_last_run(state: &GameState, install: InstallId) -> bool {
     state.last_completed_run.as_ref().is_some_and(|run| run.passed.contains(&install))
 }
 
+fn used_during_last_run(state: &GameState, install: InstallId) -> bool {
+    state.last_completed_run.as_ref().is_some_and(|run| run.used.contains(&install))
+}
+
 pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, install: Option<InstallId>) -> bool {
     use crate::dsl::CardFilter;
     let Some(install) = install else { return true };
@@ -645,6 +652,9 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
     }
     if let CardFilter::RezzedDuringLastRun = filter {
         return state.last_completed_run.as_ref().is_some_and(|run| run.rezzed.contains(&install));
+    }
+    if let CardFilter::UsedDuringLastRun = filter {
+        return used_during_last_run(state, install);
     }
     if let CardFilter::FullyBrokenDuringThisRun = filter {
         return state.active_run.as_ref().is_some_and(|run| run.fully_broken_ice.contains(&install));

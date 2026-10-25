@@ -2919,6 +2919,14 @@ fn activate_ability(
     let activated = GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index, install: (!is_identity).then_some(target), action: ability.is_action() };
     events.push(activated.clone());
     cost_events.push(activated);
+    // Cold Read's "a program you used during that run": every use of an
+    // installed Runner card is an activation of its ability (CR 9.1.6).
+    if side == Side::Runner
+        && !is_identity
+        && let Some(run) = next.active_run.as_mut().filter(|run| !run.used.contains(&target))
+    {
+        run.used.push(target);
+    }
     // What the cost took besides the card itself (Rosetta 2.0's program
     // removed from the game), so the effect can read its printed cost, as
     // an event's additional cost is read (`EventPlayed::paid_with`).
