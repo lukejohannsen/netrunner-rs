@@ -152,7 +152,6 @@ pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.
 pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("on_the_lam", "On the Lam"),
-    ("cold_read", "Cold Read"),
     ("baba_yaga", "Baba Yaga"),
     ("mind_game", "Mind Game"),
     ("nihongai_grid", "Nihongai Grid"),

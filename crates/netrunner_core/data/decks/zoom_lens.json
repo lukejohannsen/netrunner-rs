@@ -3,7 +3,7 @@
   "name": "Zoom Lens",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills.",
+  "description": "Not a published list: built so the sweeps reach Ele \"Smoke\" Scovak: Cynosure of the Net, the Intervention Shaper identity whose one recurring credit pays only for using icebreakers. Head Start's forty cards whole, Dinosaurus and three Shaper breakers to spend the credit on, under the identity that pays for them in place of Chaos Theory's extra [mu]. Eternal-legal only: Intervention is in neither pool. FFG F5 Stage 15. Flashpoint Stage 16 put two Data Breach in for its two Jailbreak. Flashpoint Stage 26 swapped a Diesel for Net Mercur, whose credits a stealth spend refills. FFG F5 Stage 39: two Cold Read for its two Infiltration, which Head Start keeps.",
   "style": [
     "rig"
   ],
@@ -43,10 +43,6 @@
     },
     {
       "card": "notoriety",
-      "count": 2
-    },
-    {
-      "card": "infiltration",
       "count": 2
     },
     {
@@ -96,6 +92,10 @@
     {
       "card": "net_mercur",
       "count": 1
+    },
+    {
+      "card": "cold_read",
+      "count": 2
     }
   ]
 }

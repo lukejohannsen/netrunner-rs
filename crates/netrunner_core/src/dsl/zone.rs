@@ -681,6 +681,12 @@ pub enum CardFilter {
     /// the run ends (`CompletedRun::rezzed`). Instance-level, a handle, as
     /// `PassedDuringLastRun` is.
     RezzedDuringLastRun,
+    /// A Runner install whose ability was used during the last run —
+    /// Cold Read's "trash 1 installed program you used during that run",
+    /// asked as the run ends (`CompletedRun::used`). Instance-level, a
+    /// handle, as `RezzedDuringLastRun` is: a second copy of the program
+    /// the run never used is not it.
+    UsedDuringLastRun,
     /// A piece of ice the Runner fully broke during the run in progress
     /// (`RunState::fully_broken_ice`, CR 6.5.7a) — The Gauntlet's "each
     /// piece of ice protecting HQ that you fully broke during that run",
@@ -864,6 +870,7 @@ impl CardFilter {
                 | CardFilter::AccessedDuringLastRun
                 | CardFilter::PassedDuringLastRun
                 | CardFilter::RezzedDuringLastRun
+                | CardFilter::UsedDuringLastRun
                 | CardFilter::FullyBrokenDuringThisRun
                 | CardFilter::RezzedThisTurn
                 | CardFilter::InAttackedServer
@@ -1061,6 +1068,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::LastEncounteredLastRun => true,
         CardFilter::PassedDuringLastRun => true,
         CardFilter::RezzedDuringLastRun => true,
+        CardFilter::UsedDuringLastRun => true,
         CardFilter::FullyBrokenDuringThisRun => true,
         CardFilter::BeingEncountered => true,
         CardFilter::BeingApproached => true,

@@ -912,6 +912,9 @@ fn determinize_run(
         // The engine's too (`RunState::rezzed`): a sample taken mid-run
         // forgets which ice Leave No Trace would derez at its end.
         rezzed: Vec::new(),
+        // The engine's too (`RunState::used`): a sample taken mid-run
+        // leaves Cold Read nothing to trash at its end.
+        used: Vec::new(),
         // The engine's too (`RunState::fully_broken_ice`): a sample taken
         // mid-run gives The Gauntlet no extra access.
         fully_broken_ice: Vec::new(),
