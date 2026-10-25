@@ -884,6 +884,23 @@ pub enum Effect {
     /// first copy, and the swap silently no-opped — reachable with two
     /// Barriers of one title against *Tāo Salonga*.
     SwapInstalledIce(InstallId, InstallId),
+    /// Swaps a card in R&D with a card in HQ, each where it stands —
+    /// Nihongai Grid's "look at the top 5 cards of R&D and swap 1 of those
+    /// cards with 1 card in HQ". Written as the `then` of a selection out
+    /// of HQ nested in the `then` of a selection out of R&D, with both
+    /// places left out of the card file: each selection writes the
+    /// position it chose over its half (`Effect::with_swap_position`), as
+    /// `SwapInstalledIce`'s two installs are written by theirs. The R&D
+    /// card goes to HQ and the HQ card takes its place in R&D, at the
+    /// same depth. Composition didn't work: a selection moves a card to
+    /// the top or the bottom of R&D, never into a place between, and a
+    /// swap is one move, not two.
+    SwapDeckCardWithHq {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deck: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hq: Option<u32>,
+    },
     /// Installs `card_id` (a placeholder substituted at `PendingDecision::
     /// ChooseCards` resolution time, same convention as `SwapInstalledIce`)
     /// from `origin_zone` (fixed at authoring — `OwnHq` or `OwnArchives`)
@@ -3663,6 +3680,39 @@ impl Effect {
 
     /// `CardFilter::ChosenThisWay` written over as the installs a selection
     /// chose (its `then`), in the shapes `with_those_trashed` walks.
+    /// `SwapDeckCardWithHq`'s half written as `position`: R&D's when
+    /// `from_deck`, else HQ's — through the selections nested in this one,
+    /// where the swap waits for the second card. Only a half not yet
+    /// written is, so the R&D position chosen first survives the HQ
+    /// selection's pass.
+    pub fn with_swap_position(self, from_deck: bool, position: u32) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_swap_position(from_deck, position)).collect();
+        match self {
+            Effect::SwapDeckCardWithHq { deck: None, hq } if from_deck => Effect::SwapDeckCardWithHq { deck: Some(position), hq },
+            Effect::SwapDeckCardWithHq { deck, hq: None } if !from_deck => Effect::SwapDeckCardWithHq { deck, hq: Some(position) },
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count, up_to } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter,
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(|then| Box::new(then.with_swap_position(from_deck, position))),
+                count,
+                up_to,
+            },
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::EffectIf { condition, effect, otherwise } => Effect::EffectIf {
+                condition,
+                effect: Box::new(effect.with_swap_position(from_deck, position)),
+                otherwise: otherwise.map(|e| Box::new(e.with_swap_position(from_deck, position))),
+            },
+            other => other,
+        }
+    }
+
     pub fn with_chosen_installs(self, installs: &[crate::rules::InstallId]) -> Effect {
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_installs(installs)).collect();
         match self {
@@ -4175,6 +4225,7 @@ impl Effect {
             | Effect::DerezCard(..)
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
+            | Effect::SwapDeckCardWithHq { .. }
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::InstallRunnerCardFromZone { if_installed: None, .. }

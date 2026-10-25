@@ -1,0 +1,83 @@
+{
+  "id": "nihongai_grid",
+  "title": "Nihongai Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "unique": true,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "And": [
+            {
+              "AmountAtLeast": [
+                {
+                  "CardsInHand": "Runner"
+                },
+                2
+              ]
+            },
+            {
+              "AmountAtLeast": [
+                {
+                  "Credits": "Runner"
+                },
+                6
+              ]
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnRAndD",
+                  "filter": {
+                    "TopOfZone": 5
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnHq",
+                      "filter": "Any",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "SwapDeckCardWithHq": {}
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may look at the top 5 cards of R&D and swap 1 of those cards with 1 card in HQ",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on this server, if they do not have at least 2 cards in the grip and 6[credit], you may look at the top 5 cards of R&D and swap 1 of those cards with 1 card in HQ."
+    }
+  ],
+  "built_from": 11093,
+  "is_playable": true
+}
