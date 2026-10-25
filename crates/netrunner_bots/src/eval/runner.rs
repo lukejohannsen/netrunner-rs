@@ -976,7 +976,7 @@ fn preventions(def: &CardDefinition) -> Vec<(Harm, u32, Option<u32>)> {
                 // that stands for it, which would swamp the sum.
                 let counted = |n: u32| if n == Preventable::ALL { 3 } else { n };
                 found = match what {
-                    Preventable::Damage { kind, up_to, leaving } => Some((Harm::Damage(*kind), counted(*up_to).saturating_sub(*leaving))),
+                    Preventable::Damage { kind, up_to, leaving, .. } => Some((Harm::Damage(*kind), counted(*up_to).saturating_sub(*leaving))),
                     Preventable::Tags(n) => Some((Harm::Tags, counted(*n))),
                     _ => found,
                 };

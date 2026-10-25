@@ -82,6 +82,9 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
 /// How much of it one use prevents.
 fn prevents_up_to(word: &Preventable) -> u32 {
     match word {
+        // X not yet written over is nothing: the cost that chooses it is
+        // paid before the effect resolves.
+        Preventable::Damage { x: true, .. } => 0,
         Preventable::Damage { up_to, .. } => *up_to,
         Preventable::Tags(amount) => *amount,
         Preventable::Trash(_) | Preventable::EncounterAbility | Preventable::RunEnding | Preventable::TraceBaseStrength | Preventable::Expose => 1,
@@ -727,7 +730,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), up_to: 1, leaving: 0 }),
+            Effect::Prevent(Preventable::Damage { kind: Some(DamageType::Net), up_to: 1, leaving: 0, x: false }),
         );
         // The wrong kind of damage.
         let (state, registry) = table(Effect::DealDamage(DamageType::Meat, 1), paid.clone());
@@ -774,7 +777,7 @@ mod tests {
     #[test]
     fn the_window_it_opens_over_comes_back_when_it_closes() {
         let (mut state, registry) = table(Effect::DealDamage(DamageType::Net, 1), {
-            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0 }))
+            with_paid_ability("shield", Side::Runner, CardType::Program, Some(Cost::Credits(1)), Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0, x: false }))
         });
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(crate::rules::run::RunState { phase: crate::rules::run::RunPhase::Success, ..Default::default() });
@@ -864,7 +867,7 @@ mod tests {
             Side::Runner,
             CardType::Program,
             Some(Cost::Credits(1)),
-            Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0 }),
+            Effect::Prevent(Preventable::Damage { kind: None, up_to: 1, leaving: 0, x: false }),
         ));
         state.runner.resources.credits = Credits(1);
         let (state, _) = act(&state, &registry, use_ability(SOURCE));

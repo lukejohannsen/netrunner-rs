@@ -45616,3 +45616,69 @@ mod flashpoint_stage_36 {
         assert!(net.pending_prevention.is_none(), "only meat damage");
     }
 }
+
+mod flashpoint_stage_37 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const DRONE: InstallId = InstallId(9370);
+
+    /// The Runner with Recon Drone and `credits`, a grip of four, and an
+    /// Urtica Cipher (2 net damage when accessed) in the root of a remote.
+    fn drone(credits: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.grip = (0..4).map(|n| id(&format!("card_{n}"))).collect();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: DRONE, card: id("recon_drone"), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9371), card: id("urtica_cipher"), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() }];
+        (state, registry)
+    }
+
+    /// Accessing the Urtica Cipher, the Runner is asked before its damage.
+    fn hit(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = run_to_completion(state, registry, ServerId::Remote(0));
+        assert!(state.pending_prevention.is_some(), "2 net damage from a card being accessed");
+        state
+    }
+
+    /// X chosen as 2 prevents both points, and the drone and the credits go.
+    #[test]
+    fn recon_drone_prevents_x_damage_for_x_credits() {
+        let (state, registry) = drone(5);
+        let asked = hit(state, &registry);
+        let (x, _) = apply_action(&asked, &registry, PlayerAction::ActivateAbility { target: DRONE, ability_index: 0 }).expect("X[credit], [trash]");
+        let (paid, _) = apply_action(&x, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        let (after, _) = close_all_windows(paid, &registry);
+        assert_eq!(after.runner.resources.credits, Credits(3));
+        assert_eq!(after.runner.grip.len(), 4, "both prevented");
+        assert!(after.runner.heap.contains(&id("recon_drone")));
+    }
+
+    /// X of 1 prevents 1 of the 2.
+    #[test]
+    fn recon_drone_prevents_only_x() {
+        let (state, registry) = drone(5);
+        let asked = hit(state, &registry);
+        let (x, _) = apply_action(&asked, &registry, PlayerAction::ActivateAbility { target: DRONE, ability_index: 0 }).expect("X[credit], [trash]");
+        let (paid, _) = apply_action(&x, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("X = 1");
+        let (after, _) = close_all_windows(paid, &registry);
+        assert_eq!(after.runner.resources.credits, Credits(4));
+        assert_eq!(after.runner.grip.len(), 3, "1 of 2 prevented");
+    }
+
+    /// Damage from no card being accessed is not the drone's.
+    #[test]
+    fn recon_drone_is_not_asked_outside_an_access() {
+        let (mut state, registry) = drone(5);
+        let source = id("a_corp_card");
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 2), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("damage");
+        assert!(state.pending_prevention.is_none());
+        assert_eq!(state.runner.grip.len(), 2);
+    }
+}
