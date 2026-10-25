@@ -1188,6 +1188,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::ClickSpent { .. }
         | GameEvent::CreditsGained { .. }
         | GameEvent::CardDrawn { .. }
+        | GameEvent::DrawFinished { .. }
         | GameEvent::IceApproached { .. }
         | GameEvent::IceEncountered { .. }
         | GameEvent::SubroutineBroken { .. }

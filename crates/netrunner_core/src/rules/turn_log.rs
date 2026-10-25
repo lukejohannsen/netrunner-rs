@@ -382,6 +382,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         Trigger::OnStrengthBoosted => false,
         // A psi game's bids are revealed to both players (CR 10.14.6c).
         Trigger::OnSecretCreditsRevealed => false,
+        // About no card: how many were drawn is public.
+        Trigger::OnCardsDrawn => false,
         // A score area is public.
         Trigger::OnAgendaAddedToScoreArea => false,
         // An operation resolves in the open, and an expendable card is

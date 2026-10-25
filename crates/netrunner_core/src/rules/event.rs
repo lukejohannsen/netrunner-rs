@@ -42,6 +42,12 @@ pub enum GameEvent {
     /// `Trigger::OnCardDrawn`). Not a field on `CardDrawn`: that is the
     /// public fact, which both players' logs keep, and one per draw.
     DrewCard { side: Side, card: CardId },
+    /// `side` has drawn `count` cards, 1 or more, in one draw — after its
+    /// `DrewCard`s, what "whenever the Corp draws 1 or more cards" hears
+    /// (System Outage, `Trigger::OnCardsDrawn`). Public, as each
+    /// `CardDrawn` is. One per draw where those are one per card, and
+    /// never for a draw that drew nothing.
+    DrawFinished { side: Side, count: u32 },
     /// `card`, installed facedown as `install`, was exposed (CR 1.21.4),
     /// after its `CardRevealed`: what "whenever a Corp card is exposed"
     /// hears (Zamba, `Trigger::OnCardExposed`). Public, the card having
@@ -994,7 +1000,7 @@ impl GameEvent {
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
             | GameEvent::RunnerFlatlined | GameEvent::WonByCardText { .. } | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
             GameEvent::FinishedResolving { .. } | GameEvent::ActionFinished { .. } => false,
-            GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
+            GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::DrawFinished { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }
             | GameEvent::RunNotDeclaredSuccessful { .. }
             | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }

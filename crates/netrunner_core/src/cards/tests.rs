@@ -45365,3 +45365,94 @@ mod flashpoint_stage_33 {
         assert_eq!(second.this_turn.passed_all_of_hqs_ice(), 2);
     }
 }
+
+mod flashpoint_stage_34 {
+    use super::*;
+    use crate::dsl::Trigger;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    /// The Corp's turn with System Outage in play and cards to draw on both
+    /// sides.
+    fn outage() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq.clear();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        state.runner.in_play = vec![crate::rules::PlayedOperation { card: id("system_outage"), handle: InstallId(9340) }];
+        state.next_install_id = 9341;
+        (state, registry)
+    }
+
+    fn corp_draws(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("the Corp draws")
+    }
+
+    /// Played, it stays: a current is not trashed as it resolves.
+    #[test]
+    fn system_outage_stays_in_play_once_played() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("system_outage")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("system_outage") }).expect("play");
+        assert_eq!(played.runner.in_play.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), [id("system_outage")]);
+        assert_eq!(played.runner.resources.credits, Credits(4));
+    }
+
+    /// The Corp's first draw of the turn costs nothing; the second costs a
+    /// credit, and so does the third.
+    #[test]
+    fn system_outage_costs_the_corp_a_credit_for_every_draw_after_the_first_each_turn() {
+        let (state, registry) = outage();
+        let (first, events) = corp_draws(&state, &registry);
+        assert_eq!(first.corp.resources.credits, Credits(5), "the first draw this turn");
+        assert!(events.contains(&GameEvent::DrawFinished { side: Side::Corp, count: 1 }));
+        let (second, _) = corp_draws(&first, &registry);
+        assert_eq!(second.corp.resources.credits, Credits(4), "not the first time");
+        let (third, _) = corp_draws(&second, &registry);
+        assert_eq!(third.corp.resources.credits, Credits(3));
+        assert_eq!(third.corp.hq.len(), 3);
+    }
+
+    /// The Runner's draws are not the Corp's: theirs cost nothing, and
+    /// they do not make the Corp's next draw a second one.
+    #[test]
+    fn system_outage_ignores_the_runners_draws() {
+        let (mut state, registry) = outage();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let (once, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (twice, _) = apply_action(&once, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        assert_eq!(twice.corp.resources.credits, Credits(5));
+        assert_eq!(twice.this_turn.times_when(Trigger::OnCardsDrawn, &crate::dsl::EventFilter::Whose(Side::Corp), Side::Runner), 0);
+        assert_eq!(twice.this_turn.times_when(Trigger::OnCardsDrawn, &crate::dsl::EventFilter::Whose(Side::Runner), Side::Runner), 2);
+    }
+
+    /// A draw of several cards is one draw: one `DrawFinished`, after every
+    /// card's `DrewCard`.
+    #[test]
+    fn a_draw_of_several_cards_finishes_once() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("diesel")];
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        let (_, events) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("diesel") }).expect("Diesel");
+        let finished: Vec<usize> = events.iter().enumerate().filter(|(_, event)| matches!(event, GameEvent::DrawFinished { .. })).map(|(at, _)| at).collect();
+        assert_eq!(finished.len(), 1);
+        assert_eq!(events[finished[0]], GameEvent::DrawFinished { side: Side::Runner, count: 3 });
+        let last_drew = events.iter().rposition(|event| matches!(event, GameEvent::DrewCard { .. })).expect("drew");
+        assert!(last_drew < finished[0]);
+    }
+}

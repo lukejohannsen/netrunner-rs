@@ -1,0 +1,39 @@
+{
+  "id": "system_outage",
+  "title": "System Outage",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnCardsDrawn",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnCardsDrawn",
+              "when": {
+                "Whose": "Corp"
+              }
+            }
+          },
+          2
+        ]
+      },
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Corp draws 1 or more cards, if it is not the first time they have drawn cards this turn, they lose 1[credit]."
+    }
+  ],
+  "built_from": 11001,
+  "is_playable": true
+}

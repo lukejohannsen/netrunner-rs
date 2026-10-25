@@ -404,6 +404,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::PsiBidsRevealed { .. } => vec![moment(Trigger::OnSecretCreditsRevealed, &About::Nothing, None)],
         GameEvent::CardExposed { install, card: exposed } => vec![moment(Trigger::OnCardExposed, &card(exposed, Some(*install)), None)],
         GameEvent::DrewCard { side, card: drawn } => vec![moment(Trigger::OnCardDrawn, &About::Card { card: drawn.clone(), install: None, installed: false }, Some(*side))],
+        GameEvent::DrawFinished { side, .. } => vec![moment(Trigger::OnCardsDrawn, &About::Nothing, Some(*side))],
         // A selection that reveals what it chose (Hyoubu Institute's own
         // "reveal the top card of the stack") is its chooser revealing
         // each card.

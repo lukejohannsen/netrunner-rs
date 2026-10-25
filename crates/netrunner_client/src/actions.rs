@@ -670,7 +670,7 @@ pub fn narrate_event(
         GameEvent::FinishedResolving { .. } |
         // The action's own line says it was taken; its end adds nothing.
         GameEvent::ActionFinished { .. } |
-        GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
+        GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } | GameEvent::DrawFinished { .. } |
         GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
         { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::EncounterEnded { .. } | GameEvent::ServerApproached {
         .. } | GameEvent::RunCompleted { .. } | GameEvent::RunInitiated { .. } | GameEvent::EventPlayed { ..
