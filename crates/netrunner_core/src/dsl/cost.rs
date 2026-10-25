@@ -151,6 +151,11 @@ pub enum Cost {
     /// (`payment::Ask::Card`). A card trashed from HQ lands facedown unless
     /// `reveal`; a trashed install that was faceup stays faceup. Never
     /// prevented: the payer is choosing among their own cards (CR 1.16.1a).
+    ///
+    /// A `count` of `Cost::ALL` is "trash **all** cards from your grip"
+    /// (Citadel Sanctuary): affordable however many there are, none
+    /// included, and never asked, since every card goes.
+    ///
     /// The Corp forfeits `u32` agendas from its score area — Biawak's "you
     /// can forfeit 1 agenda as you rez this ice", Plutus's "as an
     /// additional cost to rez this asset, forfeit 1 agenda". Affordable
@@ -357,6 +362,12 @@ pub enum Cost {
 }
 
 impl Cost {
+    /// A `Trash` count meaning every card that matches — "trash **all**
+    /// cards from your grip" (Citadel Sanctuary). A number rather than a
+    /// cost of its own, as `Preventable::ALL` is: the payment already
+    /// counts what matches, and "all" is that count.
+    pub const ALL: u32 = u32::MAX;
+
     /// Whether this cost, as printed, begins with a [click] symbol — what
     /// makes a paid ability an action (CR 9.5.2a). `AllOf` is printed in
     /// order ("[click], [trash]:"), so its first part decides; `AnyOf` is

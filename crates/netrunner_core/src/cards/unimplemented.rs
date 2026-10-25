@@ -148,7 +148,6 @@ pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Intervention* (`intervention`): tranche F5 of the FFG plan.
 pub(crate) const IN_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("citadel_sanctuary", "Citadel Sanctuary"),
 ];
 
 /// *Martial Law* (`martial_law`): tranche F5 of the FFG plan.

@@ -1,0 +1,58 @@
+{
+  "id": "citadel_sanctuary",
+  "title": "Citadel Sanctuary",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "Trace": {
+            "base": 1,
+            "on_success": {
+              "Sequence": []
+            },
+            "on_failure": {
+              "RemoveTags": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your discard phase ends while you are tagged, the Corp must trace[1]. If unsuccessful, remove 1 tag."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash], trash all cards from your grip: Prevent all meat damage.",
+      "cost": {
+        "AllOf": [
+          "TrashSelf",
+          {
+            "Trash": {
+              "from": "OwnGrip",
+              "filter": "Any",
+              "count": 4294967295
+            }
+          }
+        ]
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Meat",
+            "up_to": 4294967295
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 11070,
+  "is_playable": true
+}
