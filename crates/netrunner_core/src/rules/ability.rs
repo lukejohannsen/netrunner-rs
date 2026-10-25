@@ -6295,6 +6295,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::AgendaPointsStolenLastTurn => state.last_turn.agenda_points_stolen(),
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
+        Amount::PassesOfAllOfHqsIceThisTurn => state.this_turn.passed_all_of_hqs_ice(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
         Amount::DamageSufferedThisTurn => state.this_turn.damage_suffered(),
         Amount::CorpCardsAddedToArchivesThisTurn => state.this_turn.added_to_archives(),

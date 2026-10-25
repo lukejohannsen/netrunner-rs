@@ -45288,3 +45288,80 @@ mod flashpoint_stage_32 {
         assert_eq!(at_enigma.active_run.as_ref().map(|run| run.phase), Some(RunPhase::EncounterIce));
     }
 }
+
+mod flashpoint_stage_33 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const POLYHISTOR: InstallId = InstallId(9330);
+
+    /// The Runner's turn with Polyhistor installed, an unrezzed Ice Wall
+    /// protecting HQ and another protecting R&D, and cards to draw on both
+    /// sides.
+    fn polyhistor() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: POLYHISTOR, card: id("polyhistor"), ..Default::default() }];
+        state.runner.grip.clear();
+        state.runner.stack = vec![id("sure_gamble"); 5];
+        state.corp.hq.clear();
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let ice = |install, server| crate::rules::InstalledCard { install_id: install, card: id("ice_wall"), server, slot: InstallSlot::Ice, ..Default::default() };
+        state.corp.installed = vec![ice(InstallId(9331), ServerId::Hq), ice(InstallId(9332), ServerId::RnD)];
+        (state, registry)
+    }
+
+    /// A run on `server`, past its one piece of ice, up to Polyhistor's
+    /// question or the server.
+    fn past_the_ice(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        while state.pending_decision.is_none() && state.active_run.as_ref().is_some_and(|run| run.ice_passed == 0) {
+            state = match state.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&state, registry).expect("on").0,
+            };
+        }
+        state
+    }
+
+    #[test]
+    fn polyhistor_gives_memory_and_link() {
+        let (state, registry) = polyhistor();
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 1);
+    }
+
+    /// Passing the ice protecting HQ, the Runner may draw to make the Corp
+    /// draw; the second time that turn is not asked, nor is R&D.
+    #[test]
+    fn polyhistor_draws_for_both_the_first_time_all_of_hqs_ice_is_passed() {
+        let (state, registry) = polyhistor();
+        let asked = past_the_ice(&state, &registry, ServerId::Hq);
+        assert!(asked.pending_decision.is_some(), "you may draw 1 card to force the Corp to draw 1 card");
+        let (drawn, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw");
+        assert_eq!(drawn.runner.grip.len(), 1);
+        assert_eq!(drawn.corp.hq.len(), 1);
+        assert_eq!(drawn.this_turn.passed_all_of_hqs_ice(), 1);
+
+        let rnd = past_the_ice(&state, &registry, ServerId::RnD);
+        assert!(rnd.pending_decision.is_none(), "R&D is not HQ");
+
+        let mut again = drawn;
+        while again.active_run.is_some() {
+            again = match again.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&again, &registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None => match crate::rules::legal_actions(&again, &registry).into_iter().find(|action| matches!(action, PlayerAction::JackOut)) {
+                    Some(jack) => apply_action(&again, &registry, jack).expect("jack out").0,
+                    None => crate::rules::test_support::continue_run(&again, &registry).expect("on").0,
+                },
+            };
+        }
+        let second = past_the_ice(&again, &registry, ServerId::Hq);
+        assert!(second.pending_decision.is_none(), "the first time each turn only");
+        assert_eq!(second.this_turn.passed_all_of_hqs_ice(), 2);
+    }
+}

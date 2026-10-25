@@ -2548,6 +2548,13 @@ pub enum Amount {
     /// to a remote (the log's classes hold no server), as `AmountAtLeast`
     /// … `Not` 2 beside `when: InstalledIn(Remote)`.
     CardsInstalledInRemotesThisTurn,
+    /// The times the Runner has passed all of the ice protecting HQ this
+    /// turn (`TurnLog::passed_all_of_hqs_ice`) — Polyhistor's "the first
+    /// time each turn you pass all of the ice protecting HQ", `Not(
+    /// AmountAtLeast(.., 2))` beside `when: Ice { innermost }`, as A Teia's
+    /// is. Composition didn't work: `first_each_turn` counts a pass by the
+    /// ice's facts, whose column bits are all taken, and not by server.
+    PassesOfAllOfHqsIceThisTurn,
     /// The times the Runner has gained [click] during a run this turn —
     /// Pichação's "If this is not the first time you gained [click] during
     /// a run this turn" (`TurnLog::click_gains_in_runs`, a sum beside
