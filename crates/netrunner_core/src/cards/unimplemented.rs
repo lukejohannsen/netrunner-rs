@@ -175,7 +175,6 @@ pub(crate) const QU_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// plan. Not in Eternal's or Snapshot's set lists, but most of its cards are
 /// in both pools.
 pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("polyhistor", "Polyhistor"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
     ("skorpios_defense_systems_persuasive_power", "Skorpios Defense Systems: Persuasive Power"),
 ];

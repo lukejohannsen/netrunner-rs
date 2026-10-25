@@ -939,6 +939,14 @@ pub struct TurnLog {
     /// the cells, as `installed_from_hq` is: which server a card went into
     /// is no `Class`. Public, as where the Corp installs is.
     installed_in_remotes: u8,
+    /// The times the Runner passed all of the ice protecting HQ this turn
+    /// (CR 6.9.4a: the innermost piece passed) — Polyhistor's "The first
+    /// time each turn you pass all of the ice protecting HQ". A count
+    /// beside the cells, as `installed_in_remotes` is: a pass is counted
+    /// by what was true of the ice (`Class::Ice`), and every bit of that
+    /// column set is taken, so the server is not among them. Public, as
+    /// the run's server and the pass are.
+    passed_all_of_hqs_ice: u8,
     /// The times the Runner gained [click] during a run this turn —
     /// Pichação's "If this is not the first time you gained [click] during
     /// a run this turn". A count beside the cells, as `installed_from_hq`
@@ -1045,6 +1053,7 @@ impl Default for TurnLog {
             agenda_points_stolen: 0,
             installed_from_hq: 0,
             installed_in_remotes: 0,
+            passed_all_of_hqs_ice: 0,
             click_gains_in_runs: 0,
             added_to_archives: 0,
             damage_suffered: 0,
@@ -1152,6 +1161,10 @@ impl TurnLog {
         u32::from(self.installed_in_remotes)
     }
 
+    pub fn passed_all_of_hqs_ice(&self) -> u32 {
+        u32::from(self.passed_all_of_hqs_ice)
+    }
+
     pub fn click_gains_in_runs(&self) -> u32 {
         u32::from(self.click_gains_in_runs)
     }
@@ -1233,6 +1246,8 @@ struct Sparse {
     #[serde(default, skip_serializing_if = "is_zero")]
     installed_in_remotes: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
+    passed_all_of_hqs_ice: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
     click_gains_in_runs: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     added_to_archives: u8,
@@ -1271,6 +1286,7 @@ impl From<TurnLog> for Sparse {
             agenda_points_stolen: log.agenda_points_stolen,
             installed_from_hq: log.installed_from_hq,
             installed_in_remotes: log.installed_in_remotes,
+            passed_all_of_hqs_ice: log.passed_all_of_hqs_ice,
             click_gains_in_runs: log.click_gains_in_runs,
             added_to_archives: log.added_to_archives,
             damage_suffered: log.damage_suffered,
@@ -1290,6 +1306,7 @@ impl From<Sparse> for TurnLog {
             agenda_points_stolen: sparse.agenda_points_stolen,
             installed_from_hq: sparse.installed_from_hq,
             installed_in_remotes: sparse.installed_in_remotes,
+            passed_all_of_hqs_ice: sparse.passed_all_of_hqs_ice,
             click_gains_in_runs: sparse.click_gains_in_runs,
             added_to_archives: sparse.added_to_archives,
             damage_suffered: sparse.damage_suffered,
@@ -1415,6 +1432,13 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
     }
     if let GameEvent::CardInstalled { side: Side::Corp, server: ServerId::Remote(_), .. } = event {
         state.this_turn.installed_in_remotes = state.this_turn.installed_in_remotes.saturating_add(1);
+    }
+    // Read off the run as the pass is heard, as `IceFacts::innermost` is:
+    // the run is still at the position passed.
+    if let GameEvent::IcePassed { position, .. } = event
+        && state.active_run.as_ref().is_some_and(|run| run.server == ServerId::Hq && *position as usize + 1 >= run.ice.len())
+    {
+        state.this_turn.passed_all_of_hqs_ice = state.this_turn.passed_all_of_hqs_ice.saturating_add(1);
     }
     AsOf(state.this_turn, copy)
 }

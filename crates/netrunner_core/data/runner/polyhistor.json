@@ -1,0 +1,89 @@
+{
+  "id": "polyhistor",
+  "title": "Polyhistor",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "innermost": true
+        }
+      },
+      "requirement": {
+        "And": [
+          {
+            "DuringRunOn": "Hq"
+          },
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "PassesOfAllOfHqsIceThisTurn",
+                2
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card to force the Corp to draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn you pass all of the ice protecting HQ, you may draw 1 card to force the Corp to draw 1 card."
+    }
+  ],
+  "built_from": 13005,
+  "is_playable": true
+}
