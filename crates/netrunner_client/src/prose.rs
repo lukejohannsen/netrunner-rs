@@ -142,6 +142,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::RnDCardsAccessedLastRun => "the cards accessed in R&D during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
+        Amount::ApproachedIceStrength => "the strength of the ice being approached".to_string(),
         Amount::HostIceStrength => "the strength of host ice".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::PricedIceSubroutines => "the subroutines on that ice".to_string(),
@@ -731,6 +732,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RevealHand(Side::Runner) => "reveal the grip".to_string(),
         Effect::Expose => "expose it".to_string(),
         Effect::Remember { what: netrunner_core::dsl::Remembered::SelectedCard, until } => format!("remember the chosen card {}", duration(until)),
+        Effect::Remember { what: netrunner_core::dsl::Remembered::ApproachedIce, until } => format!("remember the ice being approached {}", duration(until)),
         Effect::Remember { what: netrunner_core::dsl::Remembered::CardType(card_type), until } => {
             format!("the chosen card type is {} {}", humanize(format!("{card_type:?}")).to_lowercase(), duration(until))
         }

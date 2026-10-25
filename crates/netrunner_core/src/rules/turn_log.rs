@@ -455,7 +455,10 @@ fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
 }
 
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
-    if let Some(facts) = moment.ice {
+    // An approach states whether the ice was rezzed, and is counted by its
+    // server all the same: a pass and a break are about the ice, and an
+    // approach about the server (`IceFacts::rezzed`).
+    if let Some(facts) = moment.ice.filter(|_| moment.trigger != Trigger::OnIceApproached) {
         return Class::Ice(facts);
     }
     if let Some(in_archives) = moment.in_archives {
@@ -666,6 +669,9 @@ impl Occurrences {
             }
             Some(EventFilter::AtLeast(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
+            }
+            Some(EventFilter::Ice(_)) if trigger == Trigger::OnIceApproached => {
+                return Err(format!("the turn counts a {trigger:?} by its server, not by what was true of the ice, so \"the first\" cannot be narrowed by `Ice`"));
             }
             Some(EventFilter::Ice(required)) => {
                 Some(IceFacts::ALL.iter().filter(|facts| required.admits(**facts)).map(|facts| bit(Class::Ice(*facts))).fold(0, |mask, column| mask | column))
