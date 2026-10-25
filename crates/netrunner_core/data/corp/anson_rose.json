@@ -1,0 +1,85 @@
+{
+  "id": "anson_rose",
+  "title": "Anson Rose",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PlaceAdvancementCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When your turn begins, place 1 advancement token on Anson Rose."
+    },
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 0,
+            "max": "HostedAdvancementTokens",
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ChosenNumber",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    {
+                      "RemoveAdvancementCounters": "ChosenNumber"
+                    },
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OwnInstalled",
+                        "filter": {
+                          "All": [
+                            "ThatCard",
+                            "Ice",
+                            "Rezzed"
+                          ]
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "then": {
+                          "PlaceAdvancementCounters": "ChosenNumber"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "text": "you may move any number of advancement tokens from Anson Rose to that ice"
+          }
+        }
+      ],
+      "text": "Whenever you rez a piece of ice, you may move any number of advancement tokens from Anson Rose to that ice."
+    }
+  ],
+  "built_from": 11096,
+  "is_playable": true
+}

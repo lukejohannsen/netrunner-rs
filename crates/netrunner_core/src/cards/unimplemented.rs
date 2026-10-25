@@ -158,7 +158,6 @@ pub(crate) const ML_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("baba_yaga", "Baba Yaga"),
     ("mind_game", "Mind Game"),
     ("nihongai_grid", "Nihongai Grid"),
-    ("anson_rose", "Anson Rose"),
     ("sapper", "Sapper"),
 ];
 

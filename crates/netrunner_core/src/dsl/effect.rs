@@ -3846,6 +3846,10 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text, if_able } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text, if_able }
             }
+            // Anson Rose's "move any number of advancement tokens … to
+            // **that ice**": the number is asked first, and the ice is
+            // chosen behind it.
+            Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => Effect::ChooseNumber { chooser, min, max, of, then: boxed(then), text, secret },
             other => other,
         }
     }

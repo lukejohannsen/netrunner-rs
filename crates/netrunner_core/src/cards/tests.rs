@@ -45456,3 +45456,83 @@ mod flashpoint_stage_34 {
         assert!(last_drew < finished[0]);
     }
 }
+
+mod flashpoint_stage_35 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const ANSON: InstallId = InstallId(9350);
+    const ENIGMA: InstallId = InstallId(9351);
+
+    /// Anson Rose rezzed in a remote with `tokens` advancement tokens, and
+    /// an unrezzed Enigma protecting HQ.
+    fn anson(tokens: u32) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: ANSON, card: id("anson_rose"), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, advancement_tokens: tokens, ..Default::default() },
+            crate::rules::InstalledCard { install_id: ENIGMA, card: id("enigma"), server: ServerId::Hq, slot: InstallSlot::Ice, ..Default::default() },
+        ];
+        (state, registry)
+    }
+
+    fn tokens(state: &GameState, install: InstallId) -> u32 {
+        state.corp.installed.iter().find(|card| card.install_id == install).map_or(0, |card| card.advancement_tokens)
+    }
+
+    /// The Runner runs HQ and the Corp rezzes the Enigma as it is
+    /// approached.
+    fn rez_the_enigma(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let (run, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (run, _) = crate::rules::test_support::continue_run(&run, registry).expect("approach the Enigma");
+        apply_action(&run, registry, PlayerAction::RezIce { ice: ENIGMA }).expect("rez the Enigma").0
+    }
+
+    #[test]
+    fn anson_rose_gains_a_token_as_the_corps_turn_begins() {
+        let (mut state, registry) = anson(0);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(tokens(&state, ANSON), 1);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        assert_eq!(tokens(&state, ANSON), 1, "the Runner's turn is not the Corp's");
+    }
+
+    /// The Corp names a number of Anson's tokens, and they move to the
+    /// ice just rezzed.
+    #[test]
+    fn anson_rose_moves_tokens_to_the_ice_rezzed() {
+        let (state, registry) = anson(3);
+        let asked = rez_the_enigma(&state, &registry);
+        assert!(asked.corp.installed.iter().any(|card| card.install_id == ENIGMA && card.rezzed), "rezzed");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("move 2");
+        assert_eq!(tokens(&chosen, ANSON), 1, "taken off Anson Rose");
+        assert_eq!(crate::rules::legal_actions_for(&chosen, &registry, Side::Corp), vec![PlayerAction::ToggleCardSelection { position: 1 }], "that ice alone");
+        let (picked, _) = apply_action(&chosen, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the Enigma");
+        let (moved, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("place them");
+        assert_eq!(tokens(&moved, ANSON), 1);
+        assert_eq!(tokens(&moved, ENIGMA), 2);
+    }
+
+    /// None is a choice; and an Anson Rose with no tokens asks nothing.
+    #[test]
+    fn anson_rose_may_move_none_and_asks_nothing_when_empty() {
+        let (state, registry) = anson(2);
+        let asked = rez_the_enigma(&state, &registry);
+        let (none, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("none");
+        assert_eq!(tokens(&none, ANSON), 2);
+        assert_eq!(tokens(&none, ENIGMA), 0);
+        assert!(!crate::rules::legal_actions_for(&none, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })), "nothing to place");
+
+        let (empty, registry) = anson(0);
+        let rezzed = rez_the_enigma(&empty, &registry);
+        assert!(!crate::rules::legal_actions_for(&rezzed, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::ChooseNumber { .. })));
+    }
+}
