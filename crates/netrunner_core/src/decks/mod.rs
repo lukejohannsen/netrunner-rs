@@ -624,6 +624,9 @@ mod tests {
             // FFG F5 Stage 21: Khan: Savvy Skiptracer's deck, on Hit List's
             // list; Flashpoint is in neither pool.
             ("zygote", &neither),
+            // FFG F5 Stage 38: Omar Keung: Conspiracy Theorist's deck, on
+            // Free Spirit's list; Flashpoint is in neither pool.
+            ("zeitgeist", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

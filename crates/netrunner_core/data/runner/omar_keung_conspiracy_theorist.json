@@ -1,0 +1,53 @@
+{
+  "id": "omar_keung_conspiracy_theorist",
+  "title": "Omar Keung: Conspiracy Theorist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "Sequence": [
+                {
+                  "InitiateRun": "Archives"
+                },
+                {
+                  "RedirectRunOnSuccess": "Hq"
+                }
+              ]
+            },
+            {
+              "Sequence": [
+                {
+                  "InitiateRun": "Archives"
+                },
+                {
+                  "RedirectRunOnSuccess": "RnD"
+                }
+              ]
+            }
+          ],
+          "texts": [
+            "change the attacked server to HQ or R&D — HQ",
+            "change the attacked server to HQ or R&D — R&D"
+          ]
+        }
+      },
+      "text": "Once per turn → [click]: Run Archives. If that run would be declared successful, change the attacked server to HQ or R&D for the remainder of that run."
+    }
+  ],
+  "built_from": 11043,
+  "is_playable": true
+}
