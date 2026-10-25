@@ -1,0 +1,118 @@
+{
+  "id": "zeitgeist",
+  "name": "Zeitgeist",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Omar Keung: Conspiracy Theorist, Escalation's Anarch identity, who once per turn runs Archives and, if that run would be declared successful, moves it to HQ or R&D. On Free Spirit's frame, its identity swapped, at six influence of twelve. FFG F5 Stage 38.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "omar_keung_conspiracy_theorist",
+  "cards": [
+    {
+      "card": "cyberfeeder",
+      "count": 2
+    },
+    {
+      "card": "the_toolbox",
+      "count": 1
+    },
+    {
+      "card": "ice_carver",
+      "count": 2
+    },
+    {
+      "card": "corroder",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "chain_reaction",
+      "count": 1
+    },
+    {
+      "card": "take_a_dive",
+      "count": 2
+    },
+    {
+      "card": "stargate",
+      "count": 2
+    },
+    {
+      "card": "time_bomb",
+      "count": 2
+    },
+    {
+      "card": "friend_of_a_friend",
+      "count": 2
+    },
+    {
+      "card": "banner",
+      "count": 2
+    },
+    {
+      "card": "finality",
+      "count": 2
+    },
+    {
+      "card": "katorga_breakout",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "chastushka",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 1
+    },
+    {
+      "card": "utae",
+      "count": 2
+    },
+    {
+      "card": "climactic_showdown",
+      "count": 2
+    },
+    {
+      "card": "mimic",
+      "count": 2
+    },
+    {
+      "card": "liberated_account",
+      "count": 2
+    },
+    {
+      "card": "scrubber",
+      "count": 2
+    },
+    {
+      "card": "xanadu",
+      "count": 2
+    },
+    {
+      "card": "en_passant",
+      "count": 2
+    },
+    {
+      "card": "patchwork",
+      "count": 2
+    },
+    {
+      "card": "consume",
+      "count": 2
+    },
+    {
+      "card": "sifr",
+      "count": 1
+    }
+  ]
+}

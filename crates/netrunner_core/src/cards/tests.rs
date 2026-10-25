@@ -45682,3 +45682,65 @@ mod flashpoint_stage_37 {
         assert_eq!(state.runner.grip.len(), 2);
     }
 }
+
+/// FFG F5 Stage 38: Omar Keung: Conspiracy Theorist.
+mod flashpoint_stage_38 {
+    use super::*;
+    use crate::rules::GameEvent;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const OMAR: PlayerAction = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+
+    /// Omar on the Runner's turn, a card in HQ and one on top of R&D.
+    fn omar() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("omar_keung_conspiracy_theorist"));
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.r_and_d = vec![id("ice_wall")];
+        (state, registry)
+    }
+
+    /// The run on Archives is approached there and declared successful on
+    /// the server chosen, which is the one breached.
+    #[test]
+    fn omar_keung_runs_archives_and_succeeds_on_hq_or_rnd() {
+        for (option, server, card) in [(0, ServerId::Hq, "hedge_fund"), (1, ServerId::RnD, "ice_wall")] {
+            let (state, registry) = omar();
+            let (asked, _) = apply_action(&state, &registry, OMAR).expect("[click]: run Archives");
+            assert_eq!(asked.runner.resources.clicks, Clicks(3));
+            let (running, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("HQ or R&D");
+            let (approached, events) = pass_until_settled(running, &registry);
+            assert_eq!(approached.active_run.as_ref().map(|run| run.server), Some(ServerId::Archives), "not yet");
+            assert!(events.iter().any(|event| matches!(event, GameEvent::ServerApproached { server: ServerId::Archives })), "{events:?}");
+            let (done, events) = apply_action(&approached, &registry, PlayerAction::CompleteRun).expect("would be declared successful");
+            let (_, more) = pass_until_settled(done, &registry);
+            let events: Vec<_> = events.into_iter().chain(more).collect();
+            assert!(events.iter().any(|event| matches!(event, GameEvent::RunRedirected { from: ServerId::Archives, to } if *to == server)), "{events:?}");
+            assert!(events.iter().any(|event| matches!(event, GameEvent::RunSucceeded { server: s } if *s == server)));
+            assert!(!events.iter().any(|event| matches!(event, GameEvent::RunSucceeded { server: ServerId::Archives })));
+            assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { card: c, server: s, .. } if *c == id(card) && *s == server)), "{events:?}");
+        }
+    }
+
+    /// Once per turn: after the run, the ability is spent.
+    #[test]
+    fn omar_keung_runs_once_per_turn() {
+        let (mut state, registry) = omar();
+        // Nothing in HQ to access, so the run ends with its breach.
+        state.corp.hq.clear();
+        let (asked, _) = apply_action(&state, &registry, OMAR).expect("the first");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("HQ");
+        let (approached, _) = pass_until_settled(running, &registry);
+        let (done, _) = apply_action(&approached, &registry, PlayerAction::CompleteRun).expect("successful on HQ");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.active_run.is_none(), "the run is over");
+        assert_eq!(done.runner.resources.clicks, Clicks(3));
+        assert!(apply_action(&done, &registry, OMAR).is_err(), "once per turn");
+    }
+}

@@ -142,7 +142,6 @@ pub(crate) const BM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Escalation* (`escalation`): tranche F5 of the FFG plan.
 pub(crate) const ES_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("omar_keung_conspiracy_theorist", "Omar Keung: Conspiracy Theorist"),
     ("alexa_belsky", "Alexa Belsky"),
 ];
 
