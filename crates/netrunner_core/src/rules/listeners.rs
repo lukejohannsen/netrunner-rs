@@ -302,7 +302,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let guarded = crate::rules::engine::ice_protecting(state, *server) >= 2;
             vec![Moment { guarded: Some(guarded), ..moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner)) }]
         }
-        GameEvent::IceApproached { server, .. } => vec![moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner))],
+        GameEvent::IceApproached { server, position } => {
+            let rezzed = state.active_run.as_ref().and_then(|run| run.ice.get(*position as usize)).is_some_and(|ice| ice.rezzed);
+            vec![Moment { ice: Some(IceFacts { rezzed, ..IceFacts::default() }), ..moment(Trigger::OnIceApproached, &About::Server(*server), Some(Side::Runner)) }]
+        }
         GameEvent::ServerApproached { server } => vec![moment(Trigger::OnApproachServer, &About::Server(*server), Some(Side::Runner))],
         GameEvent::IceEncountered { card_id, .. } => {
             vec![moment(Trigger::OnEncounter, &card(card_id, encountered_install(state)), Some(Side::Runner))]

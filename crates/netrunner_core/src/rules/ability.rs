@@ -793,6 +793,15 @@ pub fn evaluate_effect(
                 crate::dsl::Remembered::SelectedCard => Lingering::ChosenCard(ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?),
                 crate::dsl::Remembered::CardType(card_type) => Lingering::ChosenCardType(card_type.clone()),
                 crate::dsl::Remembered::IceType(ice_type) => Lingering::ChosenIceType(*ice_type),
+                crate::dsl::Remembered::ApproachedIce => Lingering::ChosenCard(
+                    state
+                        .active_run
+                        .as_ref()
+                        .filter(|run| run.phase == crate::rules::run::RunPhase::ApproachIce)
+                        .and_then(|run| run.ice.get(run.position))
+                        .map(|ice| ice.install_id)
+                        .ok_or(RulesError::NoActiveRun)?,
+                ),
             };
             let until = crate::rules::lingering::until(state, *until, controller, chooser)?;
             state.lingering.retain(|kept| !(kept.on == on && kept.source == source && std::mem::discriminant(&kept.what) == std::mem::discriminant(&what)));
@@ -6454,6 +6463,12 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .map_or(0, |ice| ice.subroutines.len() as u32),
         Amount::CardsAccessedLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.cards_accessed),
         Amount::RnDCardsAccessedLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.rnd_cards_accessed),
+        Amount::ApproachedIceStrength => state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == crate::rules::run::RunPhase::ApproachIce)
+            .and_then(|run| run.ice.get(run.position))
+            .map_or(0, |ice| crate::rules::continuous::ice_strength(state, registry, ice).max(0) as u32),
         Amount::EncounteredIceStrength => state
             .active_run
             .as_ref()

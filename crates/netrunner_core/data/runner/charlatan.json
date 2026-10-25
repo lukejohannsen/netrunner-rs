@@ -1,0 +1,71 @@
+{
+  "id": "charlatan",
+  "title": "Charlatan",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0,
+          "on_start": {
+            "LaterThisTurn": {
+              "when": "OnIceApproached",
+              "filter": {
+                "Ice": {
+                  "rezzed": true
+                }
+              },
+              "this_run": true,
+              "effect": {
+                "OfferPaidChoice": {
+                  "side": "Runner",
+                  "cost": {
+                    "CreditsAmount": "ApproachedIceStrength"
+                  },
+                  "if_paid": {
+                    "Sequence": [
+                      {
+                        "Remember": {
+                          "what": "ApproachedIce",
+                          "until": "Run"
+                        }
+                      },
+                      {
+                        "LaterThisTurn": {
+                          "when": "OnEncounter",
+                          "this_run": true,
+                          "effect": {
+                            "EffectIf": {
+                              "condition": "EncounteringChosenIce",
+                              "effect": "BypassEncounteredIce"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "if_declined": {
+                    "Sequence": []
+                  },
+                  "text": "you may pay credits equal to the strength of that ice"
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "[click][click]: Run any server. The first time you approach a rezzed piece of ice during this run, you may pay credits equal to the strength of that ice. If you do, when you encounter that ice after this approach, bypass it."
+    }
+  ],
+  "built_from": 13010,
+  "is_playable": true
+}

@@ -2385,6 +2385,10 @@ pub enum Remembered {
     /// the three are the ice's types (`IceType`), which a break is
     /// restricted by.
     IceType(crate::dsl::IceType),
+    /// The piece of ice being approached — Charlatan's "**that ice**",
+    /// paid for as it is approached and bypassed when encountered after
+    /// it, read back by `EffectRequirement::EncounteringChosenIce`.
+    ApproachedIce,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -2846,6 +2850,12 @@ pub enum Amount {
     /// `Not(AmountAtLeast(.., 1))`, since an `Amount` is unsigned. 0
     /// outside an encounter. No amount read a strength.
     EncounteredIceStrength,
+    /// The strength of the piece of ice being approached, never below 0 —
+    /// Charlatan's "you may pay credits equal to the strength of that ice"
+    /// as the approach begins (CR 6.9.2a). 0 outside an approach.
+    /// Composition didn't work: `EncounteredIceStrength` reads the ice of
+    /// an encounter, and an approach is a step before one.
+    ApproachedIceStrength,
     /// The strength of the acting Trojan's host ice, never below 0
     /// (`continuous::installed_ice_strength`) — Parasite's "When the
     /// strength of host ice is 0 or less, trash it", `Not(AmountAtLeast(..,

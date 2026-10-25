@@ -45182,3 +45182,109 @@ mod flashpoint_stage_31 {
         assert!(derez(&rnd, &registry).is_err(), "R&D is not HQ");
     }
 }
+
+mod flashpoint_stage_32 {
+    use super::*;
+    use crate::rules::{GameEvent, RunPhase};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const CHARLATAN: InstallId = InstallId(9320);
+    const OUTER: InstallId = InstallId(9321);
+    const INNER: InstallId = InstallId(9322);
+
+    /// The Runner's turn with Charlatan installed and 10[credit], HQ
+    /// protected by an outer Enigma and an inner Ice Wall, the outer rezzed
+    /// or not.
+    fn charlatan(outer_rezzed: bool) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.corp.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: CHARLATAN, card: id("charlatan"), ..Default::default() }];
+        let ice = |install, card: &str, rezzed| crate::rules::InstalledCard { install_id: install, card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed, ..Default::default() };
+        state.corp.installed = vec![ice(OUTER, "enigma", outer_rezzed), ice(INNER, "ice_wall", true)];
+        (state, registry)
+    }
+
+    /// Charlatan's run on HQ, up to the first approach.
+    fn approach(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (asked, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: CHARLATAN, ability_index: 0 }).expect("[click][click]: run any server");
+        assert_eq!(asked.runner.resources.clicks, Clicks(2));
+        let (running, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let (approaching, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the outer ice");
+        approaching
+    }
+
+    /// Both players pass until the run leaves its approach.
+    fn through_the_approach(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut events = Vec::new();
+        while state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::ApproachIce) && state.pending_paid_choice.is_none() {
+            let side = state.paid_ability_window.as_ref().expect("the approach's window").active_priority;
+            let (next, more) = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass");
+            events.extend(more);
+            state = next;
+        }
+        (state, events)
+    }
+
+    fn bypassed(events: &[GameEvent]) -> usize {
+        events.iter().filter(|event| matches!(event, GameEvent::IceBypassed { .. })).count()
+    }
+
+    /// Paid for as it is approached, the rezzed Enigma is bypassed as it is
+    /// encountered, for its strength of 2; the Ice Wall after it is
+    /// offered nothing, since the first approach of a rezzed ice is spent.
+    #[test]
+    fn charlatan_pays_the_approached_ice_strength_to_bypass_it() {
+        let (state, registry) = charlatan(true);
+        let offered = approach(&state, &registry);
+        assert!(offered.pending_paid_choice.is_some(), "you may pay credits equal to the strength of that ice");
+        let (paid, _) = apply_action(&offered, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
+        assert_eq!(paid.runner.resources.credits, Credits(10 - 2), "Enigma's strength");
+        assert_eq!(crate::rules::lingering::chosen_card(&paid, CHARLATAN), Some(OUTER));
+        let (past, events) = through_the_approach(paid, &registry);
+        assert_eq!(bypassed(&events), 1, "{events:?}");
+        let mut inner = past;
+        while inner.active_run.as_ref().is_some_and(|run| run.position == 0 || run.phase != RunPhase::ApproachIce) {
+            inner = match inner.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&inner, &registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&inner, &registry).expect("on to the Ice Wall").0,
+            };
+        }
+        assert_eq!(inner.active_run.as_ref().map(|run| run.phase), Some(RunPhase::ApproachIce), "approaching the Ice Wall");
+        assert!(inner.pending_paid_choice.is_none(), "the first time only");
+    }
+
+    /// Declined, the Enigma is encountered, and the first time is spent.
+    #[test]
+    fn charlatan_declined_is_spent() {
+        let (state, registry) = charlatan(true);
+        let offered = approach(&state, &registry);
+        let (declined, _) = apply_action(&offered, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(declined.runner.resources.credits, Credits(10));
+        let (at_ice, events) = through_the_approach(declined, &registry);
+        assert_eq!(bypassed(&events), 0);
+        assert_eq!(at_ice.active_run.as_ref().map(|run| run.phase), Some(RunPhase::EncounterIce));
+    }
+
+    /// The Enigma is unrezzed as it is approached, so the first rezzed ice
+    /// approached is the Ice Wall behind it, even when the Corp rezzes the
+    /// Enigma in the approach's window.
+    #[test]
+    fn charlatan_waits_for_ice_rezzed_as_it_is_approached() {
+        let (state, registry) = charlatan(false);
+        let approaching = approach(&state, &registry);
+        assert!(approaching.pending_paid_choice.is_none(), "unrezzed as it is approached");
+        let (corp_window, _) = apply_action(&approaching, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (rezzed, _) = apply_action(&corp_window, &registry, PlayerAction::RezIce { ice: OUTER }).expect("the Corp rezzes Enigma");
+        let (at_enigma, events) = through_the_approach(rezzed, &registry);
+        assert_eq!(bypassed(&events), 0);
+        assert!(at_enigma.pending_paid_choice.is_none());
+        assert_eq!(at_enigma.active_run.as_ref().map(|run| run.phase), Some(RunPhase::EncounterIce));
+    }
+}
