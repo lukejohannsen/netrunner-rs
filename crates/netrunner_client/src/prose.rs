@@ -216,6 +216,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::Forfeit(n) => format!("forfeit {}", plural(*n, "agenda", "agendas")),
         Cost::ForfeitSelf => "forfeit this agenda".to_string(),
         Cost::Derez { count, .. } => format!("derez {}", plural(*count, "card", "cards")),
+        Cost::Trash { from, count: Cost::ALL, .. } => format!("trash all cards from {}", describe_zone(from)),
         Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::TakeBadPublicity(n) => format!("take {n} bad publicity"),

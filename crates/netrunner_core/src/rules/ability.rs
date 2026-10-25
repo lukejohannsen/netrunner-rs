@@ -4686,7 +4686,7 @@ pub(crate) fn cost_is_affordable(
         Cost::ForfeitSelf => side == Side::Corp && forfeitable_self(state, ctx).is_some(),
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
-            crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
+            *count == Cost::ALL || crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
         Cost::AddInstalledToHand { filter, count } | Cost::ShuffleInstalledIntoDeck { filter, count } | Cost::RemoveInstalledFromGame { filter, count } => {
             let zone = crate::dsl::CardZoneRef::OwnInstalled;
@@ -4992,10 +4992,12 @@ pub(crate) fn pay_cost_ctx(
 
         Cost::Trash { from, filter, count, reveal } => {
             let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card);
-            if eligible.len() < *count as usize {
-                return Err(RulesError::NotEnoughCardsToTrash { required: *count, available: eligible.len() as u32 });
+            // "All": every card that matches, none asked about.
+            let count = if *count == Cost::ALL { eligible.len() as u32 } else { *count };
+            if eligible.len() < count as usize {
+                return Err(RulesError::NotEnoughCardsToTrash { required: count, available: eligible.len() as u32 });
             }
-            let picked = crate::rules::pending_choice::pick_for_cost(state, side, from, &eligible, *count, ctx.acting_install)?;
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, from, &eligible, count, ctx.acting_install)?;
             crate::rules::pending_choice::trash_as_cost(state, registry, side, from, &picked, *reveal, ctx.acting_install)
         }
 

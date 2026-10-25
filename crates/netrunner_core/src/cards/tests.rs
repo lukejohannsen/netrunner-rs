@@ -45536,3 +45536,83 @@ mod flashpoint_stage_35 {
         assert!(!crate::rules::legal_actions_for(&rezzed, &registry, Side::Corp).iter().any(|action| matches!(action, PlayerAction::ChooseNumber { .. })));
     }
 }
+
+mod flashpoint_stage_36 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const CITADEL: InstallId = InstallId(9360);
+
+    fn sanctuary() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: CITADEL, card: id("citadel_sanctuary"), ..Default::default() }];
+        state.runner.grip = vec![id("sure_gamble"), id("easy_mark"), id("sure_gamble")];
+        state.runner.resources.credits = Credits(0);
+        state.corp.resources.credits = Credits(0);
+        (state, registry)
+    }
+
+    fn end_the_runners_turn(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (mut ended, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
+        while ended.active_trace.is_none() {
+            let Some(side) = ended.paid_ability_window.as_ref().map(|window| window.active_priority) else { break };
+            ended = apply_action(&ended, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        ended
+    }
+
+    /// Tagged as the discard phase ends, the Corp traces; a failed trace
+    /// removes a tag, a successful one leaves it.
+    #[test]
+    fn citadel_sanctuary_has_the_corp_trace_to_keep_a_tag() {
+        let (mut state, registry) = sanctuary();
+        state.runner.tags = 2;
+        let traced = end_the_runners_turn(&state, &registry);
+        assert!(traced.active_trace.is_some(), "the Corp must trace[1]");
+        let (bid, _) = apply_action(&traced, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids nothing");
+        let (failed, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 }).expect("link 0 against 1");
+        assert_eq!(failed.runner.tags, 2, "1 beats 0: the tag stays");
+
+        let mut rich = state.clone();
+        rich.runner.resources.credits = Credits(2);
+        let traced = end_the_runners_turn(&rich, &registry);
+        let (bid, _) = apply_action(&traced, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids nothing");
+        let (escaped, _) = apply_action(&bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 2 }).expect("link 2 against 1");
+        assert_eq!(escaped.runner.tags, 1, "unsuccessful: remove 1 tag");
+    }
+
+    #[test]
+    fn citadel_sanctuary_does_nothing_untagged() {
+        let (state, registry) = sanctuary();
+        let ended = end_the_runners_turn(&state, &registry);
+        assert!(ended.active_trace.is_none());
+    }
+
+    /// Trashed with the whole grip, it prevents all the meat damage — two
+    /// that would have flatlined a Runner with an empty grip.
+    #[test]
+    fn citadel_sanctuary_trades_the_grip_for_all_meat_damage() {
+        let (state, registry) = sanctuary();
+        let mut parked = state.clone();
+        let source = id("a_corp_card");
+        crate::rules::evaluate_effect(&mut parked, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Meat, 5), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("damage");
+        assert!(parked.pending_prevention.is_some(), "the Runner is asked");
+        let (used, _) = apply_action(&parked, &registry, PlayerAction::ActivateAbility { target: CITADEL, ability_index: 0 }).expect("[trash], trash all cards from your grip");
+        let (after, _) = close_all_windows(used, &registry);
+        assert!(after.runner.grip.is_empty());
+        assert_eq!(after.runner.heap.len(), 4, "the grip and Citadel Sanctuary");
+        assert!(!matches!(after.phase, GamePhase::GameOver(_)), "all prevented");
+
+        let net = {
+            let mut net = state.clone();
+            crate::rules::evaluate_effect(&mut net, &crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry).expect("damage");
+            net
+        };
+        assert!(net.pending_prevention.is_none(), "only meat damage");
+    }
+}
