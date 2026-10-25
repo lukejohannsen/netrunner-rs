@@ -217,9 +217,11 @@ pub enum EffectRequirement {
     /// stays, because no filter says "an odd printed cost".
     LastDamageTrashed(crate::dsl::CardFilter),
     /// The most recently concluded run (`GameState::last_completed_run`)
-    /// targeted HQ or R&D — e.g. Zahya Sadeghi's "when a run on HQ or R&D
-    /// ends."
-    LastRunWasOnHqOrRnD,
+    /// targeted one of these servers — Zahya Sadeghi's "when a run on **HQ
+    /// or R&D** ends", Maxwell James's "after a successful run on **HQ**
+    /// ends". Was `LastRunWasOnHqOrRnD`, the one list Zahya needed, until
+    /// Maxwell James asked the same question of HQ alone.
+    LastRunWasOn(Vec<crate::rules::ServerId>),
     /// The Runner stole at least one agenda during the most recently
     /// concluded run (`state::CompletedRun::agendas_stolen`) — e.g. AMAZE
     /// Amusements' "whenever a run on this server ends, if the Runner stole
@@ -413,6 +415,14 @@ pub enum EffectRequirement {
     /// (`TurnLog::window_after_damage`). Composition didn't work: as with
     /// `AfterAPlay`, the log counted what happened, never what came after.
     InTheWindowAfterDamage,
+    /// It is the paid ability window that follows the end of a run —
+    /// Maxwell James's "Use this ability only during the next paid ability
+    /// window after a successful run on HQ ends", beside `LastRunSuccessful`
+    /// and `LastRunWasOn([Hq])`: a run has ended this turn and no window
+    /// has closed since (`TurnLog::window_after_run`). Composition didn't
+    /// work: `InTheWindowAfterDamage`'s reason — the log counted what
+    /// happened, never what came after — and that bit is the damage's.
+    InTheWindowAfterARun,
     /// The Runner is encountering a piece of ice and has already broken a
     /// subroutine during this encounter — Poison Vial's "Use this ability
     /// only if you have already broken a subroutine during this encounter".

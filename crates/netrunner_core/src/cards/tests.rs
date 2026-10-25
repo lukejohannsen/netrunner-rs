@@ -45106,3 +45106,79 @@ mod flashpoint_stage_30 {
         assert!(!crate::rules::legal_actions_for(&stuck, &registry, Side::Runner).contains(&PlayerAction::JackOut), "nothing to pay with");
     }
 }
+
+mod flashpoint_stage_31 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    const MAXWELL: InstallId = InstallId(9310);
+    const ON_REMOTE: InstallId = InstallId(9311);
+    const ON_ARCHIVES: InstallId = InstallId(9312);
+
+    /// The Runner's turn with Maxwell James installed, a rezzed Ice Wall
+    /// protecting a remote and another protecting Archives, and nothing in
+    /// HQ or R&D to access.
+    fn maxwell() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.hq.clear();
+        state.corp.r_and_d.clear();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: MAXWELL, card: id("maxwell_james"), ..Default::default() }];
+        let ice = |install, server| crate::rules::InstalledCard { install_id: install, card: id("ice_wall"), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() };
+        state.corp.installed = vec![ice(ON_REMOTE, ServerId::Remote(1)), ice(ON_ARCHIVES, ServerId::Archives)];
+        (state, registry)
+    }
+
+    fn run(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice: straight to the server");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run");
+        assert!(state.active_run.is_none());
+        state
+    }
+
+    fn derez(state: &GameState, registry: &CardRegistry) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: MAXWELL, ability_index: 0 }).map(|(state, _)| state)
+    }
+
+    #[test]
+    fn maxwell_james_gives_one_link() {
+        let (state, registry) = maxwell();
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 1);
+    }
+
+    /// After a successful run on HQ ends, Maxwell James derezzes a piece
+    /// of ice protecting a remote, and only there: the Ice Wall on
+    /// Archives is not offered.
+    #[test]
+    fn maxwell_james_derezzes_remote_ice_after_a_successful_run_on_hq() {
+        let (state, registry) = maxwell();
+        assert!(derez(&state, &registry).is_err(), "no run has ended");
+        let after = run(&state, &registry, ServerId::Hq);
+        let asked = derez(&after, &registry).expect("the window after the run");
+        assert!(!asked.runner.rig.iter().any(|card| card.install_id == MAXWELL), "trashed to pay");
+        assert_eq!(crate::rules::legal_actions_for(&asked, &registry, Side::Runner), vec![PlayerAction::ToggleCardSelection { position: 0 }], "the remote's ice alone");
+        let (picked, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the remote's ice");
+        let (done, _) = apply_action(&picked, &registry, PlayerAction::ConfirmCardSelection).expect("derez it");
+        let rezzed = |install| done.corp.installed.iter().find(|card| card.install_id == install).expect("still installed").rezzed;
+        assert!(!rezzed(ON_REMOTE), "the remote's ice is derezzed");
+        assert!(rezzed(ON_ARCHIVES), "Archives is central");
+    }
+
+    /// The window is the next one only: an action taken after the run
+    /// closes it, and a run on R&D never opened it.
+    #[test]
+    fn maxwell_james_is_only_for_the_window_after_an_hq_run() {
+        let (state, registry) = maxwell();
+        let after = run(&state, &registry, ServerId::Hq);
+        let (clicked, _) = apply_action(&after, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("click for a credit");
+        assert!(derez(&clicked, &registry).is_err(), "an action closed the window");
+        let rnd = run(&state, &registry, ServerId::RnD);
+        assert!(derez(&rnd, &registry).is_err(), "R&D is not HQ");
+    }
+}
