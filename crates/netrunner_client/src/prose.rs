@@ -410,7 +410,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ModifyHandSize { side, by, .. } => format!("{} gets {}{} maximum hand size", who(*side), if *by < 0 { "−" } else { "+" }, by.unsigned_abs()),
         Effect::LowerEncounteredIceStrengthTo { to, .. } => format!("the strength of the ice you are encountering is lowered to {to}"),
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
-        Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL, leaving }) if *leaving > 0 => match kind {
+        Effect::Prevent(Preventable::Damage { kind, x: true, .. }) => match kind {
+            Some(kind) => format!("prevent X {} damage", format!("{kind:?}").to_lowercase()),
+            None => "prevent X damage".to_string(),
+        },
+        Effect::Prevent(Preventable::Damage { kind, up_to: Preventable::ALL, leaving, .. }) if *leaving > 0 => match kind {
             Some(kind) => format!("prevent all but {leaving} {} damage", format!("{kind:?}").to_lowercase()),
             None => format!("prevent all but {leaving} damage"),
         },

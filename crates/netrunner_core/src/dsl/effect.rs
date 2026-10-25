@@ -3176,11 +3176,19 @@ pub enum Preventable {
     /// prevents nothing of a single point. Composition didn't work: "up
     /// to" is a number fixed on the card, and this one is the damage less
     /// one.
+    ///
+    /// `x` is Recon Drone's "X[credit], [trash]: Prevent **X** damage": the
+    /// X its `Cost::CreditsX` chose, written over `up_to` by
+    /// `Effect::with_chosen_number` as every chosen number is, so `up_to`
+    /// is ignored until it is. A flag rather than an `Amount`, because
+    /// every other card prints a fixed number and `up_to` is written bare.
     Damage {
         kind: Option<DamageType>,
         up_to: u32,
         #[serde(default, skip_serializing_if = "is_zero_u32")]
         leaving: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        x: bool,
     },
     /// "Prevent 1 tag."
     Tags(u32),
@@ -3912,6 +3920,10 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.filled(fill));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.filled(fill)).collect();
         match self {
+            Effect::Prevent(Preventable::Damage { kind, up_to, leaving, x: true }) => match fill(&Amount::ChosenNumber) {
+                Some(chosen) => Effect::Prevent(Preventable::Damage { kind, up_to: chosen, leaving, x: false }),
+                None => Effect::Prevent(Preventable::Damage { kind, up_to, leaving, x: true }),
+            },
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
             Effect::AddAtRandomToBottomOfDeck { side, count } => Effect::AddAtRandomToBottomOfDeck { side, count: amount(count) },
