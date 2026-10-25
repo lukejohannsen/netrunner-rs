@@ -133,7 +133,6 @@ pub(crate) const CD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *23 Seconds* (`23_seconds`): tranche F5 of the FFG plan.
 pub(crate) const S23S_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("system_outage", "System Outage"),
     ("chrysalis", "Chrysalis"),
 ];
 

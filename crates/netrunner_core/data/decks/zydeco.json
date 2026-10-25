@@ -3,7 +3,7 @@
   "name": "Zydeco",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Null: Whistleblower, the 23 Seconds Anarch identity that trashes a card from the grip once a turn to give the ice it meets –2 strength for the run, and Another Day, Another Paycheck, the Sunny Lebeau current that forces a Trace[0] after each steal. Pure Anarchy's list, the grip it fills feeding the identity, with two Another Day, Another Paycheck (6 of its 15 influence) for its two Crypt. Eternal-legal only: 23 Seconds is in neither pool. FFG F5 Stage 15.",
+  "description": "Not a published list: built so the sweeps reach Null: Whistleblower, the 23 Seconds Anarch identity that trashes a card from the grip once a turn to give the ice it meets –2 strength for the run, and Another Day, Another Paycheck, the Sunny Lebeau current that forces a Trace[0] after each steal. Pure Anarchy's list, the grip it fills feeding the identity, with two Another Day, Another Paycheck (6 of its 15 influence) for its two Crypt. Eternal-legal only: 23 Seconds is in neither pool. FFG F5 Stage 15. Two System Outage, the 23 Seconds current that costs the Corp a credit for every draw after their first each turn, for The Archivist and Jarogniew Mercs, both still in Pure Anarchy. FFG F5 Stage 34.",
   "style": [
     "rig",
     "dismantle"
@@ -83,15 +83,7 @@
       "count": 1
     },
     {
-      "card": "the_archivist",
-      "count": 1
-    },
-    {
       "card": "pushing_the_envelope",
-      "count": 1
-    },
-    {
-      "card": "jarogniew_mercs",
       "count": 1
     },
     {
@@ -132,6 +124,10 @@
     },
     {
       "card": "another_day_another_paycheck",
+      "count": 2
+    },
+    {
+      "card": "system_outage",
       "count": 2
     }
   ]

@@ -380,11 +380,17 @@ pub(crate) fn draw(state: &mut GameState, side: Side, amount: u32) -> (Vec<GameE
 
 /// `draw`, and then which cards were drawn, each heard by whatever hears a
 /// draw (`GameEvent::DrewCard`): once all are drawn, so a "whenever you
-/// draw" resolves after the draw, not between its cards.
+/// draw" resolves after the draw, not between its cards. Then the draw
+/// itself (`GameEvent::DrawFinished`), if it drew anything.
 pub(crate) fn draw_and_hear(state: &mut GameState, registry: &CardRegistry, side: Side, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
     let (mut events, drawn) = draw(state, side, amount);
+    let count = drawn.len() as u32;
     for card in drawn {
         crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::DrewCard { side, card })?;
+    }
+    // And the draw as a whole, once: "whenever you draw 1 or more cards".
+    if count > 0 {
+        crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::DrawFinished { side, count })?;
     }
     Ok(events)
 }
@@ -6772,7 +6778,8 @@ mod tests {
             vec![
                 GameEvent::AboutToResolve { what: WouldHappen::Draw { side: Side::Runner, amount: 3 } },
                 GameEvent::CardDrawn { side: Side::Runner },
-                GameEvent::DrewCard { side: Side::Runner, card: CardId("only_card".to_string()) }
+                GameEvent::DrewCard { side: Side::Runner, card: CardId("only_card".to_string()) },
+                GameEvent::DrawFinished { side: Side::Runner, count: 1 },
             ]
         );
     }
@@ -6820,7 +6827,7 @@ mod tests {
         // Announced first, as every draw is (Daily Business Show).
         let about_to = GameEvent::AboutToResolve { what: crate::rules::state::WouldHappen::Draw { side: Side::Corp, amount: 2 } };
         let drew = GameEvent::DrewCard { side: Side::Corp, card: CardId("only_card".to_string()) };
-        assert_eq!(events, vec![about_to, GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }, drew]);
+        assert_eq!(events, vec![about_to, GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }, drew, GameEvent::DrawFinished { side: Side::Corp, count: 1 }]);
     }
 
     #[test]
