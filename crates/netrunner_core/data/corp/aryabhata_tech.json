@@ -1,0 +1,30 @@
+{
+  "id": "aryabhata_tech",
+  "title": "Aryabhata Tech",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTraceSuccessful",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever there is a successful trace, gain 1[credit] and the Runner loses 1[credit]."
+    }
+  ],
+  "built_from": 10070,
+  "is_playable": true
+}

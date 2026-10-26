@@ -6509,6 +6509,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         }
         Amount::CardsInHand(Side::Corp) => state.corp.hq.len() as u32,
         Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
+        Amount::MaxHandSize(side) => crate::rules::turn::max_hand_size(state, *side, registry).max(0) as u32,
         Amount::Credits(Side::Corp) => state.corp.resources.credits.0,
         Amount::Credits(Side::Runner) => state.runner.resources.credits.0,
         Amount::HostIceStrength => acting_rig_card(state, ctx)

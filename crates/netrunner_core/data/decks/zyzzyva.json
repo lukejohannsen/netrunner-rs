@@ -3,7 +3,7 @@
   "name": "Zyzzyva",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex. Mumbad Stage 10 swapped in Heritage Committee, Museum of History and Mumba Temple for Reverse Infection, Anansi and Rashida Jaheem, which other decks still carry.",
+  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex. Mumbad Stage 10 swapped in Heritage Committee, Museum of History and Mumba Temple for Reverse Infection, Anansi and Rashida Jaheem, which other decks still carry. Mumbad Stage 11 swapped in Harvester and Political Dealings for Sand Storm and a Bamboo Dome, which other decks still carry.",
   "style": [
     "traps"
   ],
@@ -50,10 +50,6 @@
       "count": 2
     },
     {
-      "card": "sand_storm",
-      "count": 2
-    },
-    {
       "card": "mlinzi",
       "count": 2
     },
@@ -79,7 +75,7 @@
     },
     {
       "card": "bamboo_dome",
-      "count": 2
+      "count": 1
     },
     {
       "card": "mandatory_seed_replacement",
@@ -131,6 +127,14 @@
     },
     {
       "card": "mumba_temple",
+      "count": 1
+    },
+    {
+      "card": "harvester",
+      "count": 2
+    },
+    {
+      "card": "political_dealings",
       "count": 1
     }
   ]

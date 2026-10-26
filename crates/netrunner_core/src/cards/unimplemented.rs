@@ -193,7 +193,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("corporate_scandal", "Corporate Scandal"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
     ("palana_foods_sustainable_growth", "Pālanā Foods: Sustainable Growth"),
-    ("harvester", "Harvester"),
     ("pad_factory", "PAD Factory"),
 ];
 
@@ -204,7 +203,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sadyojata", "Sadyojata"),
     ("freedom_through_equality", "\"Freedom Through Equality\""),
     ("councilman", "Councilman"),
-    ("political_dealings", "Political Dealings"),
     ("clones_are_not_people", "\"Clones are not People\""),
     ("mumbad_city_hall", "Mumbad City Hall"),
 ];
@@ -217,7 +215,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
-    ("aryabhata_tech", "Aryabhata Tech"),
     ("indian_union_stock_exchange", "Indian Union Stock Exchange"),
     ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];
@@ -230,7 +227,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
-    ("waiver", "Waiver"),
     ("exchange_of_information", "Exchange of Information"),
     ("consulting_visit", "Consulting Visit"),
 ];

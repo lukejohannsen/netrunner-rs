@@ -3001,6 +3001,13 @@ pub enum Amount {
     /// which is relative to the actor: the sentence names both hands. No
     /// amount counted a hand.
     CardsInHand(Side),
+    /// A player's maximum hand size as the discard step reads it
+    /// (`turn::max_hand_size`: the printed 5, what the table grants, and
+    /// the Runner's core damage), floored at 0 — Harvester's "the Runner
+    /// draws 3 cards and then discards down to their maximum hand size",
+    /// a discard of `Reduced { CardsInHand, by: MaxHandSize }`.
+    /// Composition didn't work: no amount read a hand size.
+    MaxHandSize(Side),
     /// The cards in `zone`, as the acting card's controller names it, that
     /// `filter` admits — Focus Group's "the number of revealed cards of the
     /// chosen type" in the Runner's grip (`OpponentHand`, `CardType`).

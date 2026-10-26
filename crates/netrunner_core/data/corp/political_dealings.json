@@ -1,0 +1,54 @@
+{
+  "id": "political_dealings",
+  "title": "Political Dealings",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnCardDrawn",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Agenda"
+        }
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": "ThatCard",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may reveal and install it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you draw an agenda, you may reveal and install it."
+    }
+  ],
+  "built_from": 10051,
+  "is_playable": true
+}

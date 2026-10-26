@@ -47438,3 +47438,113 @@ mod mumbad_stage_10 {
         assert_eq!(done.runner.heap.len(), 2);
     }
 }
+
+mod mumbad_stage_11 {
+    use super::*;
+    use crate::rules::PendingDecision;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn() -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        (state, registry())
+    }
+
+    fn installed(card: &str, install: u32, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server: ServerId::Remote(0), slot, rezzed: true, ..Default::default() }
+    }
+
+    /// Fires `card`'s first subroutine as if it had resolved in an encounter.
+    fn fire(state: &mut GameState, registry: &CardRegistry, card: &str, install: u32) {
+        let card = id(card);
+        let mut ctx = crate::rules::ResolutionContext::for_parked(Some(InstallId(install)), Some(&card));
+        let effect = registry.get(&card).unwrap().subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(state, &effect, &mut ctx, registry).expect("subroutine");
+    }
+
+    fn bids(state: &GameState, registry: &CardRegistry, corp: u32, runner: u32) -> GameState {
+        let (bid, _) = apply_action(state, registry, PlayerAction::SubmitCorpTraceBid { amount: corp }).expect("the Corp bids");
+        apply_action(&bid, registry, PlayerAction::SubmitRunnerTraceBid { amount: runner }).expect("the Runner bids").0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn waiver_trashes_what_the_margin_reaches_and_aryabhata_tech_hears_the_trace() {
+        let (mut state, registry) = corp_turn();
+        state.corp.installed = vec![installed("waiver", 3001, InstallSlot::Ice), installed("aryabhata_tech", 3002, InstallSlot::Root)];
+        // Sure Gamble costs 5, Corroder 2, Datasucker 1.
+        state.runner.grip = vec![id("sure_gamble"), id("corroder"), id("datasucker")];
+        state.runner.resources.credits = Credits(5);
+        fire(&mut state, &registry, "waiver", 3001);
+        let link = crate::rules::continuous::link(&state, &registry);
+        let asked = bids(&state, &registry, 0, 3 - link);
+        let offered = toggles(&asked, &registry, Side::Corp);
+        assert_eq!(offered.len(), 2, "5 against 3: a margin of 2 reaches Corroder and Datasucker");
+        let (done, _) = close_all_windows(select(&asked, &registry, &offered), &registry);
+        assert_eq!(done.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(done.corp.resources.credits, Credits(10 + 1), "Aryabhata Tech: gain 1[credit]");
+        assert_eq!(done.runner.resources.credits, Credits(5 - 3 - 1), "the bid, then the Runner loses 1[credit]");
+    }
+
+    #[test]
+    fn harvester_draws_three_then_discards_down_to_the_hand_size() {
+        let (mut state, registry) = corp_turn();
+        state.corp.installed = vec![installed("harvester", 3001, InstallSlot::Ice)];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.runner.stack = vec![id("corroder"); 3];
+        fire(&mut state, &registry, "harvester", 3001);
+        assert_eq!(state.runner.grip.len(), 7);
+        let offered = toggles(&state, &registry, Side::Runner);
+        assert_eq!(offered.len(), 7, "the Runner chooses which");
+        let done = select(&state, &registry, &offered[..2]);
+        assert_eq!((done.runner.grip.len(), done.runner.heap.len()), (5, 2), "down to 5");
+    }
+
+    #[test]
+    fn political_dealings_installs_a_drawn_agenda_and_hears_nothing_else() {
+        let (mut state, registry) = corp_turn();
+        state.corp.installed = vec![installed("political_dealings", 3001, InstallSlot::Root)];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hostile_takeover")];
+        let (drew, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("draw");
+        let (drew, _) = close_all_windows(drew, &registry);
+        assert!(matches!(drew.pending_decision, Some(PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "{:?}", drew.pending_decision);
+        let (chose, _) = apply_action(&drew, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("reveal and install it");
+        let position = chose.corp.hq.iter().position(|card| *card == id("hostile_takeover")).expect("drawn");
+        let asked = select(&chose, &registry, &[position]);
+        let server = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .expect("a server");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("install");
+        assert!(installed.corp.installed.iter().any(|card| card.card == id("hostile_takeover")));
+
+        let (operation, _) = apply_action(&installed, &registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("draw");
+        let (operation, _) = close_all_windows(operation, &registry);
+        assert!(operation.pending_decision.is_none(), "an operation drawn: {:?}", operation.pending_decision);
+    }
+}
