@@ -121,7 +121,9 @@ pub enum ContinuousKind {
     HandSize(Number),
     /// Clicks the player gains as their turn begins, on top of the rules'
     /// allotment (CR 1.11.2, 5.7.1a) — Basilar Synthgland 2KVJ's "You get
-    /// +1 allotted [click] for each of your turns" (`Scope::Controller`).
+    /// +1 allotted [click] for each of your turns" (`Scope::Controller`);
+    /// Akshara Sareen's "Each player gets +1 allotted [click]" is two
+    /// entries, the `Controller` and the Corp (`Scope::Player`).
     /// Asked by `turn::enter_start_of_turn` as it assigns the allotment,
     /// beside the lingering `Lingering::AllottedClicks` an earlier turn made
     /// for this one. Composition didn't work: that one is made once by

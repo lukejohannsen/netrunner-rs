@@ -45908,3 +45908,140 @@ mod flashpoint_stage_40 {
         assert_eq!(after.corp.r_and_d, DECK.iter().map(|card| id(card)).collect::<Vec<_>>());
     }
 }
+
+mod mumbad_stage_1 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), ..Default::default() }
+    }
+
+    /// The Runner's action phase with `rig` installed, 4[click] and
+    /// 10[credit], and cards in R&D so a Corp turn's draw finds one.
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = rig.iter().map(|card| installed(card)).collect();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign")];
+        (state, registry())
+    }
+
+    fn begin_the_turn_of(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, side);
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn akshara_sareen_gives_each_player_a_click_more() {
+        let (state, registry) = runner_turn(&["akshara_sareen"]);
+        assert_eq!(begin_the_turn_of(state.clone(), &registry, Side::Runner).runner.resources.clicks, Clicks(5));
+        assert_eq!(begin_the_turn_of(state, &registry, Side::Corp).corp.resources.clicks, Clicks(4));
+    }
+
+    #[test]
+    fn emptied_mind_gains_a_click_only_with_an_empty_grip() {
+        let (mut state, registry) = runner_turn(&["emptied_mind"]);
+        assert_eq!(begin_the_turn_of(state.clone(), &registry, Side::Runner).runner.resources.clicks, Clicks(5));
+        state.runner.grip = vec![id("sure_gamble")];
+        assert_eq!(begin_the_turn_of(state, &registry, Side::Runner).runner.resources.clicks, Clicks(4));
+    }
+
+    /// HQ is empty, so each run ends with nothing to access.
+    #[test]
+    fn bhagat_mills_r_and_d_on_the_first_successful_hq_run_each_turn() {
+        let (state, registry) = runner_turn(&["bhagat"]);
+        let (first, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(first.corp.r_and_d.len(), 3, "the top card of R&D");
+        assert_eq!(first.corp.archives.len(), 1);
+        let (second, _) = run_to_completion(first, &registry, ServerId::Hq);
+        assert_eq!(second.corp.r_and_d.len(), 3, "the first time each turn");
+    }
+
+    #[test]
+    fn populist_rally_needs_a_seedy_card_and_costs_the_corp_a_click() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.grip = vec![id("populist_rally")];
+        let play = PlayerAction::PlayEvent { card_id: id("populist_rally") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "play only with a seedy card installed");
+        state.runner.rig = vec![installed("district_99")];
+        let (played, _) = apply_action(&state, &registry, play).expect("District 99 is seedy");
+        assert_eq!(begin_the_turn_of(played.clone(), &registry, Side::Corp).corp.resources.clicks, Clicks(2), "-1 allotted [click]");
+        let corp_turn = begin_the_turn_of(played, &registry, Side::Corp);
+        assert_eq!(begin_the_turn_of(corp_turn, &registry, Side::Corp).corp.resources.clicks, Clicks(3), "their next turn only");
+    }
+
+    #[test]
+    fn sports_hopper_gives_link_and_trashes_to_draw_three() {
+        let (mut state, registry) = runner_turn(&["sports_hopper"]);
+        state.runner.stack = vec![id("sure_gamble"), id("diesel"), id("corroder"), id("rezeki")];
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 1);
+        let (after, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("sports_hopper"), ability_index: 0 }).expect("trash");
+        assert_eq!(after.runner.grip.len(), 3, "draw 3 cards");
+        assert!(after.runner.rig.is_empty());
+        assert_eq!(crate::rules::continuous::link(&after, &registry), 0);
+    }
+
+    #[test]
+    fn technical_writer_banks_a_credit_per_hardware_or_program_installed() {
+        let (mut state, registry) = runner_turn(&["technical_writer"]);
+        state.runner.grip = vec![id("corroder"), id("sure_gamble"), id("dyson_mem_chip"), id("daily_casts")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host: None }).expect("a program");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("dyson_mem_chip"), host: None }).expect("a piece of hardware");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("daily_casts"), host: None }).expect("a resource");
+        let writer = state.runner.rig.iter().find(|card| card.card == id("technical_writer")).expect("installed");
+        assert_eq!(writer.counters, 2, "hardware and programs only");
+        let credits = state.runner.resources.credits.0;
+        let (taken, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("technical_writer"), ability_index: 0 }).expect("take them");
+        assert_eq!(taken.runner.resources.credits.0, credits + 2);
+        assert!(taken.runner.rig.iter().all(|card| card.card != id("technical_writer")));
+    }
+
+    #[test]
+    fn temple_of_the_liberated_mind_turns_a_counter_into_a_click_once_per_turn() {
+        let (state, registry) = runner_turn(&["temple_of_the_liberated_mind"]);
+        let temple = fixture_install_id("temple_of_the_liberated_mind");
+        let place = PlayerAction::ActivateAbility { target: temple, ability_index: 0 };
+        let gain = PlayerAction::ActivateAbility { target: temple, ability_index: 1 };
+        assert!(apply_action(&state, &registry, gain.clone()).is_err(), "no counter to spend");
+        let (state, _) = apply_action(&state, &registry, place.clone()).expect("place");
+        let (state, _) = apply_action(&state, &registry, place).expect("place");
+        assert_eq!(state.runner.resources.clicks, Clicks(2));
+        let (state, _) = apply_action(&state, &registry, gain.clone()).expect("gain");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert!(apply_action(&state, &registry, gain.clone()).is_err(), "once per turn");
+        let mut corps = state;
+        corps.phase = GamePhase::Action(Side::Corp);
+        corps.runner.once_per_turn_used.clear();
+        assert!(apply_action(&corps, &registry, gain).is_err(), "only during your turn");
+    }
+
+    #[test]
+    fn dr_lovegood_strips_a_chosen_install_of_its_abilities_for_the_turn() {
+        let (mut state, registry) = runner_turn(&["dr_lovegood", "sports_hopper"]);
+        state.runner.stack = vec![id("sure_gamble"), id("diesel"), id("corroder"), id("rezeki"), id("daily_casts")];
+        let asked = begin_the_turn_of(state, &registry, Side::Runner);
+        let toggles: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(toggles.len(), 2, "1 of your installed cards");
+        let hopper = asked.runner.rig.iter().position(|card| card.card == id("sports_hopper")).expect("installed");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: hopper }).expect("Sports Hopper");
+        let (lost, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (lost, _) = close_all_windows(lost, &registry);
+        assert_eq!(crate::rules::continuous::link(&lost, &registry), 0, "its +1[link] is gone");
+        assert!(apply_action(&lost, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("sports_hopper"), ability_index: 0 }).is_err(), "and its [trash] ability");
+        let next = begin_the_turn_of(lost, &registry, Side::Corp);
+        assert_eq!(crate::rules::continuous::link(&next, &registry), 1, "for the remainder of the turn");
+    }
+}

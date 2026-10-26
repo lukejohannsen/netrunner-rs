@@ -1,0 +1,34 @@
+{
+  "id": "sports_hopper",
+  "title": "Sports Hopper",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Draw 3 cards.",
+      "cost": "TrashSelf",
+      "effect": {
+        "DrawCards": [
+          "Runner",
+          3
+        ]
+      }
+    }
+  ],
+  "built_from": 10064,
+  "is_playable": true
+}

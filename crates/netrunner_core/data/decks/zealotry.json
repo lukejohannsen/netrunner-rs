@@ -3,7 +3,7 @@
   "name": "Clan Zeal",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside. Red Sand Stage 7 takes two Berserker and two God of War for two Imp and two Darwin.",
+  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside. Red Sand Stage 7 takes two Berserker and two God of War for two Imp and two Darwin.  FFG F6 Stage 1: two Contaminate (Pure Anarchy and Zydeco keep them) for two Populist Rally, played off District 99 and The Nihilist, both seedy.",
   "style": [
     "rig",
     "dismantle"
@@ -91,10 +91,6 @@
       "count": 2
     },
     {
-      "card": "contaminate",
-      "count": 2
-    },
-    {
       "card": "mining_accident",
       "count": 2
     },
@@ -120,6 +116,10 @@
     },
     {
       "card": "god_of_war",
+      "count": 2
+    },
+    {
+      "card": "populist_rally",
       "count": 2
     }
   ]

@@ -1,0 +1,33 @@
+{
+  "id": "akshara_sareen",
+  "title": "Akshara Sareen",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Each player gets +1 allotted [click] for each of their turns."
+    },
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "Each player gets +1 allotted [click] for each of their turns."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10046,
+  "is_playable": true
+}

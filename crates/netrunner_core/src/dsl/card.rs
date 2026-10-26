@@ -2090,7 +2090,12 @@ impl CardDefinition {
                     return misfit("AgendaPointsToWin", "the points a player needs to win are theirs, so they apply to the card's `Controller`");
                 }
                 (ContinuousKind::AllottedClicks(_), Scope::Controller) => {}
-                (ContinuousKind::AllottedClicks(_), _) => return misfit("AllottedClicks", "a player's allotted clicks are theirs, so they apply to the card's `Controller`"),
+                // Akshara Sareen's "Each player gets +1 allotted [click]":
+                // the other player named by side, as `HandSize` names them.
+                (ContinuousKind::AllottedClicks(_), Scope::Player(side)) if *side != self.side => {}
+                (ContinuousKind::AllottedClicks(_), _) => {
+                    return misfit("AllottedClicks", "a player's allotted clicks are theirs: the card's `Controller`, or the other player named by side (`Player`)");
+                }
                 (ContinuousKind::DamageDone { .. }, Scope::Controller) => {}
                 (ContinuousKind::DamageDone { .. }, _) => return misfit("DamageDone", "the damage a player would do is theirs, so it applies to the card's `Controller`"),
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {

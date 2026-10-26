@@ -1,0 +1,33 @@
+{
+  "id": "bhagat",
+  "title": "Bhagat",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Corp",
+            "amount": {
+              "Fixed": 1
+            }
+          }
+        }
+      ],
+      "text": "The first time you make a successful run on HQ each turn, force the Corp to trash the top card of R&D."
+    }
+  ],
+  "built_from": 10098,
+  "is_playable": true
+}

@@ -437,11 +437,17 @@ pub fn tags(state: &GameState, registry: &CardRegistry) -> u32 {
 
 /// What `side`'s active cards add to the clicks it gains as its turn
 /// begins (Basilar Synthgland 2KVJ), asked as the allotment is assigned.
+/// And what the other side's active cards give it (`Scope::Player`, read
+/// across both tables as `hand_size` reads it): Akshara Sareen's "Each
+/// player gets +1 allotted [click]" is a Runner card giving the Corp one.
 pub(crate) fn allotted_clicks(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
-    sum(state, registry, Target::Player(side), |kind| match kind {
-        ContinuousKind::AllottedClicks(number) => Some(number),
-        _ => None,
-    })
+    fn allotted(kind: &ContinuousKind) -> Option<&Number> {
+        match kind {
+            ContinuousKind::AllottedClicks(number) => Some(number),
+            _ => None,
+        }
+    }
+    sum(state, registry, Target::Player(side), allotted) + sum(state, registry, Target::Bound(side), allotted)
 }
 
 /// What `side`'s active cards add to damage of `kind` that `side` would do

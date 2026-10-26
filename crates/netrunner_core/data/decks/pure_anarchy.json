@@ -3,7 +3,7 @@
   "name": "Pure Anarchy",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Freedom Khumalo: Crypto-Anarchist, Kitara's Anarch identity, who trashes the non-agenda card being accessed once per turn for virus counters equal to its rez or play cost, taken from any card. Pay As You Go's list, whose viruses (Hemorrhage, Darwin, Datasucker, Musaazi, Yusuf, Crypt) and Knobkierie hold the counters she spends, with two Imp for its two Reboot: a second way to trash on access paid in virus counters. Eternal-legal only: Kitara is in neither Startup nor Standard. FFG F3 Kitara Stage 11c. Kitara Stage 12b: two Plague for two Wyrm, a virus that takes two counters on each successful run on the server chosen as it was installed, for Freedom to spend; Pay As You Go keeps Wyrm. Kitara Stage 22 takes two Trypano for two Hantu. Kitara Stage 24: two Hippo for two Xanadu, a breaker rig that fully breaks the outermost ice once a turn. Kitara Stage 27: two Contaminate for two Finality, three virus counters on any rig card for Freedom to spend. Red Sand Stage 9: two Clan Vengeance for two District 99. Red Sand Stage 11 Red Sand Stage 12 Red Sand Stage 16: two Jarogniew Mercs for two Deja Vu, so a resource the Corp cannot trash is in play. Red Sand Stage 17: two Respirocytes for two Glut Cipher. Red Sand Stage 19: two Persephone for two Hemorrhage, a killer that mills R&D for each subroutine a sentry resolved before it was passed. Red Sand Stage 25: one Grimoire for Maw Severnius Stim Implant (Red Sand Stage 30). Red Sand Stage 42: two Counter Surveillance for two Wyldside, a run that accesses as many cards as the tags paid for; Pay As You Go keeps Wyldside. Flashpoint Stage 3: one each of Nfr, Sūnya, Black Orchestra, MKUltra and Paperclip for a second Persephone, Pushing the Envelope, Deuces Wild, Respirocytes and Jarogniew Mercs, so breakers that grow by the ice they fully break and three that install themselves from the heap at their ice are played.",
+  "description": "Not a published list: built so the sweeps reach Freedom Khumalo: Crypto-Anarchist, Kitara's Anarch identity, who trashes the non-agenda card being accessed once per turn for virus counters equal to its rez or play cost, taken from any card. Pay As You Go's list, whose viruses (Hemorrhage, Darwin, Datasucker, Musaazi, Yusuf, Crypt) and Knobkierie hold the counters she spends, with two Imp for its two Reboot: a second way to trash on access paid in virus counters. Eternal-legal only: Kitara is in neither Startup nor Standard. FFG F3 Kitara Stage 11c. Kitara Stage 12b: two Plague for two Wyrm, a virus that takes two counters on each successful run on the server chosen as it was installed, for Freedom to spend; Pay As You Go keeps Wyrm. Kitara Stage 22 takes two Trypano for two Hantu. Kitara Stage 24: two Hippo for two Xanadu, a breaker rig that fully breaks the outermost ice once a turn. Kitara Stage 27: two Contaminate for two Finality, three virus counters on any rig card for Freedom to spend. Red Sand Stage 9: two Clan Vengeance for two District 99. Red Sand Stage 11 Red Sand Stage 12 Red Sand Stage 16: two Jarogniew Mercs for two Deja Vu, so a resource the Corp cannot trash is in play. Red Sand Stage 17: two Respirocytes for two Glut Cipher. Red Sand Stage 19: two Persephone for two Hemorrhage, a killer that mills R&D for each subroutine a sentry resolved before it was passed. Red Sand Stage 25: one Grimoire for Maw Severnius Stim Implant (Red Sand Stage 30). Red Sand Stage 42: two Counter Surveillance for two Wyldside, a run that accesses as many cards as the tags paid for; Pay As You Go keeps Wyldside. Flashpoint Stage 3: one each of Nfr, Sūnya, Black Orchestra, MKUltra and Paperclip for a second Persephone, Pushing the Envelope, Deuces Wild, Respirocytes and Jarogniew Mercs, so breakers that grow by the ice they fully break and three that install themselves from the heap at their ice are played.  FFG F6 Stage 1: two Clan Vengeance (Zydeco keeps them) for Bhagat and Emptied Mind.",
   "style": [
     "rig",
     "dismantle"
@@ -79,10 +79,6 @@
       "count": 2
     },
     {
-      "card": "clan_vengeance",
-      "count": 2
-    },
-    {
       "card": "deuces_wild",
       "count": 1
     },
@@ -132,6 +128,14 @@
     },
     {
       "card": "paperclip",
+      "count": 1
+    },
+    {
+      "card": "bhagat",
+      "count": 1
+    },
+    {
+      "card": "emptied_mind",
       "count": 1
     }
   ]
