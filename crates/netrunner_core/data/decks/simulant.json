@@ -3,7 +3,7 @@
   "name": "Simulant",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Ayla \"Bios\" Rahim: Simulant Specialist, System Update 2021's Shaper identity, who before drawing her starting hand sets aside the top 6 cards of her stack facedown, shuffles 2 of them back, and takes one of the rest into her grip for a click. On Safety Net's frame after Tranche 8 Stage 11q, its identity swapped, a Shaper for a Shaper at the same forty-five cards and fifteen influence. Tranche 8 Stage 11w. Two Nyashia and two Upya for two Joy Ride and two Environmental Testing (FFG F3 Stage 8).",
+  "description": "Not a published list: built so the sweeps reach Ayla \"Bios\" Rahim: Simulant Specialist, System Update 2021's Shaper identity, who before drawing her starting hand sets aside the top 6 cards of her stack facedown, shuffles 2 of them back, and takes one of the rest into her grip for a click. On Safety Net's frame after Tranche 8 Stage 11q, its identity swapped, a Shaper for a Shaper at the same forty-five cards and fifteen influence. Tranche 8 Stage 11w. Two Nyashia and two Upya for two Joy Ride and two Environmental Testing (FFG F3 Stage 8).  FFG F6 Stage 2: a Test Run (Head Case and Safety Net keep it) for Heartbeat.",
   "style": [
     "rig"
   ],
@@ -55,7 +55,7 @@
     },
     {
       "card": "test_run",
-      "count": 2
+      "count": 1
     },
     {
       "card": "self_modifying_code",
@@ -104,6 +104,10 @@
     {
       "card": "upya",
       "count": 2
+    },
+    {
+      "card": "heartbeat",
+      "count": 1
     }
   ]
 }

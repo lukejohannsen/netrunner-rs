@@ -46045,3 +46045,182 @@ mod mumbad_stage_1 {
         assert_eq!(crate::rules::continuous::link(&next, &registry), 1, "for the remainder of the turn");
     }
 }
+
+mod mumbad_stage_2 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), ..Default::default() }
+    }
+
+    /// The Runner's action phase with `rig` installed, 4[click], 10[credit]
+    /// and a rezzed Ice Wall on HQ.
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = rig.iter().map(|card| installed(card)).collect();
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9500), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("enigma"), id("pad_campaign")];
+        (state, registry())
+    }
+
+    /// A run on HQ up to the encounter with its Ice Wall. A fixture's
+    /// install starts at strength 0, so a breaker pumps before it breaks.
+    fn encountering(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        state
+    }
+
+    /// Uses an ability, then has the Corp pass the priority back.
+    fn using(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index }).expect("use it");
+        match &state.paid_ability_window {
+            Some(window) if window.active_priority == Side::Corp && state.pending_decision.is_none() => {
+                apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes").0
+            }
+            _ => state,
+        }
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Takes every step and passes every window until something is asked.
+    fn until_asked(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while let Some(run) = state.active_run.as_ref() {
+            if state.pending_decision.is_some() {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if run.phase == crate::rules::RunPhase::Success => PlayerAction::CompleteRun,
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("the run goes on").0;
+        }
+        state
+    }
+
+    #[test]
+    fn ankusa_adds_the_barrier_it_fully_breaks_to_hq() {
+        let (state, registry) = runner_turn(&["ankusa"]);
+        let state = encountering(&state, &registry);
+        let state = using(&state, &registry, "ankusa", 1);
+        let state = using(&state, &registry, "ankusa", 0);
+        assert_eq!(state.runner.resources.credits, Credits(7), "1[credit] and 2[credit]");
+        let state = until_asked(state, &registry);
+        assert_eq!(toggles(&state, &registry).len(), 1, "that barrier");
+        let (chosen, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: toggles(&state, &registry)[0] }).expect("the Ice Wall");
+        let (added, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert!(added.corp.installed.is_empty());
+        assert!(added.corp.hq.contains(&id("ice_wall")));
+    }
+
+    #[test]
+    fn brahman_puts_an_installed_non_virus_program_on_top_of_the_stack_after_breaking() {
+        let (mut state, registry) = runner_turn(&["brahman", "imp"]);
+        state.runner.stack = vec![id("sure_gamble")];
+        let state = encountering(&state, &registry);
+        let state = using(&state, &registry, "brahman", 1);
+        let state = using(&state, &registry, "brahman", 0);
+        let state = until_asked(state, &registry);
+        let offered = toggles(&state, &registry);
+        assert_eq!(offered.len(), 1, "a non-virus program: Brahman, not Imp");
+        let (chosen, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("Brahman");
+        let (added, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("to the stack");
+        assert!(added.runner.rig.iter().all(|card| card.card != id("brahman")));
+        assert_eq!(added.runner.stack.len(), 2);
+        assert!(added.runner.stack.contains(&id("brahman")));
+    }
+
+    #[test]
+    fn brain_chip_adds_memory_and_hand_size_for_each_agenda_point() {
+        let (mut state, registry) = runner_turn(&[]);
+        let (memory, hand) = (crate::rules::memory::available_memory(&state, &registry), crate::rules::continuous::hand_size(&state, &registry, Side::Runner));
+        state.runner.rig = vec![installed("brain_chip")];
+        state.runner.resources.agenda_points.0 = 3;
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), memory + 3);
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), hand + 3);
+    }
+
+    #[test]
+    fn chatterjee_university_installs_a_program_a_credit_cheaper_per_counter() {
+        let (mut state, registry) = runner_turn(&["chatterjee_university"]);
+        state.runner.grip = vec![id("corroder")];
+        let place = PlayerAction::ActivateAbility { target: fixture_install_id("chatterjee_university"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, place.clone()).expect("place");
+        let (state, _) = apply_action(&state, &registry, place).expect("place");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("chatterjee_university"), ability_index: 1 }).expect("install");
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (done, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(done.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(done.runner.resources.credits, Credits(10), "Corroder's 2[credit], lowered by 2");
+        let university = done.runner.rig.iter().find(|card| card.card == id("chatterjee_university")).expect("installed");
+        assert_eq!(university.counters, 1, "remove 1 hosted power counter");
+        assert_eq!(done.runner.resources.clicks, Clicks(1));
+    }
+
+    #[test]
+    fn globalsec_security_clearance_needs_two_link_and_trades_a_click_for_a_look() {
+        let (mut state, registry) = runner_turn(&["sports_hopper"]);
+        state.runner.grip = vec![id("globalsec_security_clearance")];
+        let install = PlayerAction::InstallResource { card_id: id("globalsec_security_clearance"), host: None };
+        assert!(apply_action(&state, &registry, install.clone()).is_err(), "1[link] is not enough");
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: InstallId(9501), card: id("sports_hopper"), ..Default::default() });
+        let (state, _) = apply_action(&state, &registry, install).expect("2[link]");
+        let mut turn = state;
+        crate::rules::test_support::enter_start_of_turn(&mut turn, &registry, Side::Runner);
+        let (turn, _) = close_all_windows(turn, &registry);
+        assert!(matches!(turn.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may");
+        let (looked, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("lose [click] and look");
+        assert_eq!(looked.runner.resources.clicks, Clicks(3));
+    }
+
+    #[test]
+    fn heartbeat_adds_one_memory_and_is_used_only_when_damage_is_coming() {
+        let (state, registry) = runner_turn(&[]);
+        let memory = crate::rules::memory::available_memory(&state, &registry);
+        let (state, _) = runner_turn(&["heartbeat"]);
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), memory + 1);
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("heartbeat"), ability_index: 0 }).is_err(), "nothing to prevent");
+    }
+
+    #[test]
+    fn multithreader_pays_for_using_programs() {
+        let (mut state, registry) = runner_turn(&["ankusa"]);
+        state.runner.grip = vec![id("multithreader")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("multithreader"), trash_first: false, host: None }).expect("install");
+        assert_eq!(state.runner.resources.credits, Credits(7));
+        let state = encountering(&state, &registry);
+        let state = using(&state, &registry, "ankusa", 1);
+        assert_eq!(state.runner.resources.credits, Credits(7), "paid with Multithreader's credits");
+    }
+
+    #[test]
+    fn netchip_hosts_a_program_no_bigger_than_the_netchips_installed() {
+        let (mut state, registry) = runner_turn(&["netchip"]);
+        state.runner.grip = vec![id("brahman"), id("corroder")];
+        let memory = crate::rules::memory::available_memory(&state, &registry);
+        let host = Some(fixture_install_id("netchip"));
+        assert!(apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("brahman"), trash_first: false, host }).is_err(), "2[mu] onto 1 NetChip");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("corroder"), trash_first: false, host }).expect("1[mu]");
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), memory, "its memory cost does not count");
+    }
+}

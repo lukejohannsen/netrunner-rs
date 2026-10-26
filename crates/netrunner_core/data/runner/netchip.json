@@ -1,0 +1,45 @@
+{
+  "id": "netchip",
+  "title": "NetChip",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "HostedCards",
+            1
+          ]
+        }
+      },
+      "text": "NetChip can host a program with a memory cost less than or equal to the number of copies of NetChip installed."
+    },
+    {
+      "kind": {
+        "HostsMemory": {
+          "per": 1,
+          "of": {
+            "RunnerInstalls": {
+              "AmongCards": [
+                "netchip"
+              ]
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "The memory cost of the hosted program does not count against your memory limit."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10024,
+  "is_playable": true
+}

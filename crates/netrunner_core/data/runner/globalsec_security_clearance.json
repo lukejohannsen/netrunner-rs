@@ -1,0 +1,50 @@
+{
+  "id": "globalsec_security_clearance",
+  "title": "Globalsec Security Clearance",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "install_requirement": {
+    "AmountAtLeast": [
+      "Link",
+      2
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "LoseClicks": 1
+                  },
+                  {
+                    "LookAtTopOfDeck": {
+                      "deck": "Corp",
+                      "count": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may lose [click]. If you do, look at the top card of R&D",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may lose [click]. If you do, look at the top card of R&D."
+    }
+  ],
+  "built_from": 9051,
+  "is_playable": true
+}
