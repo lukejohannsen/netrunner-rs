@@ -1,0 +1,47 @@
+{
+  "id": "reality_threedee",
+  "title": "Reality Threedee",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 6,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this asset, take 1 bad publicity."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": "IsTagged",
+            "effect": {
+              "GainCredits": [
+                "Corp",
+                2
+              ]
+            },
+            "otherwise": {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, if the Runner is tagged, gain 2[credit]. Otherwise, gain 1[credit]."
+    }
+  ],
+  "built_from": 9012,
+  "is_playable": true
+}

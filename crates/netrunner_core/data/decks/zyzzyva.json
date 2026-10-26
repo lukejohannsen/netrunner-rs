@@ -3,16 +3,12 @@
   "name": "Zyzzyva",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep.",
+  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex.",
   "style": [
     "traps"
   ],
   "identity": "jinteki_potential_unleashed",
   "cards": [
-    {
-      "card": "hangeki",
-      "count": 2
-    },
     {
       "card": "kakurenbo",
       "count": 1
@@ -28,10 +24,6 @@
     {
       "card": "whirlpool",
       "count": 1
-    },
-    {
-      "card": "thimblerig",
-      "count": 2
     },
     {
       "card": "otoroshi",
@@ -131,6 +123,14 @@
     },
     {
       "card": "nihongai_grid",
+      "count": 2
+    },
+    {
+      "card": "bio_ethics_association",
+      "count": 2
+    },
+    {
+      "card": "palana_agroplex",
       "count": 2
     }
   ]

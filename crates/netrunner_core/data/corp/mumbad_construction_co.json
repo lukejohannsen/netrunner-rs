@@ -1,0 +1,63 @@
+{
+  "id": "mumbad_construction_co",
+  "title": "Mumbad Construction Co.",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PlaceAdvancementCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When your turn begins, place 1 advancement token on Mumbad Construction Co."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          1
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveAdvancementCounters": {
+              "Fixed": 1
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnInstalled",
+              "filter": "Rezzed",
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PlaceAdvancementCounters": {
+                  "Fixed": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "2[credit]: Move 1 advancement token from Mumbad Construction Co. to a faceup card."
+    }
+  ],
+  "built_from": 10036,
+  "is_playable": true
+}

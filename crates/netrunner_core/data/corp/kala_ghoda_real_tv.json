@@ -1,0 +1,53 @@
+{
+  "id": "kala_ghoda_real_tv",
+  "title": "Kala Ghoda Real TV",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "LookAtTopOfDeck": {
+                  "deck": "Runner",
+                  "count": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may look at the top card of the stack",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may look at the top card of the stack."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Mill": {
+          "deck": "Runner",
+          "amount": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "The Runner trashes the top card of the stack."
+    }
+  ],
+  "built_from": 10015,
+  "is_playable": true
+}

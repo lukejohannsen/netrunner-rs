@@ -1,0 +1,39 @@
+{
+  "id": "bio_ethics_association",
+  "title": "Bio-Ethics Association",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "CorpInstalls": {
+                "All": [
+                  "Ice",
+                  "InThisServer"
+                ]
+              }
+            },
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, do 1 net damage if there is no ice protecting this server."
+    }
+  ],
+  "built_from": 10050,
+  "is_playable": true
+}

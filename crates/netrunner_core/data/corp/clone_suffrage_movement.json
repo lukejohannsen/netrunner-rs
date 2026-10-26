@@ -1,0 +1,74 @@
+{
+  "id": "clone_suffrage_movement",
+  "title": "Clone Suffrage Movement",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "And": [
+          {
+            "Not": {
+              "AmountAtLeast": [
+                {
+                  "CorpInstalls": {
+                    "All": [
+                      "Ice",
+                      "InThisServer"
+                    ]
+                  }
+                },
+                1
+              ]
+            }
+          },
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OwnArchives",
+              "count": 1,
+              "filter": {
+                "CardType": "Operation"
+              }
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "CardType": "Operation"
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "destination": "OwnHq"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may add 1 operation from Archives to HQ",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may add 1 operation from Archives to HQ if there is no ice protecting this server."
+    }
+  ],
+  "built_from": 10049,
+  "is_playable": true
+}

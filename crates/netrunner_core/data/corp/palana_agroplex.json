@@ -1,0 +1,30 @@
+{
+  "id": "palana_agroplex",
+  "title": "Pālanā Agroplex",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, each player draws 1 card."
+    }
+  ],
+  "built_from": 10031,
+  "is_playable": true
+}
