@@ -521,6 +521,15 @@ pub enum CardFilter {
     /// same way. Composition didn't work: no filter read an agenda's
     /// advancement requirement.
     AdvancementRequirementExactly(Box<crate::dsl::Amount>),
+    /// A printed trash cost of exactly this many credits — Political
+    /// Operative's "trash 1 rezzed card with trash cost equal to X", X its
+    /// `Cost::CreditsX`. Read as the selection is offered, as
+    /// `PrintedCostExactly` is; a card with no trash cost is not admitted.
+    /// The printed number, because every change to a trash cost in the
+    /// pool is to the cost of a card being accessed (`ContinuousKind::
+    /// TrashCost`), which this card is not. Composition didn't work:
+    /// `HasTrashCost` reads no number.
+    TrashCostExactly(Box<crate::dsl::Amount>),
     /// The same card type as the card a nested cost just trashed — World
     /// Tree's "trash 1 of your other installed cards to search your stack
     /// for 1 card **of the same type**", written in as the selection is
@@ -744,6 +753,7 @@ impl CardFilter {
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
+            CardFilter::TrashCostExactly(exactly) => CardFilter::TrashCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::TopOf(count) => CardFilter::TopOfZone(amount(&count)),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
             // A discount read off the resolution (Rejig's "paying X[credit]
@@ -798,6 +808,7 @@ impl CardFilter {
             CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(amount(exactly)),
             CardFilter::AgendaPointsExactly(exactly) => CardFilter::AgendaPointsExactly(amount(exactly)),
             CardFilter::AdvancementRequirementExactly(exactly) => CardFilter::AdvancementRequirementExactly(amount(exactly)),
+            CardFilter::TrashCostExactly(exactly) => CardFilter::TrashCostExactly(amount(exactly)),
             CardFilter::TopOf(count) => CardFilter::TopOf(amount(count)),
             CardFilter::NthFromTop(n) => CardFilter::NthFromTop(amount(n)),
             CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Amount(of)) => {
@@ -1087,6 +1098,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         },
         CardFilter::AdvancementRequirementExactly(exactly) => match **exactly {
             crate::dsl::Amount::Fixed(n) => card.card_type == CardType::Agenda && card.advancement_requirement == Some(n),
+            _ => false,
+        },
+        CardFilter::TrashCostExactly(exactly) => match **exactly {
+            crate::dsl::Amount::Fixed(n) => card.trash_cost == Some(n),
             _ => false,
         },
         CardFilter::SameTypeAsPaidCard => false,

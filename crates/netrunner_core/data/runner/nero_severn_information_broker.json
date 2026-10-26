@@ -1,0 +1,39 @@
+{
+  "id": "nero_severn_information_broker",
+  "title": "Nero Severn: Information Broker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "IceOfType": "Sentry"
+        }
+      },
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "JackOut",
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may jack out"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a sentry, you may jack out."
+    }
+  ],
+  "built_from": 10040,
+  "is_playable": true
+}

@@ -46394,3 +46394,159 @@ mod mumbad_stage_3 {
         assert!(events.iter().any(|event| format!("{event:?}").contains("LookedAt")), "{events:?}");
     }
 }
+
+mod mumbad_stage_4 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ids(cards: &[&str]) -> Vec<CardId> {
+        cards.iter().map(|card| id(card)).collect()
+    }
+
+    /// The Runner's action phase with 4[click], 10[credit] and `rig`.
+    fn runner_turn(rig: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = rig.iter().map(|card| crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), ..Default::default() }).collect();
+        (state, registry())
+    }
+
+    fn scored(cards: &[&str]) -> Vec<crate::rules::ScoredAgenda> {
+        cards.iter().map(|card| crate::rules::ScoredAgenda { install_id: fixture_install_id(card), ..crate::rules::ScoredAgenda::plain(id(card)) }).collect()
+    }
+
+    fn use_it(card: &str) -> PlayerAction {
+        PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index: 0 }
+    }
+
+    /// Answers a payment that asks which card, then closes the windows.
+    fn paid(mut state: GameState, registry: &CardRegistry) -> GameState {
+        if state.pending_payment.is_some() {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the agenda to forfeit").0;
+        }
+        close_all_windows(state, registry).0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn artist_colony_forfeits_an_agenda_to_install_a_program_resource_or_hardware_from_the_stack() {
+        let (mut state, registry) = runner_turn(&["artist_colony"]);
+        state.runner.stack = ids(&["sure_gamble", "corroder", "daily_casts"]);
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&use_it("artist_colony")), "nothing to forfeit");
+        state.runner.scored_agendas = scored(&["hostile_takeover"]);
+        state.runner.resources.agenda_points = crate::rules::AgendaPoints(1);
+        let (asked, _) = apply_action(&state, &registry, use_it("artist_colony")).expect("forfeit 1 agenda");
+        let asked = paid(asked, &registry);
+        assert!(asked.runner.scored_agendas.is_empty(), "forfeited");
+        assert_eq!(toggles(&asked, &registry).len(), 2, "Corroder and Daily Casts, not an event");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: toggles(&asked, &registry)[0] }).expect("one");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("install that card");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.rig.len(), 2, "installed");
+        assert_eq!(done.runner.stack.len(), 2);
+        assert!(done.runner.resources.credits.0 < 10, "paying its install cost");
+    }
+
+    #[test]
+    fn liberated_chela_scores_itself_for_two_unless_the_corp_forfeits_an_agenda() {
+        let (mut state, registry) = runner_turn(&["liberated_chela"]);
+        state.runner.resources.clicks = Clicks(5);
+        state.runner.scored_agendas = scored(&["hostile_takeover"]);
+        state.runner.resources.agenda_points = crate::rules::AgendaPoints(1);
+
+        // The Corp has nothing to forfeit: the resource is worth 2 points.
+        let (done, _) = apply_action(&state, &registry, use_it("liberated_chela")).expect("[click] x5, forfeit an agenda");
+        let mut done = paid(done, &registry);
+        if done.pending_paid_choice.is_some() {
+            done = apply_action(&done, &registry, PlayerAction::DeclinePendingPaidChoice).expect("the Corp cannot").0;
+            done = close_all_windows(done, &registry).0;
+        }
+        assert!(done.runner.rig.is_empty());
+        assert_eq!(done.runner.scored_agendas.iter().map(|agenda| agenda.card.0.as_str()).collect::<Vec<_>>(), ["liberated_chela"]);
+        assert_eq!(done.runner.resources.agenda_points, crate::rules::AgendaPoints(2), "1 forfeited, 2 scored");
+
+        // The Corp forfeits one: the resource leaves the game.
+        state.corp.scored_agendas = scored(&["project_atlas"]);
+        state.corp.resources.agenda_points = crate::rules::AgendaPoints(2);
+        let (asked, _) = apply_action(&state, &registry, use_it("liberated_chela")).expect("again");
+        let asked = paid(asked, &registry);
+        let offer = asked.pending_paid_choice.as_ref().expect("the Corp may forfeit");
+        assert_eq!(offer.side, Side::Corp);
+        let (forfeited, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("forfeit Project Atlas");
+        let forfeited = paid(forfeited, &registry);
+        assert!(forfeited.corp.scored_agendas.is_empty());
+        assert!(forfeited.runner.rig.is_empty());
+        assert!(forfeited.runner.scored_agendas.is_empty());
+        assert!(forfeited.runner.removed_from_game.contains(&id("liberated_chela")), "removed from the game");
+    }
+
+    #[test]
+    fn jesminder_sareen_prevents_one_tag_the_first_time_each_run() {
+        let (mut state, registry) = run_into_snare(5);
+        state.runner.identity = Some(id("jesminder_sareen_girl_behind_the_curtain"));
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("corp pays");
+        assert!(asked.pending_prevention.is_some(), "the Runner is asked about the tag");
+        let prevent = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+        let (prevented, events) = apply_action(&asked, &registry, prevent.clone()).expect("prevent 1 tag");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::Prevented { .. })), "{events:?}");
+        assert_eq!(prevented.runner.tags, 0);
+        assert!(!crate::rules::legal_actions_for(&prevented, &registry, Side::Runner).contains(&prevent), "only the first time each run");
+    }
+
+    #[test]
+    fn nero_severn_may_jack_out_as_a_sentry_is_encountered_once_per_turn() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.identity = Some(id("nero_severn_information_broker"));
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("karuna"), card: id("karuna"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (mut met, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach Karuna");
+        for _ in 0..12 {
+            if met.pending_paid_choice.is_some() || met.active_run.is_none() {
+                break;
+            }
+            let side = met.paid_ability_window.as_ref().expect("a window").active_priority;
+            met = apply_action(&met, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        assert!(met.pending_paid_choice.is_some(), "you may jack out");
+        let (out, _) = apply_action(&met, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out");
+        let (out, _) = close_all_windows(out, &registry);
+        assert!(out.active_run.is_none(), "jacked out");
+        assert!(out.runner.once_per_turn_used.iter().next().is_some(), "once per turn");
+    }
+
+    #[test]
+    fn political_operative_installs_after_hq_and_trashes_a_rezzed_card_whose_trash_cost_is_x_feeding_wasteland() {
+        let (mut state, registry) = runner_turn(&["wasteland"]);
+        state.runner.grip = ids(&["political_operative"]);
+        let install = PlayerAction::InstallResource { card_id: id("political_operative"), host: None };
+        assert!(apply_action(&state, &registry, install).is_err(), "only after a successful run on HQ");
+
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: fixture_install_id("political_operative"), card: id("political_operative"), ..Default::default() });
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9700), card: id("pad_campaign"), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+        let (asked, _) = apply_action(&state, &registry, use_it("political_operative")).expect("[trash], X[credit]");
+        let pad = registry.get(&id("pad_campaign")).unwrap().trash_cost.expect("a trash cost");
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: pad }).expect("X");
+        assert_eq!(toggles(&asked, &registry).len(), 1, "PAD Campaign, at that trash cost");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("PAD Campaign");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.corp.installed.is_empty(), "trashed");
+        assert!(done.runner.heap.contains(&id("political_operative")));
+        assert_eq!(done.runner.resources.credits, Credits(10 - pad + 1), "X paid, and Wasteland's 1[credit] for the Operative's trash");
+    }
+}

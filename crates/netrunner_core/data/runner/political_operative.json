@@ -1,0 +1,76 @@
+{
+  "id": "political_operative",
+  "title": "Political Operative",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "install_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "Server": [
+              "Hq"
+            ]
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash], X[credit]: Trash 1 rezzed card with trash cost equal to X.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsX": {
+              "max": {
+                "Fixed": 30
+              }
+            }
+          },
+          "TrashSelf"
+        ]
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OpponentInstalled",
+          "count": 1,
+          "filter": {
+            "All": [
+              "Rezzed",
+              "HasTrashCost"
+            ]
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              "Rezzed",
+              {
+                "TrashCostExactly": "ChosenNumber"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "TrashCard": "ThisCard"
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 10043,
+  "is_playable": true
+}
