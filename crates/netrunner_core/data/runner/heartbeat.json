@@ -1,0 +1,44 @@
+{
+  "id": "heartbeat",
+  "title": "Heartbeat",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Trash 1 of your installed cards: Prevent 1 damage.",
+      "cost": {
+        "Trash": {
+          "from": "OwnInstalled",
+          "filter": "Any",
+          "count": 1
+        }
+      },
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": null,
+            "up_to": 1,
+            "leaving": 0
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 9032,
+  "is_playable": true
+}

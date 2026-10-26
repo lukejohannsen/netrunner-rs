@@ -1,0 +1,98 @@
+{
+  "id": "chatterjee_university",
+  "title": "Chatterjee University",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click]: Place 1 power counter on Chatterjee University.",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 1
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[click]: Install a program from your grip, lowering the install cost by 1 for each power counter on Chatterjee University. Remove 1 hosted power counter.",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": {
+                "All": [
+                  {
+                    "CardType": "Program"
+                  },
+                  {
+                    "InstallableRunnerCardWithDiscount": {
+                      "Amount": "HostedCounters"
+                    }
+                  }
+                ]
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnGrip",
+                  "discount": {
+                    "Amount": "HostedCounters"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "HostedCounters",
+                  1
+                ]
+              },
+              "effect": {
+                "RemoveCounters": {
+                  "Fixed": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnGrip",
+          "count": 1,
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Amount": "HostedCounters"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 10010,
+  "is_playable": true
+}

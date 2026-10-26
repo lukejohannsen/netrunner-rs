@@ -3,7 +3,7 @@
   "name": "Head Case",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Akiko Nisei: Head Case, Reign and Reverie's Shaper identity, who plays a Psi Game on every breach of R&D for one more card. Safety Net's frame of net damage shields, Sacrificial Construct and Self-Modifying Code, with two Insight for its two Khusyuk to reveal the cards Akiko will see; 9 of its 12 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2.",
+  "description": "Not a published list: built so the sweeps reach Akiko Nisei: Head Case, Reign and Reverie's Shaper identity, who plays a Psi Game on every breach of R&D for one more card. Safety Net's frame of net damage shields, Sacrificial Construct and Self-Modifying Code, with two Insight for its two Khusyuk to reveal the cards Akiko will see; 9 of its 12 influence. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2.  FFG F6 Stage 2: two Chameleon (Safety Net and Simulant keep them) for Ankusa and Brahman.",
   "style": [
     "rig"
   ],
@@ -70,10 +70,6 @@
       "count": 2
     },
     {
-      "card": "chameleon",
-      "count": 2
-    },
-    {
       "card": "mantle",
       "count": 2
     },
@@ -104,6 +100,14 @@
     {
       "card": "crypsis",
       "count": 2
+    },
+    {
+      "card": "ankusa",
+      "count": 1
+    },
+    {
+      "card": "brahman",
+      "count": 1
     }
   ]
 }

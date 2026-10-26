@@ -1,0 +1,75 @@
+{
+  "id": "brahman",
+  "title": "Brahman",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 3,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "Any",
+      "requirement": "BrokeASubroutineThatEncounter",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "Not": {
+                    "HasSubtype": "Virus"
+                  }
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnStack"
+          }
+        }
+      ],
+      "text": "Whenever an encounter ends, if you used this program to break a subroutine during that encounter, add 1 installed non-virus program to the top of your stack."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break up to 2 subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +1 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 10062,
+  "is_playable": true
+}
