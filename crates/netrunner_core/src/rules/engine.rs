@@ -1613,29 +1613,67 @@ fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result
     Err(RulesError::CardNotInHand { side, card: card_id.clone() })
 }
 
+/// The zone an operation is played out of. HQ is the click action's; an
+/// effect names its zone (`Effect::PlayOperation::from`): Archives for
+/// Plutus and Petty Cash, R&D for Consulting Visit's "search R&D for an
+/// operation and play it". Was a `from_archives` flag until R&D made a
+/// third zone, which a flag cannot say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OperationOrigin {
+    Hq,
+    Archives,
+    RAndD,
+}
+
+impl OperationOrigin {
+    /// The origin a selection's zone names, or `None` for a zone no
+    /// operation is played out of.
+    pub(crate) fn of(zone: &crate::dsl::CardZoneRef) -> Option<OperationOrigin> {
+        match zone {
+            crate::dsl::CardZoneRef::OwnHq => Some(OperationOrigin::Hq),
+            crate::dsl::CardZoneRef::OwnArchives => Some(OperationOrigin::Archives),
+            crate::dsl::CardZoneRef::OwnRAndD => Some(OperationOrigin::RAndD),
+            _ => None,
+        }
+    }
+
+    fn holds(self, state: &GameState, card_id: &CardId) -> bool {
+        match self {
+            OperationOrigin::Hq => state.corp.hq.contains(card_id),
+            OperationOrigin::Archives => state.corp.archives_contains(card_id),
+            OperationOrigin::RAndD => state.corp.r_and_d.contains(card_id),
+        }
+    }
+}
+
 /// Where a `PlayOperation` takes its card from: HQ first, then Archives
 /// for a card playable from there (`CorpState::playable_hand`'s order).
-/// `Some(true)` means the copy would come out of Archives.
-fn operation_comes_from_archives(state: &GameState, card_id: &CardId) -> Option<bool> {
+fn operation_origin(state: &GameState, card_id: &CardId) -> Option<OperationOrigin> {
     if state.corp.hq.contains(card_id) {
-        Some(false)
+        Some(OperationOrigin::Hq)
     } else if state.corp.playable_from_archives.contains(card_id) && state.corp.archives_contains(card_id) {
-        Some(true)
+        Some(OperationOrigin::Archives)
     } else {
         None
     }
 }
 
-/// `take_from_grip` for the Corp with Archives as the fallback zone —
-/// Petty Cash played from Archives. Kept apart from `take_from_grip` so
-/// the discard, install and every other HQ-only path cannot reach into
-/// Archives by accident.
-fn take_operation(state: &mut GameState, card_id: &CardId, from_archives: bool) -> Result<(), RulesError> {
-    if from_archives {
-        let position = state.corp.archives.iter().position(|a| &a.card == card_id).ok_or_else(|| RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() })?;
-        state.corp.archives.remove(position);
-    } else {
-        take_from_grip(state, Side::Corp, card_id)?;
+/// `take_from_grip` for the Corp with the operation's zone named — Petty
+/// Cash played from Archives, Consulting Visit's search of R&D. Kept apart
+/// from `take_from_grip` so the discard, install and every other HQ-only
+/// path cannot reach into another zone by accident.
+fn take_operation(state: &mut GameState, card_id: &CardId, from: OperationOrigin) -> Result<(), RulesError> {
+    let missing = || RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() };
+    match from {
+        OperationOrigin::Hq => take_from_grip(state, Side::Corp, card_id)?,
+        OperationOrigin::Archives => {
+            let position = state.corp.archives.iter().position(|a| &a.card == card_id).ok_or_else(missing)?;
+            state.corp.archives.remove(position);
+        }
+        OperationOrigin::RAndD => {
+            let position = state.corp.r_and_d.iter().position(|card| card == card_id).ok_or_else(missing)?;
+            state.corp.r_and_d.remove(position);
+        }
     }
     Ok(())
 }
@@ -1794,17 +1832,16 @@ fn play_operation(
     // Which zone the click action may play from is Petty Cash's own rule
     // (`CardDefinition::playable_from_archives`); a card effect declares
     // its zone instead — see `Effect::PlayOperation`.
-    let from_archives = operation_comes_from_archives(state, &card_id)
+    let from = operation_origin(state, &card_id)
         .ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(play_operation_card(&mut next, registry, card_id, from_archives, false)?);
+    events.extend(play_operation_card(&mut next, registry, card_id, from, false)?);
     Ok((next, events))
 }
 
-/// Whether the Corp could play `card_id` out of HQ (or, with
-/// `from_archives`, out of Archives) right now, click aside: it is an
+/// Whether the Corp could play `card_id` out of `from` right now, click aside: it is an
 /// operation, it is there, its `play_requirement` holds and its cost is
 /// affordable — the offer half of `CardFilter::PlayableOperation`, paired
 /// with `play_operation_card`'s own guards the way `can_install_runner_
@@ -1812,9 +1849,9 @@ fn play_operation(
 /// card carries Petty Cash's own permission to be played from Archives:
 /// that is the click action's rule, and Plutus grants the permission
 /// itself.
-pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_archives: bool, ignoring_costs: bool) -> bool {
+pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from: OperationOrigin, ignoring_costs: bool) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
-    let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
+    let present = from.holds(state, card_id);
     present
         && card_def.card_type == CardType::Operation
         && (ignoring_costs || payment::available(state, registry, Side::Corp, Purpose::Play(card_def)) >= continuous::play_cost_of(state, registry, card_def))
@@ -1840,11 +1877,12 @@ pub(crate) fn play_operation_card(
     next: &mut GameState,
     registry: &CardRegistry,
     card_id: CardId,
-    from_archives: bool,
+    from: OperationOrigin,
     ignoring_costs: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
-    take_operation(next, &card_id, from_archives)?;
+    let from_archives = from == OperationOrigin::Archives;
+    take_operation(next, &card_id, from)?;
 
     let card_def = registry
         .get(&card_id)

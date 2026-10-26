@@ -2111,7 +2111,10 @@ pub enum Effect {
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
-    /// Archives" (`OwnArchives`). Shares `engine::play_operation_card`
+    /// Archives" (`OwnArchives`), and Consulting Visit's "search R&D for
+    /// an operation and play it" (`OwnRAndD`, the selection's `then`, so
+    /// the card is played out of R&D and never passes through HQ). Shares
+    /// `engine::play_operation_card`
     /// with the click action, so `OnPlay`, the Transaction reaction, the
     /// `play_requirement` and the filing all resolve identically.
     ///
