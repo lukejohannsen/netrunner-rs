@@ -3,7 +3,7 @@
   "name": "Zythum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits.",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV.",
   "style": [
     "fast-advance"
   ],
@@ -50,10 +50,6 @@
       "count": 2
     },
     {
-      "card": "focus_group",
-      "count": 2
-    },
-    {
       "card": "reversed_accounts",
       "count": 1
     },
@@ -64,14 +60,6 @@
     {
       "card": "loot_box",
       "count": 1
-    },
-    {
-      "card": "daily_business_show",
-      "count": 2
-    },
-    {
-      "card": "ghost_branch",
-      "count": 2
     },
     {
       "card": "breaking_news",
@@ -148,6 +136,18 @@
     {
       "card": "nasx",
       "count": 1
+    },
+    {
+      "card": "sensie_actors_union",
+      "count": 2
+    },
+    {
+      "card": "reality_threedee",
+      "count": 2
+    },
+    {
+      "card": "kala_ghoda_real_tv",
+      "count": 2
     }
   ]
 }

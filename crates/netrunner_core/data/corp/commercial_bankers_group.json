@@ -1,0 +1,39 @@
+{
+  "id": "commercial_bankers_group",
+  "title": "Commercial Bankers Group",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "CorpInstalls": {
+                "All": [
+                  "Ice",
+                  "InThisServer"
+                ]
+              }
+            },
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain 3[credit] if there is no ice protecting this server."
+    }
+  ],
+  "built_from": 10054,
+  "is_playable": true
+}

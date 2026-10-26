@@ -1,0 +1,49 @@
+{
+  "id": "launch_campaign",
+  "title": "Launch Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 6
+        }
+      ],
+      "text": "Place 6[credit] from the bank on Launch Campaign when it is rezzed."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 2
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, take 2[credit] from Launch Campaign."
+    }
+  ],
+  "built_from": 9027,
+  "is_playable": true
+}

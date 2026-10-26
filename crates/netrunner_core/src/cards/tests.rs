@@ -46836,3 +46836,180 @@ mod mumbad_stage_6 {
         assert_eq!(done.corp.resources.credits, Credits(4), "the advance's 1[credit] only");
     }
 }
+
+mod mumbad_stage_7 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn asset(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), rezzed, ..Default::default() }
+    }
+
+    /// The Corp's action phase with `card` rezzed in a remote, protected by
+    /// a piece of ice when `ice` is set.
+    fn with_asset(card: &str, ice: bool) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![asset(card, true)];
+        if ice {
+            state.corp.installed.push(crate::rules::InstalledCard { install_id: fixture_install_id("ice_wall"), card: id("ice_wall"), server: ServerId::Remote(0), slot: InstallSlot::Ice, ..Default::default() });
+        }
+        (state, registry())
+    }
+
+    fn corp_turn_begins(mut state: GameState, registry: &CardRegistry) -> GameState {
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, Side::Corp);
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn the_political_assets_work_only_while_no_ice_protects_their_server() {
+        let (bare, registry) = with_asset("commercial_bankers_group", false);
+        let credits = bare.corp.resources.credits.0;
+        assert_eq!(corp_turn_begins(bare, &registry).corp.resources.credits, Credits(credits + 3), "gain 3[credit]");
+        let (iced, registry) = with_asset("commercial_bankers_group", true);
+        assert_eq!(corp_turn_begins(iced, &registry).corp.resources.credits, Credits(credits), "ice protects this server");
+
+        let (mut bare, registry) = with_asset("bio_ethics_association", false);
+        bare.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        assert_eq!(corp_turn_begins(bare, &registry).runner.grip.len(), 1, "1 net damage");
+        let (mut iced, registry) = with_asset("bio_ethics_association", true);
+        iced.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        assert_eq!(corp_turn_begins(iced, &registry).runner.grip.len(), 2);
+    }
+
+    #[test]
+    fn clone_suffrage_movement_may_return_an_operation_from_archives() {
+        let (mut state, registry) = with_asset("clone_suffrage_movement", false);
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("ice_wall"), facedown: true }, crate::rules::ArchivedCard { card: id("hedge_fund"), facedown: false }];
+        let asked = corp_turn_begins(state, &registry);
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("add an operation");
+        let (chose, _) = apply_action(&chose, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Hedge Fund, the only operation");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("to HQ");
+        assert!(done.corp.hq.contains(&id("hedge_fund")));
+        assert_eq!(done.corp.archives.len(), 1);
+    }
+
+    #[test]
+    fn sensie_actors_union_draws_three_and_puts_one_on_the_bottom_of_r_and_d() {
+        let (mut state, registry) = with_asset("sensie_actors_union", false);
+        state.corp.hq.clear();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("pad_campaign"), id("enigma")];
+        let asked = corp_turn_begins(state, &registry);
+        let (drew, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw 3");
+        assert_eq!(drew.corp.hq.len(), 3, "draw 3 cards");
+        let put_back = drew.corp.hq[0].clone();
+        let (chose, _) = apply_action(&drew, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("a card");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("to the bottom");
+        // The turn's own draw then takes the one card left on top.
+        assert_eq!(done.corp.r_and_d, vec![put_back], "the bottom of R&D");
+        assert_eq!(done.corp.hq.len(), 3);
+    }
+
+    #[test]
+    fn launch_campaign_holds_six_and_is_trashed_when_its_last_two_are_taken() {
+        let (mut state, registry) = with_asset("launch_campaign", false);
+        state.corp.installed[0].rezzed = false;
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "launch_campaign") }).expect("rez");
+        let (mut rezzed, _) = close_all_windows(rezzed, &registry);
+        assert_eq!(rezzed.corp.installed[0].counters, 6);
+        rezzed.corp.installed[0].counters = 2;
+        let credits = rezzed.corp.resources.credits.0;
+        let done = corp_turn_begins(rezzed, &registry);
+        assert_eq!(done.corp.resources.credits, Credits(credits + 2));
+        assert!(done.corp.installed.iter().all(|card| card.card != id("launch_campaign")), "no credits left: trashed");
+    }
+
+    #[test]
+    fn reality_threedee_pays_two_while_the_runner_is_tagged_and_one_otherwise() {
+        let (state, registry) = with_asset("reality_threedee", false);
+        let credits = state.corp.resources.credits.0;
+        assert_eq!(corp_turn_begins(state.clone(), &registry).corp.resources.credits, Credits(credits + 1));
+        let mut tagged = state;
+        tagged.runner.tags = 1;
+        assert_eq!(corp_turn_begins(tagged, &registry).corp.resources.credits, Credits(credits + 2));
+    }
+
+    #[test]
+    fn palana_agroplex_draws_each_player_a_card() {
+        let (mut state, registry) = with_asset("palana_agroplex", false);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
+        let (hq, grip) = (state.corp.hq.len(), state.runner.grip.len());
+        let done = corp_turn_begins(state, &registry);
+        assert_eq!((done.corp.hq.len(), done.runner.grip.len()), (hq + 2, grip + 1), "the turn's own draw, and one each");
+    }
+
+    #[test]
+    fn kala_ghoda_real_tv_trashes_itself_to_trash_the_top_of_the_stack() {
+        let (mut state, registry) = with_asset("kala_ghoda_real_tv", false);
+        state.runner.stack = vec![id("sure_gamble"), id("dirty_laundry")];
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "kala_ghoda_real_tv"), ability_index: 0 }).expect("[trash]");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.stack, vec![id("sure_gamble")]);
+        assert!(done.runner.heap.contains(&id("dirty_laundry")), "the top card");
+        assert!(done.corp.installed.is_empty());
+    }
+
+    #[test]
+    fn mumbad_construction_co_gains_a_token_each_turn_and_sells_it_to_a_faceup_card() {
+        let (mut state, registry) = with_asset("mumbad_construction_co", false);
+        state.corp.installed.push(crate::rules::InstalledCard { server: ServerId::Remote(1), slot: InstallSlot::Ice, ..asset("ice_wall", true) });
+        let mut done = corp_turn_begins(state, &registry);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 1);
+        done.phase = GamePhase::Action(Side::Corp);
+        let credits = done.corp.resources.credits.0;
+        let (asked, _) = apply_action(&done, &registry, PlayerAction::ActivateAbility { target: install_of(&done, "mumbad_construction_co"), ability_index: 0 }).expect("2[credit]");
+        let pad = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .next_back()
+            .expect("a faceup card");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: pad }).expect("Ice Wall");
+        let (moved, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("move it");
+        assert_eq!(moved.corp.resources.credits, Credits(credits - 2));
+        let tokens = |card: &str| moved.corp.installed.iter().find(|c| c.card == id(card)).unwrap().advancement_tokens;
+        assert_eq!((tokens("mumbad_construction_co"), tokens("ice_wall")), (0, 1));
+    }
+
+    #[test]
+    fn advanced_assembly_lines_pays_three_on_rez_and_trashes_to_install_from_hq() {
+        let (mut state, registry) = with_asset("advanced_assembly_lines", false);
+        state.corp.installed[0].rezzed = false;
+        state.corp.hq = vec![id("hedge_fund"), id("pad_campaign")];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "advanced_assembly_lines") }).expect("rez");
+        let (rezzed, _) = close_all_windows(rezzed, &registry);
+        assert_eq!(rezzed.corp.resources.credits, Credits(5 - 1 + 3));
+        let (asked, _) = apply_action(&rezzed, &registry, PlayerAction::ActivateAbility { target: install_of(&rezzed, "advanced_assembly_lines"), ability_index: 0 }).expect("[trash]");
+        let offered: Vec<_> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![1], "a non-agenda card, never an operation");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("PAD Campaign");
+        let (chose, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        let server = crate::rules::legal_actions_for(&chose, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .expect("a server");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("there");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.corp.installed.iter().any(|card| card.card == id("pad_campaign")));
+        assert!(done.corp.installed.iter().all(|card| card.card != id("advanced_assembly_lines")));
+    }
+}
