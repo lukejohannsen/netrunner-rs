@@ -362,7 +362,9 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             .chain(&corp.r_and_d)
             .chain(corp.archives.iter().map(|a| &a.card))
             .chain(corp.installed.iter().map(|c| &c.card))
-            .chain(corp.scored_agendas.iter().map(|s| &s.card))
+            // A Runner card the Corp added as an agenda (Word on the
+            // Street) is counted with the Runner's below.
+            .chain(corp.scored_agendas.iter().map(|s| &s.card).filter(|id| corp_ids.contains_key(&id.0)))
             // Stolen agendas; a Runner card added as an agenda (Jeitinho) is
             // counted with the Runner's below.
             .chain(state.runner.scored_agendas.iter().map(|s| &s.card).filter(|id| corp_ids.contains_key(&id.0)))
@@ -406,7 +408,10 @@ fn assert_cards_are_conserved(state: &GameState, registry: &netrunner_core::card
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
             .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
             // A Runner card added to the score area as an agenda (Jeitinho).
-            .chain(runner.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0))),
+            .chain(runner.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0)))
+            // …or to the Corp's, as an additional cost to score (Word on
+            // the Street).
+            .chain(state.corp.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0))),
     );
     assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
 }

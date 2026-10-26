@@ -1,0 +1,137 @@
+{
+  "id": "zymogen",
+  "name": "Zymogen",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Jesminder Sareen: Girl Behind the Curtain, Kala Ghoda's Shaper identity, which prevents 1 tag the first time each run the Runner would take tags. Dead Reckoning's list, its identity swapped, with two Artist Colony (forfeit an agenda to search the stack for a card and install it), two Liberated Chela (five clicks and an agenda for 2 points, unless the Corp forfeits one) and a Wasteland (a credit the first time each turn the Runner trashes one of their own installs) for two Sacrificial Construct, a Net Shield, a Lampades and a Baker, each kept by Dead Reckoning. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4.",
+  "style": [
+    "rig"
+  ],
+  "identity": "jesminder_sareen_girl_behind_the_curtain",
+  "cards": [
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "flux_capacitor",
+      "count": 1
+    },
+    {
+      "card": "coalescence",
+      "count": 1
+    },
+    {
+      "card": "orca",
+      "count": 2
+    },
+    {
+      "card": "egret",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 2
+    },
+    {
+      "card": "supercorridor",
+      "count": 2
+    },
+    {
+      "card": "hyperbaric",
+      "count": 1
+    },
+    {
+      "card": "propeller",
+      "count": 1
+    },
+    {
+      "card": "into_the_depths",
+      "count": 2
+    },
+    {
+      "card": "daeg_first_net_cat",
+      "count": 2
+    },
+    {
+      "card": "cybertrooper_talut",
+      "count": 2
+    },
+    {
+      "card": "paules_cafe",
+      "count": 1
+    },
+    {
+      "card": "pelangi",
+      "count": 2
+    },
+    {
+      "card": "minds_eye",
+      "count": 1
+    },
+    {
+      "card": "dj_fenris",
+      "count": 1
+    },
+    {
+      "card": "reclaim",
+      "count": 2
+    },
+    {
+      "card": "algo_trading",
+      "count": 1
+    },
+    {
+      "card": "beth_kilrain_chang",
+      "count": 1
+    },
+    {
+      "card": "laguna_velasco_district",
+      "count": 1
+    },
+    {
+      "card": "llds_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "ubax",
+      "count": 1
+    },
+    {
+      "card": "dai_v",
+      "count": 1
+    },
+    {
+      "card": "dhegdheer",
+      "count": 1
+    },
+    {
+      "card": "careful_planning",
+      "count": 2
+    },
+    {
+      "card": "levy_advanced_research_lab",
+      "count": 2
+    },
+    {
+      "card": "multithreader",
+      "count": 2
+    },
+    {
+      "card": "brain_chip",
+      "count": 1
+    },
+    {
+      "card": "artist_colony",
+      "count": 2
+    },
+    {
+      "card": "liberated_chela",
+      "count": 2
+    },
+    {
+      "card": "wasteland",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "id": "zymosis",
+  "name": "Zymosis",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Nero Severn: Information Broker, Democracy and Dogma's Criminal identity, who may jack out once a turn as a sentry is encountered. Zero-Day Heist's list, its identity swapped, with two Political Operative (installed only after a successful run on HQ, then trashed with X[credit] to trash a rezzed card whose trash cost is X) for its two Jackpot, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "nero_severn_information_broker",
+  "cards": [
+    {
+      "card": "jeitinho",
+      "count": 1
+    },
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "mu_safecracker",
+      "count": 1
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "doppelganger",
+      "count": 1
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "bankroll",
+      "count": 2
+    },
+    {
+      "card": "thunder_art_gallery",
+      "count": 1
+    },
+    {
+      "card": "amina",
+      "count": 2
+    },
+    {
+      "card": "slipstream",
+      "count": 1
+    },
+    {
+      "card": "spot_the_prey",
+      "count": 2
+    },
+    {
+      "card": "mobius",
+      "count": 2
+    },
+    {
+      "card": "exploit",
+      "count": 2
+    },
+    {
+      "card": "build_script",
+      "count": 2
+    },
+    {
+      "card": "mad_dash",
+      "count": 2
+    },
+    {
+      "card": "maui",
+      "count": 1
+    },
+    {
+      "card": "caldera",
+      "count": 2
+    },
+    {
+      "card": "flashbang",
+      "count": 2
+    },
+    {
+      "card": "hernando_cortez",
+      "count": 1
+    },
+    {
+      "card": "leave_no_trace",
+      "count": 2
+    },
+    {
+      "card": "rosetta_2_0",
+      "count": 2
+    },
+    {
+      "card": "corporate_defector",
+      "count": 2
+    },
+    {
+      "card": "aeneas_informant",
+      "count": 2
+    },
+    {
+      "card": "aumakua",
+      "count": 2
+    },
+    {
+      "card": "keros_mcintyre",
+      "count": 2
+    },
+    {
+      "card": "charlatan",
+      "count": 1
+    },
+    {
+      "card": "political_operative",
+      "count": 2
+    }
+  ]
+}

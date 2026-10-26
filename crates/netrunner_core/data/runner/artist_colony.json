@@ -1,0 +1,63 @@
+{
+  "id": "artist_colony",
+  "title": "Artist Colony",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Forfeit 1 agenda: Search your stack for 1 program, resource, or piece of hardware. Install that card.",
+      "cost": {
+        "Forfeit": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "All": [
+              {
+                "CardTypeOneOf": [
+                  "Program",
+                  "Resource",
+                  "Hardware"
+                ]
+              },
+              {
+                "InstallableRunnerCardWithDiscount": {
+                  "Credits": 0
+                }
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": true,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "InstallRunnerCardFromZone": {
+                  "from": "OwnStack",
+                  "discount": {
+                    "Credits": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 10009,
+  "is_playable": true
+}

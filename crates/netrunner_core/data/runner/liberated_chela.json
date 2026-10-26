@@ -1,0 +1,43 @@
+{
+  "id": "liberated_chela",
+  "title": "Liberated Chela",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click][click][click][click][click], forfeit an agenda: The Corp may forfeit an agenda to remove this resource from the game. If they do not, add this resource to your score area as an agenda worth 2 agenda points.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 5
+          },
+          {
+            "Forfeit": 1
+          }
+        ]
+      },
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Corp",
+          "cost": {
+            "Forfeit": 1
+          },
+          "if_paid": {
+            "RemoveFromGame": "ThisCard"
+          },
+          "if_declined": {
+            "AddToScoreAreaAsAgenda": {
+              "points": 2
+            }
+          },
+          "text": "The Corp may forfeit an agenda to remove this resource from the game"
+        }
+      }
+    }
+  ],
+  "built_from": 10081,
+  "is_playable": true
+}

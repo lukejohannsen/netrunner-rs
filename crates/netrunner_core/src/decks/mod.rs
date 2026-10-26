@@ -627,6 +627,11 @@ mod tests {
             // FFG F5 Stage 38: Omar Keung: Conspiracy Theorist's deck, on
             // Free Spirit's list; Flashpoint is in neither pool.
             ("zeitgeist", &neither),
+            // FFG F6 Stage 4: Jesminder Sareen's and Nero Severn's decks, on
+            // Dead Reckoning's and Zero-Day Heist's lists; Mumbad is in
+            // neither pool.
+            ("zymogen", &neither),
+            ("zymosis", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

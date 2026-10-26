@@ -1,0 +1,27 @@
+{
+  "id": "jesminder_sareen_girl_behind_the_curtain",
+  "title": "Jesminder Sareen: Girl Behind the Curtain",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → The first time each run you would take 1 or more tags, prevent 1 tag.",
+      "cost": {
+        "Credits": 0
+      },
+      "requirement": "OncePerRun",
+      "effect": {
+        "Prevent": {
+          "Tags": 1
+        }
+      }
+    }
+  ],
+  "built_from": 10006,
+  "is_playable": true
+}

@@ -1,0 +1,40 @@
+{
+  "id": "wasteland",
+  "title": "Wasteland",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "OwnedBy": {
+              "owner": "Runner",
+              "whose": "Runner"
+            }
+          },
+          {
+            "TrashedFrom": [
+              "Installed"
+            ]
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you trash 1 of your installed cards, gain 1[credit]."
+    }
+  ],
+  "built_from": 9036,
+  "is_playable": true
+}
