@@ -1,0 +1,53 @@
+{
+  "id": "patron",
+  "title": "Patron",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "ChooseServer": {}
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may choose a server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may choose a server."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": "ChosenServer",
+      "effects": [
+        {
+          "SetAccessReplacement": {
+            "effect": {
+              "DrawCards": [
+                "Runner",
+                2
+              ]
+            }
+          }
+        },
+        "SpendChosenServer"
+      ],
+      "text": "The first time each turn you make a successful run on the chosen server, instead of breaching it, draw 2 cards."
+    }
+  ],
+  "built_from": 10063,
+  "is_playable": true
+}

@@ -1,0 +1,68 @@
+{
+  "id": "making_an_entrance",
+  "title": "Making an Entrance",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        "ActionsThisTurn",
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "TopOfZone": 6
+            },
+            "min": 0,
+            "max": 6,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHeap",
+            "then": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnStack",
+                "filter": {
+                  "TopOf": {
+                    "Reduced": {
+                      "amount": {
+                        "Fixed": 6
+                      },
+                      "by": "CardsSelected"
+                    }
+                  }
+                },
+                "min": 0,
+                "max": 0,
+                "up_to": {
+                  "Reduced": {
+                    "amount": {
+                      "Fixed": 6
+                    },
+                    "by": "CardsSelected"
+                  }
+                },
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnStack"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 10058,
+  "is_playable": true
+}

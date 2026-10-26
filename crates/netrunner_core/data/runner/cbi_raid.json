@@ -1,0 +1,40 @@
+{
+  "id": "cbi_raid",
+  "title": "CBI Raid",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "Any",
+                "min": 0,
+                "max": 0,
+                "count": {
+                  "CardsInHand": "Corp"
+                },
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnRAndD"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 10022,
+  "is_playable": true
+}

@@ -2772,6 +2772,7 @@ pub fn evaluate_effect(
             on_start,
             exclude_servers_run_this_turn,
             only_protected_by_ice,
+            only_protected_by_unrezzed_ice,
             only_in,
             last_run_server,
             chosen_server,
@@ -2841,7 +2842,7 @@ pub fn evaluate_effect(
                 allowed_servers.clone()
             };
             let allowed_servers = &allowed_servers;
-            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() || no_remote || any_barred {
+            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || *only_protected_by_unrezzed_ice || only_in.is_some() || no_remote || any_barred {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
                 // `legal_actions` offers them, fresh remote included.
@@ -2861,6 +2862,10 @@ pub fn evaluate_effect(
                     .into_iter()
                     .filter(|server| !*exclude_servers_run_this_turn || !already_run.contains(server))
                     .filter(|server| !*only_protected_by_ice || protected(server))
+                    .filter(|server| {
+                        !*only_protected_by_unrezzed_ice
+                            || state.corp.installed.iter().any(|c| c.server == *server && c.slot == crate::rules::InstallSlot::Ice && !c.rezzed)
+                    })
                     .filter(|server| !no_remote || !matches!(server, ServerId::Remote(_)))
                     .filter(|server| !barred(server))
                     .filter(|server| {

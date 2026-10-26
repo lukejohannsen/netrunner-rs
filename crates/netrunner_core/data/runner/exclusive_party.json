@@ -1,0 +1,38 @@
+{
+  "id": "exclusive_party",
+  "title": "Exclusive Party",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            {
+              "InZone": {
+                "zone": "OwnHeap",
+                "filter": {
+                  "AmongCards": [
+                    "exclusive_party"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 10060,
+  "is_playable": true
+}

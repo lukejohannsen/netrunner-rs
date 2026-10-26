@@ -46224,3 +46224,173 @@ mod mumbad_stage_2 {
         assert_eq!(crate::rules::memory::available_memory(&state, &registry), memory, "its memory cost does not count");
     }
 }
+
+mod mumbad_stage_3 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ids(cards: &[&str]) -> Vec<CardId> {
+        cards.iter().map(|card| id(card)).collect()
+    }
+
+    /// The Runner's action phase with 4[click] and 10[credit], `grip` in
+    /// hand, and five cards in R&D.
+    fn runner_turn(grip: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = ids(grip);
+        state.corp.r_and_d = ids(&["hedge_fund", "ice_wall", "enigma", "pad_campaign", "sting"]);
+        (state, registry())
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Toggles the first `how_many` offered cards and confirms.
+    fn choose_all(mut state: GameState, registry: &CardRegistry, side: Side, how_many: usize) -> GameState {
+        for position in toggles(&state, registry, side).into_iter().take(how_many) {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("toggle").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    /// Plays the run event `card` and takes the run to its success.
+    fn run_event(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::PlayEvent { card_id: id(card) }).expect("play");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("continue run");
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run").0
+    }
+
+    #[test]
+    fn cbi_raid_has_the_corp_add_all_of_hq_to_the_top_of_r_and_d() {
+        let (mut state, registry) = runner_turn(&["cbi_raid"]);
+        state.corp.hq = ids(&["daruma", "bamboo_dome"]);
+        let asked = run_event(&state, &registry, "cbi_raid");
+        let added = choose_all(asked, &registry, Side::Corp, 2);
+        assert!(added.corp.hq.is_empty(), "all cards in HQ");
+        assert_eq!(added.corp.r_and_d.len(), 7);
+        // The top of a deck is its end.
+        assert_eq!(added.corp.r_and_d[..5], ids(&["hedge_fund", "ice_wall", "enigma", "pad_campaign", "sting"])[..], "on top of R&D");
+    }
+
+    #[test]
+    fn fear_the_masses_trashes_one_plus_the_copies_revealed() {
+        let (state, registry) = runner_turn(&["fear_the_masses", "fear_the_masses", "fear_the_masses"]);
+        let asked = run_event(&state, &registry, "fear_the_masses");
+        let milled = choose_all(asked, &registry, Side::Runner, 2);
+        assert_eq!(milled.corp.r_and_d.len(), 2, "1 plus the 2 revealed");
+        assert_eq!(milled.runner.grip.len(), 2, "revealed, not discarded");
+    }
+
+    #[test]
+    fn fear_the_masses_with_no_copy_to_reveal_trashes_one() {
+        let (state, registry) = runner_turn(&["fear_the_masses"]);
+        let milled = run_event(&state, &registry, "fear_the_masses");
+        assert_eq!(milled.corp.r_and_d.len(), 4);
+    }
+
+    #[test]
+    fn high_stakes_job_runs_only_a_server_with_unrezzed_ice_and_pays_twelve() {
+        let (mut state, registry) = runner_turn(&["high_stakes_job"]);
+        let play = PlayerAction::PlayEvent { card_id: id("high_stakes_job") };
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: InstallId(9600), card: id("ice_wall"), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no unrezzed ice");
+        state.corp.installed[0].rezzed = false;
+        let (asked, _) = apply_action(&state, &registry, play).expect("an unrezzed Ice Wall on HQ");
+        let offered: Vec<ServerId> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![ServerId::Hq]);
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (done, _) = pass_until_settled(running, &registry);
+        let (done, _) = apply_action(&done, &registry, PlayerAction::CompleteRun).expect("complete run");
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.runner.resources.credits, Credits(4 + 12));
+    }
+
+    #[test]
+    fn exclusive_party_draws_and_pays_for_each_copy_in_the_heap() {
+        let (mut state, registry) = runner_turn(&["exclusive_party"]);
+        state.runner.heap = ids(&["exclusive_party", "exclusive_party", "sure_gamble"]);
+        state.runner.stack = ids(&["diesel"]);
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("exclusive_party") }).expect("play");
+        assert_eq!(played.runner.grip, ids(&["diesel"]));
+        assert_eq!(played.runner.resources.credits, Credits(12));
+    }
+
+    #[test]
+    fn making_an_entrance_is_a_first_click_that_trashes_and_arranges_the_top_six() {
+        let (mut state, registry) = runner_turn(&["making_an_entrance", "making_an_entrance"]);
+        state.runner.stack = ids(&["diesel", "sure_gamble", "corroder", "rezeki", "daily_casts", "dyson_mem_chip", "imp", "aesops_pawnshop"]);
+        let play = PlayerAction::PlayEvent { card_id: id("making_an_entrance") };
+        let (asked, _) = apply_action(&state, &registry, play.clone()).expect("the first [click]");
+        assert_eq!(toggles(&asked, &registry, Side::Runner).len(), 6, "the top 6 cards");
+        let arranging = choose_all(asked, &registry, Side::Runner, 2);
+        assert_eq!(arranging.runner.heap.len(), 2, "the 2 trashed; the event is still resolving");
+        assert_eq!(arranging.runner.stack.len(), 6);
+        assert_eq!(toggles(&arranging, &registry, Side::Runner).len(), 4, "the rest, to arrange");
+        let (done, _) = apply_action(&arranging, &registry, PlayerAction::ConfirmCardSelection).expect("as they are");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(apply_action(&done, &registry, play).is_err(), "only as your first [click]");
+    }
+
+    #[test]
+    fn patron_draws_two_instead_of_the_first_breach_of_the_chosen_server() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("patron"), card: id("patron"), ..Default::default() }];
+        state.runner.stack = ids(&["diesel", "sure_gamble", "corroder"]);
+        state.corp.hq = ids(&["daruma"]);
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (asked, _) = close_all_windows(state, &registry);
+        let (choosing, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("you may choose a server");
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let (ready, _) = close_all_windows(chosen, &registry);
+        let grip = ready.runner.grip.len();
+        let (after, events) = run_to_completion(ready, &registry, ServerId::Hq);
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardAccessed { .. })), "instead of breaching it");
+        assert_eq!(after.runner.grip.len(), grip + 2, "draw 2 cards");
+    }
+
+    #[test]
+    fn the_turning_wheel_counts_runs_on_hq_or_r_and_d_that_stole_nothing() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { install_id: fixture_install_id("the_turning_wheel"), card: id("the_turning_wheel"), ..Default::default() }];
+        let (after, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (after, _) = close_all_windows(after, &registry);
+        assert_eq!(after.runner.rig[0].counters, 1);
+        let (after, _) = run_to_completion(after, &registry, ServerId::Archives);
+        let (after, _) = close_all_windows(after, &registry);
+        assert_eq!(after.runner.rig[0].counters, 1, "HQ or R&D only");
+    }
+
+    #[test]
+    fn spy_camera_arranges_as_many_cards_as_cameras_and_trashes_to_look_at_r_and_d() {
+        let (mut state, registry) = runner_turn(&[]);
+        state.runner.rig = vec![
+            crate::rules::InstalledRunnerCard { install_id: fixture_install_id("spy_camera"), card: id("spy_camera"), ..Default::default() },
+            crate::rules::InstalledRunnerCard { install_id: InstallId(9601), card: id("spy_camera"), ..Default::default() },
+        ];
+        state.runner.stack = ids(&["diesel", "sure_gamble", "corroder"]);
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("spy_camera"), ability_index: 0 }).expect("[click]");
+        assert_eq!(toggles(&asked, &registry, Side::Runner).len(), 2, "X is 2");
+        let (_, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(9601), ability_index: 1 }).expect("[trash]");
+        assert!(events.iter().any(|event| format!("{event:?}").contains("LookedAt")), "{events:?}");
+    }
+}
