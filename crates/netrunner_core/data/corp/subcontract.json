@@ -1,0 +1,51 @@
+{
+  "id": "subcontract",
+  "title": "Subcontract",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "PlayableOperation",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlayOperation": {
+                "from": "OwnHq"
+              }
+            }
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "PlayableOperation",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlayOperation": {
+                "from": "OwnHq"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Play up to 2 operations from HQ (paying all costs), resolving them one at a time."
+    }
+  ],
+  "built_from": 10113,
+  "is_playable": true
+}

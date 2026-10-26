@@ -418,7 +418,12 @@ fn instance_matches_filter(
         CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
         // Only a card in Archives lies facedown in a zone a selection reads.
         CardFilter::Facedown => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| archived.facedown),
-        CardFilter::Faceup => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| !archived.facedown),
+        // An installed Corp card is faceup when it is rezzed or was
+        // installed faceup (an agenda's `rezzed` is set by `installs_faceup`
+        // and never by a rez), which `Rezzed` leaves out for an agenda.
+        CardFilter::Faceup => {
+            corp_install.is_some_and(|c| c.rezzed) || (is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| !archived.facedown))
+        }
         CardFilter::MatchesOwnersIdentityFaction => {
             let identity = match owning_side(chooser, zone) {
                 Side::Corp => state.corp.identity.as_ref(),

@@ -47013,3 +47013,163 @@ mod mumbad_stage_7 {
         assert!(done.corp.installed.iter().all(|card| card.card != id("advanced_assembly_lines")));
     }
 }
+
+mod mumbad_stage_8 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn resource(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: InstallId(install), ..Default::default() }
+    }
+
+    /// The Corp's action phase with `hand` in HQ.
+    fn corp_turn(hand: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = hand.iter().map(|card| id(card)).collect();
+        (state, registry())
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, crate::rules::RulesError> {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).map(|(state, _)| state)
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn election_day_trashes_hq_and_draws_five_but_needs_another_card_in_hq() {
+        let (state, registry) = corp_turn(&["election_day"]);
+        assert!(play(&state, &registry, "election_day").is_err(), "minimum of 1");
+        let (mut state, registry) = corp_turn(&["election_day", "hedge_fund", "ice_wall"]);
+        state.corp.r_and_d = vec![id("pad_campaign"); 6];
+        let played = play(&state, &registry, "election_day").expect("play");
+        let (done, _) = close_all_windows(select(&played, &registry, &[0, 1]), &registry);
+        assert_eq!(done.corp.hq, vec![id("pad_campaign"); 5], "draw 5 cards");
+        assert!(done.corp.archives.iter().any(|card| card.card == id("hedge_fund")) && done.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+    }
+
+    #[test]
+    fn lateral_growth_gains_four_and_installs_a_card() {
+        let (state, registry) = corp_turn(&["lateral_growth", "hedge_fund", "pad_campaign"]);
+        let asked = play(&state, &registry, "lateral_growth").expect("play");
+        assert_eq!(asked.corp.resources.credits, Credits(10 - 2 + 4));
+        let chose = select(&asked, &registry, &[1]);
+        let server = crate::rules::legal_actions_for(&chose, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .expect("a server");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("install");
+        assert!(done.corp.installed.iter().any(|card| card.card == id("pad_campaign")));
+    }
+
+    #[test]
+    fn subcontract_needs_a_tag_and_plays_two_operations_from_hq() {
+        let (mut state, registry) = corp_turn(&["subcontract", "hedge_fund", "beanstalk_royalties"]);
+        assert!(play(&state, &registry, "subcontract").is_err(), "play only if the Runner is tagged");
+        state.runner.tags = 1;
+        let asked = play(&state, &registry, "subcontract").expect("play");
+        let first = select(&asked, &registry, &[0]);
+        let (first, _) = close_all_windows(first, &registry);
+        let second = select(&first, &registry, &[0]);
+        let (done, _) = close_all_windows(second, &registry);
+        assert_eq!(done.corp.resources.credits, Credits(10 - 5 + 9 + 3), "Hedge Fund, then Beanstalk Royalties");
+        assert_eq!(done.corp.resources.clicks, Clicks(2), "one click, for Subcontract");
+    }
+
+    #[test]
+    fn the_all_seeing_i_trashes_every_resource_unless_the_runner_removes_bad_publicity() {
+        let (mut state, registry) = corp_turn(&["the_all_seeing_i"]);
+        state.runner.rig = vec![resource("daily_casts", 2001), resource("armitage_codebusting", 2002)];
+        assert!(play(&state, &registry, "the_all_seeing_i").is_err(), "play only if the Runner is tagged");
+        state.runner.tags = 1;
+        let (trashed, _) = close_all_windows(play(&state, &registry, "the_all_seeing_i").expect("play"), &registry);
+        assert!(trashed.runner.rig.is_empty(), "no bad publicity to remove");
+
+        state.corp.bad_publicity = 1;
+        let asked = play(&state, &registry, "the_all_seeing_i").expect("play");
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove 1 bad publicity");
+        let (kept, _) = close_all_windows(kept, &registry);
+        assert_eq!((kept.corp.bad_publicity, kept.runner.rig.len()), (0, 2));
+    }
+
+    #[test]
+    fn voter_intimidation_needs_a_stolen_agenda_and_trashes_a_resource_when_bids_differ() {
+        let (mut state, registry) = corp_turn(&["voter_intimidation"]);
+        state.runner.rig = vec![resource("daily_casts", 2001)];
+        assert!(play(&state, &registry, "voter_intimidation").is_err(), "an agenda in the Runner's score area");
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("merger"))];
+        let asked = play(&state, &registry, "voter_intimidation").expect("play");
+        let (bid, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Corp bids 1");
+        let (bid, _) = apply_action(&bid, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("the Runner bids 0");
+        let done = select(&bid, &registry, &[0]);
+        assert!(done.runner.rig.is_empty(), "trash 1 resource");
+    }
+
+    #[test]
+    fn dedication_ceremony_advances_a_faceup_card_that_cannot_then_be_scored_this_turn() {
+        let (mut state, registry) = corp_turn(&["dedication_ceremony"]);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("new_construction"), card: id("new_construction"), server: ServerId::Remote(0), rezzed: true, advancement_tokens: 1, ..Default::default() }];
+        let asked = play(&state, &registry, "dedication_ceremony").expect("play");
+        let (done, _) = close_all_windows(select(&asked, &registry, &[0]), &registry);
+        assert_eq!(done.corp.installed[0].advancement_tokens, 4);
+        assert!(apply_action(&done, &registry, PlayerAction::ScoreAgenda { target: install_of(&done, "new_construction") }).is_err(), "you cannot score that card");
+    }
+
+    #[test]
+    fn localized_product_line_adds_every_copy_of_a_named_card_to_hq() {
+        let (mut state, registry) = corp_turn(&["localized_product_line"]);
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("hedge_fund")];
+        let asked = play(&state, &registry, "localized_product_line").expect("play");
+        let (named, _) = apply_action(&asked, &registry, PlayerAction::ChooseCardName { card: id("hedge_fund") }).expect("Hedge Fund");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&named, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered.len(), 2, "the copies only");
+        let (done, _) = close_all_windows(select(&named, &registry, &offered), &registry);
+        assert_eq!(done.corp.hq, vec![id("hedge_fund"), id("hedge_fund")]);
+        assert_eq!(done.corp.r_and_d.len(), 2);
+    }
+
+    #[test]
+    fn lily_lockwell_draws_three_on_rez_and_stacks_an_operation_for_a_tag() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("lily_lockwell"), card: id("lily_lockwell"), server: ServerId::Remote(0), ..Default::default() }];
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("ice_wall"), id("pad_campaign")];
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "lily_lockwell") }).expect("rez");
+        let (mut rezzed, _) = close_all_windows(rezzed, &registry);
+        assert_eq!(rezzed.corp.hq.len(), 3, "draw 3 cards");
+        rezzed.corp.hq.clear();
+        rezzed.runner.tags = 1;
+        let (asked, _) = apply_action(&rezzed, &registry, PlayerAction::ActivateAbility { target: install_of(&rezzed, "lily_lockwell"), ability_index: 0 }).expect("[click], remove 1 tag");
+        assert_eq!(asked.runner.tags, 0);
+        let position = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .expect("the operation");
+        let (done, _) = close_all_windows(select(&asked, &registry, &[position]), &registry);
+        assert_eq!(done.corp.r_and_d.last(), Some(&id("hedge_fund")), "the top of R&D");
+        assert!(done.corp.hq.is_empty());
+    }
+}

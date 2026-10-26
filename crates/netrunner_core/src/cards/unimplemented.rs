@@ -184,7 +184,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("heritage_committee", "Heritage Committee"),
     ("mumbad_city_grid", "Mumbad City Grid"),
     ("interrupt_0", "Interrupt 0"),
-    ("dedication_ceremony", "Dedication Ceremony"),
     ("mumba_temple", "Mumba Temple"),
     ("museum_of_history", "Museum of History"),
 ];
@@ -228,7 +227,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("salems_hospitality", "Salem's Hospitality"),
     ("executive_search_firm", "Executive Search Firm"),
     ("indian_union_stock_exchange", "Indian Union Stock Exchange"),
-    ("localized_product_line", "Localized Product Line"),
     ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];
 
@@ -251,15 +249,11 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_black_file", "The Black File"),
     ("the_price_of_freedom", "The Price of Freedom"),
     ("rigged_results", "Rigged Results"),
-    ("lateral_growth", "Lateral Growth"),
-    ("voter_intimidation", "Voter Intimidation"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
     ("full_immersion_recstudio", "Full Immersion RecStudio"),
     ("ibrahim_salem", "Ibrahim Salem"),
     ("navi_mumbai_city_grid", "Navi Mumbai City Grid"),
     ("zealous_judge", "Zealous Judge"),
-    ("election_day", "Election Day"),
-    ("subcontract", "Subcontract"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -270,7 +264,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("improved_tracers", "Improved Tracers"),
     ("rebranding_team", "Rebranding Team"),
     ("quantum_predictive_model", "Quantum Predictive Model"),
-    ("lily_lockwell", "Lily Lockwell"),
     ("news_team", "News Team"),
     ("shannon_claire", "Shannon Claire"),
     ("victoria_jenkins", "Victoria Jenkins"),
@@ -280,7 +273,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("24_7_news_cycle", "24/7 News Cycle"),
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
-    ("the_all_seeing_i", "The All-Seeing I"),
     ("surveillance_sweep", "Surveillance Sweep"),
     ("keegan_lane", "Keegan Lane"),
     ("rutherford_grid", "Rutherford Grid"),

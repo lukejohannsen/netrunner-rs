@@ -1,0 +1,45 @@
+{
+  "id": "election_day",
+  "title": "Election Day",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnHq",
+      "count": 2
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "reveal": false,
+            "shuffle_after": false,
+            "count": {
+              "CardsInHand": "Corp"
+            },
+            "destination": "OwnArchives"
+          }
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            5
+          ]
+        }
+      ],
+      "text": "Trash all cards in HQ (minimum of 1). Draw 5 cards."
+    }
+  ],
+  "built_from": 10112,
+  "is_playable": true
+}
