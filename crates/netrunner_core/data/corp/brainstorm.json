@@ -1,0 +1,41 @@
+{
+  "id": "brainstorm",
+  "title": "Brainstorm",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 9,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "GainSubroutine": {
+            "subroutine": {
+              "text": "Do 1 core damage.",
+              "effect": {
+                "DealDamage": [
+                  "Brain",
+                  1
+                ]
+              }
+            },
+            "after": true,
+            "duration": "Run",
+            "count": {
+              "CardsInHand": "Runner"
+            }
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, it gains X \"[subroutine] Do 1 core damage.\" subroutines for the remainder of this run. X is equal to the number of cards in the grip."
+    }
+  ],
+  "subroutines": [],
+  "built_from": 10086,
+  "is_playable": true
+}

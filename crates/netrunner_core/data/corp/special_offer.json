@@ -1,0 +1,31 @@
+{
+  "id": "special_offer",
+  "title": "Special Offer",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 1,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "The Corp gains 5[credit]. Trash Special Offer.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              5
+            ]
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 9016,
+  "triggers": [],
+  "is_playable": true
+}

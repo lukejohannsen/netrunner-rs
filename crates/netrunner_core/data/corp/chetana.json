@@ -1,0 +1,52 @@
+{
+  "id": "chetana",
+  "title": "Chetana",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Each player gains 2[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              2
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, do 1 net damage for each card in the Runner's grip.",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": {
+            "DealDamageAmount": [
+              "Net",
+              {
+                "CardsInHand": "Runner"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 10089,
+  "triggers": [],
+  "is_playable": true
+}

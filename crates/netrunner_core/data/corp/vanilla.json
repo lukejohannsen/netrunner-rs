@@ -1,0 +1,19 @@
+{
+  "id": "vanilla",
+  "title": "Vanilla",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 0,
+  "strength": 0,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 10095,
+  "triggers": [],
+  "is_playable": true
+}

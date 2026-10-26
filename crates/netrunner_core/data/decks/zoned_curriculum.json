@@ -3,7 +3,7 @@
   "name": "Zoned Curriculum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16. Red Sand Stage 3b: two Biased Reporting for two Sweeps Week.",
+  "description": "Not a published list: built so the sweeps reach Azmari EdTech: Shaping the Future, Kitara's NBN identity, which names a card type as each of the Corp's turns ends and gains 2[credit] the first time each turn the Runner plays or installs a card of the type last named. On Paid Content's list, an NBN deck with nothing outside the faction it needs. Eternal-legal only. Kitara Stage 16. Red Sand Stage 3b: two Biased Reporting for two Sweeps Week. FFG F6 Stage 5: two Special Offer, two Turnpike and two Resistor for two Pop-up Window, two Loot Box and two Matrix Analyzer, each kept by Paid Content.",
   "style": [
     "fast-advance"
   ],
@@ -11,10 +11,6 @@
   "cards": [
     {
       "card": "increased_drop_rates",
-      "count": 2
-    },
-    {
-      "card": "pop_up_window",
       "count": 2
     },
     {
@@ -74,10 +70,6 @@
       "count": 2
     },
     {
-      "card": "loot_box",
-      "count": 2
-    },
-    {
       "card": "daily_business_show",
       "count": 2
     },
@@ -98,11 +90,19 @@
       "count": 2
     },
     {
-      "card": "matrix_analyzer",
+      "card": "biased_reporting",
       "count": 2
     },
     {
-      "card": "biased_reporting",
+      "card": "special_offer",
+      "count": 2
+    },
+    {
+      "card": "turnpike",
+      "count": 2
+    },
+    {
+      "card": "resistor",
       "count": 2
     }
   ]

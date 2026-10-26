@@ -1,0 +1,54 @@
+{
+  "id": "upayoga",
+  "title": "Upayoga",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "You and the Runner secretly spend 0[credit], 1[credit], or 2[credit]. Reveal spent credits. If you and the Runner spent a different number of credits, the Runner loses 2[credit].",
+      "effect": {
+        "PsiGame": {
+          "on_match": {
+            "Sequence": []
+          },
+          "on_differ": {
+            "LoseCredits": [
+              "Runner",
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Resolve a subroutine on a piece of rezzed psi ice.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Rezzed",
+              "Ice",
+              {
+                "HasSubtype": "Psi"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "ResolveSubroutineOfSelectedIce"
+        }
+      }
+    }
+  ],
+  "built_from": 10069,
+  "triggers": [],
+  "is_playable": true
+}

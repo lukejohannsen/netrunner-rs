@@ -1,0 +1,25 @@
+{
+  "id": "red_tape",
+  "title": "Red Tape",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "All ice has +3 strength for the remainder of this run.",
+      "effect": {
+        "ModifyStrength": {
+          "delta": 3,
+          "ice": "EachIce",
+          "duration": "Run"
+        }
+      }
+    }
+  ],
+  "built_from": 10093,
+  "triggers": [],
+  "is_playable": true
+}
