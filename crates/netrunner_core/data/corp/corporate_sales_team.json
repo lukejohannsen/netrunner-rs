@@ -1,0 +1,69 @@
+{
+  "id": "corporate_sales_team",
+  "title": "Corporate Sales Team",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 10
+        }
+      ],
+      "text": "When you score Corporate Sales Team, place 10[credit] on it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When each player's turn begins, take 1[credit] from Corporate Sales Team."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When each player's turn begins, take 1[credit] from Corporate Sales Team."
+    }
+  ],
+  "built_from": 10037,
+  "is_playable": true
+}

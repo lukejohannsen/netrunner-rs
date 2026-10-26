@@ -1,0 +1,48 @@
+{
+  "id": "advanced_concept_hopper",
+  "title": "Advanced Concept Hopper",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              "gain 1[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time the Runner initiates a run each turn, you may draw 1 card or gain 1[credit]."
+    }
+  ],
+  "built_from": 10011,
+  "is_playable": true
+}

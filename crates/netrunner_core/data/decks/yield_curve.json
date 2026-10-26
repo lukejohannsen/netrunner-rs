@@ -3,7 +3,7 @@
   "name": "Yield Curve",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g. Red Sand Stage 3b: two Audacity for two Wake Up Call. FFG F6 Stage 5: two Bailiff, two Red Tape and an Assassin for two Formicary, two Masvingo and an Ice Wall, each kept by other decks.",
+  "description": "Not a published list: built so the sweeps reach SSO Industries: Fueling Innovation, Kitara's Weyland identity, which when the Corp's turn ends may place an advancement token on an unadvanced piece of ice for each agenda point on installed faceup agendas. On Family Business's list, a Weyland deck with ice to advance. Eternal-legal only. Kitara Stage 13g. Red Sand Stage 3b: two Audacity for two Wake Up Call. FFG F6 Stage 5: two Bailiff, two Red Tape and an Assassin for two Formicary, two Masvingo and an Ice Wall, each kept by other decks. FFG F6 Stage 6: two Corporate Sales Team for Above the Law and Transport Monopoly, the same four points, each kept by other decks.",
   "style": [
     "traps"
   ],
@@ -12,10 +12,6 @@
     {
       "card": "hostile_takeover",
       "count": 3
-    },
-    {
-      "card": "above_the_law",
-      "count": 1
     },
     {
       "card": "off_the_books",
@@ -66,10 +62,6 @@
       "count": 2
     },
     {
-      "card": "transport_monopoly",
-      "count": 1
-    },
-    {
       "card": "divested_trust",
       "count": 2
     },
@@ -116,6 +108,10 @@
     {
       "card": "assassin",
       "count": 1
+    },
+    {
+      "card": "corporate_sales_team",
+      "count": 2
     }
   ]
 }

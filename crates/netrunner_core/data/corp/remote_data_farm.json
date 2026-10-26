@@ -1,0 +1,23 @@
+{
+  "id": "remote_data_farm",
+  "title": "Remote Data Farm",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10033,
+  "is_playable": true
+}

@@ -1,0 +1,50 @@
+{
+  "id": "voting_machine_initiative",
+  "title": "Voting Machine Initiative",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "Place 3 agenda counters on Voting Machine Initiative when you score it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "LoseClicks": 1
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may spend 1 hosted agenda counter"
+          }
+        }
+      ],
+      "text": "When the Runner's turn begins, you may spend 1 hosted agenda counter. If you do, the Runner loses [click], if able."
+    }
+  ],
+  "built_from": 10048,
+  "is_playable": true
+}
