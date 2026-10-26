@@ -890,6 +890,17 @@ pub enum Effect {
     /// first copy, and the swap silently no-opped — reachable with two
     /// Barriers of one title against *Tāo Salonga*.
     SwapInstalledIce(InstallId, InstallId),
+    /// Swaps the card whose selection this is the `then` of (the prompting
+    /// install, a rig card) with the card the selection chose from the grip
+    /// (CR 8.8.4b, `engine::swap_rig_card_with_grip_card`) — the devas'
+    /// "Swap this program with a deva program from your grip", a selection
+    /// of `HasSubtype(Deva)` out of `OwnGrip` with this as its `then`. The
+    /// grip card takes the installed card's place with nothing paid, and
+    /// the installed card goes to the grip. Composition didn't work: an
+    /// install from the grip pays its cost and finds a place of its own,
+    /// and returning the card to the grip first, as a cost, would offer it
+    /// back to its own selection.
+    SwapThisWithSelectedFromGrip,
     /// Swaps a card in R&D with a card in HQ, each where it stands —
     /// Nihongai Grid's "look at the top 5 cards of R&D and swap 1 of those
     /// cards with 1 card in HQ". Written as the `then` of a selection out
@@ -4246,6 +4257,7 @@ impl Effect {
             | Effect::DerezCard(..)
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
+            | Effect::SwapThisWithSelectedFromGrip
             | Effect::SwapDeckCardWithHq { .. }
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip

@@ -609,6 +609,13 @@ pub enum EffectRequirement {
     /// Composition didn't work: `HostsInstalled` asks about the acting
     /// card, and `EncounteringHostIce` about the acting card's host.
     EncounteredIceHosts(crate::dsl::CardFilter),
+    /// The ice being encountered is a card the filter admits — the devas'
+    /// "Break 1 subroutine on a piece of ice that has a rez cost of 5 or
+    /// greater" (Aghora), "with 3 or more subtypes" (Sadyojata), "with
+    /// exactly 1 subroutine" (Vamadeva), read off the ice's definition.
+    /// Composition didn't work: `Encountering` names one ice type, and
+    /// `BreakSubroutines::restrict_to` is a type too.
+    EncounteredIce(crate::dsl::CardFilter),
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
     /// received — e.g. Weyland Consortium: Built to Last's "whenever you

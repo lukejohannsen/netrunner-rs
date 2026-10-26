@@ -47548,3 +47548,77 @@ mod mumbad_stage_11 {
         assert!(operation.pending_decision.is_none(), "an operation drawn: {:?}", operation.pending_decision);
     }
 }
+
+mod mumbad_stage_12 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength: 2, ..Default::default() }
+    }
+
+    /// The Runner, with `breaker` installed, encountering `ice` alone on HQ.
+    fn encountering(breaker: &str, ice: &str) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![rig(breaker)];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id(ice), card: id(ice), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        (state, registry)
+    }
+
+    fn breaks(breaker: &str, ice: &str) -> bool {
+        let (state, registry) = encountering(breaker, ice);
+        apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id(breaker), ability_index: 0 }).is_ok()
+    }
+
+    #[test]
+    fn each_deva_breaks_only_the_ice_its_words_admit() {
+        assert!(breaks("aghora", "starlit_knight"), "a rez cost of 5");
+        assert!(!breaks("aghora", "ice_wall"), "a rez cost of 1");
+        assert!(breaks("sadyojata", "phoneutria"), "Sentry - AP - Observer");
+        assert!(!breaks("sadyojata", "ice_wall"), "one subtype");
+        assert!(breaks("vamadeva", "ice_wall"), "one subroutine");
+        assert!(!breaks("vamadeva", "enigma"), "two subroutines");
+    }
+
+    #[test]
+    fn a_deva_swaps_with_a_deva_from_the_grip_mid_encounter_and_the_new_one_breaks() {
+        let (mut state, registry) = encountering("aghora", "ice_wall");
+        state.runner.grip = vec![id("sure_gamble"), id("vamadeva")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("aghora"), ability_index: 2 }).expect("swap");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![1], "the deva only");
+        let (toggled, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("select");
+        let (swapped, events) = apply_action(&toggled, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(swapped.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("vamadeva")]);
+        assert_eq!(swapped.runner.grip, vec![id("sure_gamble"), id("aghora")]);
+        assert_eq!(swapped.runner.resources.credits, Credits(10 - 2), "2[credit], and no install cost");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::ProgramInstalled { credits_paid: 0, .. })), "an install for what hears one");
+        let vamadeva = swapped.runner.rig[0].install_id;
+        let (swapped, _) = apply_action(&swapped, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes");
+        let broke = apply_action(&swapped, &registry, PlayerAction::ActivateAbility { target: vamadeva, ability_index: 0 }); assert!(broke.is_ok(), "Ice Wall has one subroutine: {:?} {:?}", broke.err(), swapped.paid_ability_window);
+    }
+
+    #[test]
+    fn a_deva_cannot_swap_with_no_deva_in_the_grip() {
+        let (mut state, registry) = encountering("aghora", "ice_wall");
+        state.runner.grip = vec![id("sure_gamble")];
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("aghora"), ability_index: 2 }).is_err());
+    }
+}

@@ -917,6 +917,12 @@ pub fn evaluate_effect(
             gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
 
+        Effect::SwapThisWithSelectedFromGrip => {
+            let incoming = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let outgoing = ctx.prompting_install.ok_or(RulesError::MissingActingCardContext)?;
+            crate::rules::engine::swap_rig_card_with_grip_card(state, registry, outgoing, &incoming)
+        }
+
         Effect::SwapInstalledIce(a, b) => {
             // Legal mid-run: `run::reconcile_ice` rebuilds the run's ICE
             // list from `corp.installed` at the next step and keeps
@@ -5857,6 +5863,11 @@ pub fn check_requirement(
             });
             if hosts { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::EncounteredIce(filter) => {
+            let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position));
+            let admitted = encountered.and_then(|ice| registry.get(&ice.card_id)).is_some_and(|definition| card_matches_filter(definition, filter));
+            if admitted { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::WasFirstAdvancementThisCard => {
             // Answered from the triggering event itself: `CardAdvanced`
             // already carries the running total, and `== 1` *is* "this was
@@ -6634,6 +6645,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::HostsInstalled(_)
         | EffectRequirement::EncounteredIceHosts(_)
+        | EffectRequirement::EncounteredIce(_)
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce

@@ -1991,6 +1991,42 @@ fn install_into_rig(
     payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
 }
 
+/// Swaps the rig install `outgoing` with a copy of `incoming` from the
+/// grip (CR 8.8.4b): the installed card goes to the grip, anything hosted
+/// on it is trashed, and the grip card becomes installed in the place it
+/// left — the same position in the rig and the same host — with no install
+/// cost paid and no like card trashed. "When installed" abilities hear it
+/// (8.8.4b: the trigger conditions for installing are met), so its
+/// `*Installed` event is emitted with nothing paid. The devas' "Swap this
+/// program with a deva program from your grip". Nothing when either card
+/// is gone by the time it resolves (8.8.2: no legal exchange).
+pub(crate) fn swap_rig_card_with_grip_card(state: &mut GameState, registry: &CardRegistry, outgoing: InstallId, incoming: &CardId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(position) = state.runner.rig.iter().position(|card| card.install_id == outgoing) else { return Ok(Vec::new()) };
+    let Some(in_grip) = state.runner.grip.iter().position(|card| card == incoming) else { return Ok(Vec::new()) };
+    let definition = registry.get(incoming).ok_or_else(|| RulesError::CardNotFoundInRegistry(incoming.clone()))?;
+    let (on_ice, on_rig_card) = (state.runner.rig[position].hosted_on_ice, state.runner.rig[position].hosted_on_rig_card);
+    state.runner.grip.remove(in_grip);
+    let removed = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, outgoing)?
+        .ok_or(RulesError::InstallNotFound(outgoing))?;
+    let mut events = removed.cascade;
+    state.runner.grip.push(removed.card.clone());
+    dispatcher::emit(state, registry, &mut events, GameEvent::CardAddedToHand { side: Side::Runner, card: Some(removed.card), install: outgoing, faceup: true })?;
+    let mut rig_card = seed_rig_card(state, registry, incoming.clone())?;
+    rig_card.hosted_on_ice = on_ice;
+    rig_card.hosted_on_rig_card = on_rig_card;
+    let install = rig_card.install_id;
+    let at = position.min(state.runner.rig.len());
+    state.runner.rig.insert(at, rig_card);
+    events.extend(payment::place_recurring(state, registry, Side::Runner, Some(install), incoming)?);
+    let installed = match definition.card_type {
+        CardType::Program => GameEvent::ProgramInstalled { side: Side::Runner, card: incoming.clone(), memory_cost: definition.memory_cost.unwrap_or(0) as u8, credits_paid: 0 },
+        CardType::Hardware => GameEvent::HardwareInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0 },
+        _ => GameEvent::ResourceInstalled { side: Side::Runner, card: incoming.clone(), credits_paid: 0, x: None },
+    };
+    dispatcher::emit(state, registry, &mut events, installed)?;
+    Ok(events)
+}
+
 /// Turns one copy of `card_id` among the Runner's facedown installed
 /// cards faceup (`Effect::TurnFaceup`, Assimilator's): it regains its
 /// characteristics and becomes active where it is (CR 8.1.4e), so into the

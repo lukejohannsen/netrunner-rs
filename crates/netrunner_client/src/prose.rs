@@ -508,6 +508,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("{} gains {} per counter", who(*side), plural(*credits_per_counter, "credit", "credits"))
         }
         Effect::SwapInstalledIce(..) => "swap two pieces of ice".to_string(),
+        Effect::SwapThisWithSelectedFromGrip => "swap this card with the chosen card from the grip".to_string(),
         Effect::SwapDeckCardWithHq { .. } => "swap the card chosen in R&D with the card chosen in HQ".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
