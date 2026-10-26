@@ -3,7 +3,7 @@
   "name": "Vigilance",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Asa Group: Security Through Vigilance, Kitara's Haas-Bioroid identity, which the first time each turn the Corp installs a card may install 1 non-agenda card from HQ in the root of or protecting the same server. On Stronger Together's list, a bioroid deck with ice to stack behind each install. Eternal-legal only. Kitara Stage 13a. Kitara Stage 17: two Jinja City Grid for its two Next Activation Command, an upgrade that installs the ice the Corp draws protecting its server, 4[credit] cheaper; four other decks keep Next Activation Command. Kitara Stage 25: two Kill Switch for two NAPD Cordon, a current for a current, tracing on each agenda accessed or scored.",
+  "description": "Not a published list: built so the sweeps reach Asa Group: Security Through Vigilance, Kitara's Haas-Bioroid identity, which the first time each turn the Corp installs a card may install 1 non-agenda card from HQ in the root of or protecting the same server. On Stronger Together's list, a bioroid deck with ice to stack behind each install. Eternal-legal only. Kitara Stage 13a. Kitara Stage 17: two Jinja City Grid for its two Next Activation Command, an upgrade that installs the ice the Corp draws protecting its server, 4[credit] cheaper; four other decks keep Next Activation Command. Kitara Stage 25: two Kill Switch for two NAPD Cordon, a current for a current, tracing on each agenda accessed or scored. FFG F6 Stage 6: two Advanced Concept Hopper and two Voting Machine Initiative for two Project Ares and two Ikawah Project, the same ten points, each kept by Stronger Together.",
   "style": [
     "glacier"
   ],
@@ -19,7 +19,7 @@
     },
     {
       "card": "project_ares",
-      "count": 3
+      "count": 1
     },
     {
       "card": "accelerated_beta_test",
@@ -82,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "ikawah_project",
-      "count": 2
-    },
-    {
       "card": "riot_suppression",
       "count": 2
     },
@@ -99,6 +95,14 @@
     },
     {
       "card": "kill_switch",
+      "count": 2
+    },
+    {
+      "card": "advanced_concept_hopper",
+      "count": 2
+    },
+    {
+      "card": "voting_machine_initiative",
       "count": 2
     }
   ]

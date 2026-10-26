@@ -1,0 +1,25 @@
+{
+  "id": "global_food_initiative",
+  "title": "Global Food Initiative",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "ScoreArea": "Runner"
+      },
+      "text": "Global Food Initiative is worth 1 fewer agenda point while in the Runner's score area."
+    }
+  ],
+  "triggers": [],
+  "built_from": 9026,
+  "is_playable": true
+}

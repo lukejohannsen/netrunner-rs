@@ -180,7 +180,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mongoose", "Mongoose"),
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
-    ("advanced_concept_hopper", "Advanced Concept Hopper"),
     ("vikram_1_0", "Vikram 1.0"),
     ("heritage_committee", "Heritage Committee"),
     ("mumbad_city_grid", "Mumbad City Grid"),
@@ -203,11 +202,8 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("palana_foods_sustainable_growth", "Pālanā Foods: Sustainable Growth"),
     ("palana_agroplex", "Pālanā Agroplex"),
     ("harvester", "Harvester"),
-    ("remote_data_farm", "Remote Data Farm"),
     ("disposable_hq", "Disposable HQ"),
-    ("new_construction", "New Construction"),
     ("mumbad_construction_co", "Mumbad Construction Co."),
-    ("corporate_sales_team", "Corporate Sales Team"),
     ("pad_factory", "PAD Factory"),
 ];
 
@@ -218,7 +214,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sadyojata", "Sadyojata"),
     ("freedom_through_equality", "\"Freedom Through Equality\""),
     ("councilman", "Councilman"),
-    ("voting_machine_initiative", "Voting Machine Initiative"),
     ("clone_suffrage_movement", "Clone Suffrage Movement"),
     ("bio_ethics_association", "Bio-Ethics Association"),
     ("political_dealings", "Political Dealings"),
@@ -253,7 +248,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
-    ("puppet_master", "Puppet Master"),
     ("waiver", "Waiver"),
     ("exchange_of_information", "Exchange of Information"),
     ("consulting_visit", "Consulting Visit"),
@@ -266,7 +260,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_price_of_freedom", "The Price of Freedom"),
     ("rigged_results", "Rigged Results"),
     ("lateral_growth", "Lateral Growth"),
-    ("improved_protein_source", "Improved Protein Source"),
     ("voter_intimidation", "Voter Intimidation"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
     ("full_immersion_recstudio", "Full Immersion RecStudio"),
@@ -275,7 +268,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("zealous_judge", "Zealous Judge"),
     ("election_day", "Election Day"),
     ("subcontract", "Subcontract"),
-    ("merger", "Merger"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -283,7 +275,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("new_angeles_sol_your_news", "New Angeles Sol: Your News"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
-    ("15_minutes", "15 Minutes"),
     ("improved_tracers", "Improved Tracers"),
     ("rebranding_team", "Rebranding Team"),
     ("quantum_predictive_model", "Quantum Predictive Model"),
@@ -302,7 +293,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("surveillance_sweep", "Surveillance Sweep"),
     ("keegan_lane", "Keegan Lane"),
     ("rutherford_grid", "Rutherford Grid"),
-    ("global_food_initiative", "Global Food Initiative"),
     ("launch_campaign", "Launch Campaign"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),

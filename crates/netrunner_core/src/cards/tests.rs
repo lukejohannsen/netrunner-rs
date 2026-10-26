@@ -46703,3 +46703,136 @@ mod mumbad_stage_5 {
         assert_eq!(offered.len(), 2, "Upayoga and Chetana, not Vanilla");
     }
 }
+
+mod mumbad_stage_6 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn scored(card: &str) -> crate::rules::ScoredAgenda {
+        crate::rules::ScoredAgenda { install_id: fixture_install_id(card), ..crate::rules::ScoredAgenda::plain(id(card)) }
+    }
+
+    /// The Corp's action phase with `card` installed in a remote with
+    /// `tokens` advancement counters on it.
+    fn with_agenda(card: &str, tokens: u32) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), advancement_tokens: tokens, ..Default::default() }];
+        (state, registry())
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ScoreAgenda { target: install_of(state, card) }).expect("score");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn merger_and_global_food_initiative_change_their_worth_in_the_runners_score_area() {
+        let registry = registry();
+        let state = base_state();
+        let points = |card: &str, side: Side| crate::rules::continuous::agenda_points_in(&state, &registry, registry.get(&id(card)).unwrap(), side, None);
+        assert_eq!((points("merger", Side::Corp), points("merger", Side::Runner)), (2, 3));
+        assert_eq!((points("global_food_initiative", Side::Corp), points("global_food_initiative", Side::Runner)), (3, 2));
+    }
+
+    #[test]
+    fn remote_data_farm_raises_the_corps_maximum_hand_size_by_two() {
+        let registry = registry();
+        let mut state = base_state();
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Corp);
+        state.corp.scored_agendas = vec![scored("remote_data_farm")];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Corp), before + 2);
+    }
+
+    #[test]
+    fn improved_protein_source_pays_the_runner_four_when_scored() {
+        let (state, registry) = with_agenda("improved_protein_source", 4);
+        let credits = state.runner.resources.credits;
+        assert_eq!(score(&state, &registry, "improved_protein_source").runner.resources.credits, Credits(credits.0 + 4));
+    }
+
+    #[test]
+    fn corporate_sales_team_holds_ten_and_pays_one_as_each_turn_begins() {
+        let (state, registry) = with_agenda("corporate_sales_team", 4);
+        let mut done = score(&state, &registry, "corporate_sales_team");
+        assert_eq!(done.corp.scored_agendas[0].agenda_counters, 10, "place 10[credit] on it");
+        let credits = done.corp.resources.credits;
+        crate::rules::test_support::enter_start_of_turn(&mut done, &registry, Side::Runner);
+        let (done, _) = close_all_windows(done, &registry);
+        assert_eq!(done.corp.resources.credits, Credits(credits.0 + 1), "the Runner's turn too");
+        assert_eq!(done.corp.scored_agendas[0].agenda_counters, 9);
+    }
+
+    #[test]
+    fn voting_machine_initiative_spends_a_counter_to_take_a_click_from_the_runner() {
+        let (state, registry) = with_agenda("voting_machine_initiative", 5);
+        let mut done = score(&state, &registry, "voting_machine_initiative");
+        assert_eq!(done.corp.scored_agendas[0].agenda_counters, 3);
+        crate::rules::test_support::enter_start_of_turn(&mut done, &registry, Side::Runner);
+        let (asked, _) = close_all_windows(done, &registry);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|offer| offer.side == Side::Corp), "you may spend 1 hosted agenda counter");
+        let clicks = asked.runner.resources.clicks;
+        let (spent, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend it");
+        let (spent, _) = close_all_windows(spent, &registry);
+        assert_eq!(spent.corp.scored_agendas[0].agenda_counters, 2);
+        assert_eq!(spent.runner.resources.clicks.0 + 1, clicks.0, "the Runner loses [click]");
+    }
+
+    #[test]
+    fn advanced_concept_hopper_offers_a_card_or_a_credit_on_the_first_run_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.scored_agendas = vec![scored("advanced_concept_hopper")];
+        let credits = state.corp.resources.credits;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        assert!(asked.pending_decision.is_some(), "draw or gain");
+        let (gained, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("gain 1[credit]");
+        assert_eq!(gained.corp.resources.credits, Credits(credits.0 + 1));
+    }
+
+    #[test]
+    fn fifteen_minutes_is_shuffled_back_into_r_and_d_from_the_runners_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.scored_agendas = vec![scored("15_minutes")];
+        state.runner.resources.agenda_points = crate::rules::AgendaPoints(1);
+        let (done, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("15_minutes"), ability_index: 0 }).expect("[click]");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.runner.scored_agendas.is_empty());
+        assert!(done.corp.r_and_d.contains(&id("15_minutes")), "shuffled into R&D");
+        assert_eq!(done.runner.resources.agenda_points, crate::rules::AgendaPoints(0));
+    }
+
+    #[test]
+    fn new_construction_installs_from_hq_into_a_new_server_as_it_is_advanced_and_rezzes_at_five() {
+        let (mut state, registry) = with_agenda("new_construction", 4);
+        state.corp.installed[0].rezzed = true;
+        state.corp.hq = vec![id("pad_campaign")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, "new_construction") }).expect("advance");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("PAD Campaign");
+        let (chose, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        let server = crate::rules::legal_actions_for(&chose, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .expect("a new server");
+        assert_ne!(server, ServerId::Remote(0));
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("there");
+        let (done, _) = close_all_windows(done, &registry);
+        let pad = done.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed");
+        assert!(pad.rezzed, "5 hosted advancement counters: rezzed, ignoring all costs");
+        assert_eq!(done.corp.resources.credits, Credits(4), "the advance's 1[credit] only");
+    }
+}

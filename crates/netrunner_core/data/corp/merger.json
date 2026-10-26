@@ -1,0 +1,25 @@
+{
+  "id": "merger",
+  "title": "Merger",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPoints": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "ScoreArea": "Runner"
+      },
+      "text": "Merger is worth 1 additional agenda point while in the Runner's score area."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10114,
+  "is_playable": true
+}

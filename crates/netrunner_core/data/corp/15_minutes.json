@@ -1,0 +1,35 @@
+{
+  "id": "15_minutes",
+  "title": "15 Minutes",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Corp",
+      "text": "[click]: Shuffle 15 Minutes into R&D. The Corp can trigger this ability while 15 Minutes is in the Runner's score area.",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "InRunnersScoreArea",
+      "effect": {
+        "Sequence": [
+          {
+            "AddToDeck": "Top"
+          },
+          {
+            "ShuffleIntoDeck": [
+              "OwnRAndD"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 9004,
+  "is_playable": true
+}

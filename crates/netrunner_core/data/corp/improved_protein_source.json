@@ -1,0 +1,39 @@
+{
+  "id": "improved_protein_source",
+  "title": "Improved Protein Source",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        }
+      ],
+      "text": "When Improved Protein Source is scored or stolen, the Runner gains 4[credit]."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        }
+      ],
+      "text": "When Improved Protein Source is scored or stolen, the Runner gains 4[credit]."
+    }
+  ],
+  "built_from": 10105,
+  "is_playable": true
+}
