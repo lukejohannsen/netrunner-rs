@@ -1,0 +1,57 @@
+{
+  "id": "spy_camera",
+  "title": "Spy Camera",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "TopOf": {
+              "RunnerInstalls": {
+                "AmongCards": [
+                  "spy_camera"
+                ]
+              }
+            }
+          },
+          "min": 0,
+          "max": 0,
+          "up_to": {
+            "RunnerInstalls": {
+              "AmongCards": [
+                "spy_camera"
+              ]
+            }
+          },
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnStack"
+        }
+      },
+      "text": "[click]: Look at the top X cards of your stack and arrange them in any order. X is the number of copies of Spy Camera installed."
+    },
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "LookAtTopOfDeck": {
+          "deck": "Corp",
+          "count": 1
+        }
+      },
+      "text": "[trash]: Look at the top card of R&D."
+    }
+  ],
+  "built_from": 10042,
+  "is_playable": true
+}

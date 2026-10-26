@@ -1,0 +1,69 @@
+{
+  "id": "the_turning_wheel",
+  "title": "The Turning Wheel",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "Not": "StoleAgendaDuringLastRun"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever a run on HQ or R&D ends, place 1 power counter on this resource if you stole no agendas during that run."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 2
+      },
+      "requirement": "RunInProgress",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "AddAdditionalAccessAmount": {
+                "server": "Hq",
+                "amount": {
+                  "Fixed": 1
+                }
+              }
+            },
+            {
+              "AddAdditionalAccessAmount": {
+                "server": "RnD",
+                "amount": {
+                  "Fixed": 1
+                }
+              }
+            }
+          ],
+          "texts": [
+            "Choose HQ or R&D. For the remainder of this run, access 1 additional card whenever you breach that server — HQ",
+            "Choose HQ or R&D. For the remainder of this run, access 1 additional card whenever you breach that server — R&D"
+          ]
+        }
+      },
+      "text": "2 hosted power counters: Choose HQ or R&D. For the remainder of this run, access 1 additional card whenever you breach that server."
+    }
+  ],
+  "built_from": 10085,
+  "is_playable": true
+}

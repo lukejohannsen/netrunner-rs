@@ -1,0 +1,38 @@
+{
+  "id": "high_stakes_job",
+  "title": "High-Stakes Job",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 6,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_protected_by_unrezzed_ice": true,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "EffectIf": {
+                  "condition": "LastRunSuccessful",
+                  "effect": {
+                    "GainCredits": [
+                      "Runner",
+                      12
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 10004,
+  "is_playable": true
+}

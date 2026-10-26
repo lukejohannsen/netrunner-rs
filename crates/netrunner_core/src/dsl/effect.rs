@@ -749,6 +749,12 @@ pub enum Effect {
         /// it, so a table with no ice anywhere withholds the event.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         only_protected_by_ice: bool,
+        /// Offer only the servers at least one **unrezzed** piece of ice
+        /// protects — High-Stakes Job's "Make a run on a server with at
+        /// least 1 piece of unrezzed ice". `only_protected_by_ice`'s
+        /// narrower twin, a field for its reason.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        only_protected_by_unrezzed_ice: bool,
         /// Offer only servers of this kind that exist — Aircheck's "you may
         /// run a remote server". A field for the reason the two above are:
         /// what narrows a server offer is the offer's. A remote with

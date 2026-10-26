@@ -177,7 +177,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("run_amok", "Run Amok"),
     ("ramujan_reliant_550_bmi", "Ramujan-reliant 550 BMI"),
     ("street_magic", "Street Magic"),
-    ("high_stakes_job", "High-Stakes Job"),
     ("mongoose", "Mongoose"),
     ("jesminder_sareen_girl_behind_the_curtain", "Jesminder Sareen: Girl Behind the Curtain"),
     ("maya", "Maya"),
@@ -198,7 +197,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("emp_device", "EMP Device"),
     ("diwan", "Diwan"),
-    ("cbi_raid", "CBI Raid"),
     ("tech_trader", "Tech Trader"),
     ("corporate_scandal", "Corporate Scandal"),
     ("advanced_assembly_lines", "Advanced Assembly Lines"),
@@ -220,7 +218,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
     ("nero_severn_information_broker", "Nero Severn: Information Broker"),
     ("reflection", "Reflection"),
-    ("spy_camera", "Spy Camera"),
     ("political_operative", "Political Operative"),
     ("sadyojata", "Sadyojata"),
     ("freedom_through_equality", "\"Freedom Through Equality\""),
@@ -239,11 +236,8 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("making_an_entrance", "Making an Entrance"),
     ("salsette_slums", "Salsette Slums"),
-    ("exclusive_party", "Exclusive Party"),
     ("vamadeva", "Vamadeva"),
-    ("patron", "Patron"),
     ("bazaar", "Bazaar"),
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
@@ -266,7 +260,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("liberated_chela", "Liberated Chela"),
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
-    ("the_turning_wheel", "The Turning Wheel"),
     ("brainstorm", "Brainstorm"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
     ("chetana", "Chetana"),
@@ -280,7 +273,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("fear_the_masses", "Fear the Masses"),
     ("aghora", "Aghora"),
     ("the_black_file", "The Black File"),
     ("the_price_of_freedom", "The Price of Freedom"),
