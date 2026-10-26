@@ -150,6 +150,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::PricedIceSubroutines => "the subroutines on that ice".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
+        Amount::MaxHandSize(Side::Corp) => "the Corp's maximum hand size".to_string(),
+        Amount::MaxHandSize(Side::Runner) => "the Runner's maximum hand size".to_string(),
         Amount::InZone { zone, filter } => format!("the cards in {} ({})", describe_zone(zone), humanize(format!("{filter:?}")).to_lowercase()),
         Amount::AgendasInScoreArea(side) => format!("the number of agendas in the {side:?}'s score area"),
         Amount::CopiesInScoreArea(side) => format!("the copies of this card in the {side:?}'s score area"),

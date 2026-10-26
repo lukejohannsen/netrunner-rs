@@ -3,7 +3,7 @@
   "name": "Zythum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV. Mumbad Stage 8 swapped two Digital Rights Management, The Powers That Be and Reversed Accounts for two The All-Seeing I, Lily Lockwell and Localized Product Line. Mumbad Stage 9 swapped two Increased Drop Rates, SanSan City Grid and Honeyfarm for two News Team, Keegan Lane and Disposable HQ. Mumbad Stage 10 swapped in Salem's Hospitality for Sweeps Week and Special Report, which another deck still carries.",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV. Mumbad Stage 8 swapped two Digital Rights Management, The Powers That Be and Reversed Accounts for two The All-Seeing I, Lily Lockwell and Localized Product Line. Mumbad Stage 9 swapped two Increased Drop Rates, SanSan City Grid and Honeyfarm for two News Team, Keegan Lane and Disposable HQ. Mumbad Stage 10 swapped in Salem's Hospitality for Sweeps Week and Special Report, which another deck still carries. Mumbad Stage 11 swapped in Waiver and Aryabhata Tech for Data Ward and Watchdog, which another deck still carries.",
   "style": [
     "fast-advance"
   ],
@@ -70,10 +70,6 @@
       "count": 1
     },
     {
-      "card": "data_ward",
-      "count": 1
-    },
-    {
       "card": "hard_hitting_news",
       "count": 1
     },
@@ -91,10 +87,6 @@
     },
     {
       "card": "macrophage",
-      "count": 1
-    },
-    {
-      "card": "watchdog",
       "count": 1
     },
     {
@@ -144,6 +136,14 @@
     {
       "card": "salems_hospitality",
       "count": 2
+    },
+    {
+      "card": "waiver",
+      "count": 1
+    },
+    {
+      "card": "aryabhata_tech",
+      "count": 1
     }
   ]
 }

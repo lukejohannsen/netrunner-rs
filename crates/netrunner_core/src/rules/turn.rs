@@ -38,7 +38,7 @@ fn clicks_for(side: Side) -> u32 {
 /// hid that: Bumi 1.0's core damage took the Runner to a hand of 0 and no
 /// further. [`cards_over_hand_limit`] reads it floored, which is the same
 /// count for any hand.
-fn max_hand_size(state: &GameState, side: Side, registry: &CardRegistry) -> i32 {
+pub(crate) fn max_hand_size(state: &GameState, side: Side, registry: &CardRegistry) -> i32 {
     let base = match side {
         Side::Corp => CORP_MAX_HAND_SIZE,
         Side::Runner => RUNNER_MAX_HAND_SIZE,

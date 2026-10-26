@@ -1,0 +1,47 @@
+{
+  "id": "waiver",
+  "title": "Waiver",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "Trace[5]. If successful, the Runner reveals the grip. Trash each card revealed this way with a play or install cost of X or less. X is equal to the amount by which your trace strength exceeded the Runner's link strength.",
+      "effect": {
+        "Trace": {
+          "base": 5,
+          "on_success": {
+            "Sequence": [
+              {
+                "RevealHand": "Runner"
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentHand",
+                  "filter": {
+                    "PrintedCostAtMost": "TraceMargin"
+                  },
+                  "min": 0,
+                  "max": 0,
+                  "reveal": true,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard",
+                  "count": {
+                    "Fixed": 45
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 10091,
+  "is_playable": true
+}

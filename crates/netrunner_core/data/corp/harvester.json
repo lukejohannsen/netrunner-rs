@@ -1,0 +1,85 @@
+{
+  "id": "harvester",
+  "title": "Harvester",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "The Runner draws 3 cards and then discards down to their maximum hand size.",
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Runner",
+              3
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": "Any",
+              "min": 0,
+              "max": 0,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap",
+              "count": {
+                "Reduced": {
+                  "amount": {
+                    "CardsInHand": "Runner"
+                  },
+                  "by": {
+                    "MaxHandSize": "Runner"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "The Runner draws 3 cards and then discards down to their maximum hand size.",
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Runner",
+              3
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": "Any",
+              "min": 0,
+              "max": 0,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap",
+              "count": {
+                "Reduced": {
+                  "amount": {
+                    "CardsInHand": "Runner"
+                  },
+                  "by": {
+                    "MaxHandSize": "Runner"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 10032,
+  "is_playable": true
+}
