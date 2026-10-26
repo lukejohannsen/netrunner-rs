@@ -1,0 +1,82 @@
+{
+  "id": "sadyojata",
+  "title": "Sadyojata",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine on a piece of ice with 3 or more subtypes.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "EncounteredIce": {
+              "SubtypesAtLeast": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: Swap this program with a deva program from your grip.",
+      "cost": {
+        "Credits": 2
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnGrip",
+          "count": 1,
+          "filter": {
+            "HasSubtype": "Deva"
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "HasSubtype": "Deva"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "SwapThisWithSelectedFromGrip"
+        }
+      }
+    }
+  ],
+  "built_from": 10044,
+  "is_playable": true
+}

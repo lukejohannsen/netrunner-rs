@@ -344,6 +344,17 @@ pub enum CardFilter {
     /// A card printed with this subtype — MuslihaT's "a run event".
     /// Definition-level.
     HasSubtype(crate::dsl::CardSubtype),
+    /// A card printed with at least this many subtypes — Sadyojata's "a
+    /// piece of ice with 3 or more subtypes". Definition-level: the printed
+    /// line, ice type included (a Code Gate - Tracer has two), so a subtype
+    /// an ice gains for a run (Panchatantra) is not counted. Composition
+    /// didn't work: `HasSubtype` asks for one subtype by name.
+    SubtypesAtLeast(u32),
+    /// A card printed with exactly this many subroutines — Vamadeva's "a
+    /// piece of ice with exactly 1 subroutine". Definition-level, the
+    /// printed ones (`CardDefinition::subroutines`). Composition didn't
+    /// work: no filter read a card's subroutines.
+    SubroutinesExactly(u32),
     /// A unique (◆) card — Hackerspace's "unique (◆) companion resources".
     /// Definition-level. Not a subtype: uniqueness is printed before the
     /// name (CR 2.2.1), and `CardDefinition::unique` is where it is read.
@@ -1048,6 +1059,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // A word about the copy alone is the copy's to negate.
         CardFilter::Not(filter) => filter.is_about_the_copy_alone() || !card_matches_filter(card, filter),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
+        CardFilter::SubtypesAtLeast(n) => card.subtypes.len() as u32 >= *n,
+        CardFilter::SubroutinesExactly(n) => card.subroutines.len() as u32 == *n,
         CardFilter::Unique => card.unique,
         CardFilter::HasTrashAbility => card
             .abilities

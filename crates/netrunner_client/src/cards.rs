@@ -161,9 +161,9 @@ mod tests {
     }
 
     /// Startup is NetrunnerDB's Startup pool (System Gateway, Elevation,
-    /// Vantage Point); Eternal is every card but the one it bans that the
-    /// engine implements, Salvaged Vanadis Armory. The Core Set cards are the
-    /// difference. Asked of the pool itself, not a list of sets, so a set
+    /// Vantage Point); Eternal is every card but the ones it bans that the
+    /// engine implements: Salvaged Vanadis Armory and the three devas. The
+    /// Core Set cards are the difference. Asked of the pool itself, not a list of sets, so a set
     /// that joins Startup does not make this stale.
     #[test]
     fn the_pool_is_the_formats_cards() {
@@ -174,8 +174,9 @@ mod tests {
         assert!(startup.iter().all(|card| rules.in_pool(&card.id)));
         assert!(startup.iter().any(|card| catalog::printed_in(&card.id, "vantage_point")), "Vantage Point is Startup");
         assert!(startup.len() < eternal.len(), "Core Set cards are outside Startup");
-        assert!(!eternal.iter().any(|card| card.id.0 == "salvaged_vanadis_armory"), "banned in Eternal");
-        assert_eq!(eternal.len() + 1, registry.len(), "every card but the one Eternal bans");
+        let banned = ["salvaged_vanadis_armory", "aghora", "sadyojata", "vamadeva"];
+        assert!(!eternal.iter().any(|card| banned.contains(&card.id.0.as_str())), "banned in Eternal");
+        assert_eq!(eternal.len() + banned.len(), registry.len(), "every card but the ones Eternal bans");
         assert!(!startup.iter().any(|card| card.id.0 == "ice_wall"), "Ice Wall is Core Set");
         assert!(eternal.iter().any(|card| card.id.0 == "ice_wall"));
     }

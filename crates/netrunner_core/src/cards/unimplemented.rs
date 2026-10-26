@@ -200,7 +200,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
     ("reflection", "Reflection"),
-    ("sadyojata", "Sadyojata"),
     ("freedom_through_equality", "\"Freedom Through Equality\""),
     ("councilman", "Councilman"),
     ("clones_are_not_people", "\"Clones are not People\""),
@@ -210,7 +209,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("salsette_slums", "Salsette Slums"),
-    ("vamadeva", "Vamadeva"),
     ("bazaar", "Bazaar"),
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
@@ -233,7 +231,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("aghora", "Aghora"),
     ("the_black_file", "The Black File"),
     ("the_price_of_freedom", "The Price of Freedom"),
     ("rigged_results", "Rigged Results"),
