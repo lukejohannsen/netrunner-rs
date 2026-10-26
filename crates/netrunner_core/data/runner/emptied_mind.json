@@ -1,0 +1,34 @@
+{
+  "id": "emptied_mind",
+  "title": "Emptied Mind",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            {
+              "CardsInHand": "Runner"
+            },
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, gain [click] if you have no cards in your grip."
+    }
+  ],
+  "built_from": 10078,
+  "is_playable": true
+}

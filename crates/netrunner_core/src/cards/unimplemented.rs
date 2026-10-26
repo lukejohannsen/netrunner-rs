@@ -203,7 +203,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tech_trader", "Tech Trader"),
     ("netchip", "NetChip"),
     ("corporate_scandal", "Corporate Scandal"),
-    ("populist_rally", "Populist Rally"),
     ("advanced_assembly_lines", "Advanced Assembly Lines"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
     ("product_recall", "Product Recall"),
@@ -227,7 +226,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_operative", "Political Operative"),
     ("sadyojata", "Sadyojata"),
     ("freedom_through_equality", "\"Freedom Through Equality\""),
-    ("akshara_sareen", "Akshara Sareen"),
     ("councilman", "Councilman"),
     ("voting_machine_initiative", "Voting Machine Initiative"),
     ("clone_suffrage_movement", "Clone Suffrage Movement"),
@@ -249,7 +247,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("vamadeva", "Vamadeva"),
     ("brahman", "Brahman"),
     ("patron", "Patron"),
-    ("sports_hopper", "Sports Hopper"),
     ("bazaar", "Bazaar"),
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
@@ -267,11 +264,9 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
 pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("the_noble_path", "The Noble Path"),
-    ("emptied_mind", "Emptied Mind"),
     ("information_sifting", "Information Sifting"),
     ("out_of_the_ashes", "Out of the Ashes"),
     ("liberated_chela", "Liberated Chela"),
-    ("temple_of_the_liberated_mind", "Temple of the Liberated Mind"),
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
     ("the_turning_wheel", "The Turning Wheel"),
@@ -290,7 +285,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("fear_the_masses", "Fear the Masses"),
     ("aghora", "Aghora"),
-    ("bhagat", "Bhagat"),
     ("the_black_file", "The Black File"),
     ("the_price_of_freedom", "The Price of Freedom"),
     ("ankusa", "Ankusa"),
@@ -351,7 +345,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("brain_chip", "Brain Chip"),
     ("multithreader", "Multithreader"),
     ("always_be_running", "Always Be Running"),
-    ("dr_lovegood", "Dr. Lovegood"),
     ("neutralize_all_threats", "Neutralize All Threats"),
     ("safety_first", "Safety First"),
     ("sunny_lebeau_security_specialist", "Sunny Lebeau: Security Specialist"),
@@ -364,7 +357,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jak_sinclair", "Jak Sinclair"),
     ("employee_strike", "Employee Strike"),
     ("windfall", "Windfall"),
-    ("technical_writer", "Technical Writer"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.

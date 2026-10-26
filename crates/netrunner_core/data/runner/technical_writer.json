@@ -1,0 +1,54 @@
+{
+  "id": "technical_writer",
+  "title": "Technical Writer",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "AnyOf": [
+            {
+              "CardType": "Hardware"
+            },
+            {
+              "CardType": "Program"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you install a piece of hardware or a program, place 1[credit] from the bank on Technical Writer."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCreditsPerCounter": {
+          "side": "Runner",
+          "credits_per_counter": 1
+        }
+      },
+      "text": "[click],[trash]: Take all credits from Technical Writer."
+    }
+  ],
+  "built_from": 9055,
+  "is_playable": true
+}

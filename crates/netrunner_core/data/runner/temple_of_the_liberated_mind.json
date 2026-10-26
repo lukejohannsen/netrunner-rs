@@ -1,0 +1,43 @@
+{
+  "id": "temple_of_the_liberated_mind",
+  "title": "Temple of the Liberated Mind",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 1
+      },
+      "text": "[click]: Place 1 power counter on this resource."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "DuringYourTurn"
+        ]
+      },
+      "effect": {
+        "GainClicks": [
+          "Runner",
+          1
+        ]
+      },
+      "text": "Once per turn → Hosted power counter: Gain [click]. Use this ability only during your turn."
+    }
+  ],
+  "built_from": 10082,
+  "is_playable": true
+}

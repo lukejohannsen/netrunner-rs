@@ -1,0 +1,32 @@
+{
+  "id": "populist_rally",
+  "title": "Populist Rally",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnInstalled",
+      "count": 1,
+      "filter": {
+        "HasSubtype": "Seedy"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "AllottedClicksNextTurn": [
+            "Corp",
+            -1
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 10026,
+  "is_playable": true
+}
