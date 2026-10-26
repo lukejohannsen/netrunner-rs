@@ -1,0 +1,36 @@
+{
+  "id": "resistor",
+  "title": "Resistor",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 0,
+  "strength": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "RunnerTags"
+        }
+      },
+      "applies_to": "This",
+      "text": "Resistor has +1 strength for each tag the Runner has."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[4]. If successful, end the run.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "built_from": 9015,
+  "triggers": [],
+  "is_playable": true
+}

@@ -226,7 +226,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sensie_actors_union", "Sensie Actors Union"),
     ("commercial_bankers_group", "Commercial Bankers Group"),
     ("mumbad_city_hall", "Mumbad City Hall"),
-    ("bailiff", "Bailiff"),
     ("surat_city_grid", "Surat City Grid"),
 ];
 
@@ -238,12 +237,10 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
-    ("upayoga", "Upayoga"),
     ("aryabhata_tech", "Aryabhata Tech"),
     ("salems_hospitality", "Salem's Hospitality"),
     ("executive_search_firm", "Executive Search Firm"),
     ("indian_union_stock_exchange", "Indian Union Stock Exchange"),
-    ("cobra", "Cobra"),
     ("localized_product_line", "Localized Product Line"),
     ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];
@@ -255,15 +252,11 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("out_of_the_ashes", "Out of the Ashes"),
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
-    ("brainstorm", "Brainstorm"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
-    ("chetana", "Chetana"),
     ("puppet_master", "Puppet Master"),
     ("waiver", "Waiver"),
     ("exchange_of_information", "Exchange of Information"),
-    ("red_tape", "Red Tape"),
     ("consulting_visit", "Consulting Visit"),
-    ("vanilla", "Vanilla"),
 ];
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
@@ -301,10 +294,7 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("reality_threedee", "Reality Threedee"),
     ("archangel", "Archangel"),
     ("news_hound", "News Hound"),
-    ("resistor", "Resistor"),
-    ("special_offer", "Special Offer"),
     ("tl_dr", "TL;DR"),
-    ("turnpike", "Turnpike"),
     ("24_7_news_cycle", "24/7 News Cycle"),
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
@@ -314,7 +304,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rutherford_grid", "Rutherford Grid"),
     ("global_food_initiative", "Global Food Initiative"),
     ("launch_campaign", "Launch Campaign"),
-    ("assassin", "Assassin"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
     ("prey", "Prey"),

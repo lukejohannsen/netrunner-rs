@@ -1,0 +1,33 @@
+{
+  "id": "bailiff",
+  "title": "Bailiff",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever the Runner breaks a subroutine on Bailiff, gain 1[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 10056,
+  "is_playable": true
+}

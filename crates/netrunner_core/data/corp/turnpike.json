@@ -1,0 +1,42 @@
+{
+  "id": "turnpike",
+  "title": "Turnpike",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner encounters this ice, they lose 1[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[5]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 5,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 9018,
+  "is_playable": true
+}
