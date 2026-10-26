@@ -3,7 +3,7 @@
   "name": "Zythum",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV.",
+  "description": "Not a published list: Flashpoint Stage 19's deck for NBN: Controlling the Message, on Paid Content's list, so the sweeps meet a Corp that may trace[4] for a tag the first time each turn the Runner trashes one of its installed cards. Eternal-legal only. Flashpoint Stage 23 traded a CPC Generator for NASX, so the sweeps meet an asset that buys power counters whenever another card gains the Corp credits. Mumbad Stage 7 swapped two Daily Business Show, two Ghost Branch and two Focus Group for two Sensie Actors Union, two Reality Threedee and two Kala Ghoda Real TV. Mumbad Stage 8 swapped two Digital Rights Management, The Powers That Be and Reversed Accounts for two The All-Seeing I, Lily Lockwell and Localized Product Line.",
   "style": [
     "fast-advance"
   ],
@@ -22,19 +22,11 @@
       "count": 1
     },
     {
-      "card": "the_powers_that_be",
-      "count": 1
-    },
-    {
       "card": "kingmaking",
       "count": 1
     },
     {
       "card": "project_beale",
-      "count": 2
-    },
-    {
-      "card": "digital_rights_management",
       "count": 2
     },
     {
@@ -48,10 +40,6 @@
     {
       "card": "license_acquisition",
       "count": 2
-    },
-    {
-      "card": "reversed_accounts",
-      "count": 1
     },
     {
       "card": "bellona",
@@ -148,6 +136,18 @@
     {
       "card": "kala_ghoda_real_tv",
       "count": 2
+    },
+    {
+      "card": "the_all_seeing_i",
+      "count": 2
+    },
+    {
+      "card": "lily_lockwell",
+      "count": 1
+    },
+    {
+      "card": "localized_product_line",
+      "count": 1
     }
   ]
 }

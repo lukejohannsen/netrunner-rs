@@ -547,7 +547,10 @@ pub enum CardFilter {
     /// those cards are agendas", of the faceup cards it counts. `Facedown`'s
     /// other half. Composition didn't work: `Not` is read off a definition,
     /// where which way up a card lies is not, so `Not(Facedown)` matches
-    /// nothing.
+    /// nothing. Among installed Corp cards, one that is rezzed or was
+    /// installed faceup — Dedication Ceremony's and Mumbad Construction
+    /// Co.'s "a faceup card", which is an agenda as often as anything:
+    /// `Rezzed` leaves agendas out, since an agenda is never rezzed.
     Faceup,
     /// A card hosting at least one counter of this kind — Business As
     /// Usual's "Remove all virus counters from 1 installed card", so a card

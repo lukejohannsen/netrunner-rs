@@ -1,0 +1,69 @@
+{
+  "id": "the_all_seeing_i",
+  "title": "The All-Seeing I",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "BadPublicity",
+                1
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "RemoveBadPublicity": 1
+                  },
+                  {
+                    "ForEach": {
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "CardType": "Resource"
+                      },
+                      "effect": {
+                        "TrashCard": {
+                          "Install": 0
+                        }
+                      }
+                    }
+                  }
+                ],
+                "texts": [
+                  "unless the Runner removes 1 bad publicity",
+                  "Trash all installed resources"
+                ]
+              }
+            },
+            "otherwise": {
+              "ForEach": {
+                "source": "OpponentInstalled",
+                "filter": {
+                  "CardType": "Resource"
+                },
+                "effect": {
+                  "TrashCard": {
+                    "Install": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash all installed resources unless the Runner removes 1 bad publicity."
+    }
+  ],
+  "built_from": 9022,
+  "is_playable": true
+}

@@ -1,0 +1,58 @@
+{
+  "id": "lily_lockwell",
+  "title": "Lily Lockwell",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        }
+      ],
+      "text": "When you rez Lily Lockwell, draw 3 cards."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveTags": 1
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "CardType": "Operation"
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnHq",
+          "then": {
+            "AddToDeck": "Top"
+          }
+        }
+      },
+      "text": "Search R&D for an operation, reveal it, and shuffle the rest of R&D. Add the operation to the top of R&D."
+    }
+  ],
+  "built_from": 9008,
+  "is_playable": true
+}
