@@ -1,0 +1,33 @@
+{
+  "id": "zealous_judge",
+  "title": "Zealous Judge",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "rez_requirement": "IsTagged",
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          }
+        ]
+      },
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      },
+      "text": "Give the Runner 1 tag."
+    }
+  ],
+  "built_from": 10111,
+  "is_playable": true
+}

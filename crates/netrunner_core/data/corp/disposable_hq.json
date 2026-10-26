@@ -1,0 +1,41 @@
+{
+  "id": "disposable_hq",
+  "title": "Disposable HQ",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 5,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 99,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "BottomOfOwnDeck"
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade, you may add any number of cards from HQ to the bottom of R&D."
+    }
+  ],
+  "built_from": 10034,
+  "is_playable": true
+}

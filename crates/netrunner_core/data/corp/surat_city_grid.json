@@ -1,0 +1,47 @@
+{
+  "id": "surat_city_grid",
+  "title": "Surat City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "InThisServer",
+            "NotSourceCard"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Unrezzed",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "RezInstalled": {
+                "install": 0,
+                "pay_cost": true,
+                "discount": {
+                  "Fixed": 2
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you rez another card in the root of or protecting this server, you may rez 1 card, paying 2[credit] less."
+    }
+  ],
+  "built_from": 10057,
+  "is_playable": true
+}

@@ -47173,3 +47173,117 @@ mod mumbad_stage_8 {
         assert!(done.corp.hq.is_empty());
     }
 }
+
+mod mumbad_stage_9 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root_at(card: &str, remote: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(remote), slot: InstallSlot::Root, rezzed, ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state
+    }
+
+    fn corp_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state
+    }
+
+    fn choose(state: &GameState, registry: &CardRegistry, option_index: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("choose");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn news_team_is_two_tags_or_a_minus_one_in_the_runners_score_area() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root_at("news_team", 0, false)];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert_eq!(choose(&asked, &registry, 0).runner.tags, 2, "take 2 tags");
+        let taken = choose(&asked, &registry, 1);
+        assert_eq!(taken.runner.scored_agendas.iter().map(|entry| entry.as_agenda.map(|a| a.points)).collect::<Vec<_>>(), vec![Some(-1)]);
+        assert_eq!(taken.runner.tags, 0);
+    }
+
+    #[test]
+    fn disposable_hq_puts_cards_from_hq_on_the_bottom_of_r_and_d_when_accessed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![root_at("disposable_hq", 0, false)];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("pad_campaign")];
+        state.corp.r_and_d = vec![id("enigma")];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Hedge Fund");
+        let (chose, _) = apply_action(&chose, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Ice Wall");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("to the bottom");
+        assert_eq!(done.corp.hq, vec![id("pad_campaign")]);
+        assert_eq!(done.corp.r_and_d.len(), 3);
+        assert_eq!(done.corp.r_and_d.last(), Some(&id("enigma")), "the top is untouched");
+    }
+
+    #[test]
+    fn zealous_judge_rezzes_only_while_the_runner_is_tagged_and_tags_for_a_click_and_a_credit() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![root_at("zealous_judge", 0, false)];
+        let target = install_of(&state, "zealous_judge");
+        assert!(apply_action(&state, &registry, PlayerAction::RezIce { ice: target }).is_err(), "only if the Runner is tagged");
+        state.runner.tags = 1;
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: target }).expect("rez");
+        let (rezzed, _) = pass_until_settled(rezzed, &registry);
+        let (tagged, _) = apply_action(&rezzed, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).expect("[click], 1[credit]");
+        assert_eq!((tagged.runner.tags, tagged.corp.resources.clicks, tagged.corp.resources.credits), (2, Clicks(2), Credits(5 - 2 - 1)));
+    }
+
+    #[test]
+    fn keegan_lane_trashes_a_program_for_a_tag_only_during_a_run_on_its_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.tags = 1;
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("corroder"), install_id: InstallId(2001), ..Default::default() }];
+        state.corp.installed = vec![root_at("keegan_lane", 0, true)];
+        let target = install_of(&state, "keegan_lane");
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).is_err(), "only during a run on this server");
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (running, _) = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes");
+        let (asked, _) = apply_action(&running, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).expect("[trash], remove 1 tag");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(done.runner.rig.is_empty());
+        assert_eq!(done.runner.tags, 0);
+        assert!(done.corp.installed.is_empty(), "Keegan Lane is trashed to pay");
+    }
+
+    #[test]
+    fn surat_city_grid_rezzes_another_card_for_two_less_when_a_card_in_its_server_is_rezzed() {
+        let registry = registry();
+        let mut state = corp_turn();
+        state.corp.installed = vec![root_at("surat_city_grid", 0, true), root_at("pad_campaign", 0, false), root_at("adonis_campaign", 1, false)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "pad_campaign") }).expect("rez PAD Campaign");
+        let position = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .find_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .expect("you may rez 1 card");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position }).expect("Adonis Campaign");
+        let (done, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        let (done, _) = pass_until_settled(done, &registry);
+        assert!(done.corp.installed.iter().all(|card| card.rezzed));
+        assert_eq!(done.corp.resources.credits, Credits(5 - 2 - (4 - 2)), "PAD Campaign, then Adonis Campaign 2[credit] less");
+    }
+}

@@ -198,7 +198,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("product_recall", "Product Recall"),
     ("palana_foods_sustainable_growth", "Pālanā Foods: Sustainable Growth"),
     ("harvester", "Harvester"),
-    ("disposable_hq", "Disposable HQ"),
     ("pad_factory", "PAD Factory"),
 ];
 
@@ -212,7 +211,6 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_dealings", "Political Dealings"),
     ("clones_are_not_people", "\"Clones are not People\""),
     ("mumbad_city_hall", "Mumbad City Hall"),
-    ("surat_city_grid", "Surat City Grid"),
 ];
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
@@ -253,7 +251,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("full_immersion_recstudio", "Full Immersion RecStudio"),
     ("ibrahim_salem", "Ibrahim Salem"),
     ("navi_mumbai_city_grid", "Navi Mumbai City Grid"),
-    ("zealous_judge", "Zealous Judge"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.
@@ -264,7 +261,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("improved_tracers", "Improved Tracers"),
     ("rebranding_team", "Rebranding Team"),
     ("quantum_predictive_model", "Quantum Predictive Model"),
-    ("news_team", "News Team"),
     ("shannon_claire", "Shannon Claire"),
     ("victoria_jenkins", "Victoria Jenkins"),
     ("archangel", "Archangel"),
@@ -274,7 +270,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
-    ("keegan_lane", "Keegan Lane"),
     ("rutherford_grid", "Rutherford Grid"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
