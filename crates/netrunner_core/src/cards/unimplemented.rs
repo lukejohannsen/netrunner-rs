@@ -181,11 +181,8 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
     ("vikram_1_0", "Vikram 1.0"),
-    ("heritage_committee", "Heritage Committee"),
     ("mumbad_city_grid", "Mumbad City Grid"),
     ("interrupt_0", "Interrupt 0"),
-    ("mumba_temple", "Mumba Temple"),
-    ("museum_of_history", "Museum of History"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -195,7 +192,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tech_trader", "Tech Trader"),
     ("corporate_scandal", "Corporate Scandal"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
-    ("product_recall", "Product Recall"),
     ("palana_foods_sustainable_growth", "Pālanā Foods: Sustainable Growth"),
     ("harvester", "Harvester"),
     ("pad_factory", "PAD Factory"),
@@ -222,8 +218,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
     ("aryabhata_tech", "Aryabhata Tech"),
-    ("salems_hospitality", "Salem's Hospitality"),
-    ("executive_search_firm", "Executive Search Firm"),
     ("indian_union_stock_exchange", "Indian Union Stock Exchange"),
     ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];

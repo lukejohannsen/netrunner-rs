@@ -2719,6 +2719,14 @@ pub enum Amount {
     /// `CardsSelected` counts the cards, and `PaidCardPrintedCost` reads
     /// one card a cost took.
     CardsSelectedPrintedCost,
+    /// The printed trash cost of the cards a card selection chose, written
+    /// in as `CardsSelectedPrintedCost` is — Product Recall's "Trash a
+    /// rezzed asset or upgrade. If you do, gain credits equal to its trash
+    /// cost". Printed, because the card has left the table by the time its
+    /// `then` reads it, and nothing in the pool changes the trash cost of a
+    /// card the Corp trashes. Composition didn't work: every other amount
+    /// about a chosen card reads its play or install cost.
+    CardsSelectedTrashCost,
     /// The threat level: the greater of the two players' scores, in agenda
     /// points (Null Signal Games' *Elevation* rule — "the threat level is
     /// equal to the greatest score of any player"). Read through

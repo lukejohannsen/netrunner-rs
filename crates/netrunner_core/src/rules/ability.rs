@@ -6288,7 +6288,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::CardsSelected => ctx.selected_count,
         // Written in as the selection resolves (`pending_choice`).
-        Amount::CardsSelectedPrintedCost => 0,
+        Amount::CardsSelectedPrintedCost | Amount::CardsSelectedTrashCost => 0,
         Amount::RunCreditsLeftLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.run_credits_left),
         Amount::EncountersThisRun => state.run_in_progress().map_or(0, |run| run.encounters),
         Amount::IcePassedThisRun => state.run_in_progress().map_or(0, |run| run.ice_passed),

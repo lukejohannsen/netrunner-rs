@@ -134,7 +134,7 @@ The ledger rows below carry the rest of the "Not modelled" clauses in their note
 | 2.11 | Minimum Deck Size | unreviewed |  |
 | 2.12 | Influence Limit | unreviewed |  |
 | 2.13 | Faction Affiliation | unreviewed |  |
-| 2.14 | Influence Cost | unreviewed |  |
+| 2.14 | Influence Cost | read in part | Mumbad Stage 10: 2.14.3, an alliance's waiver is read only when judging a constructed deck (`CardDefinition::free_influence_if`, `deck::influence_per_copy_in`, asked by the tally and the validator alone). **One deviation, 1.4.5:** a neutral card is charged no influence (`influence_per_copy`), where the rule counts neutral cards as out of faction; the dozens of neutral cards that print a pip (Hades Shard, Let Them Dream, Mumba Temple) are therefore free, and the published lists' influence is pinned against that reading, so changing it is its own piece of work. Cited: 2.14.3, 1.4.5. |
 | 2.15 | Card Type | unreviewed |  |
 | 2.16 | Subtypes | read in part | PH Stage 8: 2.16.1, a card may have more than one subtype, and 2.16.4, a card has its subtypes at all times — Hafrún is a barrier and a code gate. `CardType::Ice` holds one type and the printed subtypes hold both (`CardDefinition::is_ice_of_type`), which `continuous::ice_gains_subtype` reads beside the types gained, so a typed breaker, `CardFilter::IceOfType` and a pass of "a rezzed code gate" see both. A subtype is not an ability (9.1.9 takes none away): Hush leaves Hafrún both. The running total of 2.16.5 is not built: no card in the pool removes a subtype. Cited: 2.16.1, 2.16.4. |
 | 2.17 | Text Box | unreviewed |  |

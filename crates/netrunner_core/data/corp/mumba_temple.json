@@ -1,0 +1,19 @@
+{
+  "id": "mumba_temple",
+  "title": "Mumba Temple",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "free_influence_if": {
+    "IceAtMost": 15
+  },
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "Rezzing"
+  ],
+  "triggers": [],
+  "built_from": 10018,
+  "is_playable": true
+}

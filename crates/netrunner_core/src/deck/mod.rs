@@ -55,7 +55,7 @@ use crate::dsl::CardId;
 
 pub mod validator;
 
-pub use validator::{influence_per_copy, tally_deck, validate_deck, validate_deck_with_rules, AgendaTally, DeckTally, DeckValidationError, ValidationReport};
+pub use validator::{influence_per_copy, influence_per_copy_in, tally_deck, validate_deck, validate_deck_with_rules, AgendaTally, DeckTally, DeckValidationError, ValidationReport};
 
 /// A deckbuilding-time decklist: an identity plus a card pool, each entry
 /// paired with how many copies are included, every card by id —

@@ -1,0 +1,49 @@
+{
+  "id": "product_recall",
+  "title": "Product Recall",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Rezzed",
+                {
+                  "CardTypeOneOf": [
+                    "Asset",
+                    "Upgrade"
+                  ]
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "GainCreditsAmount": [
+                "Corp",
+                "CardsSelectedTrashCost"
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Trash a rezzed asset or upgrade. If you do, gain credits equal to its trash cost."
+    }
+  ],
+  "built_from": 10029,
+  "is_playable": true
+}

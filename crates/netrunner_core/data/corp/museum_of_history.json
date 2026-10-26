@@ -1,0 +1,33 @@
+{
+  "id": "museum_of_history",
+  "title": "Museum of History",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "free_influence_if": {
+    "DeckSizeAtLeast": 50
+  },
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnRAndD"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may shuffle 1 card from Archives into R&D."
+    }
+  ],
+  "built_from": 10019,
+  "is_playable": true
+}

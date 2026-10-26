@@ -3,7 +3,7 @@
   "name": "Zyzzyva",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex.",
+  "description": "Not a published list: Flashpoint Stage 20's deck for Jinteki: Potential Unleashed, on A Thousand Cuts' list, so the sweeps meet a Corp that trashes the top card of the stack whenever the Runner takes net damage. Eternal-legal only. Flashpoint Stage 21: a Fumiko Yamamori and a Hyoubu Research Facility for its two Zaibatsu Loyalty, to hear the revealed bids of its Aiki; A Thousand Cuts keeps Zaibatsu Loyalty. Flashpoint Stage 26 swapped a Genotyping for Project Kusanagi. FFG F5 Stage 40: two Nihongai Grid for its two La Costa Grid, a region for a region, which Endless Exploration and A Thousand Cuts keep. Mumbad Stage 7 swapped two Hangeki and two Thimblerig for two Bio-Ethics Association and two Pālanā Agroplex. Mumbad Stage 10 swapped in Heritage Committee, Museum of History and Mumba Temple for Reverse Infection, Anansi and Rashida Jaheem, which other decks still carry.",
   "style": [
     "traps"
   ],
@@ -58,10 +58,6 @@
       "count": 2
     },
     {
-      "card": "anansi",
-      "count": 1
-    },
-    {
       "card": "sadaka",
       "count": 1
     },
@@ -74,16 +70,8 @@
       "count": 2
     },
     {
-      "card": "rashida_jaheem",
-      "count": 1
-    },
-    {
       "card": "genotyping",
       "count": 1
-    },
-    {
-      "card": "reverse_infection",
-      "count": 2
     },
     {
       "card": "water_monopoly",
@@ -132,6 +120,18 @@
     {
       "card": "palana_agroplex",
       "count": 2
+    },
+    {
+      "card": "heritage_committee",
+      "count": 2
+    },
+    {
+      "card": "museum_of_history",
+      "count": 1
+    },
+    {
+      "card": "mumba_temple",
+      "count": 1
     }
   ]
 }
