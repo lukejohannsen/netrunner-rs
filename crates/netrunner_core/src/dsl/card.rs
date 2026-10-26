@@ -816,6 +816,13 @@ pub struct CardDefinition {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub influence_cost: Option<u32>,
+    /// "This card costs 0 influence if …" — the Mumbad alliances, whose
+    /// price is waived by what else the deck holds. Authored in the card
+    /// file (the catalog has only the printed number) and read by the deck
+    /// validator alone (`deck::influence_per_copy_in`): it is a word about
+    /// the deck, so nothing in a game asks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_influence_if: Option<FreeInfluence>,
 
     /// Per-card max-copies override (e.g. 1 for a restricted-list card).
     /// `None` falls back to the flat `MAX_COPIES_PER_CARD`/deckbuilding
@@ -1029,6 +1036,23 @@ pub enum DeckRule {
     AgendasFromEachFaction(u32),
 }
 
+/// The condition under which a card's influence is waived
+/// (`CardDefinition::free_influence_if`), read off the whole deck. One
+/// variant per sentence the alliances print; a deck is a multiset of
+/// cards, so each is a count over it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FreeInfluence {
+    /// "if you have 6 or more non-alliance [faction] cards in your deck",
+    /// the faction the card's own: copies counted, alliances left out.
+    NonAllianceOfItsFaction(u32),
+    /// "if you have 3 PAD Campaigns in your deck" — PAD Factory.
+    CopiesOf { card: CardId, count: u32 },
+    /// "if you have 15 or fewer ice in your deck" — Mumba Temple.
+    IceAtMost(u32),
+    /// "if you have 50 or more cards in your deck" — Museum of History.
+    DeckSizeAtLeast(u32),
+}
+
 /// See `CardDefinition::counter_kind`'s doc comment. Kept minimal, extend as new
 /// counter-kind-gated behavior is needed — mirrors `CardSubtype`'s own
 /// "extend as needed" precedent.
@@ -1213,6 +1237,10 @@ pub enum PaysFor {
     /// because every other word narrows a payment, and a card printing none
     /// has credits only its own text spends.
     Anything,
+    /// The rez cost of any card — Mumba Temple's "Use these credits to rez
+    /// cards". Composition didn't work: the other rez words are about
+    /// where the card sits, and this one is about nothing but the rez.
+    Rezzing,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1372,6 +1400,7 @@ impl Default for CardDefinition {
             type_line: None,
             keywords: Vec::new(),
             influence_cost: None,
+            free_influence_if: None,
             deck_limit: None,
             unlimited_influence: false,
             deck_rules: Vec::new(),

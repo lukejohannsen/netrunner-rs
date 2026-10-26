@@ -47287,3 +47287,154 @@ mod mumbad_stage_9 {
         assert_eq!(done.corp.resources.credits, Credits(5 - 2 - (4 - 2)), "PAD Campaign, then Adonis Campaign 2[credit] less");
     }
 }
+
+mod mumbad_stage_10 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hand: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = hand.iter().map(|card| id(card)).collect();
+        (state, registry())
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::PlayOperation { card_id: id(card) }).expect("play").0
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn asset(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), rezzed, ..Default::default() }
+    }
+
+    fn influence(identity: &str, cards: &[(&str, u32)]) -> u32 {
+        let registry = registry();
+        let deck = crate::deck::Decklist { identity: id(identity), cards: cards.iter().map(|&(card, count)| (id(card), count)).collect() };
+        crate::deck::tally_deck(&deck, &registry).expect("tally").influence_spent
+    }
+
+    #[test]
+    fn an_alliance_costs_no_influence_with_six_non_alliance_cards_of_its_faction() {
+        let hb = "haas_bioroid_engineering_the_future";
+        let five = [("heritage_committee", 3), ("neural_emp", 3), ("ronin", 2)];
+        assert_eq!(influence(hb, &five), 3 * 2 + 3 * 2 + 2 * 4, "five Jinteki cards besides the alliance: the alliance is paid for");
+        let six = [("heritage_committee", 3), ("neural_emp", 3), ("ronin", 3)];
+        assert_eq!(influence(hb, &six), 3 * 2 + 3 * 4, "six: the alliance is free, the rest are not");
+    }
+
+    /// Mumba Temple's and Museum of History's words, read on an in-faction
+    /// copy: the engine charges a neutral card nothing (rules conformance
+    /// 2.14), so a neutral alliance has no price to waive.
+    #[test]
+    fn the_other_alliance_words_read_the_deck() {
+        let jinteki = |card: &str| {
+            let mut registry = registry();
+            let mut def = registry.get(&id(card)).expect("registered").clone();
+            def.faction = Some(crate::card::Faction::Jinteki);
+            registry.insert(def);
+            registry
+        };
+        let tally = |registry: &CardRegistry, cards: &[(&str, u32)]| {
+            let deck = crate::deck::Decklist { identity: id("haas_bioroid_engineering_the_future"), cards: cards.iter().map(|&(card, count)| (id(card), count)).collect() };
+            crate::deck::tally_deck(&deck, registry).expect("tally").influence_spent
+        };
+        let temple = jinteki("mumba_temple");
+        assert_eq!(tally(&temple, &[("mumba_temple", 1), ("enigma", 15)]), 0, "15 ice or fewer");
+        assert_eq!(tally(&temple, &[("mumba_temple", 1), ("enigma", 16)]), 2, "16 ice");
+        let museum = jinteki("museum_of_history");
+        assert_eq!(tally(&museum, &[("museum_of_history", 1), ("hedge_fund", 48)]), 2, "49 cards");
+        assert_eq!(tally(&museum, &[("museum_of_history", 1), ("hedge_fund", 49)]), 0, "50 cards");
+    }
+
+    #[test]
+    fn heritage_committee_draws_three_and_stacks_one() {
+        let (mut state, registry) = corp_turn(&["heritage_committee"]);
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("enigma")];
+        let asked = play(&state, &registry, "heritage_committee");
+        assert_eq!(asked.corp.hq.len(), 3);
+        let stacked_card = asked.corp.hq[0].clone();
+        let (done, _) = close_all_windows(select(&asked, &registry, &[0]), &registry);
+        assert_eq!(done.corp.hq.len(), 2);
+        assert_eq!(done.corp.r_and_d.last(), Some(&stacked_card), "to the top of R&D");
+    }
+
+    #[test]
+    fn product_recall_trashes_a_rezzed_asset_for_its_trash_cost() {
+        let (mut state, registry) = corp_turn(&["product_recall"]);
+        state.corp.installed = vec![asset("pad_campaign", true)];
+        let asked = play(&state, &registry, "product_recall");
+        let (done, _) = close_all_windows(select(&asked, &registry, &[0]), &registry);
+        assert!(done.corp.installed.is_empty());
+        assert_eq!(done.corp.resources.credits, Credits(10 + 4), "PAD Campaign's trash cost");
+    }
+
+    #[test]
+    fn executive_search_firm_finds_an_executive() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.installed = vec![asset("executive_search_firm", true)];
+        state.corp.r_and_d = vec![id("ice_wall"), id("akitaro_watanabe"), id("hedge_fund")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "executive_search_firm"), ability_index: 0 }).expect("use");
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered.len(), 1, "Akitaro Watanabe is the one sysop");
+        let (done, _) = close_all_windows(select(&asked, &registry, &offered), &registry);
+        assert_eq!(done.corp.hq, vec![id("akitaro_watanabe")]);
+    }
+
+    #[test]
+    fn museum_of_history_shuffles_a_card_from_archives_into_rnd() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.installed = vec![asset("museum_of_history", true)];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("hedge_fund"), facedown: false }];
+        state.corp.r_and_d = vec![id("ice_wall"); 3];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, _) = close_all_windows(state, &registry);
+        let (done, _) = close_all_windows(select(&state, &registry, &[0]), &registry);
+        assert!(done.corp.archives.is_empty());
+        assert_eq!(done.corp.r_and_d.len() + done.corp.hq.len(), 4, "the mandatory draw takes one");
+    }
+
+    #[test]
+    fn mumba_temple_pays_for_a_rez() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.resources.credits = Credits(0);
+        let mut temple = asset("mumba_temple", true);
+        temple.counters = 2;
+        let mut pad = asset("pad_campaign", false);
+        pad.server = ServerId::Remote(1);
+        state.corp.installed = vec![temple, pad];
+        let (done, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "pad_campaign") }).expect("rez from the temple's credits");
+        assert!(done.corp.installed.iter().any(|card| card.card == id("pad_campaign") && card.rezzed));
+        assert_eq!(done.corp.installed.iter().find(|card| card.card == id("mumba_temple")).map(|card| card.counters), Some(0));
+    }
+
+    #[test]
+    fn salems_hospitality_trashes_every_copy_of_a_named_card_from_the_grip() {
+        let (mut state, registry) = corp_turn(&["salems_hospitality"]);
+        state.runner.grip = vec![id("sure_gamble"), id("corroder"), id("sure_gamble")];
+        let asked = play(&state, &registry, "salems_hospitality");
+        let (named, _) = apply_action(&asked, &registry, PlayerAction::ChooseCardName { card: id("sure_gamble") }).expect("Sure Gamble");
+        let (done, _) = close_all_windows(select(&named, &registry, &[0, 2]), &registry);
+        assert_eq!(done.runner.grip, vec![id("corroder")]);
+        assert_eq!(done.runner.heap.len(), 2);
+    }
+}

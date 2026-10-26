@@ -1945,6 +1945,7 @@ pub(crate) fn resolve_confirm_card_selection(
             // for is a later selection's `then`, resolved after this one's
             // context is gone (Emergent Creativity).
             let printed: u32 = selected.iter().filter_map(|card| registry.get(card)).map(|card| card.cost).sum();
+            let trash: u32 = selected.iter().filter_map(|card| registry.get(card)).filter_map(|card| card.trash_cost).sum();
             // And how many of the cards it chose from are left, for a
             // selection nested in this one's `then`: Bacterial
             // Programming's trash and arrangement are among the 7 cards the
@@ -1954,6 +1955,7 @@ pub(crate) fn resolve_confirm_card_selection(
             let chosen = selected.len() as u32;
             let effect = effect.filled(&|amount| match amount {
                 crate::dsl::Amount::CardsSelectedPrintedCost => Some(printed),
+                crate::dsl::Amount::CardsSelectedTrashCost => Some(trash),
                 crate::dsl::Amount::RemainingAfterSelection(of) => Some(of.saturating_sub(chosen)),
                 _ => None,
             });

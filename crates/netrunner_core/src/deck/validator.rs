@@ -141,7 +141,7 @@ pub fn tally_deck(deck: &Decklist, registry: &CardRegistry) -> Result<DeckTally,
     let mut points = 0u32;
     for (card_id, &count) in &deck.cards {
         let card = registry.get(card_id).ok_or_else(|| DeckValidationError::CardNotFound(card_id.clone()))?;
-        influence_spent += influence_per_copy(card, identity) * count;
+        influence_spent += influence_per_copy_in(card, identity, deck, registry) * count;
         if card.card_type == CardType::Agenda {
             points += card.agenda_points.unwrap_or(0) * count;
         }
@@ -167,6 +167,40 @@ pub fn influence_per_copy(card: &CardDefinition, identity: &CardDefinition) -> u
     let identity_faction = identity.faction.unwrap_or(Faction::NeutralCorp);
     let card_faction = card.faction.unwrap_or(Faction::NeutralCorp);
     if card_faction != identity_faction && !is_neutral(card_faction) { card.influence_cost.unwrap_or(0) } else { 0 }
+}
+
+/// `influence_per_copy` in `deck`: nothing when the deck meets the card's
+/// `free_influence_if` (an alliance's "This card costs 0 influence if …",
+/// CR 2.14.3 — read only when judging a constructed deck, never in play).
+/// The tally and the validator ask this; a builder pricing a card it has
+/// not yet added may still ask the printed price.
+///
+/// A neutral alliance (Mumba Temple, Museum of History) already costs
+/// nothing here, because `influence_per_copy` charges no neutral card,
+/// though CR 1.4.5 counts neutral cards as out of faction. That reading is
+/// older than the alliances and the published lists' influence is pinned
+/// against it, so it is recorded in the rules conformance table rather
+/// than changed under a card stage.
+pub fn influence_per_copy_in(card: &CardDefinition, identity: &CardDefinition, deck: &Decklist, registry: &CardRegistry) -> u32 {
+    if card.free_influence_if.as_ref().is_some_and(|condition| waived(condition, card, deck, registry)) {
+        return 0;
+    }
+    influence_per_copy(card, identity)
+}
+
+fn waived(condition: &crate::dsl::FreeInfluence, card: &CardDefinition, deck: &Decklist, registry: &CardRegistry) -> bool {
+    use crate::dsl::FreeInfluence;
+    let count = |admits: &dyn Fn(&CardDefinition) -> bool| -> u32 {
+        deck.cards.iter().filter(|(id, _)| registry.get(id).is_some_and(admits)).map(|(_, count)| count).sum()
+    };
+    match condition {
+        FreeInfluence::NonAllianceOfItsFaction(n) => {
+            count(&|other| other.faction == card.faction && !other.subtypes.contains(&crate::dsl::CardSubtype::Alliance)) >= *n
+        }
+        FreeInfluence::CopiesOf { card: wanted, count: n } => deck.cards.get(wanted).copied().unwrap_or(0) >= *n,
+        FreeInfluence::IceAtMost(n) => count(&|other| matches!(other.card_type, CardType::Ice(_))) <= *n,
+        FreeInfluence::DeckSizeAtLeast(n) => deck.cards.values().sum::<u32>() >= *n,
+    }
 }
 
 /// Validates `deck` against `registry` for `format`, checking in order:
@@ -277,7 +311,7 @@ pub fn validate_deck_with_rules(
         // Once per distinct card, whatever the count.
         restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(card_id).copied().unwrap_or(0));
 
-        influence_spent += influence_per_copy(card, identity) * count;
+        influence_spent += influence_per_copy_in(card, identity, deck, registry) * count;
         if card.card_type == CardType::Agenda {
             agenda_points += card.agenda_points.unwrap_or(0) * count;
         }

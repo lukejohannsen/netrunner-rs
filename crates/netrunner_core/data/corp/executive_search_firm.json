@@ -1,0 +1,47 @@
+{
+  "id": "executive_search_firm",
+  "title": "Executive Search Firm",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "AnyOf": [
+              {
+                "HasSubtype": "Executive"
+              },
+              {
+                "HasSubtype": "Sysop"
+              },
+              {
+                "HasSubtype": "Character"
+              }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "Search R&D for an executive, sysop, or character, reveal it, and add it to HQ. Shuffle R&D."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10072,
+  "is_playable": true
+}

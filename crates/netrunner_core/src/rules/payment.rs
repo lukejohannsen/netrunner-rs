@@ -327,6 +327,7 @@ fn word_within(word: &PaysFor, other: &PaysFor) -> bool {
         | (PaysFor::Installing(mine), PaysFor::Installing(theirs))
         | (PaysFor::TrashCosts(mine), PaysFor::TrashCosts(theirs))
         | (PaysFor::Playing(mine), PaysFor::Playing(theirs)) => filter_implies(mine, theirs),
+        (PaysFor::RezzingInThisServer | PaysFor::RezzingIceProtectingThisServer, PaysFor::Rezzing) => true,
         _ => word == other,
     }
 }
@@ -484,6 +485,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
         }
         (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
+        (PaysFor::Rezzing, Purpose::Rez(_)) => true,
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
             let (Some(host), Some(rezzing)) = (host.and_then(installed), installed(rezzing)) else { return false };
@@ -503,6 +505,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             | PaysFor::Installing(_)
             | PaysFor::RezzingInThisServer
             | PaysFor::RezzingIceProtectingThisServer
+            | PaysFor::Rezzing
             | PaysFor::TraceAttempts
             | PaysFor::Using(_)
             | PaysFor::UsingDuringRuns(_)
