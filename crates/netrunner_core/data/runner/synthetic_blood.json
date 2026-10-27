@@ -1,0 +1,25 @@
+{
+  "id": "synthetic_blood",
+  "title": "Synthetic Blood",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDamageSuffered",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time you take damage each turn, draw 1 card."
+    }
+  ],
+  "built_from": 8007,
+  "is_playable": true
+}

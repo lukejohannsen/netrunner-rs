@@ -1,0 +1,23 @@
+{
+  "id": "fan_site",
+  "title": "Fan Site",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 0
+          }
+        }
+      ],
+      "text": "Whenever the Corp scores an agenda, add Fan Site to your score area as an agenda worth 0 agenda points."
+    }
+  ],
+  "built_from": 8085,
+  "is_playable": true
+}

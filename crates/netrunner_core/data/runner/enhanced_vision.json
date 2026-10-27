@@ -1,0 +1,26 @@
+{
+  "id": "enhanced_vision",
+  "title": "Enhanced Vision",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "RevealAtRandom": {
+            "side": "Corp",
+            "count": 1
+          }
+        }
+      ],
+      "text": "The first time you make a successful run each turn, the Corp reveals 1 card at random from HQ."
+    }
+  ],
+  "built_from": 8005,
+  "is_playable": true
+}

@@ -48945,3 +48945,180 @@ mod sansan_stage_1 {
         assert_eq!(drive_by("priority_requisition"), vec![id("priority_requisition")]);
     }
 }
+
+mod sansan_stage_2 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn(card: &str) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig(card)];
+        state
+    }
+
+    /// `side` ends its turn and every window is passed until the other
+    /// side's action phase begins.
+    fn next_turn(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
+        for _ in 0..20 {
+            if state.phase == GamePhase::Action(side.other()) && state.paid_ability_window.is_none() && state.pending_decision.is_none() {
+                break;
+            }
+            let actor = crate::rules::current_actor(&state).expect("someone acts");
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side: actor }).expect("pass").0;
+        }
+        state
+    }
+
+    fn turn_start(state: &mut GameState, registry: &CardRegistry, card: &str, trigger: usize) {
+        let effects = registry.get(&id(card)).expect("registered").triggers[trigger].effects.clone();
+        for effect in effects {
+            crate::rules::evaluate_effect(state, &effect, &mut crate::rules::ResolutionContext::for_card(Some(&id(card))), registry).expect("resolve");
+        }
+    }
+
+    #[test]
+    fn beach_party_is_five_more_hand_size_for_a_click_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
+        state.runner.rig = vec![rig("beach_party")];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), before + 5);
+        let state = next_turn(&state, &registry, Side::Corp);
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+    }
+
+    #[test]
+    fn drug_dealer_costs_a_credit_on_your_turn_and_draws_on_the_corps() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("drug_dealer")];
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let runners = next_turn(&state, &registry, Side::Corp);
+        assert_eq!((runners.runner.resources.credits, runners.runner.grip.len()), (Credits(9), 0));
+        let corps = next_turn(&runners, &registry, Side::Runner);
+        assert_eq!(corps.runner.grip.len(), 1, "drawn as the Corp's turn began");
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry) -> GameState {
+        let mut state = state.clone();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("hostile_takeover"), card: id("hostile_takeover"), server: ServerId::Remote(0), advancement_tokens: 2, ..Default::default() }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::ScoreAgenda { target: fixture_install_id("hostile_takeover") }).expect("score");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn fan_site_joins_the_score_area_worth_nothing_when_the_corp_scores() {
+        let registry = registry();
+        let state = score(&runner_turn("fan_site"), &registry);
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.scored_agendas.iter().map(|agenda| &agenda.card).collect::<Vec<_>>(), vec![&id("fan_site")]);
+        assert_eq!(state.runner.resources.agenda_points, AgendaPoints(0));
+    }
+
+    #[test]
+    fn human_first_gains_the_points_of_an_agenda_scored_or_stolen() {
+        let registry = registry();
+        let scored = score(&runner_turn("human_first"), &registry);
+        assert_eq!(scored.runner.resources.credits, Credits(11), "Hostile Takeover is worth 1");
+        let mut state = runner_turn("human_first");
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("priority_requisition"), card: id("priority_requisition"), server: ServerId::Remote(0), ..Default::default() }];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("priority_requisition") }).expect("steal");
+        let stolen = close_all_windows(stolen, &registry).0;
+        assert_eq!(stolen.runner.resources.credits, Credits(13), "Priority Requisition is worth 3");
+    }
+
+    #[test]
+    fn investigative_journalism_needs_bad_publicity_and_four_clicks_to_give_one_more() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("investigative_journalism")];
+        let install = PlayerAction::InstallResource { card_id: id("investigative_journalism"), host: None };
+        assert!(apply_action(&state, &registry, install.clone()).is_err(), "no bad publicity");
+        state.corp.bad_publicity = 1;
+        let (state, _) = apply_action(&state, &registry, install).expect("install");
+        let target = state.runner.rig[0].install_id;
+        let mut fresh = state.clone();
+        fresh.runner.resources.clicks = Clicks(4);
+        let (used, _) = apply_action(&fresh, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).expect("use it");
+        assert_eq!((used.corp.bad_publicity, used.runner.rig.len(), used.runner.resources.clicks), (2, 0, Clicks(0)));
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target, ability_index: 0 }).is_err(), "three clicks left");
+    }
+
+    #[test]
+    fn stim_dealer_gains_a_click_twice_then_takes_a_core_damage() {
+        let registry = registry();
+        let mut state = runner_turn("stim_dealer");
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        turn_start(&mut state, &registry, "stim_dealer", 0);
+        turn_start(&mut state, &registry, "stim_dealer", 0);
+        assert_eq!((state.runner.rig[0].counters, state.runner.resources.clicks), (2, Clicks(6)));
+        turn_start(&mut state, &registry, "stim_dealer", 0);
+        assert_eq!((state.runner.rig[0].counters, state.runner.resources.clicks, state.runner.brain_damage), (0, Clicks(6), 1));
+    }
+
+    #[test]
+    fn enhanced_vision_reveals_from_hq_on_the_turns_first_successful_run() {
+        let registry = registry();
+        let mut state = runner_turn("enhanced_vision");
+        state.corp.hq = vec![id("hedge_fund")];
+        let reveals = |events: &[crate::rules::GameEvent]| events.iter().filter(|event| format!("{event:?}").contains("Revealed")).count();
+        let (once, events) = run_to_completion(state, &registry, ServerId::Archives);
+        assert!(reveals(&events) >= 1, "{events:?}");
+        let (_, again) = run_to_completion(once, &registry, ServerId::Archives);
+        assert_eq!(reveals(&again), 0, "the first time each turn");
+    }
+
+    #[test]
+    fn symmetrical_visage_pays_for_the_turns_first_basic_draw() {
+        let registry = registry();
+        let mut state = runner_turn("symmetrical_visage");
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        let draw = PlayerAction::DrawCardClick { side: Side::Runner };
+        let (once, _) = apply_action(&state, &registry, draw.clone()).expect("draw");
+        let once = close_all_windows(once, &registry).0;
+        let (twice, _) = apply_action(&once, &registry, draw).expect("draw again");
+        let twice = close_all_windows(twice, &registry).0;
+        assert_eq!((once.runner.resources.credits, twice.runner.resources.credits), (Credits(11), Credits(11)));
+    }
+
+    #[test]
+    fn synthetic_blood_draws_the_first_time_damage_is_taken_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn("synthetic_blood");
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.runner.stack = vec![id("easy_mark"); 3];
+        let hit = crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1);
+        crate::rules::evaluate_effect(&mut state, &hit, &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("damage");
+        let mut state = pass_until_settled(state, &registry).0;
+        assert_eq!((state.runner.grip.len(), state.runner.stack.len()), (4, 2), "one lost, one drawn");
+        crate::rules::evaluate_effect(&mut state, &hit, &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("damage");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!((state.runner.grip.len(), state.runner.stack.len()), (3, 2), "not the first time");
+    }
+
+    #[test]
+    fn wireless_net_pavilion_makes_the_corp_pay_two_more_to_trash_a_resource() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.runner.rig = vec![rig("wireless_net_pavilion"), rig("daily_casts")];
+        let trash = PlayerAction::TrashResource { target: fixture_install_id("daily_casts") };
+        let (trashed, _) = apply_action(&state, &registry, trash.clone()).expect("trash");
+        assert_eq!(trashed.corp.resources.credits, Credits(6), "2 and 2 more");
+        state.corp.resources.credits = Credits(3);
+        assert!(apply_action(&state, &registry, trash).is_err(), "4 to pay");
+    }
+}

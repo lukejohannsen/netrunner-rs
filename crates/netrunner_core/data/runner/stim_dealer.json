@@ -1,0 +1,56 @@
+{
+  "id": "stim_dealer",
+  "title": "Stim Dealer",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 4,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "HostedCounters",
+                2
+              ]
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "RemoveCounters": "HostedCounters"
+                },
+                {
+                  "Unpreventable": {
+                    "DealDamage": [
+                      "Brain",
+                      1
+                    ]
+                  }
+                }
+              ]
+            },
+            "otherwise": {
+              "Sequence": [
+                {
+                  "AddCounters": 1
+                },
+                {
+                  "GainClicks": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, if there are 2 or more hosted power counters, remove all of them and suffer 1 core damage. This damage cannot be prevented. Otherwise, place 1 power counter on this resource and gain [click]."
+    }
+  ],
+  "built_from": 7051,
+  "is_playable": true
+}
