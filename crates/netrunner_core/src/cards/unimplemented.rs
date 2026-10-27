@@ -207,7 +207,6 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
 pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("information_sifting", "Information Sifting"),
-    ("out_of_the_ashes", "Out of the Ashes"),
     ("rebirth", "Rebirth"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
 ];

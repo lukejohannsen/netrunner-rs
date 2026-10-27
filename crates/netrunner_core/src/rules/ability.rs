@@ -4650,6 +4650,17 @@ fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ct
         state.runner.removed_from_game.push(card_id.clone());
         return Ok(vec![GameEvent::CardRemovedFromGame { side: Side::Runner, card: card_id }]);
     }
+    // A card heard from the heap, where its text is active (CR 9.1.8b):
+    // Out of the Ashes' "if Out of the Ashes is in your heap, you may
+    // remove it from the game". An event is never on the table, so the
+    // heap is the only place it can be.
+    if registry.get(&card_id).is_some_and(|card| card.card_type == crate::dsl::CardType::Event)
+        && let Some(position) = state.runner.heap.iter().rposition(|card| card == &card_id)
+    {
+        state.runner.heap.remove(position);
+        state.runner.removed_from_game.push(card_id.clone());
+        return Ok(vec![GameEvent::CardRemovedFromGame { side: Side::Runner, card: card_id }]);
+    }
     let position = acting_rig_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
     let removed = state.runner.rig.remove(position);
     state.runner.removed_from_game.push(card_id.clone());

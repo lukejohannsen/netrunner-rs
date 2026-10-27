@@ -1,0 +1,60 @@
+{
+  "id": "out_of_the_ashes",
+  "title": "Out of the Ashes",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0
+          }
+        }
+      ],
+      "text": "Make a run."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "from_discard": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RemoveFromGame": "ThisCard"
+                  },
+                  {
+                    "PromptChooseServer": {
+                      "chooser": "Runner",
+                      "rez_cost_delta": 0,
+                      "bonus_run_credits": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may remove it from the game to make a run",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, if Out of the Ashes is in your heap, you may remove it from the game to make a run."
+    }
+  ],
+  "built_from": 10080,
+  "is_playable": true
+}
