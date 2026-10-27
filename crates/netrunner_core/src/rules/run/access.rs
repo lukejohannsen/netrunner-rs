@@ -623,6 +623,11 @@ fn left_its_place(events: &[GameEvent], card_id: &CardId) -> bool {
         || events.iter().any(|e| match e {
             GameEvent::CardRemovedFromGame { side: Side::Corp, card } | GameEvent::CardHosted { card, .. } => card == card_id,
             GameEvent::AddedToScoreAreaAsAgenda { side: Side::Runner, card, .. } => card == card_id,
+            // Kept by the Corp as it was accessed (Quantum Predictive
+            // Model's "add it to your score area"): left unnoticed, the
+            // Runner was still offered the steal of a card the Corp had
+            // scored, and both score areas held it.
+            GameEvent::AgendaAddedToScoreArea { card, .. } => card == card_id,
             // Stolen by a card's text as it was accessed (Whistleblower).
             GameEvent::AgendaStolen { card, .. } => card == card_id,
             _ => false,

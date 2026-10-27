@@ -1,0 +1,38 @@
+{
+  "id": "knifed",
+  "title": "Knifed",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnIceFullyBroken",
+                "filter": {
+                  "Card": {
+                    "IceOfType": "Barrier"
+                  }
+                },
+                "this_run": true,
+                "effect": {
+                  "TrashCard": "EncounteredIce"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 7038,
+  "is_playable": true
+}

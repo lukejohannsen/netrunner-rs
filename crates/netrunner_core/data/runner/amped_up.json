@@ -1,0 +1,31 @@
+{
+  "id": "amped_up",
+  "title": "Amped Up",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            3
+          ]
+        },
+        {
+          "Unpreventable": {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 7031,
+  "is_playable": true
+}

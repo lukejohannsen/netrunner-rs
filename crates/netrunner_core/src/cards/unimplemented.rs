@@ -316,7 +316,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("faust", "Faust"),
     ("street_peddler", "Street Peddler"),
     ("armand_geist_walker_tech_lord", "Armand \"Geist\" Walker: Tech Lord"),
-    ("drive_by", "Drive By"),
     ("forger", "Forger"),
     ("shiv", "Shiv"),
     ("gang_sign", "Gang Sign"),
@@ -360,11 +359,9 @@ pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *The Universe of Tomorrow* (`the_universe_of_tomorrow`): tranche F7 of the FFG plan.
 pub(crate) const UOT_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("power_to_the_people", "Power to the People"),
     ("surfer", "Surfer"),
     ("ddos", "DDoS"),
     ("laramy_fisk_savvy_investor", "Laramy Fisk: Savvy Investor"),
-    ("fisk_investment_seminar", "Fisk Investment Seminar"),
     ("bookmark", "Bookmark"),
     ("davinci", "DaVinci"),
     ("wireless_net_pavilion", "Wireless Net Pavilion"),
@@ -414,15 +411,10 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("edward_kim_humanitys_hammer", "Edward Kim: Humanity's Hammer"),
     ("maxx_maximum_punk_rock", "MaxX: Maximum Punk Rock"),
     ("valencia_estevez_the_angel_of_cayambe", "Valencia Estevez: The Angel of Cayambe"),
-    ("amped_up", "Amped Up"),
     ("ive_had_worse", "I've Had Worse"),
     ("itinerant_protesters", "Itinerant Protesters"),
     ("showing_off", "Showing Off"),
     ("wanton_destruction", "Wanton Destruction"),
-    ("day_job", "Day Job"),
-    ("forked", "Forked"),
-    ("knifed", "Knifed"),
-    ("spooned", "Spooned"),
     ("eater", "Eater"),
     ("gravedigger", "Gravedigger"),
     ("hivemind", "Hivemind"),
@@ -436,7 +428,6 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sacrificial_clone", "Sacrificial Clone"),
     ("stim_dealer", "Stim Dealer"),
     ("virus_breeding_ground", "Virus Breeding Ground"),
-    ("uninstall", "Uninstall"),
     ("qianju_pt", "Qianju PT"),
     ("data_folding", "Data Folding"),
 ];

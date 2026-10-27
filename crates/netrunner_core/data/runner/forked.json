@@ -1,0 +1,38 @@
+{
+  "id": "forked",
+  "title": "Forked",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "LaterThisTurn": {
+                "when": "OnIceFullyBroken",
+                "filter": {
+                  "Card": {
+                    "IceOfType": "Sentry"
+                  }
+                },
+                "this_run": true,
+                "effect": {
+                  "TrashCard": "EncounteredIce"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 7037,
+  "is_playable": true
+}
