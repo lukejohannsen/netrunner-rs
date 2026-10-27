@@ -1,0 +1,31 @@
+{
+  "id": "beach_party",
+  "title": "Beach Party",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 5
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is increased by 5."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "When your turn begins, lose [click]."
+    }
+  ],
+  "built_from": 8031,
+  "is_playable": true
+}

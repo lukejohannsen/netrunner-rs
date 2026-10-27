@@ -1,0 +1,26 @@
+{
+  "id": "wireless_net_pavilion",
+  "title": "Wireless Net Pavilion",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "BasicTrashCost": {
+          "Credits": 2
+        }
+      },
+      "applies_to": {
+        "Trashing": {
+          "CardType": "Resource"
+        }
+      },
+      "text": "As an additional cost to take the basic action to trash 1 installed resource, the Corp must pay 2[credit]."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8108,
+  "is_playable": true
+}

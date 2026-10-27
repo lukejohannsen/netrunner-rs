@@ -1,0 +1,38 @@
+{
+  "id": "drug_dealer",
+  "title": "Drug Dealer",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, lose 1[credit]."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When the Corp's turn begins, draw 1 card."
+    }
+  ],
+  "built_from": 8083,
+  "is_playable": true
+}

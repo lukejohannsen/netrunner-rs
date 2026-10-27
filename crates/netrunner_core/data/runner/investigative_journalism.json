@@ -1,0 +1,35 @@
+{
+  "id": "investigative_journalism",
+  "title": "Investigative Journalism",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "install_requirement": {
+    "AmountAtLeast": [
+      "BadPublicity",
+      1
+    ]
+  },
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 4
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GiveBadPublicity": {
+          "Fixed": 1
+        }
+      },
+      "text": "[click][click][click][click], [trash]: Give the Corp 1 bad publicity."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7049,
+  "is_playable": true
+}

@@ -3,7 +3,7 @@
   "name": "Legislator",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Liza Talking Thunder: Prominent Legislator, Reign and Reverie's Criminal identity, who draws 2 and takes a tag on the first successful central run each turn. Hit List's fifty cards of HQ pressure, which her 50-card minimum takes whole, with two Miss Bones for its two Networking: 12 credits for trashing installed cards. No influence spent. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2. Kitara Stage 6a: two Falsified Credentials and two Wari for two WAKE Implant v2A-JRJ and two Poison Vial. Kitara Stage 6b: two Embezzle for two Inside Job. Flashpoint Stage 17 put two GPI Net Tap in for its two Lemuria Codecracker.",
+  "description": "Not a published list: built so the sweeps reach Liza Talking Thunder: Prominent Legislator, Reign and Reverie's Criminal identity, who draws 2 and takes a tag on the first successful central run each turn. Hit List's fifty cards of HQ pressure, which her 50-card minimum takes whole, with two Miss Bones for its two Networking: 12 credits for trashing installed cards. No influence spent. Eternal-legal only: Reign and Reverie is in neither Startup nor Standard. FFG F2 Stage 2. Kitara Stage 6a: two Falsified Credentials and two Wari for two WAKE Implant v2A-JRJ and two Poison Vial. Kitara Stage 6b: two Embezzle for two Inside Job. Flashpoint Stage 17 put two GPI Net Tap in for its two Lemuria Codecracker. SanSan Stage 2 swapped HQ Interface, a Fall Guy and an Easy Mark for Drug Dealer, Enhanced Vision and Symmetrical Visage.",
   "style": [
     "pressure"
   ],
@@ -42,12 +42,8 @@
       "count": 2
     },
     {
-      "card": "hq_interface",
-      "count": 2
-    },
-    {
       "card": "fall_guy",
-      "count": 2
+      "count": 1
     },
     {
       "card": "cats_cradle",
@@ -86,10 +82,6 @@
       "count": 1
     },
     {
-      "card": "easy_mark",
-      "count": 1
-    },
-    {
       "card": "special_order",
       "count": 1
     },
@@ -120,6 +112,18 @@
     {
       "card": "gpi_net_tap",
       "count": 2
+    },
+    {
+      "card": "drug_dealer",
+      "count": 2
+    },
+    {
+      "card": "enhanced_vision",
+      "count": 1
+    },
+    {
+      "card": "symmetrical_visage",
+      "count": 1
     }
   ]
 }
