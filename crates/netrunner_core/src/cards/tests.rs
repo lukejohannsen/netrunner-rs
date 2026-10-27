@@ -47844,3 +47844,55 @@ mod mumbad_stage_14 {
         assert_eq!(windfall("sure_gamble"), Credits(5), "an event has no install cost");
     }
 }
+
+mod mumbad_stage_15 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), ..Default::default() }
+    }
+
+    #[test]
+    fn a_gs_breaker_costs_no_memory_with_two_link_even_before_it_is_installed() {
+        let registry = registry();
+        let mut state = base_state();
+        let shrike = registry.get(&id("gs_shrike_m2")).unwrap();
+        state.runner.identity = Some(id("noise_hacker_extraordinaire"));
+        let base = crate::rules::memory::memory_balance(&state, &registry);
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(shrike)), base - 1, "no link: 1[mu]");
+        state.runner.identity = Some(id("sunny_lebeau_security_specialist"));
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 2);
+        assert_eq!(crate::rules::memory::memory_balance_with(&state, &registry, Some(shrike)), base, "2[link]: 0[mu] before it is installed");
+        state.runner.rig = vec![rig("gs_shrike_m2", 4001), rig("gs_striker_m1", 4002), rig("gs_sherman_m3", 4003)];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), base, "and once it is");
+    }
+
+    #[test]
+    fn safety_first_lowers_the_hand_size_and_draws_below_it_as_the_turn_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        let base = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
+        state.runner.rig = vec![rig("safety_first", 4001)];
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), base - 2);
+        let effects = registry.get(&id("safety_first")).unwrap().triggers[0].effects.clone();
+        let fire = |grip: usize| {
+            let mut state = state.clone();
+            state.runner.grip = vec![id("sure_gamble"); grip];
+            state.runner.stack = vec![id("corroder"); 2];
+            let card = id("safety_first");
+            let mut ctx = crate::rules::ResolutionContext::for_parked(Some(InstallId(4001)), Some(&card));
+            for effect in &effects {
+                crate::rules::evaluate_effect(&mut state, effect, &mut ctx, &registry).expect("resolves");
+            }
+            state.runner.grip.len()
+        };
+        // The table's change to the Runner's printed 5.
+        let size = (5 + base - 2) as usize;
+        assert_eq!(fire(size - 1), size, "below the hand size: draw 1");
+        assert_eq!(fire(size), size, "at the hand size: nothing");
+    }
+}

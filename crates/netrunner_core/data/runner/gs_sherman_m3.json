@@ -1,0 +1,59 @@
+{
+  "id": "gs_sherman_m3",
+  "title": "GS Sherman M3",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 1,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryCost": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "Link",
+          2
+        ]
+      },
+      "text": "If you have at least 2[link], the memory cost of this program is 0[mu], even if it is not installed."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break any number of barrier subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 9050,
+  "is_playable": true
+}

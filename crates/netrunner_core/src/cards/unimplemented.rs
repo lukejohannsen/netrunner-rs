@@ -261,13 +261,8 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("independent_thinking", "Independent Thinking"),
     ("always_be_running", "Always Be Running"),
     ("neutralize_all_threats", "Neutralize All Threats"),
-    ("safety_first", "Safety First"),
-    ("sunny_lebeau_security_specialist", "Sunny Lebeau: Security Specialist"),
     ("security_chip", "Security Chip"),
     ("security_nexus", "Security Nexus"),
-    ("gs_striker_m1", "GS Striker M1"),
-    ("gs_shrike_m2", "GS Shrike M2"),
-    ("gs_sherman_m3", "GS Sherman M3"),
     ("jak_sinclair", "Jak Sinclair"),
     ("employee_strike", "Employee Strike"),
 ];
