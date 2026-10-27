@@ -1,0 +1,46 @@
+{
+  "id": "run_amok",
+  "title": "Run Amok",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "All": [
+                      "Ice",
+                      "RezzedDuringLastRun"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "TrashCard": "ThisCard"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Make a run. When the run ends, trash 1 piece of ice that was rezzed during this run."
+    }
+  ],
+  "built_from": 10001,
+  "is_playable": true
+}

@@ -126,6 +126,11 @@ pub(crate) struct Moment {
     /// as the run is initiated (CR 6.9.1); the event names only the server.
     /// `None` for every other moment.
     pub guarded: Option<bool>,
+    /// Which of the card's abilities was used, for a use
+    /// (`GameEvent::AbilityActivated::ability_index`) — Tech Trader's
+    /// "[trash] ability" (`EventFilter::TrashAbility`). `None` for every
+    /// other moment.
+    pub ability: Option<usize>,
 }
 
 /// A card that may hear a moment.
@@ -169,7 +174,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None, guarded: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -180,7 +185,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None, guarded: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -273,8 +278,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AdvancementCountersRemoved { .. } => Vec::new(),
         // Every use is using the card (CR 9.1.6, The Back); only an action
         // is "taking an action on" it (CR 9.5.2a, Juli Moreira Lee).
-        GameEvent::AbilityActivated { side, card_id, install, action, .. } => {
-            let used = moment(Trigger::OnAbilityUsed, &card(card_id, *install), Some(*side));
+        GameEvent::AbilityActivated { side, card_id, ability_index, install, action } => {
+            let used = Moment { ability: Some(*ability_index), ..moment(Trigger::OnAbilityUsed, &card(card_id, *install), Some(*side)) };
             match action {
                 true => vec![moment(Trigger::OnActionTaken, &card(card_id, *install), Some(*side)), used],
                 false => vec![used],
@@ -828,6 +833,10 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::NotInArchives = filter {
         return moment.in_archives == Some(false);
     }
+    if let EventFilter::TrashAbility = filter {
+        let About::Card { card, .. } = &moment.about else { return false };
+        return moment.ability.and_then(|index| registry.get(card)?.abilities.get(index)?.cost.as_ref().map(crate::dsl::Cost::prints_trash)) == Some(true);
+    }
     if let EventFilter::ProtectedByTwoOrMoreIce = filter {
         return moment.guarded == Some(true);
     }
@@ -845,6 +854,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             };
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
                 && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, listening, here), *install)
+                && identity_faction(state, registry, filter, card) != Some(false)
         }
         (EventFilter::InstalledCard(filter), About::Card { card, installed: true, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
@@ -860,6 +870,40 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         (EventFilter::AtLeast(least), About::Cards(count)) => count >= least,
         // `CardDefinition::validate` refuses the mismatch in a card file.
         _ => false,
+    }
+}
+
+/// What `filter` says about `card` through the identity in play
+/// (`CardFilter::MatchesOwnersIdentityFaction`), or `None` where it says
+/// nothing — Indian Union Stock Exchange's "an **out-of-faction** card"
+/// (`Not`), rezzed or played. The identity is the card's own side's, as a
+/// selection reads the zone's owner's. Every other word is the
+/// definition's or the copy's, asked beside this, so `All` and `AnyOf` are
+/// read over the parts that ask it (no pool card writes this word inside
+/// an `AnyOf`). Composition didn't work: the word was only
+/// asked of a card in a zone, and a played operation is in none.
+fn identity_faction(state: &GameState, registry: &CardRegistry, filter: &crate::dsl::CardFilter, card: &CardId) -> Option<bool> {
+    use crate::dsl::CardFilter;
+    match filter {
+        CardFilter::MatchesOwnersIdentityFaction => {
+            let definition = registry.get(card)?;
+            let identity = match definition.side {
+                Side::Corp => state.corp.identity.as_ref(),
+                Side::Runner => state.runner.identity.as_ref(),
+            };
+            let theirs = identity.and_then(|identity| registry.get(identity)).and_then(|identity| identity.faction);
+            Some(theirs.is_some() && definition.faction == theirs)
+        }
+        CardFilter::Not(inner) => identity_faction(state, registry, inner, card).map(|admitted| !admitted),
+        CardFilter::All(parts) => {
+            let verdicts: Vec<bool> = parts.iter().filter_map(|part| identity_faction(state, registry, part, card)).collect();
+            (!verdicts.is_empty()).then(|| verdicts.iter().all(|admitted| *admitted))
+        }
+        CardFilter::AnyOf(parts) => {
+            let verdicts: Vec<bool> = parts.iter().filter_map(|part| identity_faction(state, registry, part, card)).collect();
+            (!verdicts.is_empty()).then(|| verdicts.iter().any(|admitted| *admitted))
+        }
+        _ => None,
     }
 }
 

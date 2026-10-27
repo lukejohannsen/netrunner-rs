@@ -174,7 +174,6 @@ pub(crate) const TD_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Kala Ghoda* (`kala_ghoda`): tranche F6 of the FFG plan.
 pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("run_amok", "Run Amok"),
     ("ramujan_reliant_550_bmi", "Ramujan-reliant 550 BMI"),
     ("street_magic", "Street Magic"),
     ("mongoose", "Mongoose"),
@@ -189,7 +188,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("emp_device", "EMP Device"),
     ("diwan", "Diwan"),
-    ("tech_trader", "Tech Trader"),
     ("corporate_scandal", "Corporate Scandal"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
 ];
@@ -206,12 +204,10 @@ pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.
 pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("salsette_slums", "Salsette Slums"),
     ("bazaar", "Bazaar"),
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
-    ("indian_union_stock_exchange", "Indian Union Stock Exchange"),
     ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];
 
@@ -221,7 +217,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("information_sifting", "Information Sifting"),
     ("out_of_the_ashes", "Out of the Ashes"),
     ("rebirth", "Rebirth"),
-    ("guru_davinder", "Guru Davinder"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
 ];
 
@@ -936,7 +931,6 @@ pub(crate) const MO_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("queens_gambit", "Queen's Gambit"),
     ("quest_completed", "Quest Completed"),
-    ("run_amok", "Run Amok"),
     ("lamprey", "Lamprey"),
     ("leela_patel_trained_pragmatist", "Leela Patel: Trained Pragmatist"),
     ("hostage", "Hostage"),

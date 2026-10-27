@@ -660,6 +660,9 @@ impl Occurrences {
             Some(EventFilter::TrashedFromThisServer) => {
                 return Err(format!("the turn counts a {trigger:?} without the server the card left, so \"the first\" cannot be narrowed by it"));
             }
+            Some(EventFilter::TrashAbility) => {
+                return Err(format!("the turn counts a {trigger:?} without which ability was used, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::TrashedRezzed) => {
                 return Err(format!("the turn counts a {trigger:?} without whether the card was rezzed, so \"the first\" cannot be narrowed by it"));
             }

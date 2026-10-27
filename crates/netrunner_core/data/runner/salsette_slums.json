@@ -1,0 +1,29 @@
+{
+  "id": "salsette_slums",
+  "title": "Salsette Slums",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "CreditsAmount": "AccessedCardTrashCost"
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "CurrentlyAccessingMatches": "HasTrashCost"
+          }
+        ]
+      },
+      "effect": "RemoveCurrentlyAccessedCardFromGame",
+      "text": "Access, once per turn → Pay the trash cost of the card you are accessing: Remove that card from the game."
+    }
+  ],
+  "built_from": 10059,
+  "is_playable": true
+}
