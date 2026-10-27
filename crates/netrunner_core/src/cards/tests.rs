@@ -47995,3 +47995,132 @@ mod mumbad_stage_16 {
         assert_eq!(removed.runner.resources.credits, Credits(0), "PAD Campaign's trash cost of 4");
     }
 }
+
+mod mumbad_stage_17 {
+    use super::*;
+    use super::reprints::runner_turn;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn tour_in_a_remote() -> GameState {
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("mumbad_virtual_tour"),
+            card: id("mumbad_virtual_tour"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state
+    }
+
+    #[test]
+    fn mumbad_virtual_tour_must_be_trashed_when_the_runner_can_pay() {
+        let registry = registry();
+        let mut state = tour_in_a_remote();
+        state.runner.resources.credits = Credits(5);
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let pass = PlayerAction::PassAccessedCard { card_id: id("mumbad_virtual_tour") };
+        assert!(matches!(apply_action(&accessing, &registry, pass.clone()), Err(RulesError::MustTrashIfAble { .. })));
+        assert!(!crate::rules::legal_actions_for(&accessing, &registry, Side::Runner).contains(&pass), "the pass is not offered");
+        let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("mumbad_virtual_tour") }).expect("trash it");
+        assert!(trashed.corp.installed.is_empty());
+        assert_eq!(trashed.runner.resources.credits, Credits(0));
+
+        let mut poor = tour_in_a_remote();
+        poor.runner.resources.credits = Credits(4);
+        let (accessing, _) = run_to_completion(poor, &registry, ServerId::Remote(0));
+        assert!(apply_action(&accessing, &registry, pass).is_ok(), "unable, so the Runner passes");
+    }
+
+    #[test]
+    fn the_noble_path_trashes_the_grip_and_prevents_all_damage_during_its_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("the_noble_path"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1001),
+            card: id("snare"),
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        state.corp.resources.credits = Credits(5);
+        let (mut asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("the_noble_path") }).expect("play");
+        for position in 0..2 {
+            asked = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position }).expect("a grip card").0;
+        }
+        let (asked, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("the whole grip");
+        let (asked, _) = close_all_windows(asked, &registry);
+        assert!(asked.runner.grip.is_empty(), "the grip is trashed first");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run the remote");
+        let (running, _) = close_all_windows(running, &registry);
+        let (running, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to success");
+        let (accessing, _) = apply_action(&running, &registry, PlayerAction::CompleteRun).expect("access");
+        let (accessing, _) = close_all_windows(accessing, &registry);
+        let (snared, events) = apply_action(&accessing, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("the Corp pays");
+        let (snared, _) = close_all_windows(snared, &registry);
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::Prevented { what: crate::rules::WouldHappen::Damage { .. }, amount: 3 })), "{events:?}");
+        assert!(!matches!(snared.phase, GamePhase::GameOver(_)), "an empty grip survives 3 net damage");
+        assert_eq!(snared.runner.tags, 1, "the tag is not damage");
+    }
+
+    #[test]
+    fn the_price_of_freedom_stops_the_corp_advancing_through_their_next_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("the_price_of_freedom")];
+        let play = PlayerAction::PlayEvent { card_id: id("the_price_of_freedom") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no connection to trash");
+        state.runner.rig = vec![super::reprints::rig("dj_fenris", 0)];
+        let (mut played, _) = apply_action(&state, &registry, play).expect("play");
+        if let Some(position) = crate::rules::legal_actions_for(&played, &registry, Side::Runner).into_iter().find_map(|action| match action {
+            PlayerAction::ToggleCardSelection { position } => Some(position),
+            _ => None,
+        }) {
+            played = apply_action(&played, &registry, PlayerAction::ToggleCardSelection { position }).expect("the connection").0;
+            played = apply_action(&played, &registry, PlayerAction::ConfirmCardSelection).expect("pay").0;
+        }
+        let (played, _) = close_all_windows(played, &registry);
+        assert!(played.runner.rig.is_empty() && played.runner.heap.contains(&id("dj_fenris")), "DJ Fenris paid for it");
+        assert!(!played.runner.heap.contains(&id("the_price_of_freedom")), "removed from the game");
+
+        let mut corp = played.clone();
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.clicks = Clicks(3);
+        corp.corp.resources.credits = Credits(5);
+        corp.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1001),
+            card: id("hostile_takeover"),
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        assert!(matches!(apply_action(&corp, &registry, PlayerAction::AdvanceCard { target: InstallId(1001) }), Err(RulesError::AdvanceProhibited)));
+        corp.lingering.clear();
+        assert!(apply_action(&corp, &registry, PlayerAction::AdvanceCard { target: InstallId(1001) }).is_ok());
+    }
+
+    #[test]
+    fn the_black_file_holds_off_an_agenda_win_until_it_leaves() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..super::reprints::rig("the_black_file", 0) }];
+        state.corp.scored_agendas = (0..4).map(|_| crate::rules::ScoredAgenda::plain(id("project_atlas"))).collect();
+        crate::rules::win::refresh_tallies(&mut state, &registry);
+        crate::rules::win::check_win_conditions(&mut state, &registry);
+        assert!(!state.is_over(), "8 points, and the Corp cannot win by them");
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.runner.rig.is_empty(), "a third counter removes it from the game");
+        assert!(!state.runner.heap.contains(&id("the_black_file")));
+        let mut state = state;
+        crate::rules::win::refresh_tallies(&mut state, &registry);
+        crate::rules::win::check_win_conditions(&mut state, &registry);
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+    }
+}

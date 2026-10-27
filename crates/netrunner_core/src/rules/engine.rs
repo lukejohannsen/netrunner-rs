@@ -3121,6 +3121,9 @@ fn advance_card(
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    if continuous::cannot(state, registry, Prohibition::Advance) {
+        return Err(RulesError::AdvanceProhibited);
+    }
     // Resolved before any cost is paid: `pay_cost` wants the acting card,
     // and a stale `InstallId` must not cost the Corp a click and a credit.
     let card_id = state.find_corp_install(target).ok_or(RulesError::InstallNotFound(target))?.card.clone();
@@ -3553,6 +3556,16 @@ fn pass_accessed_card(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_runner_accessing(state)?;
     paid_ability::require_no_window(state)?;
+    // "They must trash it, if able" (Mumbad Virtual Tour): the pass is
+    // refused while the trash would be accepted — paid for, or asking how
+    // to pay, which is a trash that can be made.
+    let installed = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.pending_install.is_some());
+    if installed
+        && continuous::must_be_trashed_when_accessed(state, registry, &card_id)
+        && matches!(trash_accessed_card(state, registry, card_id.clone()), Ok(_) | Err(RulesError::PaymentChoiceNeeded { .. }))
+    {
+        return Err(RulesError::MustTrashIfAble { card: card_id });
+    }
     let mut next = state.clone();
     let events = run::resolve_pass(&mut next, &card_id, registry)?;
     Ok((next, events))

@@ -1,0 +1,21 @@
+{
+  "id": "mumbad_virtual_tour",
+  "title": "Mumbad Virtual Tour",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 5,
+  "free_influence_if": {
+    "AssetsAtLeast": 7
+  },
+  "continuous": [
+    {
+      "kind": "TrashedWhenAccessed",
+      "applies_to": "This",
+      "text": "When the Runner accesses this upgrade while it is installed, they must trash it, if able."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10076,
+  "is_playable": true
+}

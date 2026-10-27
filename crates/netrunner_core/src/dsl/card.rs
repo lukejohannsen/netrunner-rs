@@ -1049,6 +1049,8 @@ pub enum FreeInfluence {
     CopiesOf { card: CardId, count: u32 },
     /// "if you have 15 or fewer ice in your deck" — Mumba Temple.
     IceAtMost(u32),
+    /// "if you have 7 or more assets in your deck" — Mumbad Virtual Tour.
+    AssetsAtLeast(u32),
     /// "if you have 50 or more cards in your deck" — Museum of History.
     DeckSizeAtLeast(u32),
 }
@@ -2243,6 +2245,10 @@ impl CardDefinition {
                     return misfit("RezzedAsNonIce", "when a piece of ice may be rezzed is said by the ice of itself (`This`)");
                 }
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
+                (ContinuousKind::TrashedWhenAccessed, Scope::This) if self.side == Side::Corp => {}
+                (ContinuousKind::TrashedWhenAccessed, _) => {
+                    return misfit("TrashedWhenAccessed", "only a Corp card is accessed, and Mumbad Virtual Tour says so of itself (`This`)");
+                }
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and a Corp card says so of itself (`This`) or of the cards being accessed (`Accessing`)");
                 }

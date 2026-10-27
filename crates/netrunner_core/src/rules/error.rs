@@ -179,6 +179,10 @@ pub enum RulesError {
     /// `Prohibition::JackOut`).
     #[error("the Runner cannot jack out of this run")]
     JackOutProhibited,
+    /// The Corp cannot advance cards now (The Price of Freedom,
+    /// `Prohibition::Advance`).
+    #[error("the Corp cannot advance cards this turn")]
+    AdvanceProhibited,
 
     /// The additional cost to run the server (CR 6.3.2b: Earth Station: SEA
     /// Headquarters) cannot be paid, so the run cannot be made.
@@ -232,6 +236,11 @@ pub enum RulesError {
 
     #[error("Agenda {card:?} must be stolen and cannot be passed")]
     MandatoryStealViolation { card: CardId },
+
+    /// The card says the Runner must trash it when they access it, if able
+    /// (`ContinuousKind::TrashedWhenAccessed`), and they are able.
+    #[error("{card:?} must be trashed, since the Runner is able to")]
+    MustTrashIfAble { card: CardId },
 
     #[error("attempted to pay {requested} credit(s) to steal {card:?} but only has {available}")]
     CannotAffordStealCost { card: CardId, available: u32, requested: u32 },

@@ -797,6 +797,15 @@ pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry
     any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::RevealedWhileAccessed))
 }
 
+/// Whether the Runner must trash `card` on accessing it installed, if able
+/// (`ContinuousKind::TrashedWhenAccessed`, Mumbad Virtual Tour). Asked of
+/// the card itself, as [`revealed_while_accessed`] is; whether it is
+/// installed is the access's to say.
+pub(crate) fn must_be_trashed_when_accessed(state: &GameState, registry: &CardRegistry, card: &CardId) -> bool {
+    let Some(definition) = registry.get(card) else { return false };
+    any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::TrashedWhenAccessed))
+}
+
 /// Whether the ice `install` may be rezzed whenever a non-ice card could
 /// be (`ContinuousKind::RezzedAsNonIce`, Rime's), as the table stands.
 pub(crate) fn rezzed_as_non_ice(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {

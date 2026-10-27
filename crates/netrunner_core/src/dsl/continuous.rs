@@ -278,6 +278,15 @@ pub enum ContinuousKind {
     /// because it is a static ability of the card's, read wherever the card
     /// is, like every `Scope::This` effect.
     RevealedWhileAccessed,
+    /// The Runner must trash the card when they access it while it is
+    /// installed, if able — Mumbad Virtual Tour's "When the Runner accesses
+    /// this upgrade while it is installed, they must trash it, if able".
+    /// Said by a Corp card of itself (`This`), and asked as the Runner
+    /// passes it (`continuous::must_be_trashed_when_accessed`): a pass is
+    /// refused while the trash could be made, paying its cost, so a Runner
+    /// who cannot pay, or may not trash, passes. Composition didn't work:
+    /// an access offers a trash and a pass, and nothing took the pass away.
+    TrashedWhenAccessed,
     /// "You can rez this ice any time you could rez non-ice cards" —
     /// Rime's, `while` a run is against its server
     /// (`RunAgainstThisServer`): the windows marked (R) (CR 9.2.7c) and the

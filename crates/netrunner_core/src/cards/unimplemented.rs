@@ -208,12 +208,10 @@ pub(crate) const SI_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("personality_profiles", "Personality Profiles"),
     ("jeeves_model_bioroids", "Jeeves Model Bioroids"),
     ("raman_rai", "Raman Rai"),
-    ("mumbad_virtual_tour", "Mumbad Virtual Tour"),
 ];
 
 /// *The Liberated Mind* (`the_liberated_mind`): tranche F6 of the FFG plan.
 pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("the_noble_path", "The Noble Path"),
     ("information_sifting", "Information Sifting"),
     ("out_of_the_ashes", "Out of the Ashes"),
     ("rebirth", "Rebirth"),
@@ -222,8 +220,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
 pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("the_black_file", "The Black File"),
-    ("the_price_of_freedom", "The Price of Freedom"),
     ("rigged_results", "Rigged Results"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
     ("full_immersion_recstudio", "Full Immersion RecStudio"),

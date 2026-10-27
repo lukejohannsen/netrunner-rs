@@ -30,7 +30,7 @@ mod turn;
 pub(crate) mod prevention;
 pub mod turn_log;
 mod uninstall;
-mod win;
+pub(crate) mod win;
 
 // `check_requirement` is public for the bots' evaluator, which reads an
 // identity's intervening "if" as the engine would at a moment it prices
