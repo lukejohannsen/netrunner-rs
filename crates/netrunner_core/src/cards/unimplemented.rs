@@ -192,8 +192,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("tech_trader", "Tech Trader"),
     ("corporate_scandal", "Corporate Scandal"),
     ("lakshmi_smartfabrics", "Lakshmi Smartfabrics"),
-    ("palana_foods_sustainable_growth", "Pālanā Foods: Sustainable Growth"),
-    ("pad_factory", "PAD Factory"),
 ];
 
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
@@ -226,7 +224,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("guru_davinder", "Guru Davinder"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
     ("exchange_of_information", "Exchange of Information"),
-    ("consulting_visit", "Consulting Visit"),
 ];
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
@@ -236,7 +233,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rigged_results", "Rigged Results"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
     ("full_immersion_recstudio", "Full Immersion RecStudio"),
-    ("ibrahim_salem", "Ibrahim Salem"),
     ("navi_mumbai_city_grid", "Navi Mumbai City Grid"),
 ];
 

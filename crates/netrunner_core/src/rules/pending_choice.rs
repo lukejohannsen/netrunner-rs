@@ -512,19 +512,21 @@ fn instance_matches_filter(
         CardFilter::InChosenServer => false,
         CardFilter::Advanced => corp_install.is_some_and(|c| c.advancement_tokens > 0),
         CardFilter::Unadvanced => corp_install.is_some_and(|c| c.advancement_tokens == 0),
-        // Either zone an operation can be played from: HQ (Humanoid
-        // Resources) or Archives (Plutus). The zone the selection reads
-        // decides which, and `can_play_operation` is told, because playing
-        // from Archives removes the card from the game afterwards.
+        // Any zone an operation can be played from: HQ (Humanoid
+        // Resources), Archives (Plutus) or R&D (Consulting Visit). The zone
+        // the selection reads decides which, and `can_play_operation` is
+        // told, because playing from Archives removes the card from the
+        // game afterwards.
         CardFilter::PlayableOperation => {
-            let from_archives = matches!(zone, CardZoneRef::OwnArchives);
             let card = match zone {
                 CardZoneRef::OwnHq => state.corp.hq.get(position).cloned(),
                 CardZoneRef::OwnArchives => state.corp.archives.get(position).map(|a| a.card.clone()),
+                CardZoneRef::OwnRAndD => state.corp.r_and_d.get(position).cloned(),
                 _ => None,
             };
+            let from = crate::rules::engine::OperationOrigin::of(zone);
             chooser == Side::Corp
-                && card.is_some_and(|card| crate::rules::engine::can_play_operation(state, registry, &card, from_archives, false))
+                && card.zip(from).is_some_and(|(card, from)| crate::rules::engine::can_play_operation(state, registry, &card, from, false))
         }
         CardFilter::AccessedDuringLastRun => {
             let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();

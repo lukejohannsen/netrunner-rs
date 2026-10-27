@@ -47622,3 +47622,124 @@ mod mumbad_stage_12 {
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("aghora"), ability_index: 2 }).is_err());
     }
 }
+
+mod mumbad_stage_13 {
+    use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(hand: &[&str]) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = hand.iter().map(|card| id(card)).collect();
+        (state, registry())
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, side)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn asset(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), rezzed, ..Default::default() }
+    }
+
+    #[test]
+    fn palana_foods_gains_on_the_runners_first_draw_each_turn_only() {
+        let mut state = base_state();
+        let registry = registry();
+        state.corp.identity = Some(id("palana_foods_sustainable_growth"));
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.stack = vec![id("sure_gamble"); 3];
+        state.corp.resources.credits = Credits(5);
+        let (once, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw");
+        let (once, _) = close_all_windows(once, &registry);
+        assert_eq!(once.corp.resources.credits, Credits(6), "the first draw this turn");
+        let (twice, _) = apply_action(&once, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw again");
+        let (twice, _) = close_all_windows(twice, &registry);
+        assert_eq!(twice.corp.resources.credits, Credits(6), "only the first");
+
+        let (mut corp, _) = corp_turn(&[]);
+        corp.corp.identity = Some(id("palana_foods_sustainable_growth"));
+        corp.corp.r_and_d = vec![id("hedge_fund")];
+        let (drew, _) = apply_action(&corp, &registry, PlayerAction::DrawCardClick { side: Side::Corp }).expect("the Corp draws");
+        let (drew, _) = close_all_windows(drew, &registry);
+        assert_eq!(drew.corp.resources.credits, Credits(10), "the Corp's own draw is not the Runner's");
+    }
+
+    #[test]
+    fn ibrahim_salem_trashes_a_card_of_the_named_type_from_the_grip() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.installed = vec![asset("ibrahim_salem", true)];
+        state.corp.r_and_d = vec![id("ice_wall"); 2];
+        state.runner.grip = vec![id("sure_gamble"), id("corroder"), id("datasucker")];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Corp);
+        let (state, _) = close_all_windows(state, &registry);
+        let (named, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).expect("name program");
+        let offered = toggles(&named, &registry, Side::Corp);
+        assert_eq!(offered, vec![1, 2], "the two programs");
+        let (done, _) = close_all_windows(select(&named, &registry, &[2]), &registry);
+        assert_eq!(done.runner.grip, vec![id("sure_gamble"), id("corroder")]);
+        assert_eq!(done.runner.heap, vec![id("datasucker")]);
+    }
+
+    #[test]
+    fn ibrahim_salem_is_rezzed_by_forfeiting_an_agenda() {
+        let (mut state, registry) = corp_turn(&[]);
+        state.corp.installed = vec![asset("ibrahim_salem", false)];
+        assert!(apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ibrahim_salem") }).is_err(), "nothing to forfeit");
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        let (done, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ibrahim_salem") }).expect("forfeit and pay 2");
+        assert!(done.corp.installed[0].rezzed && done.corp.scored_agendas.is_empty());
+        assert_eq!(done.corp.resources.credits, Credits(10 - 2));
+    }
+
+    #[test]
+    fn consulting_visit_plays_an_operation_out_of_rnd() {
+        let (mut state, registry) = corp_turn(&["consulting_visit"]);
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("ice_wall")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("consulting_visit") }).expect("play");
+        assert_eq!(asked.corp.resources.clicks, Clicks(1), "the play's click and the additional one");
+        assert_eq!(toggles(&asked, &registry, Side::Corp), vec![1], "only an operation it can play");
+        let (done, _) = close_all_windows(select(&asked, &registry, &[1]), &registry);
+        assert_eq!(done.corp.resources.credits, Credits(10 - 2 - 5 + 9), "Hedge Fund played, paying its cost");
+        assert_eq!(done.corp.r_and_d, vec![id("ice_wall"); 2]);
+        assert!(done.corp.hq.is_empty(), "the card never passed through HQ");
+        assert!(done.corp.archives.iter().any(|a| a.card == id("hedge_fund")));
+    }
+
+    #[test]
+    fn pad_factory_advances_a_card_that_cannot_then_be_scored_this_turn() {
+        let (mut state, registry) = corp_turn(&[]);
+        let mut agenda = asset("hostile_takeover", false);
+        agenda.server = ServerId::Remote(1);
+        state.corp.installed = vec![asset("pad_factory", true), agenda];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "pad_factory"), ability_index: 0 }).expect("activate");
+        let position = toggles(&asked, &registry, Side::Corp).into_iter().find(|&p| p == 1).expect("the agenda is offered");
+        let (done, _) = close_all_windows(select(&asked, &registry, &[position]), &registry);
+        let agenda = done.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).unwrap();
+        assert_eq!(agenda.advancement_tokens, 1);
+        let mut ready = done.clone();
+        ready.corp.installed.iter_mut().find(|card| card.card == id("hostile_takeover")).unwrap().advancement_tokens = 2;
+        assert!(apply_action(&ready, &registry, PlayerAction::ScoreAgenda { target: install_of(&ready, "hostile_takeover") }).is_err(), "you cannot score that card");
+    }
+}

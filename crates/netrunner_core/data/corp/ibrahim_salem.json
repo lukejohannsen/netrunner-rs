@@ -1,0 +1,58 @@
+{
+  "id": "ibrahim_salem",
+  "title": "Ibrahim Salem",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 5,
+  "unique": true,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "rez_alternatives": [
+    {
+      "cost": {
+        "Forfeit": 1
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              { "Remember": { "what": { "CardType": "Event" }, "until": "UntilChosenAgain" } },
+              { "Remember": { "what": { "CardType": "Hardware" }, "until": "UntilChosenAgain" } },
+              { "Remember": { "what": { "CardType": "Program" }, "until": "UntilChosenAgain" } },
+              { "Remember": { "what": { "CardType": "Resource" }, "until": "UntilChosenAgain" } }
+            ],
+            "texts": [
+              "name a card type — event",
+              "name a card type — hardware",
+              "name a card type — program",
+              "name a card type — resource"
+            ]
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentHand",
+            "filter": "OfChosenCardType",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        }
+      ],
+      "text": "When your turn begins, name a card type. Look at the Runner's grip and trash 1 card in it of the named type."
+    }
+  ],
+  "built_from": 10109,
+  "is_playable": true
+}

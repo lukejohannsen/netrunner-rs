@@ -1,0 +1,40 @@
+{
+  "id": "consulting_visit",
+  "title": "Consulting Visit",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "free_influence_if": {
+    "NonAllianceOfItsFaction": 6
+  },
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": "PlayableOperation",
+            "min": 1,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": true,
+            "then": {
+              "PlayOperation": {
+                "from": "OwnRAndD"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Search R&D for an operation and play it (paying all costs). Shuffle R&D."
+    }
+  ],
+  "built_from": 10094,
+  "is_playable": true
+}

@@ -1,0 +1,43 @@
+{
+  "id": "pad_factory",
+  "title": "PAD Factory",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "free_influence_if": {
+    "CopiesOf": {
+      "card": "pad_campaign",
+      "count": 3
+    }
+  },
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "Sequence": [
+              { "PlaceAdvancementCounters": { "Fixed": 1 } },
+              { "Prohibit": { "what": "ScoreAgendas", "until": "Turn", "this_install": true } }
+            ]
+          }
+        }
+      },
+      "text": "[click]: Place 1 advancement token on a card. You cannot score that card until your next turn begins."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10038,
+  "is_playable": true
+}
