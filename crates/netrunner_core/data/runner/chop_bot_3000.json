@@ -1,0 +1,58 @@
+{
+  "id": "chop_bot_3000",
+  "title": "Chop Bot 3000",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": "NotSourceCard",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "DrawCards": [
+                          "Runner",
+                          1
+                        ]
+                      },
+                      {
+                        "RemoveTags": {
+                          "Fixed": 1
+                        }
+                      }
+                    ],
+                    "texts": [
+                      "draw 1 card",
+                      "remove 1 tag"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may trash another of your installed cards. If you do, draw 1 card or remove 1 tag."
+    }
+  ],
+  "built_from": 7045,
+  "is_playable": true
+}

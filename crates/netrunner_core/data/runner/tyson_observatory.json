@@ -1,0 +1,34 @@
+{
+  "id": "tyson_observatory",
+  "title": "Tyson Observatory",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnStack",
+          "filter": {
+            "CardType": "Hardware"
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": true,
+          "destination": "OwnGrip"
+        }
+      },
+      "text": "[click], [click]: Search your stack for a piece of hardware, reveal it, and add it to your grip. Shuffle your stack."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8030,
+  "is_playable": true
+}
