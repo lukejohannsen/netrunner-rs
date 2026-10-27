@@ -317,6 +317,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::SufferDamage => "all damage the Runner would take is prevented",
         Prohibition::Advance => "the Corp cannot advance cards",
         Prohibition::WinByAgendaPoints => "the Corp cannot win except by flatlining the Runner",
+        Prohibition::InstalledCardAbilities => "the Runner cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
         Prohibition::Install => "the Runner cannot install cards",
         Prohibition::ResolveFirstThreeSubroutines => "the first 3 subroutines of the next encounter do not resolve",
         Prohibition::ResolveFirstSubroutine => "the first subroutine to resolve this run does not",
@@ -390,6 +391,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let step = match to {
                         netrunner_core::dsl::CostedStep::JackOut => "jack out",
                         netrunner_core::dsl::CostedStep::BreakSubroutine => "break each subroutine",
+                        netrunner_core::dsl::CostedStep::IcebreakerBreak => "use an icebreaker ability to break subroutines",
                     };
                     format!("the Runner must {} to {step}", crate::prose::describe_cost(cost))
                 }

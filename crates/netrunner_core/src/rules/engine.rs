@@ -2884,6 +2884,18 @@ fn activate_ability(
     {
         return Err(RulesError::AbilityProhibited { card: card_id });
     }
+    // Navi Mumbai City Grid's "the Runner cannot use paid abilities on
+    // their installed cards except for mid-access abilities and abilities
+    // on icebreakers".
+    if side == Side::Runner
+        && card_def.side == Side::Runner
+        && state.find_rig_install(target).is_some()
+        && !ability.access
+        && !card_def.subtypes.contains(&crate::dsl::CardSubtype::Icebreaker)
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::InstalledCardAbilities)
+    {
+        return Err(RulesError::AbilityProhibited { card: card_id });
+    }
     // A [click] ability is an action (CR 9.5.2a), taken in the action
     // window of its user's turn: never in a paid ability window, which
     // admits no actions (CR 9.2.7b). Mid-run it is refused already, by

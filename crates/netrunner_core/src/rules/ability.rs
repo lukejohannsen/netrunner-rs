@@ -6208,6 +6208,16 @@ fn break_pending(
         }
     };
     let mut events = Vec::new();
+    // Interrupt 0's: once for the use, before anything is broken.
+    let icebreaker = by
+        .and_then(|install| state.find_rig_install(install))
+        .and_then(|card| registry.get(&card.card))
+        .is_some_and(|definition| definition.side == Side::Runner && card_matches_filter(definition, &CardFilter::Icebreaker));
+    if icebreaker && take > 0 {
+        let cost_events = pay_additional_costs(state, registry, CostedStep::IcebreakerBreak)?;
+        events.extend(cost_events.clone());
+        events.extend(dispatch_cost_events(state, registry, &cost_events)?);
+    }
     for (broken, (idx, limited)) in pending.into_iter().take(take).enumerate() {
         // Armored Servers' "as an additional cost to … break a
         // subroutine", paid for each: an ability that breaks several stops

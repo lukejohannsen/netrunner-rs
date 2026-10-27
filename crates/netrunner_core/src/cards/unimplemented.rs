@@ -181,7 +181,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("panchatantra", "Panchatantra"),
     ("vikram_1_0", "Vikram 1.0"),
     ("mumbad_city_grid", "Mumbad City Grid"),
-    ("interrupt_0", "Interrupt 0"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -223,7 +222,6 @@ pub(crate) const FTM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rigged_results", "Rigged Results"),
     ("harishchandra_ent_where_youre_the_star", "Harishchandra Ent.: Where You're the Star"),
     ("full_immersion_recstudio", "Full Immersion RecStudio"),
-    ("navi_mumbai_city_grid", "Navi Mumbai City Grid"),
 ];
 
 /// *Data and Destiny* (`data_and_destiny`): tranche F6 of the FFG plan.

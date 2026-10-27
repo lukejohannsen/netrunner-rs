@@ -48124,3 +48124,76 @@ mod mumbad_stage_17 {
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
     }
 }
+
+mod mumbad_stage_18 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state
+    }
+
+    #[test]
+    fn navi_mumbai_city_grid_stops_a_rig_ability_during_a_run_on_its_server_but_not_a_breaker() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("fall_guy"), rig("corroder")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("navi_mumbai_city_grid"),
+            card: id("navi_mumbai_city_grid"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let cash_in = PlayerAction::ActivateAbility { target: fixture_install_id("fall_guy"), ability_index: 1 };
+        assert!(apply_action(&state, &registry, cash_in.clone()).is_ok(), "no run, so Fall Guy pays out");
+
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+        assert!(matches!(apply_action(&running, &registry, cash_in.clone()), Err(RulesError::AbilityProhibited { .. })));
+        let boost = PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 0 };
+        assert!(!matches!(apply_action(&running, &registry, boost), Err(RulesError::AbilityProhibited { .. })), "an icebreaker's ability is excepted");
+
+        let (on_hq, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert!(!matches!(apply_action(&on_hq, &registry, cash_in), Err(RulesError::AbilityProhibited { .. })), "another server's run is not this server's");
+    }
+
+    #[test]
+    fn interrupt_0_charges_a_credit_for_each_use_of_an_icebreaker_ability_for_the_rest_of_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder")];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+
+        let interrupt = registry.get(&id("interrupt_0")).expect("Interrupt 0").subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(&mut state, &interrupt, &mut crate::rules::ResolutionContext::for_card(Some(&id("interrupt_0"))), &registry).expect("the subroutine");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 0 }).expect("boost");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let before = state.runner.resources.credits;
+        let (broken, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        assert_eq!(broken.runner.resources.credits.0 + 2, before.0, "1 for the break and 1 for Interrupt 0");
+    }
+}
