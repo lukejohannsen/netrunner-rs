@@ -318,6 +318,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::Advance => "the Corp cannot advance cards",
         Prohibition::WinByAgendaPoints => "the Corp cannot win except by flatlining the Runner",
         Prohibition::InstalledCardAbilities => "the Runner cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
+        Prohibition::UsePrograms => "the Runner cannot use programs",
         Prohibition::Install => "the Runner cannot install cards",
         Prohibition::ResolveFirstThreeSubroutines => "the first 3 subroutines of the next encounter do not resolve",
         Prohibition::ResolveFirstSubroutine => "the first subroutine to resolve this run does not",

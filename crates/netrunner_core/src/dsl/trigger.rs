@@ -1068,6 +1068,13 @@ pub enum EventFilter {
     /// intervening if, asked after the first time has been judged, and a
     /// first time narrowed by it would be spent by a failed run.
     Successful,
+    /// The run that ended was jacked out of — Reflection's "whenever you
+    /// **jack out**". Read off the moment (`listeners::Moment::jacked_out`,
+    /// the event being `GameEvent::RunJackedOut`). Only on `OnRunEnded`,
+    /// and never narrowing a first time: the turn does not count how a run
+    /// ended. Composition didn't work: `LastRunUnsuccessful` admits a run
+    /// ended by a subroutine, and a jack-out is the Runner's own choice.
+    JackedOut,
     /// The accessed card was not in Archives — Maw's and Aeneas
     /// Informant's "access a card **not in Archives**". A card in the root
     /// of Archives is installed, not in the pile, and is admitted. Read off

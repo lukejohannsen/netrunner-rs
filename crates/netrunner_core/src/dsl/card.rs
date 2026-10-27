@@ -1535,6 +1535,8 @@ impl CardDefinition {
             EventFilter::TrashedRezzed => triggered.trigger == Trigger::OnCardTrashed,
             // Only a run's end says whether the run was successful.
             EventFilter::Successful => triggered.trigger == Trigger::OnRunEnded,
+            // Only a run's end says how it ended.
+            EventFilter::JackedOut => triggered.trigger == Trigger::OnRunEnded,
             // Only a pass on an access says where the card was accessed.
             EventFilter::NotInArchives => triggered.trigger == Trigger::OnAccessPassed,
             // Only a run's start says how the server was protected.

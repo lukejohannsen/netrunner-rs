@@ -1,0 +1,70 @@
+{
+  "id": "vikram_1_0",
+  "title": "Vikram 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 5,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner cannot use programs for the remainder of this run.",
+      "effect": {
+        "Prohibit": {
+          "what": "UsePrograms",
+          "until": "Run"
+        }
+      }
+    },
+    {
+      "text": "Trace[4]. If successful, do 1 core damage.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[4]. If successful, do 1 core damage.",
+      "effect": {
+        "Trace": {
+          "base": 4,
+          "on_success": {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 10012,
+  "is_playable": true
+}

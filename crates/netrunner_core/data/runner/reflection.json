@@ -1,0 +1,46 @@
+{
+  "id": "reflection",
+  "title": "Reflection",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "JackedOut",
+      "effects": [
+        {
+          "RevealAtRandom": {
+            "side": "Corp",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you jack out, the Corp reveals 1 card from HQ at random."
+    }
+  ],
+  "built_from": 10041,
+  "is_playable": true
+}
