@@ -48434,3 +48434,90 @@ mod mumbad_stage_21 {
         assert!(crate::rules::active::installs_without_abilities(&played, &registry).contains(&InstallId::CORP_IDENTITY));
     }
 }
+
+mod mumbad_stage_22 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn model_in_a_remote(tags: u32) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.tags = tags;
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("quantum_predictive_model"),
+            card: id("quantum_predictive_model"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        state
+    }
+
+    #[test]
+    fn quantum_predictive_model_goes_to_the_corps_score_area_when_a_tagged_runner_accesses_it() {
+        let registry = registry();
+        let (accessed, _) = run_to_completion(model_in_a_remote(1), &registry, ServerId::Remote(0));
+        let (accessed, _) = close_all_windows(accessed, &registry);
+        assert!(accessed.corp.installed.is_empty());
+        assert_eq!(accessed.corp.scored_agendas.iter().map(|agenda| &agenda.card).collect::<Vec<_>>(), vec![&id("quantum_predictive_model")]);
+        assert_eq!(accessed.corp.scored_agendas[0].as_agenda, None, "as itself");
+        assert!(accessed.runner.scored_agendas.is_empty());
+
+        let (accessing, _) = run_to_completion(model_in_a_remote(0), &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("quantum_predictive_model") }).expect("untagged, the Runner steals it");
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
+    }
+
+    /// A run on HQ into a rezzed Ice Wall with Security Nexus installed,
+    /// its trace taken, the Corp bidding nothing and the Runner everything.
+    fn nexus_trace(runner_credits: u32) -> GameState {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(runner_credits);
+        state.corp.resources.credits = Credits(0);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("security_nexus"), install_id: fixture_install_id("security_nexus"), ..Default::default() }];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..12 {
+            if matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })) {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, &registry, action).expect("onward").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("have the Corp trace");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 }).expect("the Corp bids");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::SubmitRunnerTraceBid { amount: runner_credits }).expect("the Runner bids");
+        state
+    }
+
+    #[test]
+    fn security_nexus_tags_and_ends_the_run_on_a_successful_trace_and_bypasses_on_a_failed_one() {
+        let caught = nexus_trace(0);
+        assert_eq!(caught.runner.tags, 1);
+        assert!(caught.active_run.as_ref().is_none_or(|run| run.phase == crate::rules::RunPhase::Ended), "the run ended");
+
+        let slipped = nexus_trace(10);
+        assert_eq!(slipped.runner.tags, 0, "link 1 and 4 bid beat 5");
+        let run = slipped.active_run.as_ref().expect("the run goes on");
+        assert_ne!(run.phase, crate::rules::RunPhase::Ended);
+        assert!(run.ice_bypassed, "Ice Wall was bypassed");
+    }
+}

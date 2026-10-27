@@ -1467,6 +1467,12 @@ pub(crate) enum AccessedTo {
     /// card being accessed. Only the Runner accesses, so "their" is the
     /// Runner's.
     RunnerScoreArea(crate::dsl::AsAgenda),
+    /// The Corp's own score area, as itself — Quantum Predictive Model's
+    /// "When the Runner accesses this agenda while they are tagged, add it
+    /// to your score area": an agenda worth what it prints, never scored
+    /// (`ability::add_agenda_to_score_area`, Kingmaking's), and never
+    /// stolen.
+    CorpScoreArea,
 }
 
 /// Whether `card` is the card the Runner is accessing right now: at its
@@ -1529,6 +1535,10 @@ pub(crate) fn move_currently_accessed_card(state: &mut GameState, registry: &Car
         }
         AccessedTo::RunnerScoreArea(as_agenda) => {
             let added = ability::add_to_score_area_as_agenda(state, Side::Runner, card_id.clone(), as_agenda);
+            crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
+        }
+        AccessedTo::CorpScoreArea => {
+            let added = ability::add_agenda_to_score_area(state, registry, card_id.clone());
             crate::rules::dispatcher::emit(state, registry, &mut events, added)?;
         }
     }

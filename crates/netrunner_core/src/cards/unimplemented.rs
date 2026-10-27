@@ -227,7 +227,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("new_angeles_sol_your_news", "New Angeles Sol: Your News"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
     ("rebranding_team", "Rebranding Team"),
-    ("quantum_predictive_model", "Quantum Predictive Model"),
     ("shannon_claire", "Shannon Claire"),
     ("archangel", "Archangel"),
     ("tl_dr", "TL;DR"),
@@ -246,7 +245,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("always_be_running", "Always Be Running"),
     ("neutralize_all_threats", "Neutralize All Threats"),
     ("security_chip", "Security Chip"),
-    ("security_nexus", "Security Nexus"),
     ("jak_sinclair", "Jak Sinclair"),
 ];
 
