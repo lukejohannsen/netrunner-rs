@@ -1,0 +1,42 @@
+{
+  "id": "searchlight",
+  "title": "Searchlight",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Trace[X]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": "HostedAdvancementTokens",
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Trace[X]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": "HostedAdvancementTokens",
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "advancement_requirement": 0,
+  "built_from": 7019,
+  "is_playable": true
+}

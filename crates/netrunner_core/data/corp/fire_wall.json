@@ -1,0 +1,32 @@
+{
+  "id": "fire_wall",
+  "title": "Fire Wall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 5,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "Fire Wall can be advanced and gains +1 strength for each advancement token on it."
+    }
+  ],
+  "built_from": 7018,
+  "is_playable": true
+}

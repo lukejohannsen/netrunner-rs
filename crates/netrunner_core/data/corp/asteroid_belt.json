@@ -1,0 +1,32 @@
+{
+  "id": "asteroid_belt",
+  "title": "Asteroid Belt",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 9,
+  "strength": 6,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -3,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "Asteroid Belt can be advanced and its rez cost is lowered by 3 for each advancement token on it."
+    }
+  ],
+  "built_from": 7012,
+  "is_playable": true
+}
