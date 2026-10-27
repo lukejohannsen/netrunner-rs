@@ -1,0 +1,49 @@
+{
+  "id": "net_ready_eyes",
+  "title": "Net-Ready Eyes",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "When you install Net-Ready Eyes, suffer 2 meat damage."
+    },
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": "Icebreaker",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "BoostStrength": {
+                "amount": 1,
+                "duration": "Run"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you initiate a run, choose an icebreaker. That icebreaker has +1 strength for the remainder of the run."
+    }
+  ],
+  "built_from": 8047,
+  "is_playable": true
+}

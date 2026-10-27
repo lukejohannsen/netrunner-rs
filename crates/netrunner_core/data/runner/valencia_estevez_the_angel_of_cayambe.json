@@ -1,0 +1,17 @@
+{
+  "id": "valencia_estevez_the_angel_of_cayambe",
+  "title": "Valencia Estevez: The Angel of Cayambe",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 50,
+  "before_starting_hand": {
+    "GiveBadPublicity": {
+      "Fixed": 1
+    }
+  },
+  "triggers": [],
+  "built_from": 7030,
+  "is_playable": true
+}

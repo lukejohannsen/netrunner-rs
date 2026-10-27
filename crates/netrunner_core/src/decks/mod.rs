@@ -632,6 +632,13 @@ mod tests {
             // neither pool.
             ("zymogen", &neither),
             ("zymosis", &neither),
+            // FFG F7 Stage 4: the four Order and Chaos Runner identities'
+            // decks, on Zeitgeist's, Zero-Day Heist's, Grassroots' and
+            // Zealotry's lists; Order and Chaos is in neither pool.
+            ("zymotic", &neither),
+            ("zyrian", &neither),
+            ("zyzomys", &neither),
+            ("zzyzx", &neither),
             // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
             // mark's; she is banned in Standard, and Midnight Sun is out of
             // Startup's pool.

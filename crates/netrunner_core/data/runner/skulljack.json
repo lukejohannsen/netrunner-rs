@@ -1,0 +1,38 @@
+{
+  "id": "skulljack",
+  "title": "Skulljack",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "TrashCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Accessing": "Any"
+      },
+      "text": "The trash cost of each Corp card is lowered by 1."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 1 core damage."
+    }
+  ],
+  "built_from": 8042,
+  "is_playable": true
+}

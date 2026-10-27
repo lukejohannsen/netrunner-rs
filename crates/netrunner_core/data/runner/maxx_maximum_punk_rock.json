@@ -1,0 +1,33 @@
+{
+  "id": "maxx_maximum_punk_rock",
+  "title": "MaxX: Maximum Punk Rock",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 2
+            }
+          }
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "When your turn begins, trash the top 2 cards of your stack. Draw 1 card."
+    }
+  ],
+  "built_from": 7029,
+  "is_playable": true
+}

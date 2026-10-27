@@ -1,0 +1,43 @@
+{
+  "id": "forger",
+  "title": "Forger",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Tags": 1
+        }
+      },
+      "text": "[interrupt] → [trash]: Prevent 1 tag."
+    },
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "RemoveTags": {
+          "Fixed": 1
+        }
+      },
+      "text": "[trash]: Remove 1 tag."
+    }
+  ],
+  "triggers": [],
+  "built_from": 8065,
+  "is_playable": true
+}
