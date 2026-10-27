@@ -180,7 +180,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
     ("vikram_1_0", "Vikram 1.0"),
-    ("mumbad_city_grid", "Mumbad City Grid"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -230,7 +229,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebranding_team", "Rebranding Team"),
     ("quantum_predictive_model", "Quantum Predictive Model"),
     ("shannon_claire", "Shannon Claire"),
-    ("victoria_jenkins", "Victoria Jenkins"),
     ("archangel", "Archangel"),
     ("news_hound", "News Hound"),
     ("tl_dr", "TL;DR"),

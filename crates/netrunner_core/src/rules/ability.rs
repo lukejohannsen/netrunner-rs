@@ -1507,6 +1507,22 @@ pub fn evaluate_effect(
         // is this one.
         Effect::AddToScoreAreaAsAgenda(as_agenda) => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            // A Corp card the Runner's access just trashed, from Archives
+            // where the trash put it (Victoria Jenkins's "When this asset
+            // is trashed from anywhere while being accessed, add it to the
+            // Runner's score area"). It was trashed, so it stays counted
+            // as filed this turn; only that copy, the one the moment is
+            // about, and only while it is still there. Ahead of the access
+            // below, which still names the card it trashed.
+            let trashed_on_access = matches!(ctx.triggering_event, Some(GameEvent::CardTrashedFromAccess { card, .. }) if *card == card_id);
+            if trashed_on_access && let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) {
+                state.corp.archives.remove(position);
+                let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
+                let added = add_to_score_area_as_agenda(state, to, card_id, *as_agenda);
+                let mut events = Vec::new();
+                dispatcher::emit(state, registry, &mut events, added)?;
+                return Ok(events);
+            }
             // A Corp card the Runner is accessing, into the Runner's score
             // area, ending its access (Nightmare Archive).
             if run::is_being_accessed(state, &card_id) {
