@@ -48633,3 +48633,81 @@ mod mumbad_stage_23 {
         assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. })), "a run ended by a subroutine is no jack-out");
     }
 }
+
+mod mumbad_stage_24 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state
+    }
+
+    #[test]
+    fn out_of_the_ashes_makes_a_run_when_played() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("out_of_the_ashes")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("out_of_the_ashes") }).expect("play it");
+        let run_hq = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| format!("{action:?}").contains("Hq"))
+            .expect("a server is offered");
+        let (state, _) = apply_action(&state, &registry, run_hq).expect("run HQ");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq));
+    }
+
+    #[test]
+    fn out_of_the_ashes_leaves_the_heap_for_good_to_make_a_run_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.heap = vec![id("out_of_the_ashes")];
+        let ashes = registry.get(&id("out_of_the_ashes")).expect("Out of the Ashes").triggers[1].effects[0].clone();
+        crate::rules::evaluate_effect(&mut state, &ashes, &mut crate::rules::ResolutionContext::for_card(Some(&id("out_of_the_ashes"))), &registry).expect("the turn begins");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove it to make a run");
+        assert!(state.runner.heap.is_empty(), "{events:?}");
+        assert_eq!(state.runner.removed_from_game, vec![id("out_of_the_ashes")]);
+        let run_rnd = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| format!("{action:?}").contains("RnD"))
+            .expect("a server is offered");
+        let (state, _) = apply_action(&state, &registry, run_rnd).expect("run R&D");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::RnD));
+    }
+
+    #[test]
+    fn out_of_the_ashes_is_heard_from_the_heap_as_the_runners_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        state.runner.heap = vec![id("out_of_the_ashes")];
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        for _ in 0..12 {
+            if state.pending_decision.is_some() {
+                break;
+            }
+            let side = crate::rules::current_actor(&state).expect("someone acts");
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { .. })), "{:?}", state.pending_decision);
+    }
+
+    #[test]
+    fn out_of_the_ashes_declined_stays_in_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.heap = vec![id("out_of_the_ashes")];
+        let ashes = registry.get(&id("out_of_the_ashes")).expect("Out of the Ashes").triggers[1].effects[0].clone();
+        crate::rules::evaluate_effect(&mut state, &ashes, &mut crate::rules::ResolutionContext::for_card(Some(&id("out_of_the_ashes"))), &registry).expect("the turn begins");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert_eq!(state.runner.heap, vec![id("out_of_the_ashes")]);
+        assert!(state.active_run.is_none());
+    }
+}
