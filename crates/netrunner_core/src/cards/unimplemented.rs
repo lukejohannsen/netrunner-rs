@@ -193,7 +193,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
     ("councilman", "Councilman"),
-    ("mumbad_city_hall", "Mumbad City Hall"),
 ];
 
 /// *Salsette Island* (`salsette_island`): tranche F6 of the FFG plan.

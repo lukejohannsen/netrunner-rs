@@ -48711,3 +48711,64 @@ mod mumbad_stage_24 {
         assert!(state.active_run.is_none());
     }
 }
+
+mod mumbad_stage_25 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn city_hall_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: crate::rules::test_support::fixture_install_id("mumbad_city_hall"),
+            card: id("mumbad_city_hall"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("executive_search_firm"), id("heritage_committee"), id("ice_wall")];
+        state
+    }
+
+    /// Uses Mumbad City Hall, takes `option` (0 install, 1 play) and selects
+    /// `card` out of R&D.
+    fn city_hall_finds(option: usize, card: &str) -> GameState {
+        let registry = registry();
+        let state = city_hall_turn();
+        let use_it = PlayerAction::ActivateAbility { target: crate::rules::test_support::fixture_install_id("mumbad_city_hall"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it).expect("use Mumbad City Hall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("install or play");
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        assert_eq!(offered.len(), 1, "only the one alliance card of that kind: {offered:?}");
+        let position = state.corp.r_and_d.iter().position(|c| c == &id(card));
+        assert!(position.is_some());
+        let (state, _) = apply_action(&state, &registry, offered[0].clone()).expect("select it");
+        apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn mumbad_city_hall_installs_an_alliance_card_out_of_r_and_d() {
+        let registry = registry();
+        let mut state = city_hall_finds(0, "executive_search_firm");
+        let server = crate::rules::legal_actions_for(&state, &registry, Side::Corp).into_iter().next().expect("a server for it");
+        state = apply_action(&state, &registry, server).expect("install it").0;
+        assert!(state.corp.installed.iter().any(|card| card.card == id("executive_search_firm")));
+        assert!(!state.corp.r_and_d.contains(&id("executive_search_firm")));
+    }
+
+    #[test]
+    fn mumbad_city_hall_plays_an_alliance_operation_out_of_r_and_d() {
+        let state = city_hall_finds(1, "heritage_committee");
+        assert!(!state.corp.r_and_d.contains(&id("heritage_committee")), "it left R&D to be played");
+        assert!(state.corp.archives.iter().any(|card| card.card == id("heritage_committee")) || state.pending_decision.is_some(), "played: {:?}", state.pending_decision);
+    }
+}
