@@ -3617,12 +3617,37 @@ pub enum Prohibition {
     /// subroutines of one encounter, and the first to resolve in a run may
     /// be on any piece of ice, or any position on it.
     ResolveFirstSubroutine,
+    /// Damage the Runner would suffer is prevented, all of it — The Noble
+    /// Path's "whenever you would take damage during that run, prevent all
+    /// of that damage", made as the run starts (`PromptChooseServer::
+    /// on_start`) for `EffectDuration::Run`. Asked by `prevention::would`
+    /// before anybody is asked, the way a standing prevention is
+    /// (`Lingering::PreventRunEnding`), and said as `GameEvent::Prevented`;
+    /// damage that cannot be prevented (CR 9.3.3g) is not. Composition
+    /// didn't work: an interrupt is an ability someone uses, and an event
+    /// in the heap has none.
+    SufferDamage,
+    /// The Corp cannot advance cards — The Price of Freedom's "The Corp
+    /// cannot advance cards during their next turn", made on the Runner's
+    /// turn for `EffectDuration::UntilYourNextTurnBegins`, which is the
+    /// Corp's next turn whole. Asked by the basic action (`engine::
+    /// advance_card`), which is what "advance" names (CR 5.2.6f); a card
+    /// that places advancement counters does not advance. Composition
+    /// didn't work: no prohibition was about advancing.
+    Advance,
+    /// The Corp cannot win by agenda points — The Black File's "The Corp
+    /// cannot win the game except if you are flatlined", a standing effect
+    /// on the Corp (`Scope::Player`). Asked where the score is compared
+    /// with the threshold (`win::check_win_conditions`); a flatline ends
+    /// the game elsewhere and is never asked. Composition didn't work: no
+    /// prohibition was about winning.
+    WinByAgendaPoints,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 24] = [
+    pub const ALL: [Prohibition; 27] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3647,13 +3672,16 @@ impl Prohibition {
         Prohibition::Install,
         Prohibition::ResolveFirstThreeSubroutines,
         Prohibition::ResolveFirstSubroutine,
+        Prohibition::SufferDamage,
+        Prohibition::Advance,
+        Prohibition::WinByAgendaPoints,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install => Side::Runner,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints => Side::Corp,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage => Side::Runner,
         }
     }
 
@@ -3664,7 +3692,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints => None,
         }
     }
 }

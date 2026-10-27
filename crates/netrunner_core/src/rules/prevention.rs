@@ -154,6 +154,12 @@ pub(crate) fn would(
     if what.amount() == 0 {
         return Ok(Vec::new());
     }
+    // A standing "prevent all of that damage" (The Noble Path) steps in
+    // before anybody is asked, and leaves nothing to ask about.
+    if matches!(what, WouldHappen::Damage { .. }) && !ctx.unpreventable && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::SufferDamage) {
+        let amount = what.amount();
+        return Ok(vec![GameEvent::Prevented { what, amount }]);
+    }
     // A draw is heard as damage is, and for the same reason: The Class
     // Act's "the first time each turn" counts the draws before it.
     // And an expose: Zaibatsu Loyalty's "when a card would be exposed,

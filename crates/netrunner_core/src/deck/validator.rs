@@ -199,6 +199,7 @@ fn waived(condition: &crate::dsl::FreeInfluence, card: &CardDefinition, deck: &D
         }
         FreeInfluence::CopiesOf { card: wanted, count: n } => deck.cards.get(wanted).copied().unwrap_or(0) >= *n,
         FreeInfluence::IceAtMost(n) => count(&|other| matches!(other.card_type, CardType::Ice(_))) <= *n,
+        FreeInfluence::AssetsAtLeast(n) => count(&|other| other.card_type == CardType::Asset) >= *n,
         FreeInfluence::DeckSizeAtLeast(n) => deck.cards.values().sum::<u32>() >= *n,
     }
 }

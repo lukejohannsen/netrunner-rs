@@ -3,7 +3,7 @@
   "name": "Zydeco",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Null: Whistleblower, the 23 Seconds Anarch identity that trashes a card from the grip once a turn to give the ice it meets –2 strength for the run, and Another Day, Another Paycheck, the Sunny Lebeau current that forces a Trace[0] after each steal. Pure Anarchy's list, the grip it fills feeding the identity, with two Another Day, Another Paycheck (6 of its 15 influence) for its two Crypt. Eternal-legal only: 23 Seconds is in neither pool. FFG F5 Stage 15. Two System Outage, the 23 Seconds current that costs the Corp a credit for every draw after their first each turn, for The Archivist and Jarogniew Mercs, both still in Pure Anarchy. FFG F5 Stage 34.  FFG F6 Stage 1: two Counter Surveillance (Pure Anarchy keeps them) for Sports Hopper and Akshara Sareen. Mumbad Stage 16: Run Amok, Salsette Slums and Guru Davinder for a Chain Reaction, a Deuces Wild and a Marrow.",
+  "description": "Not a published list: built so the sweeps reach Null: Whistleblower, the 23 Seconds Anarch identity that trashes a card from the grip once a turn to give the ice it meets –2 strength for the run, and Another Day, Another Paycheck, the Sunny Lebeau current that forces a Trace[0] after each steal. Pure Anarchy's list, the grip it fills feeding the identity, with two Another Day, Another Paycheck (6 of its 15 influence) for its two Crypt. Eternal-legal only: 23 Seconds is in neither pool. FFG F5 Stage 15. Two System Outage, the 23 Seconds current that costs the Corp a credit for every draw after their first each turn, for The Archivist and Jarogniew Mercs, both still in Pure Anarchy. FFG F5 Stage 34.  FFG F6 Stage 1: two Counter Surveillance (Pure Anarchy keeps them) for Sports Hopper and Akshara Sareen. Mumbad Stage 16: Run Amok, Salsette Slums and Guru Davinder for a Chain Reaction, a Deuces Wild and a Marrow. Mumbad Stage 17: The Noble Path for a Contaminate.",
   "style": [
     "rig",
     "dismantle"
@@ -60,7 +60,7 @@
     },
     {
       "card": "contaminate",
-      "count": 2
+      "count": 1
     },
     {
       "card": "clan_vengeance",
@@ -132,6 +132,10 @@
     },
     {
       "card": "guru_davinder",
+      "count": 1
+    },
+    {
+      "card": "the_noble_path",
       "count": 1
     }
   ]

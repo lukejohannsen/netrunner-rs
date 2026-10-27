@@ -1,0 +1,45 @@
+{
+  "id": "the_black_file",
+  "title": "The Black File",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "WinByAgendaPoints"
+      },
+      "applies_to": {
+        "Player": "Corp"
+      },
+      "text": "The Corp cannot win the game except if you are flatlined."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "HostedCounters",
+                3
+              ]
+            },
+            "effect": {
+              "RemoveFromGame": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, place 1 power counter on this resource. If there are 3 or more hosted power counters, remove this resource from the game."
+    }
+  ],
+  "built_from": 10099,
+  "is_playable": true
+}

@@ -1,0 +1,41 @@
+{
+  "id": "the_price_of_freedom",
+  "title": "The Price of Freedom",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "removed_after_play": true,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "All": [
+          {
+            "CardType": "Resource"
+          },
+          {
+            "HasSubtype": "Connection"
+          }
+        ]
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Prohibit": {
+            "what": "Advance",
+            "until": "UntilYourNextTurnBegins"
+          }
+        }
+      ],
+      "text": "The Corp cannot advance cards during their next turn."
+    }
+  ],
+  "built_from": 10100,
+  "is_playable": true
+}

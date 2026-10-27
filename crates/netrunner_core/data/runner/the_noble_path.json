@@ -1,0 +1,46 @@
+{
+  "id": "the_noble_path",
+  "title": "The Noble Path",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": "Any",
+            "min": 0,
+            "max": 0,
+            "count": {
+              "CardsInHand": "Runner"
+            },
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHeap"
+          }
+        },
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "Prohibit": {
+                "what": "SufferDamage",
+                "until": "Run"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash all cards from your grip. Run any server. Whenever you would take damage during that run, prevent all of that damage."
+    }
+  ],
+  "built_from": 10077,
+  "is_playable": true
+}

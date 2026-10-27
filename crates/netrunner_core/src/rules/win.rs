@@ -119,7 +119,8 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
     // each player's cards change it by (Issuaq Adaptics: Sustaining
     // Diversity), asked of each side for itself.
     let winning = |side| crate::rules::continuous::points_to_win(state, registry, side);
-    if score(state, registry, Side::Corp) >= winning(Side::Corp) {
+    let corp_may = !crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::WinByAgendaPoints);
+    if corp_may && score(state, registry, Side::Corp) >= winning(Side::Corp) {
         end_game(state, Side::Corp)
     } else if score(state, registry, Side::Runner) >= winning(Side::Runner) {
         end_game(state, Side::Runner)
