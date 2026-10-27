@@ -195,9 +195,7 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
     ("reflection", "Reflection"),
-    ("freedom_through_equality", "\"Freedom Through Equality\""),
     ("councilman", "Councilman"),
-    ("clones_are_not_people", "\"Clones are not People\""),
     ("mumbad_city_hall", "Mumbad City Hall"),
 ];
 

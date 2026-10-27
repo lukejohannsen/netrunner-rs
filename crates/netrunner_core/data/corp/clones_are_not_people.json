@@ -1,0 +1,23 @@
+{
+  "id": "clones_are_not_people",
+  "title": "Clones are not People",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 1
+          }
+        }
+      ],
+      "text": "When you score an agenda, add \"Clones are not People\" to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 10052,
+  "is_playable": true
+}
