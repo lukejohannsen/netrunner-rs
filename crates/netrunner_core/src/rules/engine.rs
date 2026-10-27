@@ -2896,6 +2896,15 @@ fn activate_ability(
     {
         return Err(RulesError::AbilityProhibited { card: card_id });
     }
+    // Vikram 1.0's and Jak Sinclair's "cannot use programs": every paid
+    // ability a program prints, a breaker's too.
+    if side == Side::Runner
+        && card_def.side == Side::Runner
+        && card_def.card_type == CardType::Program
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::UsePrograms)
+    {
+        return Err(RulesError::AbilityProhibited { card: card_id });
+    }
     // A [click] ability is an action (CR 9.5.2a), taken in the action
     // window of its user's turn: never in a paid ability window, which
     // admits no actions (CR 9.2.7b). Mid-run it is refused already, by

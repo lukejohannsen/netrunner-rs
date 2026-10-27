@@ -114,6 +114,11 @@ pub(crate) struct Moment {
     /// the server, and a run ended by a card's text may have been
     /// successful first (CR 6.8.4a).
     pub successful: Option<bool>,
+    /// Whether the run that ended was jacked out of, for a run's end
+    /// (`Trigger::OnRunEnded`) — Reflection's "whenever you **jack out**"
+    /// (`EventFilter::JackedOut`). Read off the event, which is its own
+    /// (`GameEvent::RunJackedOut`). `None` for every other moment.
+    pub jacked_out: Option<bool>,
     /// Whether a passed card was accessed in the Archives pile, read off
     /// the event (`GameEvent::AccessPassed::in_archives`), for
     /// `EventFilter::NotInArchives`. `None` for every other moment.
@@ -174,7 +179,7 @@ pub(crate) fn card_about(state: &GameState, event: &GameEvent, trigger: Trigger)
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, in_archives: None, guarded: None, ability: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -185,7 +190,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, in_archives: None, guarded: None, ability: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None, successful: None, jacked_out: None, in_archives: None, guarded: None, ability: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played, .. } => {
@@ -432,7 +437,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
             let successful = state.last_completed_run.as_ref().is_some_and(|ended| ended.successful);
-            vec![Moment { successful: Some(successful), ..moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner)) }]
+            let jacked_out = matches!(event, GameEvent::RunJackedOut { .. });
+            vec![Moment { successful: Some(successful), jacked_out: Some(jacked_out), ..moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner)) }]
         }
 
         // "Whenever you do damage" is the responsible player's (CR 10.4.1),
@@ -829,6 +835,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::Successful = filter {
         return moment.successful == Some(true);
+    }
+    if let EventFilter::JackedOut = filter {
+        return moment.jacked_out == Some(true);
     }
     if let EventFilter::NotInArchives = filter {
         return moment.in_archives == Some(false);

@@ -3657,12 +3657,21 @@ pub enum Prohibition {
     /// Composition didn't work: `BioroidIceAbilities` is about the Corp's
     /// ice, and the exceptions are the card's.
     InstalledCardAbilities,
+    /// The Runner cannot use programs — Vikram 1.0's "The Runner cannot use
+    /// programs for the remainder of this run" and Jak Sinclair's "You
+    /// cannot use programs during this run": a program's paid abilities,
+    /// breakers' included. Asked of the user where an ability is used
+    /// (`engine::activate_ability`), as `InstalledCardAbilities` is.
+    /// Composition didn't work: `InstalledCardAbilities` spares icebreakers
+    /// and covers every installed card, and `BreakSubroutines` binds one
+    /// install.
+    UsePrograms,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 28] = [
+    pub const ALL: [Prohibition; 29] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -3691,13 +3700,14 @@ impl Prohibition {
         Prohibition::Advance,
         Prohibition::WinByAgendaPoints,
         Prohibition::InstalledCardAbilities,
+        Prohibition::UsePrograms,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez | Prohibition::RepeatAnAction | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::Advance | Prohibition::WinByAgendaPoints => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::SufferDamage | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms => Side::Runner,
         }
     }
 
@@ -3708,7 +3718,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::Run | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce | Prohibition::DeclaredSuccessful | Prohibition::BreakWithNonIcebreakers | Prohibition::RepeatAnAction | Prohibition::JackOut | Prohibition::AccessMoreThanOneCard | Prohibition::AccessRootOfHqOrRnD | Prohibition::AccessCardsInHq | Prohibition::Install | Prohibition::CorpInstall | Prohibition::ResolveFirstThreeSubroutines | Prohibition::ResolveFirstSubroutine | Prohibition::SufferDamage | Prohibition::Advance | Prohibition::WinByAgendaPoints | Prohibition::InstalledCardAbilities | Prohibition::UsePrograms => None,
         }
     }
 }

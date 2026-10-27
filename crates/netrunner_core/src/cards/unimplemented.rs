@@ -179,7 +179,6 @@ pub(crate) const KG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("mongoose", "Mongoose"),
     ("maya", "Maya"),
     ("panchatantra", "Panchatantra"),
-    ("vikram_1_0", "Vikram 1.0"),
 ];
 
 /// *Business First* (`business_first`): tranche F6 of the FFG plan.
@@ -193,7 +192,6 @@ pub(crate) const BF_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Democracy and Dogma* (`democracy_and_dogma`): tranche F6 of the FFG plan.
 pub(crate) const DAG_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("political_graffiti", "Political Graffiti"),
-    ("reflection", "Reflection"),
     ("councilman", "Councilman"),
     ("mumbad_city_hall", "Mumbad City Hall"),
 ];
@@ -245,7 +243,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("always_be_running", "Always Be Running"),
     ("neutralize_all_threats", "Neutralize All Threats"),
     ("security_chip", "Security Chip"),
-    ("jak_sinclair", "Jak Sinclair"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.

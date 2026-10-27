@@ -1,0 +1,57 @@
+{
+  "id": "jak_sinclair",
+  "title": "Jak Sinclair",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1,
+          "of": "Link"
+        }
+      },
+      "applies_to": "This",
+      "text": "Reduce the cost to install Jak Sinclair by 1 for each [link] you have."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseServer": {
+                  "chooser": "Runner",
+                  "rez_cost_delta": 0,
+                  "bonus_run_credits": 0,
+                  "on_start": {
+                    "Prohibit": {
+                      "what": "UsePrograms",
+                      "until": "Run"
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may make a run",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may make a run. You cannot use programs during this run."
+    }
+  ],
+  "built_from": 9052,
+  "is_playable": true
+}

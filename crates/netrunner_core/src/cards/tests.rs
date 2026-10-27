@@ -48521,3 +48521,115 @@ mod mumbad_stage_22 {
         assert!(run.ice_bypassed, "Ice Wall was bypassed");
     }
 }
+
+mod mumbad_stage_23 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state
+    }
+
+    fn ice_wall_on_hq() -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id("ice_wall"),
+            card: id("ice_wall"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn vikram_1_0_stops_the_runner_using_programs_for_the_rest_of_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder")];
+        state.corp.installed = vec![ice_wall_on_hq()];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let boost = PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 0 };
+        assert!(apply_action(&state, &registry, boost.clone()).is_ok(), "Corroder is usable before the subroutine");
+
+        let vikram = registry.get(&id("vikram_1_0")).expect("Vikram 1.0").subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(&mut state, &vikram, &mut crate::rules::ResolutionContext::for_card(Some(&id("vikram_1_0"))), &registry).expect("the subroutine");
+        assert!(matches!(apply_action(&state, &registry, boost), Err(RulesError::AbilityProhibited { .. })));
+        assert!(crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::UsePrograms));
+
+        let mut after = state.clone();
+        after.active_run = None;
+        assert!(!crate::rules::continuous::cannot(&after, &registry, crate::dsl::Prohibition::UsePrograms), "only for the remainder of this run");
+    }
+
+    #[test]
+    fn jak_sinclair_costs_1_less_for_each_link() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("reflection")];
+        state.runner.grip = vec![id("jak_sinclair")];
+        let link = crate::rules::continuous::link(&state, &registry);
+        assert!(link >= 1, "Reflection gives 1 link");
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("jak_sinclair"), host: None }).expect("install Jak Sinclair");
+        assert_eq!(installed.runner.resources.credits.0, 5 - 3u32.saturating_sub(link));
+    }
+
+    #[test]
+    fn jak_sinclair_offers_a_run_without_programs_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("jak_sinclair"), rig("corroder")];
+        state.corp.installed = vec![ice_wall_on_hq()];
+        let jak = registry.get(&id("jak_sinclair")).expect("Jak Sinclair").triggers[0].effects[0].clone();
+        crate::rules::evaluate_effect(&mut state, &jak, &mut crate::rules::ResolutionContext::for_card(Some(&id("jak_sinclair"))), &registry).expect("the trigger");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("make a run");
+        let choose_hq = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| format!("{action:?}").contains("Hq"))
+            .expect("HQ is offered");
+        let (state, _) = apply_action(&state, &registry, choose_hq).expect("run HQ");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq));
+        assert!(crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::UsePrograms), "no programs during this run");
+    }
+
+    #[test]
+    fn reflection_reveals_a_card_from_hq_at_random_on_a_jack_out_and_not_on_another_end() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("reflection")];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..8 {
+            if crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&PlayerAction::JackOut) {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, &registry, action).expect("onward").0;
+        }
+        let (_, events) = apply_action(&state, &registry, PlayerAction::JackOut).expect("jack out");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { side: Side::Corp, .. })), "{events:?}");
+
+        let mut ended = state.clone();
+        let mut events = Vec::new();
+        crate::rules::evaluate_effect(&mut ended, &crate::dsl::Effect::EndTheRun, &mut crate::rules::ResolutionContext::for_card(Some(&id("ice_wall"))), &registry).map(|more| events.extend(more)).expect("end the run");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::RunEndedByEffect { .. })), "{events:?}");
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. })), "a run ended by a subroutine is no jack-out");
+    }
+}
