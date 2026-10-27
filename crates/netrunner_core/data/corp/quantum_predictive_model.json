@@ -1,0 +1,36 @@
+{
+  "id": "quantum_predictive_model",
+  "title": "Quantum Predictive Model",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this agenda in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 1
+          }
+        }
+      ],
+      "text": "When the Runner accesses this agenda while they are tagged, add it to your score area."
+    }
+  ],
+  "built_from": 9007,
+  "is_playable": true
+}

@@ -1524,9 +1524,15 @@ pub fn evaluate_effect(
                 return Ok(events);
             }
             // A Corp card the Runner is accessing, into the Runner's score
-            // area, ending its access (Nightmare Archive).
+            // area, ending its access (Nightmare Archive). An agenda the
+            // card keeps for the Corp goes to the Corp's as itself, worth
+            // what it prints (Quantum Predictive Model's "add it to your
+            // score area"): an agenda is not converted into one, so the
+            // points written beside it are not read.
             if run::is_being_accessed(state, &card_id) {
-                return run::move_currently_accessed_card(state, registry, run::AccessedTo::RunnerScoreArea(*as_agenda));
+                let own_agenda = !as_agenda.to_the_runner && registry.get(&card_id).is_some_and(|card| card.side == Side::Corp && card.card_type == crate::dsl::CardType::Agenda);
+                let to = if own_agenda { run::AccessedTo::CorpScoreArea } else { run::AccessedTo::RunnerScoreArea(*as_agenda) };
+                return run::move_currently_accessed_card(state, registry, to);
             }
             // An installed Corp card, off the table into the score area the
             // card names: the Runner's for Meridian's "unless the Runner

@@ -1,0 +1,70 @@
+{
+  "id": "security_nexus",
+  "title": "Security Nexus",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 8,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "Link": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[link]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Trace": {
+                  "base": 5,
+                  "on_success": {
+                    "Sequence": [
+                      {
+                        "GiveTags": {
+                          "Fixed": 1
+                        }
+                      },
+                      "EndTheRun"
+                    ]
+                  },
+                  "on_failure": "BypassEncounteredIce"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may have the Corp trace[5]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, you may have the Corp trace[5]. If successful, they give you 1 tag and end the run. If unsuccesful, bypass the encountered ice."
+    }
+  ],
+  "built_from": 9047,
+  "is_playable": true
+}
