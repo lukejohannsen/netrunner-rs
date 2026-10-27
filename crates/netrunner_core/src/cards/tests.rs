@@ -48473,6 +48473,24 @@ mod mumbad_stage_22 {
         assert_eq!(stolen.runner.scored_agendas.len(), 1);
     }
 
+    /// Out of Archives, where a breach is a choice of card: the access ends
+    /// as the Corp keeps it, so the Runner is not offered a steal of a card
+    /// in the Corp's score area (the view sweep found both score areas
+    /// holding it).
+    #[test]
+    fn quantum_predictive_model_kept_out_of_archives_is_not_offered_to_steal() {
+        let registry = registry();
+        let mut state = model_in_a_remote(1);
+        state.corp.installed.clear();
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("quantum_predictive_model"))];
+        let (mut state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        if let Some(select) = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().find(|action| matches!(action, PlayerAction::SelectCardToAccess { .. })) {
+            state = apply_action(&state, &registry, select).expect("access it").0;
+        }
+        assert!(apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("quantum_predictive_model") }).is_err(), "the Corp kept it");
+        assert_eq!((state.corp.scored_agendas.len(), state.runner.scored_agendas.len(), state.corp.archives.len()), (1, 0, 0));
+    }
+
     /// A run on HQ into a rezzed Ice Wall with Security Nexus installed,
     /// its trace taken, the Corp bidding nothing and the Runner everything.
     fn nexus_trace(runner_credits: u32) -> GameState {
@@ -48770,5 +48788,160 @@ mod mumbad_stage_25 {
         let state = city_hall_finds(1, "heritage_committee");
         assert!(!state.corp.r_and_d.contains(&id("heritage_committee")), "it left R&D to be played");
         assert!(state.corp.archives.iter().any(|card| card.card == id("heritage_committee")) || state.pending_decision.is_some(), "played: {:?}", state.pending_decision);
+    }
+}
+
+mod sansan_stage_1 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn play(state: &GameState, registry: &CardRegistry, card: &str) -> Result<(GameState, Vec<crate::rules::GameEvent>), crate::rules::RulesError> {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id(card) })
+    }
+
+    fn ice(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn installed(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), base_strength: 2, ..Default::default() }
+    }
+
+    /// Plays `event` on HQ, protected by a rezzed Ice Wall, and breaks it
+    /// with Corroder: what is left installed at HQ afterwards.
+    fn break_ice_wall_after(event: &str) -> Vec<CardId> {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![installed("corroder")];
+        state.corp.installed = vec![ice("ice_wall")];
+        let (mut state, _) = play(&state, &registry, event).expect("play it");
+        let run_hq = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| format!("{action:?}").contains("Hq"))
+            .expect("a server is offered");
+        state = apply_action(&state, &registry, run_hq).expect("run HQ").0;
+        for _ in 0..40 {
+            if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, &registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("corroder"), ability_index: 1 }).expect("break");
+        let state = close_all_windows(state, &registry).0;
+        state.corp.installed.iter().map(|card| card.card.clone()).collect()
+    }
+
+    #[test]
+    fn knifed_trashes_the_barrier_it_fully_broke() {
+        assert!(break_ice_wall_after("knifed").is_empty());
+    }
+
+    #[test]
+    fn forked_and_spooned_leave_a_barrier_alone() {
+        assert_eq!(break_ice_wall_after("forked"), vec![id("ice_wall")]);
+        assert_eq!(break_ice_wall_after("spooned"), vec![id("ice_wall")]);
+    }
+
+    #[test]
+    fn fisk_investment_seminar_draws_three_for_each_player_as_the_first_click() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.stack = vec![id("sure_gamble"); 4];
+        state.corp.r_and_d = vec![id("hedge_fund"); 4];
+        let (drawn, _) = play(&state, &registry, "fisk_investment_seminar").expect("first click");
+        assert_eq!((drawn.runner.grip.len(), drawn.corp.hq.len()), (3, 3));
+        let (later, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click");
+        assert!(play(&later, &registry, "fisk_investment_seminar").is_err(), "not the first click");
+    }
+
+    #[test]
+    fn power_to_the_people_pays_seven_for_the_next_agenda_accessed_this_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("priority_requisition")];
+        let (state, _) = play(&state, &registry, "power_to_the_people").expect("first click");
+        let before = state.runner.resources.credits;
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(state.runner.resources.credits, Credits(before.0 + 7));
+        let (later, _) = apply_action(&runner_turn(), &registry, PlayerAction::GainCreditClick { side: Side::Runner }).expect("a click");
+        assert!(play(&later, &registry, "power_to_the_people").is_err(), "not the first click");
+    }
+
+    #[test]
+    fn amped_up_gains_three_clicks_for_a_brain_damage() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble")];
+        let (state, _) = play(&state, &registry, "amped_up").expect("play it");
+        assert_eq!((state.runner.resources.clicks, state.runner.brain_damage, state.runner.grip.len()), (Clicks(6), 1, 0));
+    }
+
+    #[test]
+    fn day_job_costs_four_clicks_for_ten_credits() {
+        let registry = registry();
+        let state = runner_turn();
+        let (paid, _) = play(&state, &registry, "day_job").expect("play it");
+        assert_eq!((paid.runner.resources.clicks, paid.runner.resources.credits), (Clicks(0), Credits(18)));
+        let mut short = runner_turn();
+        short.runner.resources.clicks = Clicks(3);
+        assert!(play(&short, &registry, "day_job").is_err(), "four clicks in all");
+    }
+
+    #[test]
+    fn uninstall_returns_a_program_to_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![installed("corroder")];
+        let (state, _) = play(&state, &registry, "uninstall").expect("play it");
+        let pick = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .expect("Corroder offered");
+        let (state, _) = apply_action(&state, &registry, pick).expect("select it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.grip, vec![id("corroder")]);
+    }
+
+    /// Drive By on the one card in a remote: what is left installed.
+    fn drive_by(card: &str) -> Vec<CardId> {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() },
+            ice("ice_wall"),
+        ];
+        let (state, _) = play(&state, &registry, "drive_by").expect("play it");
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .collect();
+        assert_eq!(offered.len(), 1, "the remote's card, not the ice: {offered:?}");
+        let (state, _) = apply_action(&state, &registry, offered[0].clone()).expect("select it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let state = close_all_windows(state, &registry).0;
+        assert_eq!(state.runner.resources.clicks, Clicks(2), "an additional click");
+        state.corp.installed.iter().map(|card| card.card.clone()).filter(|card| card != &id("ice_wall")).collect()
+    }
+
+    #[test]
+    fn drive_by_trashes_an_exposed_asset_and_leaves_an_agenda() {
+        assert!(drive_by("pad_campaign").is_empty());
+        assert_eq!(drive_by("priority_requisition"), vec![id("priority_requisition")]);
     }
 }

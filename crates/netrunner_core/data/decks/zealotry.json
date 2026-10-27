@@ -3,7 +3,7 @@
   "name": "Clan Zeal",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside. Red Sand Stage 7 takes two Berserker and two God of War for two Imp and two Darwin.  FFG F6 Stage 1: two Contaminate (Pure Anarchy and Zydeco keep them) for two Populist Rally, played off District 99 and The Nihilist, both seedy.",
+  "description": "Not a published list: built so the sweeps reach Alice Merchant: Clan Agitator, Red Sand's Anarch identity, whose first successful Archives run each turn makes the Corp trash 1 card from HQ. On Pure Anarchy's list, its identity swapped and grown to Alice's 50 cards with Red Sand Stage 5's Mining Accident, Mars for Martians and Reshape for a Corroder and a Chain Reaction; named to sort after every other deck, so the sweep schedule of those before it does not move. Red Sand Stage 6 takes a Bloo Moose and a Dadiana Chacon for two Wyldside. Red Sand Stage 7 takes two Berserker and two God of War for two Imp and two Darwin.  FFG F6 Stage 1: two Contaminate (Pure Anarchy and Zydeco keep them) for two Populist Rally, played off District 99 and The Nihilist, both seedy. SanSan Stage 1 swapped Yusuf and Datasucker for Knifed (Berserker breaks the barriers), Power to the People and Forked.",
   "style": [
     "rig",
     "dismantle"
@@ -28,10 +28,6 @@
     },
     {
       "card": "yog_0",
-      "count": 2
-    },
-    {
-      "card": "datasucker",
       "count": 2
     },
     {
@@ -68,10 +64,6 @@
     },
     {
       "card": "musaazi",
-      "count": 2
-    },
-    {
-      "card": "yusuf",
       "count": 2
     },
     {
@@ -121,6 +113,18 @@
     {
       "card": "populist_rally",
       "count": 2
+    },
+    {
+      "card": "knifed",
+      "count": 2
+    },
+    {
+      "card": "power_to_the_people",
+      "count": 1
+    },
+    {
+      "card": "forked",
+      "count": 1
     }
   ]
 }

@@ -1,0 +1,39 @@
+{
+  "id": "fisk_investment_seminar",
+  "title": "Fisk Investment Seminar",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "Not": {
+      "AmountAtLeast": [
+        {
+          "TimesThisTurn": "OnActionFinished"
+        },
+        1
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 8105,
+  "is_playable": true
+}

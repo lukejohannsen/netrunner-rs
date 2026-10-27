@@ -1,0 +1,26 @@
+{
+  "id": "day_job",
+  "title": "Day Job",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 3
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            10
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 7036,
+  "is_playable": true
+}
