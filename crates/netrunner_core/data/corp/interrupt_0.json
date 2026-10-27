@@ -1,0 +1,43 @@
+{
+  "id": "interrupt_0",
+  "title": "Interrupt 0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "For the remainder of this run, as an additional cost to use an icebreaker ability to break subroutines, the Runner must pay 1[credit].",
+      "effect": {
+        "ImposeAdditionalCost": {
+          "on": [
+            "IcebreakerBreak"
+          ],
+          "cost": {
+            "Credits": 1
+          },
+          "until": "Run"
+        }
+      }
+    },
+    {
+      "text": "For the remainder of this run, as an additional cost to use an icebreaker ability to break subroutines, the Runner must pay 1[credit].",
+      "effect": {
+        "ImposeAdditionalCost": {
+          "on": [
+            "IcebreakerBreak"
+          ],
+          "cost": {
+            "Credits": 1
+          },
+          "until": "Run"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "built_from": 10016,
+  "is_playable": true
+}

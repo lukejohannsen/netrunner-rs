@@ -1,0 +1,23 @@
+{
+  "id": "navi_mumbai_city_grid",
+  "title": "Navi Mumbai City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "InstalledCardAbilities"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": "RunAgainstThisServer",
+      "text": "During runs on this server, the Runner cannot use paid abilities on their installed cards except for mid-access abilities and abilities on icebreakers."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10110,
+  "is_playable": true
+}

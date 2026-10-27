@@ -701,6 +701,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::SufferDamage, _) => "all damage the Runner would take is prevented",
                 (Prohibition::Advance, _) => "the Corp cannot advance cards",
                 (Prohibition::WinByAgendaPoints, _) => "the Corp cannot win except by flatlining the Runner",
+                (Prohibition::InstalledCardAbilities, _) => "the Runner cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
                 (Prohibition::Install, _) => "the Runner cannot install cards",
                 (Prohibition::ResolveFirstThreeSubroutines, _) => "the first 3 subroutines of the next encounter do not resolve",
                 (Prohibition::ResolveFirstSubroutine, _) => "the first subroutine to resolve this run does not",
@@ -714,6 +715,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 .map(|step| match step {
                     netrunner_core::dsl::CostedStep::JackOut => "jack out",
                     netrunner_core::dsl::CostedStep::BreakSubroutine => "break a subroutine",
+                    netrunner_core::dsl::CostedStep::IcebreakerBreak => "use an icebreaker ability to break subroutines",
                 })
                 .collect();
             format!("the Runner must {} as an additional cost to {} {}", describe_cost(cost), steps.join(" or "), duration(until))
@@ -1142,6 +1144,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::SufferDamage => "prevents all damage",
             Prohibition::Advance => "cannot advance cards",
             Prohibition::WinByAgendaPoints => "cannot win except by flatlining the Runner",
+            Prohibition::InstalledCardAbilities => "cannot use paid abilities on installed cards except mid-access abilities and icebreakers",
             Prohibition::Install | Prohibition::CorpInstall => "cannot install cards",
             Prohibition::ResolveFirstThreeSubroutines => "cannot resolve the first 3 subroutines of the next encounter",
             Prohibition::ResolveFirstSubroutine => "cannot resolve the first subroutine that would resolve this run",
