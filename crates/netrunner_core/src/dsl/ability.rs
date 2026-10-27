@@ -255,6 +255,13 @@ pub enum EffectRequirement {
     /// (`state::ArchivedCard::facedown`) — e.g. Jinteki: Restoring
     /// Humanity's "if there is a facedown card in Archives".
     ArchivesHasFacedownCard,
+    /// A current is active: in either player's play area, where a current
+    /// waits (`rules::current`) — News Hound's "If a **current** is active,
+    /// this ice gains “[subroutine] End the run.” after its other
+    /// subroutines", as the `while` of a standing `Subroutines`. Composition
+    /// didn't work: `ZoneHasAtLeast` reads one player's zones, and neither
+    /// side's play area is among them.
+    CurrentActive,
     /// The access currently being resolved is in this server — read from
     /// `active_run.access_state.server`, so it answers "where is the Runner
     /// accessing this card *right now*", not where the card lives.
