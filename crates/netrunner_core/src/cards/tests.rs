@@ -49395,3 +49395,115 @@ mod sansan_stage_4 {
         assert_eq!(state.corp.bad_publicity, 1);
     }
 }
+
+/// SanSan Stage 5 (Order and Chaos): the Weyland ice.
+mod sansan_stage_5 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId, rezzed: bool, advancement_tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed, advancement_tokens, ..Default::default() }
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    /// Runs HQ into its outermost ice, which the caller installed rezzed,
+    /// and lets its subroutines fire.
+    fn let_subroutines_fire(mut state: GameState, registry: &CardRegistry) -> GameState {
+        state.phase = GamePhase::Action(Side::Runner);
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes encounter: subroutines fire").0
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).unwrap_or_else(|e| panic!("select: {e:?} {:?}", state.pending_decision));
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn asteroid_belt_nebula_wormhole_and_orion_cost_three_less_to_rez_for_each_advancement_token() {
+        let registry = registry();
+        for card in ["asteroid_belt", "nebula", "wormhole", "orion"] {
+            let mut state = base_state();
+            state.corp.installed = vec![ice(card, ServerId::Hq, false, 2)];
+            assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, fixture_install_id(card)), -6, "{card}");
+            let (advanced, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: fixture_install_id(card) }).expect("it can be advanced");
+            assert_eq!(advanced.corp.installed[0].advancement_tokens, 3, "{card}");
+        }
+    }
+
+    #[test]
+    fn fire_wall_gains_a_strength_for_each_advancement_token() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("fire_wall", ServerId::Hq, true, 2)];
+        assert_eq!(crate::rules::continuous::installed_ice_strength(&state, &registry, &id("fire_wall"), fixture_install_id("fire_wall")), 7);
+    }
+
+    #[test]
+    fn nebula_trashes_a_program() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("nebula", ServerId::Hq, true, 0)];
+        state.runner.rig = vec![rig("corroder")];
+        let state = pick(&let_subroutines_fire(state, &registry), &registry, 0);
+        assert_eq!(state.runner.heap, vec![id("corroder")]);
+    }
+
+    #[test]
+    fn wormhole_resolves_a_subroutine_on_another_rezzed_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("ice_wall", ServerId::RnD, true, 0), ice("wormhole", ServerId::Hq, true, 0)];
+        let state = pick(&let_subroutines_fire(state, &registry), &registry, 0);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.active_run.is_none(), "Ice Wall's End the run: {:?}", state.pending_decision);
+    }
+
+    #[test]
+    fn builder_advances_ice_protecting_its_server_and_moves_for_a_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("builder", ServerId::Hq, true, 0), ice("fire_wall", ServerId::Hq, true, 0), ice("ice_wall", ServerId::RnD, true, 0)];
+        let fired = let_subroutines_fire(state.clone(), &registry);
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&fired, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "Fire Wall, protecting HQ: not Ice Wall, nor Builder itself");
+        let PlayerAction::ToggleCardSelection { position } = offered[0] else { unreachable!() };
+        let fired = pick(&fired, &registry, position);
+        assert_eq!(fired.corp.installed.iter().find(|card| card.card == id("fire_wall")).unwrap().advancement_tokens, 1);
+
+        let (moving, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("builder"), ability_index: 0 }).expect("[click]: move");
+        assert_eq!(moving.corp.resources.clicks, Clicks(state.corp.resources.clicks.0 - 1));
+        assert!(moving.pending_decision.is_some(), "choose a server");
+    }
+
+    #[test]
+    fn checkpoint_takes_a_bad_publicity_when_rezzed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice("checkpoint", ServerId::Hq, false, 0)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("checkpoint") }).expect("rez it");
+        assert_eq!(state.corp.bad_publicity, 1);
+    }
+
+    #[test]
+    fn searchlight_traces_at_its_advancement_tokens() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice("searchlight", ServerId::Hq, true, 2)];
+        let state = let_subroutines_fire(state, &registry);
+        assert_eq!(state.active_trace.as_ref().map(|trace| trace.base_strength), Some(2), "Trace[X], X the advancement tokens");
+    }
+}

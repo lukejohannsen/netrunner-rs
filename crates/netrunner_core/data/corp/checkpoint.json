@@ -1,0 +1,48 @@
+{
+  "id": "checkpoint",
+  "title": "Checkpoint",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 7,
+  "subroutines": [
+    {
+      "text": "Trace[5]. If successful, do 3 meat damage when this run becomes successful.",
+      "effect": {
+        "Trace": {
+          "base": 5,
+          "on_success": {
+            "LaterThisTurn": {
+              "when": "OnSuccessfulRun",
+              "this_run": true,
+              "effect": {
+                "DealDamage": [
+                  "Meat",
+                  3
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When you rez this ice, take 1 bad publicity."
+    }
+  ],
+  "built_from": 7017,
+  "is_playable": true
+}
