@@ -1077,6 +1077,14 @@ pub enum EventFilter {
     /// is about a moment that is about a server, a pass is about a card,
     /// and "HQ, R&D or any root" is no list of servers a card can write.
     NotInArchives,
+    /// The ability used prints [trash] in its cost — Tech Trader's
+    /// "whenever you use a **[trash] ability**", about the card whose
+    /// ability it was. Read off the moment (`listeners::Moment::ability`,
+    /// the event's `ability_index`), since a card can carry a [trash]
+    /// ability beside others. Only on `OnAbilityUsed`. Composition didn't
+    /// work: `CardFilter::HasTrashAbility` is about the card, and an
+    /// Aesop's Pawnshop used for anything else would have met it.
+    TrashAbility,
     /// The server the run was initiated on was protected by 2 or more
     /// pieces of ice — Daredevil's "the first time you initiate a run on a
     /// server **protected by 2 or more pieces of ice** each turn". Read off

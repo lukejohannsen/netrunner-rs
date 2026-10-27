@@ -47896,3 +47896,102 @@ mod mumbad_stage_15 {
         assert_eq!(fire(size), size, "at the hand size: nothing");
     }
 }
+
+mod mumbad_stage_16 {
+    use super::*;
+    use super::reprints::{rig, runner_turn};
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn corp_turn(identity: &str) -> (GameState, CardRegistry) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(id(identity));
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("indian_union_stock_exchange"),
+            card: id("indian_union_stock_exchange"),
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        (state, registry())
+    }
+
+    #[test]
+    fn indian_union_stock_exchange_pays_for_out_of_faction_rezzes_and_plays_only() {
+        let (mut state, registry) = corp_turn("haas_bioroid_engineering_the_future");
+        state.corp.hq = vec![id("hedge_fund"), id("biotic_labor")];
+        let rez = PlayerAction::RezIce { ice: install_of(&state, "indian_union_stock_exchange") };
+        let (rezzed, _) = apply_action(&state, &registry, rez.clone()).expect("rez");
+        let (rezzed, _) = close_all_windows(rezzed, &registry);
+        assert_eq!(rezzed.corp.resources.credits, Credits(10 - 1 + 1), "itself, a Weyland card in a Haas-Bioroid deck");
+        let (neutral, _) = apply_action(&rezzed, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("Hedge Fund");
+        let (neutral, _) = close_all_windows(neutral, &registry);
+        assert_eq!(neutral.corp.resources.credits, Credits(10 - 5 + 9 + 1), "a neutral card is out of faction (CR 1.4.5)");
+        let (own, _) = apply_action(&neutral, &registry, PlayerAction::PlayOperation { card_id: id("biotic_labor") }).expect("Biotic Labor");
+        let (own, _) = close_all_windows(own, &registry);
+        assert_eq!(own.corp.resources.credits, Credits(15 - 4), "the identity's own faction is not");
+
+        let (state, _) = corp_turn("weyland_consortium_building_a_better_world");
+        let (weyland, _) = apply_action(&state, &registry, rez).expect("rez");
+        let (weyland, _) = close_all_windows(weyland, &registry);
+        assert_eq!(weyland.corp.resources.credits, Credits(10 - 1), "in a Weyland deck it is in faction");
+    }
+
+    #[test]
+    fn tech_trader_pays_for_a_trash_ability() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![rig("tech_trader", 0), rig("all_nighter", 0)];
+        let (used, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "all_nighter"), ability_index: 0 }).expect("[click], [trash]: gain [click][click]");
+        let (used, _) = close_all_windows(used, &registry);
+        assert_eq!(used.runner.resources.credits, Credits(1));
+        assert!(used.runner.heap.contains(&id("all_nighter")));
+    }
+
+    #[test]
+    fn guru_davinder_prevents_all_net_damage_and_goes_unless_paid_for() {
+        for (credits, kept) in [(1, false), (5, true)] {
+            let (mut state, registry) = run_into_snare(5);
+            state.runner.rig = vec![rig("guru_davinder", 0)];
+            state.runner.resources.credits = Credits(credits);
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: id("snare") }).expect("the Corp pays");
+            let (mut state, _) = close_all_windows(state, &registry);
+            if state.pending_paid_choice.is_some() {
+                let answer = if kept { PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } } else { PlayerAction::DeclinePendingPaidChoice };
+                state = close_all_windows(apply_action(&state, &registry, answer).expect("answer").0, &registry).0;
+            }
+            assert_eq!(state.runner.grip.len(), 5, "all 3 net damage prevented");
+            assert_eq!(state.runner.rig.iter().any(|card| card.card == id("guru_davinder")), kept, "with {credits} credits");
+            if kept {
+                assert_eq!(state.runner.resources.credits, Credits(1));
+            }
+        }
+    }
+
+    #[test]
+    fn salsette_slums_removes_the_accessed_card_from_the_game_for_its_trash_cost() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("salsette_slums", 0)];
+        state.runner.resources.credits = Credits(4);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (removed, _) = apply_action(&accessing, &registry, PlayerAction::ActivateAbility { target: install_of(&accessing, "salsette_slums"), ability_index: 0 }).expect("pay the trash cost: remove it");
+        assert!(removed.corp.installed.is_empty());
+        assert!(removed.corp.archives.is_empty(), "removed from the game, not trashed");
+        assert_eq!(removed.runner.resources.credits, Credits(0), "PAD Campaign's trash cost of 4");
+    }
+}

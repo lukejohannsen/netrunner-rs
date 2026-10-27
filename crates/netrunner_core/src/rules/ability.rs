@@ -886,6 +886,7 @@ pub fn evaluate_effect(
 
 
         Effect::TrashCurrentlyAccessedCard => run::trash_currently_accessed_card_without_cost(state, registry),
+        Effect::RemoveCurrentlyAccessedCardFromGame => run::move_currently_accessed_card(state, registry, run::AccessedTo::RemovedFromGame),
 
         Effect::DerezCard(target) => {
             let (install, card_id, _server) = resolve_corp_installed_target(state, target, ctx)?;
@@ -6316,6 +6317,15 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .and_then(|access| access.pending_install)
             .and_then(|install| state.find_corp_install(install))
             .map_or(0, |card| card.advancement_tokens),
+        Amount::AccessedCardTrashCost => state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .and_then(|access| match &access.phase {
+                crate::rules::run::AccessPhase::PendingChoice { trash_cost, .. } => *trash_cost,
+                _ => None,
+            })
+            .unwrap_or(0),
         Amount::AccessedCardPrintedCost => state
             .active_run
             .as_ref()

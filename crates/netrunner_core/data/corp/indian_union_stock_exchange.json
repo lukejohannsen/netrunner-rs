@@ -1,0 +1,55 @@
+{
+  "id": "indian_union_stock_exchange",
+  "title": "Indian Union Stock Exchange",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "Not": "MatchesOwnersIdentityFaction"
+        }
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you rez or play an out-of-faction card (including Indian Union Stock Exchange), gain 1[credit]."
+    },
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "Whose": "Corp"
+          },
+          {
+            "Card": {
+              "Not": "MatchesOwnersIdentityFaction"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you rez or play an out-of-faction card (including Indian Union Stock Exchange), gain 1[credit]."
+    }
+  ],
+  "built_from": 10073,
+  "is_playable": true
+}

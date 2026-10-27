@@ -1,0 +1,25 @@
+{
+  "id": "tech_trader",
+  "title": "Tech Trader",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAbilityUsed",
+      "subject": "Any",
+      "when": "TrashAbility",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you use a [trash] ability, gain 1[credit]."
+    }
+  ],
+  "built_from": 10023,
+  "is_playable": true
+}

@@ -102,6 +102,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::PrintedCost => "its printed cost".to_string(),
         Amount::PrintedAgendaPoints => "its agenda points".to_string(),
         Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
+        Amount::AccessedCardTrashCost => "the trash cost of the card being accessed".to_string(),
         Amount::PaidCardPrintedCost => "the printed cost of the card trashed to pay".to_string(),
         Amount::TriggeringCardPrintedCost => "the printed cost of the trashed card".to_string(),
         Amount::TriggeringCardTrashCost => "the trashed card's trash cost".to_string(),
@@ -504,6 +505,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RezInstalled { .. } => "rez a card".to_string(),
         Effect::TakeAllCountersAsCredits(side) => format!("{} takes the counters as credits", who(*side)),
         Effect::TrashCurrentlyAccessedCard => "trash the accessed card".to_string(),
+        Effect::RemoveCurrentlyAccessedCardFromGame => "remove the accessed card from the game".to_string(),
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
             format!("{} gains {} per counter", who(*side), plural(*credits_per_counter, "credit", "credits"))
         }
@@ -853,6 +855,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Successful => "that was successful".to_string(),
         EventFilter::NotInArchives => "of a card not in Archives".to_string(),
         EventFilter::ProtectedByTwoOrMoreIce => "on a server protected by 2 or more pieces of ice".to_string(),
+        EventFilter::TrashAbility => "a [trash] ability".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

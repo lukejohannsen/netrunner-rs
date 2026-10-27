@@ -851,6 +851,14 @@ pub enum Effect {
     /// actually mid-access of a specific card right now. See
     /// `run::access::trash_currently_accessed_card_without_cost`.
     TrashCurrentlyAccessedCard,
+    /// Removes the card the Runner is accessing from the game, ending its
+    /// access (CR 7.1.7) — Salsette Slums' "pay the trash cost of the card
+    /// you are accessing: **remove that card from the game**". See
+    /// `run::move_currently_accessed_card`. Composition didn't work:
+    /// `RemoveFromGame(ThisCard)` is the acting card, which in a paid
+    /// ability is the card whose ability it is, and no target names the
+    /// card being accessed.
+    RemoveCurrentlyAccessedCardFromGame,
     /// Flips a rezzed Corp installed card back face-down — the only
     /// player/effect-driven derez path (rez itself is otherwise one-way
     /// via `PlayerAction::RezIce`). `target` is almost always
@@ -2665,6 +2673,14 @@ pub enum Amount {
     /// paid ability is the card whose ability it is; the accessed card is
     /// the run's (`AccessPhase::card`). 0 when nothing is being accessed.
     AccessedCardPrintedCost,
+    /// The trash cost of the card the Runner is accessing, as its access
+    /// decision states it (`AccessPhase::PendingChoice::trash_cost`, what
+    /// `PlayerAction::TrashAccessedCard` would charge) — Salsette Slums'
+    /// "**pay the trash cost** of the card you are accessing". 0 when
+    /// nothing with a trash cost is at its decision. Composition didn't
+    /// work: `CardsSelectedTrashCost` is a selection's, and the card being
+    /// accessed is selected by nobody.
+    AccessedCardTrashCost,
     /// The printed cost of the card a nested cost just trashed
     /// (`ResolutionContext::paid_with`) — Kimberlite Field's "the printed
     /// rez cost of the Corp card you trashed". 0 outside what such a cost
@@ -4271,6 +4287,7 @@ impl Effect {
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard
+            | Effect::RemoveCurrentlyAccessedCardFromGame
             | Effect::DerezCard(..)
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)

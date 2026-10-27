@@ -1537,6 +1537,8 @@ impl CardDefinition {
             EventFilter::NotInArchives => triggered.trigger == Trigger::OnAccessPassed,
             // Only a run's start says how the server was protected.
             EventFilter::ProtectedByTwoOrMoreIce => triggered.trigger == Trigger::OnRunStart,
+            // Only a use says which ability was used.
+            EventFilter::TrashAbility => triggered.trigger == Trigger::OnAbilityUsed,
             EventFilter::TrashedFromThisServer => {
                 matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
             }

@@ -1,0 +1,76 @@
+{
+  "id": "guru_davinder",
+  "title": "Guru Davinder",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Net"
+      },
+      "effects": [
+        {
+          "Prevent": {
+            "Damage": {
+              "kind": "Net",
+              "up_to": 4294967295
+            }
+          }
+        },
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 4
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "TrashCard": "ThisCard"
+            },
+            "text": "trash it unless you pay 4[credit]"
+          }
+        }
+      ],
+      "text": "[interrupt] → Whenever you would take net or meat damage, prevent all of that damage."
+    },
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Meat"
+      },
+      "effects": [
+        {
+          "Prevent": {
+            "Damage": {
+              "kind": "Meat",
+              "up_to": 4294967295
+            }
+          }
+        },
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 4
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "TrashCard": "ThisCard"
+            },
+            "text": "trash it unless you pay 4[credit]"
+          }
+        }
+      ],
+      "text": "[interrupt] → Whenever you would take net or meat damage, prevent all of that damage."
+    }
+  ],
+  "built_from": 10084,
+  "is_playable": true
+}
