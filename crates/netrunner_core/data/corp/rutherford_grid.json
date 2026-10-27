@@ -1,0 +1,22 @@
+{
+  "id": "rutherford_grid",
+  "title": "Rutherford Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 4,
+  "continuous": [
+    {
+      "kind": {
+        "TraceBase": {
+          "per": 2
+        }
+      },
+      "applies_to": "RunsOnThisServer",
+      "text": "The base trace strength of each trace during a run on this server is increased by 2."
+    }
+  ],
+  "triggers": [],
+  "built_from": 9025,
+  "is_playable": true
+}

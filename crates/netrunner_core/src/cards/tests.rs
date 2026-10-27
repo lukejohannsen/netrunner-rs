@@ -47743,3 +47743,104 @@ mod mumbad_stage_13 {
         assert!(apply_action(&ready, &registry, PlayerAction::ScoreAgenda { target: install_of(&ready, "hostile_takeover") }).is_err(), "you cannot score that card");
     }
 }
+
+mod mumbad_stage_14 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn installed(card: &str, install: u32, server: ServerId, slot: InstallSlot) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot, rezzed: true, ..Default::default() }
+    }
+
+    /// Fires `card`'s first subroutine as if it had resolved in an encounter.
+    fn fire(state: &mut GameState, registry: &CardRegistry, card: &str, install: u32) {
+        let card = id(card);
+        let mut ctx = crate::rules::ResolutionContext::for_parked(Some(InstallId(install)), Some(&card));
+        let effect = registry.get(&card).unwrap().subroutines[0].effect.clone();
+        crate::rules::evaluate_effect(state, &effect, &mut ctx, registry).expect("subroutine");
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn improved_tracers_raises_tracer_ice_and_a_subroutines_trace() {
+        let mut state = base_state();
+        let registry = registry();
+        state.corp.installed = vec![installed("matrix_analyzer", 3001, ServerId::Remote(0), InstallSlot::Ice)];
+        let printed = crate::rules::continuous::installed_ice_strength(&state, &registry, &id("matrix_analyzer"), InstallId(3001));
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("improved_tracers"))];
+        let raised = crate::rules::continuous::installed_ice_strength(&state, &registry, &id("matrix_analyzer"), InstallId(3001));
+        assert_eq!(raised, printed + 1, "all tracer ice have +1 strength");
+        fire(&mut state, &registry, "matrix_analyzer", 3001);
+        assert_eq!(state.active_trace.as_ref().map(|trace| trace.base_strength), Some(2 + 1), "Trace[2], increased by 1");
+    }
+
+    #[test]
+    fn rutherford_grid_raises_traces_during_a_run_on_its_server_only() {
+        let registry = registry();
+        let traced = |server: ServerId| {
+            let mut state = base_state();
+            state.corp.installed = vec![
+                installed("matrix_analyzer", 3001, ServerId::Remote(0), InstallSlot::Ice),
+                installed("rutherford_grid", 3002, ServerId::Remote(0), InstallSlot::Root),
+            ];
+            state.active_run = Some(crate::rules::RunState { server, ..Default::default() });
+            fire(&mut state, &registry, "matrix_analyzer", 3001);
+            state.active_trace.as_ref().map(|trace| trace.base_strength)
+        };
+        assert_eq!(traced(ServerId::Remote(0)), Some(2 + 2), "a run on this server");
+        assert_eq!(traced(ServerId::Hq), Some(2), "a run elsewhere");
+    }
+
+    #[test]
+    fn exchange_of_information_swaps_an_agenda_between_score_areas() {
+        let mut state = base_state();
+        let registry = registry();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("exchange_of_information")];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("hostile_takeover"))];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("project_beale"))];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("exchange_of_information") }).is_err(), "the Runner is not tagged");
+        state.runner.tags = 1;
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("exchange_of_information") }).expect("play");
+        let theirs = select(&asked, &registry, &[0]);
+        let (done, _) = close_all_windows(select(&theirs, &registry, &[0]), &registry);
+        assert_eq!(done.corp.scored_agendas.iter().map(|s| s.card.clone()).collect::<Vec<_>>(), vec![id("project_beale")]);
+        assert_eq!(done.runner.scored_agendas.iter().map(|s| s.card.clone()).collect::<Vec<_>>(), vec![id("hostile_takeover")]);
+    }
+
+    #[test]
+    fn windfall_gains_the_install_cost_of_the_card_it_trashes_and_nothing_for_an_event() {
+        let registry = registry();
+        let windfall = |top: &str| {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.resources.clicks = Clicks(4);
+            state.runner.resources.credits = Credits(5);
+            state.runner.grip = vec![id("windfall")];
+            state.runner.stack = vec![id(top)];
+            let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("windfall") }).expect("play");
+            let done = if crate::rules::legal_actions_for(&played, &registry, Side::Runner).iter().any(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })) {
+                let position = played.runner.heap.iter().position(|card| *card == id(top)).expect("trashed");
+                select(&played, &registry, &[position])
+            } else {
+                played
+            };
+            let (done, _) = close_all_windows(done, &registry);
+            assert!(done.runner.heap.contains(&id(top)) && done.runner.stack.is_empty());
+            done.runner.resources.credits
+        };
+        assert_eq!(windfall("corroder"), Credits(5 + 2), "Corroder's install cost");
+        assert_eq!(windfall("sure_gamble"), Credits(5), "an event has no install cost");
+    }
+}

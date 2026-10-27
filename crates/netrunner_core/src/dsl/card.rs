@@ -2190,6 +2190,10 @@ impl CardDefinition {
                 (ContinuousKind::AgendaPoints(_), _) => {
                     return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda of itself (`ScoreArea`, or `This` for either)");
                 }
+                (ContinuousKind::TraceBase(_), Scope::Ice(_) | Scope::RunsOnThisServer) => {}
+                (ContinuousKind::TraceBase(_), _) => {
+                    return misfit("TraceBase", "a trace's base strength is asked about the ice whose subroutine starts it or the server a run is on");
+                }
                 (ContinuousKind::RunCost(_), Scope::Runs(_)) => {}
                 // Cold Site Server's and Reduced Service's "to run this
                 // server": an upgrade's, about the server it is in.
