@@ -273,7 +273,6 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("comet", "Comet"),
     ("study_guide", "Study Guide"),
     ("london_library", "London Library"),
-    ("tyson_observatory", "Tyson Observatory"),
     ("research_grant", "Research Grant"),
     ("turing", "Turing"),
     ("crick", "Crick"),
@@ -332,8 +331,6 @@ pub(crate) const UW_UNIMPLEMENTED: &[(&str, &str)] = &[
 /// *Old Hollywood* (`old_hollywood`): tranche F7 of the FFG plan.
 pub(crate) const OH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("trope", "Trope"),
-    ("spoilers", "Spoilers"),
-    ("rolodex", "Rolodex"),
     ("film_critic", "Film Critic"),
     ("paparazzi", "Paparazzi"),
     ("ronald_five", "Ronald Five"),
@@ -413,10 +410,8 @@ pub(crate) const OAC_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hivemind", "Hivemind"),
     ("progenitor", "Progenitor"),
     ("archives_interface", "Archives Interface"),
-    ("chop_bot_3000", "Chop Bot 3000"),
     ("memstrips", "MemStrips"),
     ("vigil", "Vigil"),
-    ("sacrificial_clone", "Sacrificial Clone"),
     ("virus_breeding_ground", "Virus Breeding Ground"),
     ("qianju_pt", "Qianju PT"),
     ("data_folding", "Data Folding"),

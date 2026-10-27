@@ -1,0 +1,26 @@
+{
+  "id": "spoilers",
+  "title": "Spoilers",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Corp",
+            "amount": {
+              "Fixed": 1
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Corp scores an agenda, they trash the top card of R&D."
+    }
+  ],
+  "built_from": 8082,
+  "is_playable": true
+}

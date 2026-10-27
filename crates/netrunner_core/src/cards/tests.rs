@@ -49122,3 +49122,125 @@ mod sansan_stage_2 {
         assert!(apply_action(&state, &registry, trash).is_err(), "4 to pay");
     }
 }
+
+mod sansan_stage_3 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn(rigged: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = rigged.iter().map(|card| rig(card)).collect();
+        state
+    }
+
+    fn use_it(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> GameState {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index }).expect("use it").0
+    }
+
+    /// Selects the cards at `positions` of the zone the prompt reads, and
+    /// confirms.
+    fn select_all(mut state: GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        if state.pending_decision.is_none() {
+            return close_all_windows(state, registry).0;
+        }
+        for &position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).unwrap_or_else(|e| panic!("select {position}: {e:?} {:?}", state.pending_decision)).0;
+        }
+        close_all_windows(apply_action(&state, registry, PlayerAction::ConfirmCardSelection).unwrap_or_else(|e| panic!("confirm: {e:?} {:?}", state.pending_decision)).0, registry).0
+    }
+
+    /// `side` ends its turn and every window is passed until the other
+    /// side's action phase begins, or someone is asked something.
+    fn next_turn(state: &GameState, registry: &CardRegistry, side: Side) -> GameState {
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
+        for _ in 0..20 {
+            if state.pending_decision.is_some() || (state.phase == GamePhase::Action(side.other()) && state.paid_ability_window.is_none()) {
+                break;
+            }
+            let actor = crate::rules::current_actor(&state).expect("someone acts");
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side: actor }).expect("pass").0;
+        }
+        state
+    }
+
+    #[test]
+    fn tyson_observatory_finds_a_piece_of_hardware_for_two_clicks() {
+        let registry = registry();
+        let mut state = runner_turn(&["tyson_observatory"]);
+        state.runner.stack = vec![id("sure_gamble"), id("akamatsu_mem_chip"), id("easy_mark")];
+        let state = select_all(use_it(&state, &registry, "tyson_observatory", 0), &registry, &[1]);
+        assert_eq!((state.runner.grip.clone(), state.runner.stack.len(), state.runner.resources.clicks), (vec![id("akamatsu_mem_chip")], 2, Clicks(2)));
+    }
+
+    #[test]
+    fn spoilers_mills_r_and_d_when_the_corp_scores() {
+        let registry = registry();
+        let mut state = runner_turn(&["spoilers"]);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("hostile_takeover"), card: id("hostile_takeover"), server: ServerId::Remote(0), advancement_tokens: 2, ..Default::default() }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fixture_install_id("hostile_takeover") }).expect("score");
+        let state = close_all_windows(state, &registry).0;
+        assert_eq!(state.corp.r_and_d, vec![id("hedge_fund")], "the top card");
+        assert!(state.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+    }
+
+    #[test]
+    fn rolodex_arranges_the_stack_as_it_installs_and_mills_three_as_it_is_trashed() {
+        let registry = registry();
+        let mut state = runner_turn(&[]);
+        state.runner.grip = vec![id("rolodex")];
+        state.runner.stack = vec![id("sure_gamble"), id("easy_mark"), id("corroder"), id("daily_casts"), id("akamatsu_mem_chip"), id("bookmark")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("rolodex"), host: None }).expect("install");
+        assert!(asked.pending_decision.is_some(), "look at the top 5: {:?} {:?}", asked.paid_ability_window, crate::rules::legal_actions_for(&asked, &registry, Side::Runner));
+        let arranged = select_all(asked, &registry, &[]);
+        assert_eq!(arranged.runner.stack.len(), 6);
+        let mut tagged = arranged.clone();
+        tagged.phase = GamePhase::Action(Side::Corp);
+        tagged.runner.tags = 1;
+        let target = tagged.runner.rig[0].install_id;
+        let (trashed, _) = apply_action(&tagged, &registry, PlayerAction::TrashResource { target }).expect("trash it");
+        let trashed = close_all_windows(trashed, &registry).0;
+        assert_eq!((trashed.runner.stack.len(), trashed.runner.heap.len()), (3, 4), "Rolodex and the top 3");
+    }
+
+    #[test]
+    fn chop_bot_trashes_another_card_to_draw_or_remove_a_tag() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("chop_bot_3000"), rig("akamatsu_mem_chip")];
+        state.runner.stack = vec![id("sure_gamble")];
+        state.runner.tags = 1;
+        let state = next_turn(&state, &registry, Side::Corp);
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&state, &registry, Side::Runner).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered, vec![PlayerAction::ToggleCardSelection { position: 1 }], "another of your installed cards: {:?}", state.pending_decision);
+        let chosen = select_all(state, &registry, &[1]);
+        let (removed, _) = apply_action(&chosen, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove 1 tag");
+        assert_eq!((removed.runner.rig.len(), removed.runner.heap.clone(), removed.runner.tags), (1, vec![id("akamatsu_mem_chip")], 0));
+    }
+
+    #[test]
+    fn sacrificial_clone_prevents_all_damage_and_gives_up_almost_everything() {
+        let registry = registry();
+        let mut state = runner_turn(&["sacrificial_clone", "akamatsu_mem_chip", "corroder", "daily_casts"]);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.tags = 2;
+        let hit = crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Meat, 5);
+        crate::rules::evaluate_effect(&mut state, &hit, &mut crate::rules::ResolutionContext::for_card(None), &registry).expect("damage");
+        let state = use_it(&state, &registry, "sacrificial_clone", 0);
+        let state = select_all(state, &registry, &[0, 1, 2]);
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("corroder")], "a program stays");
+        assert!(state.runner.grip.is_empty());
+        assert_eq!((state.runner.resources.credits, state.runner.tags, state.runner.brain_damage), (Credits(0), 0, 0));
+        assert_eq!(state.runner.heap.iter().filter(|card| **card == id("sure_gamble")).count(), 3, "trashed, not damaged");
+    }
+}

@@ -3,7 +3,7 @@
   "name": "Street Gallery",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Arissana Rocha Nahu: Street Artist, The Automata Initiative's Shaper identity, who installs a program from the grip during a run and trashes it as the run ends unless it is a trojan. Safety Net's frame of programs and trojans under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 2a: two Hippocampic Mechanocytes and two Dr. Nuka Vrolyck for two Joy Ride and two Living Mural, which Safety Net still carries. Parhelion Stage 4a: two Basilar Synthgland 2KVJ for two Coalescence and two K2CP Turbine for two Beta Build, all four of which Safety Net still carries. Parhelion Stage 6d: two Nanuq for its two Conduit, an AI breaker that leaves the game when it is trashed or when an agenda is scored or stolen; eight other decks still carry Conduit. Downfall Stage 1: two Rezeki for two Stowaway, a credit at the start of each turn. Reprints Stage 1b: two Indexing for its two Decoy, and two Aesop’s Pawnshop for two Sacrificial Construct; Safety Net and Dead Reckoning still carry both. Tranche 8 Stage 6a: two Paricia for two Sipa, whose recurring credits pay the trash costs of assets and nothing else. Safety Net keeps Sipa. Flashpoint Stage 2: one Misdirection for one Net Shield. Flashpoint Stage 2b: one Equivocation for one Rezeki.  FFG F6 Stage 3: two Net Shield (four other decks keep it) for Patron and The Turning Wheel.",
+  "description": "Not a published list: built so the sweeps reach Arissana Rocha Nahu: Street Artist, The Automata Initiative's Shaper identity, who installs a program from the grip during a run and trashes it as the run ends unless it is a trojan. Safety Net's frame of programs and trojans under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 2a: two Hippocampic Mechanocytes and two Dr. Nuka Vrolyck for two Joy Ride and two Living Mural, which Safety Net still carries. Parhelion Stage 4a: two Basilar Synthgland 2KVJ for two Coalescence and two K2CP Turbine for two Beta Build, all four of which Safety Net still carries. Parhelion Stage 6d: two Nanuq for its two Conduit, an AI breaker that leaves the game when it is trashed or when an agenda is scored or stolen; eight other decks still carry Conduit. Downfall Stage 1: two Rezeki for two Stowaway, a credit at the start of each turn. Reprints Stage 1b: two Indexing for its two Decoy, and two Aesop’s Pawnshop for two Sacrificial Construct; Safety Net and Dead Reckoning still carry both. Tranche 8 Stage 6a: two Paricia for two Sipa, whose recurring credits pay the trash costs of assets and nothing else. Safety Net keeps Sipa. Flashpoint Stage 2: one Misdirection for one Net Shield. Flashpoint Stage 2b: one Equivocation for one Rezeki.  FFG F6 Stage 3: two Net Shield (four other decks keep it) for Patron and The Turning Wheel. SanSan Stage 3 swapped a Dr. Nuka Vrolyck for Tyson Observatory.",
   "style": [
     "rig"
   ],
@@ -91,7 +91,7 @@
     },
     {
       "card": "dr_nuka_vrolyck",
-      "count": 2
+      "count": 1
     },
     {
       "card": "indexing",
@@ -115,6 +115,10 @@
     },
     {
       "card": "the_turning_wheel",
+      "count": 1
+    },
+    {
+      "card": "tyson_observatory",
       "count": 1
     }
   ]

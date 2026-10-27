@@ -1,0 +1,47 @@
+{
+  "id": "rolodex",
+  "title": "Rolodex",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "TopOfZone": 5
+            },
+            "min": 0,
+            "max": 5,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnStack"
+          }
+        }
+      ],
+      "text": "When you install Rolodex, look at the top 5 cards of your stack and arrange them in any order."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "effects": [
+        {
+          "Mill": {
+            "deck": "Runner",
+            "amount": {
+              "Fixed": 3
+            }
+          }
+        }
+      ],
+      "text": "When Rolodex is trashed, trash the top 3 cards of your stack."
+    }
+  ],
+  "built_from": 8084,
+  "is_playable": true
+}

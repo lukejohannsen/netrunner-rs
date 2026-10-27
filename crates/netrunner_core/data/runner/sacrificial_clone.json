@@ -1,0 +1,90 @@
+{
+  "id": "sacrificial_clone",
+  "title": "Sacrificial Clone",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": {
+              "Damage": {
+                "kind": null,
+                "up_to": 4294967295
+              }
+            }
+          },
+          {
+            "ForEach": {
+              "source": "OwnInstalled",
+              "filter": {
+                "CardType": "Hardware"
+              },
+              "effect": {
+                "TrashCard": {
+                  "Install": 0
+                }
+              }
+            }
+          },
+          {
+            "ForEach": {
+              "source": "OwnInstalled",
+              "filter": {
+                "All": [
+                  {
+                    "CardType": "Resource"
+                  },
+                  {
+                    "Not": {
+                      "HasSubtype": "Virtual"
+                    }
+                  }
+                ]
+              },
+              "effect": {
+                "TrashCard": {
+                  "Install": 0
+                }
+              }
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OwnGrip",
+              "filter": "Any",
+              "min": 0,
+              "max": 0,
+              "count": {
+                "CardsInHand": "Runner"
+              },
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnHeap"
+            }
+          },
+          {
+            "LoseCreditsAmount": [
+              "Runner",
+              {
+                "Credits": "Runner"
+              }
+            ]
+          },
+          {
+            "RemoveTags": "RunnerTags"
+          }
+        ]
+      },
+      "text": "[interrupt] → [trash]: Prevent all damage. Trash all installed hardware, all installed non-virtual resources, and all cards from your grip. Lose all credits in your credit pool. Remove all tags."
+    }
+  ],
+  "triggers": [],
+  "built_from": 7050,
+  "is_playable": true
+}
