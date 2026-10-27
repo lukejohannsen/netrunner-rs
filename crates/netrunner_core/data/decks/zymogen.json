@@ -3,7 +3,7 @@
   "name": "Zymogen",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jesminder Sareen: Girl Behind the Curtain, Kala Ghoda's Shaper identity, which prevents 1 tag the first time each run the Runner would take tags. Dead Reckoning's list, its identity swapped, with two Artist Colony (forfeit an agenda to search the stack for a card and install it), two Liberated Chela (five clicks and an agenda for 2 points, unless the Corp forfeits one) and a Wasteland (a credit the first time each turn the Runner trashes one of their own installs) for two Sacrificial Construct, a Net Shield, a Lampades and a Baker, each kept by Dead Reckoning. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4.",
+  "description": "Not a published list: built so the sweeps reach Jesminder Sareen: Girl Behind the Curtain, Kala Ghoda's Shaper identity, which prevents 1 tag the first time each run the Runner would take tags. Dead Reckoning's list, its identity swapped, with two Artist Colony (forfeit an agenda to search the stack for a card and install it), two Liberated Chela (five clicks and an agenda for 2 points, unless the Corp forfeits one) and a Wasteland (a credit the first time each turn the Runner trashes one of their own installs) for two Sacrificial Construct, a Net Shield, a Lampades and a Baker, each kept by Dead Reckoning. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Mumbad is in neither pool. FFG F6 Stage 4. Mumbad Stage 15 swapped in Safety First for a Beatriz Friere Gonzalez, which four other decks carry.",
   "style": [
     "rig"
   ],
@@ -31,7 +31,7 @@
     },
     {
       "card": "beatriz_friere_gonzalez",
-      "count": 2
+      "count": 1
     },
     {
       "card": "supercorridor",
@@ -131,6 +131,10 @@
     },
     {
       "card": "wasteland",
+      "count": 1
+    },
+    {
+      "card": "safety_first",
       "count": 1
     }
   ]

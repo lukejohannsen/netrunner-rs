@@ -541,6 +541,25 @@ pub fn memory_cost(state: &GameState, registry: &CardRegistry, card: &InstalledR
         })
 }
 
+/// What a program not yet installed costs in memory: its printed cost and
+/// what its own text says of itself — the GS breakers' "if you have at
+/// least 2[link], the memory cost of this program is 0[mu], **even if it
+/// is not installed**", which an install asks before the program is in the
+/// rig (CR 3.9.3b). Only the card's own text: nothing else on the table is
+/// about a card that is not there.
+pub fn incoming_memory_cost(state: &GameState, registry: &CardRegistry, definition: &crate::dsl::CardDefinition) -> i32 {
+    let printed = definition.memory_cost.unwrap_or(0) as i32;
+    let mut own = 0;
+    for_each_applying(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::MemoryCost(_)), |effect, source, ctx| {
+        if let ContinuousKind::MemoryCost(number) = &effect.kind
+            && source.card == &definition.id
+        {
+            own += number.per * ability::resolve_amount(&number.of, ctx, state, registry) as i32;
+        }
+    });
+    (printed + own).max(0)
+}
+
 pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> i32 {
     let stored = lingering::rig_strength(state, card);
     let Some(definition) = registry.get(&card.card) else { return stored };

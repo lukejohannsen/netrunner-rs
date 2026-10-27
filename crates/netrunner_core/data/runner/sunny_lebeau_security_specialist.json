@@ -1,0 +1,12 @@
+{
+  "id": "sunny_lebeau_security_specialist",
+  "title": "Sunny Lebeau: Security Specialist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 50,
+  "base_link": 2,
+  "triggers": [],
+  "built_from": 9045,
+  "is_playable": true
+}

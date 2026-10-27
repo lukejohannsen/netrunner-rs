@@ -66,7 +66,8 @@ pub fn memory_balance(state: &GameState, registry: &CardRegistry) -> i32 {
 }
 
 /// [`memory_balance`] with `incoming`, a program not yet installed, counted
-/// at its printed cost — what an install asks (CR 3.9.3b). A grant for
+/// at its printed cost and what its own text says of it
+/// (`continuous::incoming_memory_cost`) — what an install asks (CR 3.9.3b). A grant for
 /// some programs only (Knobkierie's, `continuous::memory_only_for`) counts
 /// as much as the programs it is for spend, so whether a program fits
 /// depends on which program it is, not only on what it costs.
@@ -80,7 +81,7 @@ pub(crate) fn memory_balance_with(state: &GameState, registry: &CardRegistry, in
         .iter()
         .filter(|installed| installed.hosted_on_rig_card.is_none_or(|host| continuous::hosts_memory(state, registry, host).is_none()))
         .filter_map(|installed| registry.get(&installed.card).map(|card| (card, continuous::memory_cost(state, registry, installed))));
-    let spending: Vec<(&crate::dsl::CardDefinition, i32)> = installed.chain(incoming.map(|card| (card, card.memory_cost.unwrap_or(0) as i32))).collect();
+    let spending: Vec<(&crate::dsl::CardDefinition, i32)> = installed.chain(incoming.map(|card| (card, continuous::incoming_memory_cost(state, registry, card)))).collect();
     let spent: i32 = spending.iter().map(|(_, cost)| cost).sum();
     let set_aside: i32 = continuous::memory_only_for(state, registry)
         .into_iter()

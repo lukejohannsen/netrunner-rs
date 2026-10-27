@@ -1,0 +1,59 @@
+{
+  "id": "gs_striker_m1",
+  "title": "GS Striker M1",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "MemoryCost": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "Link",
+          2
+        ]
+      },
+      "text": "If you have at least 2[link], the memory cost of this program is 0[mu], even if it is not installed."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break any number of code gate subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 9048,
+  "is_playable": true
+}

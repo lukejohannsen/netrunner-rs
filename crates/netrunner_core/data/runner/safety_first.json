@@ -1,0 +1,54 @@
+{
+  "id": "safety_first",
+  "title": "Safety First",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": -2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "Your maximum hand size is reduced by 2."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "Reduced": {
+                    "amount": {
+                      "MaxHandSize": "Runner"
+                    },
+                    "by": {
+                      "CardsInHand": "Runner"
+                    }
+                  }
+                },
+                1
+              ]
+            },
+            "effect": {
+              "DrawCards": [
+                "Runner",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn ends, draw 1 card if you do not have cards in your grip equal to or greater than your maximum hand size."
+    }
+  ],
+  "built_from": 9044,
+  "is_playable": true
+}
