@@ -387,6 +387,13 @@ fn strength(kind: &ContinuousKind) -> Option<&Number> {
     }
 }
 
+fn trace_base(kind: &ContinuousKind) -> Option<&Number> {
+    match kind {
+        ContinuousKind::TraceBase(number) => Some(number),
+        _ => None,
+    }
+}
+
 fn install_cost(kind: &ContinuousKind) -> Option<&Number> {
     match kind {
         ContinuousKind::InstallCost(number) => Some(number),
@@ -570,6 +577,17 @@ pub fn installed_ice_strength(state: &GameState, registry: &CardRegistry, card: 
         }
     });
     printed + table + lingering::ice_strength_terms(state, install).map(|delta| delta.max(floor)).sum::<i32>()
+}
+
+/// What the table adds to the base strength of a trace started by
+/// `starter` (`ContinuousKind::TraceBase`): a word about the piece of ice
+/// whose subroutine starts it (Improved Tracers), and one about the server
+/// a run is on (Rutherford Grid). A trace a Runner card starts is asked
+/// only about the run.
+pub fn trace_base_delta(state: &GameState, registry: &CardRegistry, starter: Option<InstallId>) -> i32 {
+    let ice = starter.and_then(|install| Target::corp_install(state, registry, install)).map_or(0, |target| sum(state, registry, target, trace_base));
+    let run = state.active_run.as_ref().map_or(0, |run| sum(state, registry, Target::Run { server: run.server }, trace_base));
+    ice + run
 }
 
 /// How many more of the encountered `ice`'s printed subroutines `breaker`

@@ -509,6 +509,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::SwapInstalledIce(..) => "swap two pieces of ice".to_string(),
         Effect::SwapThisWithSelectedFromGrip => "swap this card with the chosen card from the grip".to_string(),
+        Effect::SwapScoredAgenda { .. } => "swap an agenda in your score area with an agenda in the Runner's score area".to_string(),
         Effect::SwapDeckCardWithHq { .. } => "swap the card chosen in R&D with the card chosen in HQ".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
@@ -1066,6 +1067,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::DamageDone { kind, by } => format!("does {} {} damage whenever it would do some", signed(by), damage_word(kind)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
+        ContinuousKind::TraceBase(number) => format!("gets {} base trace strength", signed(number)),
         ContinuousKind::BidAtMost(most) => format!("cannot spend more than {most} [credit] secretly in a psi game"),
         ContinuousKind::Tags(number) => format!("is considered to have {} tags", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),

@@ -223,7 +223,6 @@ pub(crate) const TLM_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("rebirth", "Rebirth"),
     ("guru_davinder", "Guru Davinder"),
     ("dedicated_neural_net", "Dedicated Neural Net"),
-    ("exchange_of_information", "Exchange of Information"),
 ];
 
 /// *Fear the Masses* (`fear_the_masses`): tranche F6 of the FFG plan.
@@ -241,7 +240,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("sync_everything_everywhere", "SYNC: Everything, Everywhere"),
     ("new_angeles_sol_your_news", "New Angeles Sol: Your News"),
     ("spark_agency_worldswide_reach", "Spark Agency: Worldswide Reach"),
-    ("improved_tracers", "Improved Tracers"),
     ("rebranding_team", "Rebranding Team"),
     ("quantum_predictive_model", "Quantum Predictive Model"),
     ("shannon_claire", "Shannon Claire"),
@@ -253,7 +251,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("ad_blitz", "Ad Blitz"),
     ("media_blitz", "Media Blitz"),
     ("surveillance_sweep", "Surveillance Sweep"),
-    ("rutherford_grid", "Rutherford Grid"),
     ("apex_invasive_predator", "Apex: Invasive Predator"),
     ("apocalypse", "Apocalypse"),
     ("prey", "Prey"),
@@ -273,7 +270,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("gs_sherman_m3", "GS Sherman M3"),
     ("jak_sinclair", "Jak Sinclair"),
     ("employee_strike", "Employee Strike"),
-    ("windfall", "Windfall"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.

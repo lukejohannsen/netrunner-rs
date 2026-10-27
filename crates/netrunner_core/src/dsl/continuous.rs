@@ -338,6 +338,15 @@ pub enum ContinuousKind {
     /// work: nothing limited the servers, and a new remote is not an
     /// install a `Cannot` could name without its count.
     RemoteServerLimit(u32),
+    /// The base strength of a trace — Improved Tracers' "the base trace
+    /// strength of each subroutine is increased by 1" (`Scope::Ice`, asked
+    /// about the ice whose subroutine starts it) and Rutherford Grid's "of
+    /// each trace during a run on this server is increased by 2"
+    /// (`Scope::RunsOnThisServer`). Asked once, as the trace is initiated
+    /// (`continuous::trace_base_delta`), and added to the printed X before
+    /// anybody may lower it (Flip Switch). Composition didn't work: a
+    /// trace's base was the number its card prints and nothing else.
+    TraceBase(Number),
     /// The player bids at most this many credits when secretly spending —
     /// Government Investigations' "While secretly spending credits, players
     /// cannot spend 2[credit]" (1, about each player: `Scope::Player`, an

@@ -923,6 +923,32 @@ pub fn evaluate_effect(
             crate::rules::engine::swap_rig_card_with_grip_card(state, registry, outgoing, &incoming)
         }
 
+        Effect::SwapScoredAgenda { yours: None } => {
+            let yours = ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?;
+            let theirs = Effect::PromptChooseCards {
+                side: Side::Corp,
+                source: crate::dsl::CardZoneRef::OpponentScoreArea,
+                filter: crate::dsl::CardFilter::Any,
+                min: 1,
+                max: 1,
+                reveal: false,
+                shuffle_after: false,
+                destination: None,
+                then: Some(Box::new(Effect::SwapScoredAgenda { yours: Some(yours) })),
+                count: None,
+                up_to: None,
+            };
+            evaluate_effect(state, &theirs, ctx, registry)
+        }
+
+        Effect::SwapScoredAgenda { yours: Some(yours) } => {
+            let theirs = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let corp = state.corp.scored_agendas.iter().position(|scored| scored.install_id == *yours).ok_or(RulesError::MissingActingCardContext)?;
+            let runner = state.runner.scored_agendas.iter().position(|scored| scored.card == theirs).ok_or(RulesError::MissingActingCardContext)?;
+            std::mem::swap(&mut state.corp.scored_agendas[corp], &mut state.runner.scored_agendas[runner]);
+            Ok(Vec::new())
+        }
+
         Effect::SwapInstalledIce(a, b) => {
             // Legal mid-run: `run::reconcile_ice` rebuilds the run's ICE
             // list from `corp.installed` at the next step and keeps
@@ -2313,6 +2339,7 @@ pub fn evaluate_effect(
             // "Trace[X]" is X as the trace is initiated, and stays that
             // number while anybody is asked to lower it.
             let base = resolve_amount(base, ctx, state, registry);
+            let base = (base as i32 + crate::rules::continuous::trace_base_delta(state, registry, ctx.acting_install)).max(0) as u32;
             // Its base strength can be lowered first (Flip Switch).
             if let Some(events) = prevention::trace(state, registry, base, effect, ctx)? {
                 return Ok(events);

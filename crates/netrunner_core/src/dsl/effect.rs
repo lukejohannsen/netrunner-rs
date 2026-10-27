@@ -901,6 +901,20 @@ pub enum Effect {
     /// and returning the card to the grip first, as a cost, would offer it
     /// back to its own selection.
     SwapThisWithSelectedFromGrip,
+    /// Swaps an agenda in the Corp's score area with one in the Runner's
+    /// (CR 8.8.4c) — Exchange of Information. Written as the `then` of a
+    /// selection over the Corp's score area with `yours: None`: the agenda
+    /// chosen there (its handle, which tells two scored copies apart) is
+    /// written into a second selection over the Runner's score area, whose
+    /// `then` is this with `yours` filled, and that one makes the swap —
+    /// the State Hygiene Rule's chosen value, carried in the effect that
+    /// waits. Each agenda keeps its counters and is neither scored nor
+    /// stolen. Composition didn't work: no effect moved a card between
+    /// score areas.
+    SwapScoredAgenda {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        yours: Option<InstallId>,
+    },
     /// Swaps a card in R&D with a card in HQ, each where it stands —
     /// Nihongai Grid's "look at the top 5 cards of R&D and swap 1 of those
     /// cards with 1 card in HQ". Written as the `then` of a selection out
@@ -4261,6 +4275,7 @@ impl Effect {
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::SwapThisWithSelectedFromGrip
+            | Effect::SwapScoredAgenda { .. }
             | Effect::SwapDeckCardWithHq { .. }
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip

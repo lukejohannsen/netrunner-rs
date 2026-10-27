@@ -1,0 +1,38 @@
+{
+  "id": "improved_tracers",
+  "title": "Improved Tracers",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": {
+          "HasSubtype": "Tracer"
+        }
+      },
+      "text": "All tracer ice have +1 strength."
+    },
+    {
+      "kind": {
+        "TraceBase": {
+          "per": 1
+        }
+      },
+      "applies_to": {
+        "Ice": "Any"
+      },
+      "text": "The base trace strength of each subroutine is increased by 1."
+    }
+  ],
+  "triggers": [],
+  "built_from": 9005,
+  "is_playable": true
+}
