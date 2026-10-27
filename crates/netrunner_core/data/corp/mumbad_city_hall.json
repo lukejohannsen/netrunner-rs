@@ -1,0 +1,81 @@
+{
+  "id": "mumbad_city_hall",
+  "title": "Mumbad City Hall",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "All": [
+                    {
+                      "HasSubtype": "Alliance"
+                    },
+                    {
+                      "Not": {
+                        "CardType": "Operation"
+                      }
+                    }
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": true,
+                "then": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnRAndD"
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "All": [
+                    {
+                      "HasSubtype": "Alliance"
+                    },
+                    "PlayableOperation"
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": true,
+                "then": {
+                  "PlayOperation": {
+                    "from": "OwnRAndD"
+                  }
+                }
+              }
+            }
+          ],
+          "texts": [
+            "play or install it — install",
+            "play or install it — play"
+          ]
+        }
+      },
+      "text": "[click]: Search R&D for an alliance card, reveal it, and play or install it (paying all costs). Shuffle R&D."
+    }
+  ],
+  "triggers": [],
+  "built_from": 10055,
+  "is_playable": true
+}
