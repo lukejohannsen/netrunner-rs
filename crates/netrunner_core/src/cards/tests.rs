@@ -48197,3 +48197,76 @@ mod mumbad_stage_18 {
         assert_eq!(broken.runner.resources.credits.0 + 2, before.0, "1 for the break and 1 for Interrupt 0");
     }
 }
+
+mod mumbad_stage_19 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn agenda_in_remote(card: &str) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), advancement_tokens: 4, ..Default::default() }
+    }
+
+    fn scored(cards: &[crate::rules::ScoredAgenda]) -> Vec<&CardId> {
+        cards.iter().map(|agenda| &agenda.card).collect()
+    }
+
+    /// Resolves the triggers waiting on an order, first listed first.
+    fn in_any_order(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for _ in 0..8 {
+            state = close_all_windows(state, registry).0;
+            let pick = PlayerAction::ChooseTriggerToResolve { index: 0 };
+            let Ok((next, _)) = apply_action(&state, registry, pick) else { break };
+            state = next;
+        }
+        state
+    }
+
+    fn corp_plays_clones() -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq.push(id("clones_are_not_people"));
+        state.corp.installed = vec![agenda_in_remote("hostile_takeover")];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("clones_are_not_people") }).expect("play Clones are not People");
+        let played = close_all_windows(played, &registry).0;
+        assert_eq!(played.corp.play_area.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("clones_are_not_people")], "a current stays");
+        (played, registry)
+    }
+
+    #[test]
+    fn clones_are_not_people_joins_the_corps_score_area_when_the_corp_scores() {
+        let (played, registry) = corp_plays_clones();
+        let (after, _) = apply_action(&played, &registry, PlayerAction::ScoreAgenda { target: install_of(&played, "hostile_takeover") }).expect("score");
+        let after = in_any_order(after, &registry);
+        assert!(after.corp.play_area.is_empty());
+        assert!(!after.corp.archives.iter().any(|card| card.card == id("clones_are_not_people")), "never trashed");
+        assert_eq!(scored(&after.corp.scored_agendas), vec![&id("hostile_takeover"), &id("clones_are_not_people")]);
+    }
+
+    #[test]
+    fn clones_are_not_people_is_trashed_by_a_steal_and_freedom_through_equality_scores_on_it() {
+        let (played, registry) = corp_plays_clones();
+        let mut state = played;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip.push(id("freedom_through_equality"));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("freedom_through_equality") }).expect("play Freedom Through Equality");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.corp.play_area.is_empty(), "another current was played");
+        assert_eq!(state.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("freedom_through_equality")]);
+
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&accessing, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal");
+        let stolen = in_any_order(stolen, &registry);
+        assert!(stolen.runner.in_play.is_empty());
+        assert!(!stolen.runner.heap.contains(&id("freedom_through_equality")), "never trashed");
+        assert_eq!(scored(&stolen.runner.scored_agendas), vec![&id("hostile_takeover"), &id("freedom_through_equality")]);
+    }
+}

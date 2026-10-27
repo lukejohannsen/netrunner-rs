@@ -1,0 +1,23 @@
+{
+  "id": "freedom_through_equality",
+  "title": "Freedom Through Equality",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 1
+          }
+        }
+      ],
+      "text": "When you steal an agenda, add \"Freedom Through Equality\" to your score area as an agenda worth 1 agenda point."
+    }
+  ],
+  "built_from": 10045,
+  "is_playable": true
+}

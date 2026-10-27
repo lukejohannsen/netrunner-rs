@@ -1539,6 +1539,33 @@ pub fn evaluate_effect(
                 dispatcher::emit(state, registry, &mut events, added)?;
                 return Ok(events);
             }
+            // A current waiting in its side's play area (Clones are not
+            // People's "When you score an agenda, add Clones are not People
+            // to your score area", Freedom Through Equality's on a steal):
+            // it leaves from there, so the agenda moment that would have
+            // expired it finds it gone. The play area's own handle when the
+            // resolution carries it, else the latest copy.
+            let waiting = |played: &[crate::rules::state::PlayedOperation]| {
+                played
+                    .iter()
+                    .rposition(|played| played.card == card_id && ctx.acting_install.is_none_or(|install| played.handle == install))
+                    .or_else(|| played.iter().rposition(|played| played.card == card_id))
+            };
+            if let Some(position) = waiting(&state.corp.play_area) {
+                state.corp.play_area.remove(position);
+                let to = if as_agenda.to_the_runner { Side::Runner } else { Side::Corp };
+                let added = add_to_score_area_as_agenda(state, to, card_id, *as_agenda);
+                let mut events = Vec::new();
+                dispatcher::emit(state, registry, &mut events, added)?;
+                return Ok(events);
+            }
+            if let Some(position) = waiting(&state.runner.in_play) {
+                state.runner.in_play.remove(position);
+                let added = add_to_score_area_as_agenda(state, Side::Runner, card_id, *as_agenda);
+                let mut events = Vec::new();
+                dispatcher::emit(state, registry, &mut events, added)?;
+                return Ok(events);
+            }
             // A Runner event, as it resolves (Notoriety's "Add Notoriety to
             // your score area as an agenda"): it is in no zone until its
             // text has resolved (`engine::play_event` trashes it after), or
