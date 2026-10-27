@@ -1,0 +1,21 @@
+{
+  "id": "employee_strike",
+  "title": "Employee Strike",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "continuous": [
+    {
+      "kind": "LosesAbilities",
+      "applies_to": {
+        "CorpInstalled": {
+          "CardType": "Identity"
+        }
+      },
+      "text": "The Corp's identity loses its printed abilities."
+    }
+  ],
+  "triggers": [],
+  "built_from": 9053,
+  "is_playable": true
+}

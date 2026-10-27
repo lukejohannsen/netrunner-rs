@@ -230,7 +230,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("quantum_predictive_model", "Quantum Predictive Model"),
     ("shannon_claire", "Shannon Claire"),
     ("archangel", "Archangel"),
-    ("news_hound", "News Hound"),
     ("tl_dr", "TL;DR"),
     ("24_7_news_cycle", "24/7 News Cycle"),
     ("ad_blitz", "Ad Blitz"),
@@ -249,7 +248,6 @@ pub(crate) const DAD_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("security_chip", "Security Chip"),
     ("security_nexus", "Security Nexus"),
     ("jak_sinclair", "Jak Sinclair"),
-    ("employee_strike", "Employee Strike"),
 ];
 
 /// *The Valley* (`the_valley`): tranche F7 of the FFG plan.

@@ -5766,6 +5766,11 @@ pub fn check_requirement(
         EffectRequirement::ArchivesHasFacedownCard => {
             if state.corp.has_facedown_in_archives() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::CurrentActive => {
+            let current = |card: &CardId| registry.get(card).is_some_and(crate::rules::current::is_current);
+            let active = state.corp.play_area.iter().chain(state.runner.in_play.iter()).any(|played| current(&played.card));
+            if active { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::AccessingIn(server) => {
             let accessing_there = state
                 .active_run
@@ -6730,6 +6735,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::LastRunWasOn(_)
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
+        | EffectRequirement::CurrentActive
         | EffectRequirement::AccessingIn(_)
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled

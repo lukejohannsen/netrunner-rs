@@ -48361,3 +48361,76 @@ mod mumbad_stage_20 {
         assert_eq!(scored.as_agenda.map(|as_agenda| as_agenda.points), Some(2));
     }
 }
+
+mod mumbad_stage_21 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn current(card: &str) -> crate::rules::PlayedOperation {
+        crate::rules::PlayedOperation { card: id(card), handle: InstallId(4242) }
+    }
+
+    /// A run on HQ, News Hound its only ice, up to the encounter: the
+    /// subroutines it has there.
+    fn news_hound_subroutines(state: &GameState, registry: &CardRegistry) -> Vec<String> {
+        let mut state = state.clone();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("news_hound"),
+            card: id("news_hound"),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..12 {
+            if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        let run = state.active_run.as_ref().expect("encountering");
+        run.ice[run.position].subroutines.iter().map(|sub| sub.definition.text.clone()).collect()
+    }
+
+    #[test]
+    fn news_hound_gains_an_end_the_run_after_its_trace_while_a_current_is_active() {
+        let registry = registry();
+        let state = base_state();
+        let trace = "Trace[3]. If successful, give the Runner 1 tag.".to_string();
+        assert_eq!(news_hound_subroutines(&state, &registry), vec![trace.clone()]);
+        let mut corp_current = state.clone();
+        corp_current.corp.play_area.push(current("death_and_taxes"));
+        assert_eq!(news_hound_subroutines(&corp_current, &registry), vec![trace.clone(), "End the run.".to_string()]);
+        let mut runner_current = state.clone();
+        runner_current.runner.in_play.push(current("rumor_mill"));
+        assert_eq!(news_hound_subroutines(&runner_current, &registry), vec![trace, "End the run.".to_string()], "either player's");
+    }
+
+    #[test]
+    fn employee_strike_takes_the_corps_identity_out_of_play_while_it_stays_in_play() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("haas_bioroid_engineering_the_future"));
+        let identity_active = |state: &GameState| crate::rules::active::corp(state, &registry).any(|card| Some(card.card) == state.corp.identity.as_ref());
+        assert!(identity_active(&state));
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip.push(id("employee_strike"));
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("employee_strike") }).expect("play Employee Strike");
+        let (played, _) = close_all_windows(played, &registry);
+        assert_eq!(played.runner.in_play.iter().map(|current| &current.card).collect::<Vec<_>>(), vec![&id("employee_strike")]);
+        assert!(!identity_active(&played), "the identity loses its printed abilities");
+        assert!(crate::rules::active::installs_without_abilities(&played, &registry).contains(&InstallId::CORP_IDENTITY));
+    }
+}

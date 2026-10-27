@@ -74,7 +74,10 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
         .corp
         .identity
         .iter()
-        .filter(|_| !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::CORP_IDENTITY))
+        .filter(|_| {
+            !crate::rules::lingering::loses_abilities(state, crate::rules::state::InstallId::CORP_IDENTITY)
+                && !current_takes(state, registry, crate::rules::state::InstallId::CORP_IDENTITY)
+        })
         .map(|card| ActiveCard { side: Side::Corp, card, install: None, server: None, place: Place::Identity });
     let scored = state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()).map(|scored| ActiveCard {
         side: Side::Corp,
@@ -206,7 +209,9 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
         })
         .collect();
     if currents_taking(state, registry).next().is_some() {
-        lost.extend(state.corp.installed.iter().map(|card| card.install_id).filter(|install| current_takes(state, registry, *install)));
+        lost.extend(
+            state.corp.installed.iter().map(|card| card.install_id).chain([InstallId::CORP_IDENTITY]).filter(|install| current_takes(state, registry, *install)),
+        );
     }
     for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {
         if host_takes(state, registry, card.install_id, ContinuousKind::LosesAbilities) {
@@ -245,7 +250,17 @@ fn currents_taking<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
 /// Whether a current in play takes the abilities of the Corp install
 /// `install` ([`currents_taking`]). The filter is a definition's words, as
 /// every other `CorpInstalled` is read, and the copy's.
+///
+/// The Corp's identity is asked by its handle too: Employee Strike's "The
+/// Corp's identity loses its printed abilities" is the same scope with the
+/// identity's type as its filter. An identity is not installed, but it is
+/// the one other Corp card on the table a current names, and a scope of its
+/// own would be a second reader of the same sentence.
 fn current_takes(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    if install == InstallId::CORP_IDENTITY {
+        let Some(definition) = state.corp.identity.as_ref().and_then(|card| registry.get(card)) else { return false };
+        return currents_taking(state, registry).any(|filter| card_matches_filter(definition, filter));
+    }
     let Some(definition) = state.corp.installed.iter().find(|card| card.install_id == install).and_then(|card| registry.get(&card.card)) else {
         return false;
     };
