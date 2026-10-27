@@ -1,0 +1,44 @@
+{
+  "id": "mumbad_city_grid",
+  "title": "Mumbad City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": "ProtectingThisServer",
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "NotSourceCard",
+                "InThisServer"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "SwapInstalledIce": [
+                0,
+                0
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes a piece of ice protecting this server, you may swap that ice with another piece of ice protecting this server."
+    }
+  ],
+  "built_from": 10014,
+  "is_playable": true
+}

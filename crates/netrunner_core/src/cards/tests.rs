@@ -48270,3 +48270,94 @@ mod mumbad_stage_19 {
         assert_eq!(scored(&stolen.runner.scored_agendas), vec![&id("hostile_takeover"), &id("freedom_through_equality")]);
     }
 }
+
+mod mumbad_stage_20 {
+    use super::*;
+    use crate::rules::test_support::fixture_install_id;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice_in_remote(card: &str, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    fn remote_ice(state: &GameState) -> Vec<&CardId> {
+        state.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0) && card.slot == InstallSlot::Ice).map(|card| &card.card).collect()
+    }
+
+    #[test]
+    fn mumbad_city_grid_may_swap_the_ice_just_passed_with_another_protecting_its_server() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![
+            ice_in_remote("enigma", false),
+            ice_in_remote("wall_of_static", false),
+            ice_in_remote("ice_wall", false),
+            crate::rules::InstalledCard {
+                install_id: fixture_install_id("mumbad_city_grid"),
+                card: id("mumbad_city_grid"),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                rezzed: true,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard { server: ServerId::Hq, ..ice_in_remote("tollbooth", false) },
+        ];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        for _ in 0..40 {
+            if matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })) {
+                break;
+            }
+            let legal = crate::rules::legal_actions(&state, &registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                .cloned()
+                .unwrap_or_else(|| panic!("a way on from {:?}", state.pending_decision));
+            state = apply_action(&state, &registry, next).expect("on").0;
+        }
+        let offered: Vec<usize> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered.len(), 2, "the other ice protecting the remote, not HQ's");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("select");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("swap");
+        let after = remote_ice(&state);
+        assert_eq!(after.len(), 3);
+        // Installed ice is listed outermost first: Enigma was passed first.
+        assert_ne!(after.first(), Some(&&id("enigma")), "the ice just passed, swapped inward");
+    }
+
+    #[test]
+    fn victoria_jenkins_takes_a_runner_click_and_scores_for_the_runner_when_trashed_on_access() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("victoria_jenkins"),
+            card: id("victoria_jenkins"),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        crate::rules::test_support::enter_start_of_turn(&mut state, &registry, Side::Runner);
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "4 less 1");
+        state.runner.resources.credits = Credits(5);
+        let (accessing, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("victoria_jenkins") }).expect("trash");
+        let (trashed, _) = close_all_windows(trashed, &registry);
+        assert!(!trashed.corp.archives.iter().any(|card| card.card == id("victoria_jenkins")));
+        let scored = trashed.runner.scored_agendas.iter().find(|agenda| agenda.card == id("victoria_jenkins")).expect("in the Runner's score area");
+        assert_eq!(scored.as_agenda.map(|as_agenda| as_agenda.points), Some(2));
+    }
+}
