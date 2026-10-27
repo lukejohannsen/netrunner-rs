@@ -1,0 +1,134 @@
+{
+  "id": "zzyzx",
+  "name": "Zzyzx",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4.",
+  "style": [
+    "rig",
+    "dismantle"
+  ],
+  "identity": "valencia_estevez_the_angel_of_cayambe",
+  "cards": [
+    {
+      "card": "valentina_ferreira_carvalho",
+      "count": 2
+    },
+    {
+      "card": "the_nihilist",
+      "count": 2
+    },
+    {
+      "card": "marrow",
+      "count": 1
+    },
+    {
+      "card": "hemorrhage",
+      "count": 2
+    },
+    {
+      "card": "yog_0",
+      "count": 2
+    },
+    {
+      "card": "grimoire",
+      "count": 1
+    },
+    {
+      "card": "demolition_run",
+      "count": 2
+    },
+    {
+      "card": "deja_vu",
+      "count": 2
+    },
+    {
+      "card": "djinn",
+      "count": 2
+    },
+    {
+      "card": "district_99",
+      "count": 2
+    },
+    {
+      "card": "glut_cipher",
+      "count": 2
+    },
+    {
+      "card": "crypt",
+      "count": 2
+    },
+    {
+      "card": "exer",
+      "count": 2
+    },
+    {
+      "card": "musaazi",
+      "count": 2
+    },
+    {
+      "card": "knobkierie",
+      "count": 1
+    },
+    {
+      "card": "plague",
+      "count": 2
+    },
+    {
+      "card": "trypano",
+      "count": 2
+    },
+    {
+      "card": "hippo",
+      "count": 1
+    },
+    {
+      "card": "mining_accident",
+      "count": 2
+    },
+    {
+      "card": "mars_for_martians",
+      "count": 2
+    },
+    {
+      "card": "reshape",
+      "count": 1
+    },
+    {
+      "card": "bloo_moose",
+      "count": 1
+    },
+    {
+      "card": "dadiana_chacon",
+      "count": 1
+    },
+    {
+      "card": "berserker",
+      "count": 2
+    },
+    {
+      "card": "god_of_war",
+      "count": 2
+    },
+    {
+      "card": "populist_rally",
+      "count": 2
+    },
+    {
+      "card": "knifed",
+      "count": 2
+    },
+    {
+      "card": "power_to_the_people",
+      "count": 1
+    },
+    {
+      "card": "forked",
+      "count": 1
+    },
+    {
+      "card": "net_ready_eyes",
+      "count": 1
+    }
+  ]
+}

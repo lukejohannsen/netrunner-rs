@@ -1,0 +1,125 @@
+{
+  "id": "zyrian",
+  "name": "Zyrian",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Laramy Fisk: Savvy Investor, Order and Chaos's Criminal identity, who may make the Corp draw a card after the first successful run on a central server each turn. Zero-Day Heist's list, its identity swapped, with its MU Safecracker for a Forger, link and a tag avoided or removed, which Zero-Day Heist keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "laramy_fisk_savvy_investor",
+  "cards": [
+    {
+      "card": "shibboleth",
+      "count": 2
+    },
+    {
+      "card": "femme_fatale",
+      "count": 2
+    },
+    {
+      "card": "afterimage",
+      "count": 2
+    },
+    {
+      "card": "aurora",
+      "count": 2
+    },
+    {
+      "card": "ninja",
+      "count": 2
+    },
+    {
+      "card": "amina",
+      "count": 2
+    },
+    {
+      "card": "slipstream",
+      "count": 1
+    },
+    {
+      "card": "jackpot",
+      "count": 2
+    },
+    {
+      "card": "spot_the_prey",
+      "count": 2
+    },
+    {
+      "card": "mobius",
+      "count": 2
+    },
+    {
+      "card": "exploit",
+      "count": 2
+    },
+    {
+      "card": "build_script",
+      "count": 2
+    },
+    {
+      "card": "mad_dash",
+      "count": 2
+    },
+    {
+      "card": "maui",
+      "count": 1
+    },
+    {
+      "card": "caldera",
+      "count": 2
+    },
+    {
+      "card": "flashbang",
+      "count": 2
+    },
+    {
+      "card": "hernando_cortez",
+      "count": 1
+    },
+    {
+      "card": "leave_no_trace",
+      "count": 2
+    },
+    {
+      "card": "rosetta_2_0",
+      "count": 2
+    },
+    {
+      "card": "corporate_defector",
+      "count": 2
+    },
+    {
+      "card": "aeneas_informant",
+      "count": 2
+    },
+    {
+      "card": "aumakua",
+      "count": 2
+    },
+    {
+      "card": "keros_mcintyre",
+      "count": 2
+    },
+    {
+      "card": "charlatan",
+      "count": 1
+    },
+    {
+      "card": "drive_by",
+      "count": 2
+    },
+    {
+      "card": "fisk_investment_seminar",
+      "count": 2
+    },
+    {
+      "card": "uninstall",
+      "count": 1
+    },
+    {
+      "card": "forger",
+      "count": 1
+    }
+  ]
+}

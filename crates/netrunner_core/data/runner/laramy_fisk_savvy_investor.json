@@ -1,0 +1,48 @@
+{
+  "id": "laramy_fisk_savvy_investor",
+  "title": "Laramy Fisk: Savvy Investor",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD",
+          "Archives"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may force the Corp to draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time you make a successful run on a central server each turn, you may force the Corp to draw 1 card."
+    }
+  ],
+  "built_from": 8104,
+  "is_playable": true
+}

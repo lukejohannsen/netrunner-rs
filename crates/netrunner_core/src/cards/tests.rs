@@ -49244,3 +49244,154 @@ mod sansan_stage_3 {
         assert_eq!(state.runner.heap.iter().filter(|card| **card == id("sure_gamble")).count(), 3, "trashed, not damaged");
     }
 }
+
+/// SanSan Stage 4 (Order and Chaos): four pieces of hardware and four
+/// Runner identities.
+mod sansan_stage_4 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn rig(card: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { card: id(card), install_id: fixture_install_id(card), ..Default::default() }
+    }
+
+    fn runner_turn(identity: Option<&str>) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = identity.map(id);
+        state
+    }
+
+    fn install(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id(card));
+        let (state, _) = apply_action(&state, registry, PlayerAction::InstallHardware { card_id: id(card), host: None }).expect("install");
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn brain_cage_raises_the_hand_size_by_three_for_a_brain_damage() {
+        let registry = registry();
+        let mut state = runner_turn(None);
+        state.runner.grip = vec![id("sure_gamble")];
+        let state = install(&state, &registry, "brain_cage");
+        assert_eq!(state.runner.brain_damage, 1);
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 3, "what the table adds to the hand size");
+    }
+
+    #[test]
+    fn skulljack_lowers_the_trash_cost_of_an_accessed_card() {
+        let registry = registry();
+        let mut state = runner_turn(None);
+        state.runner.grip = vec![id("sure_gamble")];
+        let mut state = install(&state, &registry, "skulljack");
+        assert_eq!(state.runner.brain_damage, 1);
+        state.runner.resources.credits = Credits(3);
+        state.corp.installed = vec![crate::rules::InstalledCard { install_id: fixture_install_id("pad_campaign"), card: id("pad_campaign"), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("4, less 1");
+        assert_eq!(state.runner.resources.credits, Credits(0));
+        assert!(state.corp.archives.iter().any(|card| card.card == id("pad_campaign")));
+    }
+
+    #[test]
+    fn net_ready_eyes_costs_two_meat_damage_and_strengthens_a_breaker_on_every_run() {
+        let registry = registry();
+        let mut state = runner_turn(None);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.rig = vec![rig("corroder")];
+        let state = install(&state, &registry, "net_ready_eyes");
+        assert_eq!(state.runner.grip.len(), 1, "2 meat damage");
+        let printed = crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        assert!(state.pending_decision.is_some(), "choose 1 installed icebreaker");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let corroder = state.runner.rig.iter().find(|card| card.card == id("corroder")).expect("Corroder").clone();
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &corroder), printed + 1, "+1 strength for the remainder of the run");
+    }
+
+    #[test]
+    fn forger_gives_link_and_trashes_itself_to_remove_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn(None);
+        state.runner.rig = vec![rig("forger")];
+        state.runner.tags = 1;
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 1);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("forger"), ability_index: 1 }).expect("remove a tag");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!((state.runner.tags, state.runner.rig.len(), state.runner.heap.clone()), (0, 0, vec![id("forger")]));
+    }
+
+    #[test]
+    fn edward_kim_trashes_the_first_operation_he_accesses_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn(Some("edward_kim_humanitys_hammer"));
+        state.corp.hq = vec![id("hedge_fund")];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.corp.hq.is_empty(), "trashed: {:?}", state.pending_decision);
+        assert!(state.corp.archives.iter().any(|card| card.card == id("hedge_fund")));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("the access ends");
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert!(state.active_run.is_none());
+        state.corp.hq = vec![id("hedge_fund")];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(crate::rules::legal_actions_for(&state, &registry, Side::Runner), vec![PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }], "the second is not trashed");
+    }
+
+    #[test]
+    fn edward_kim_leaves_an_operation_in_archives_and_trashes_one_from_r_and_d() {
+        let registry = registry();
+        let mut state = runner_turn(Some("edward_kim_humanitys_hammer"));
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }).expect("already in Archives: nothing to trash");
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert!(state.active_run.is_none());
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let (state, _) = run_to_completion(state, &registry, ServerId::RnD);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.corp.r_and_d.is_empty());
+        assert_eq!(state.corp.archives.len(), 2);
+    }
+
+    #[test]
+    fn laramy_fisk_may_make_the_corp_draw_after_the_first_central_run() {
+        let registry = registry();
+        let mut state = runner_turn(Some("laramy_fisk_savvy_investor"));
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert!(state.pending_decision.is_some(), "you may force the Corp to draw");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.hq, vec![id("ice_wall")]);
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert!(state.pending_decision.is_none(), "only the first time each turn");
+    }
+
+    #[test]
+    fn maxx_mills_two_and_draws_one_as_her_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.identity = Some(id("maxx_maximum_punk_rock"));
+        state.runner.stack = vec![id("sure_gamble"), id("easy_mark"), id("corroder"), id("daily_casts")];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!((state.runner.stack.len(), state.runner.heap.len(), state.runner.grip.len()), (1, 2, 1), "{:?}", state.phase);
+    }
+
+    #[test]
+    fn valencia_estevez_gives_the_corp_a_bad_publicity_before_the_game_begins() {
+        let registry = registry();
+        let corp = crate::decks::by_id("ad_nihilum").expect("a Corp deck").to_deck();
+        let runner = crate::decks::by_id("zzyzx").expect("Valencia's deck").to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 7).expect("setup");
+        assert_eq!(state.corp.bad_publicity, 1);
+    }
+}

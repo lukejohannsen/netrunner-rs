@@ -1,0 +1,40 @@
+{
+  "id": "edward_kim_humanitys_hammer",
+  "title": "Edward Kim: Humanity's Hammer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 1,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          {
+            "And": [
+              {
+                "CurrentlyAccessingMatches": {
+                  "CardType": "Operation"
+                }
+              },
+              {
+                "Not": {
+                  "AccessingIn": "Archives"
+                }
+              }
+            ]
+          },
+          "OncePerTurn"
+        ]
+      },
+      "effects": [
+        "TrashCurrentlyAccessedCard"
+      ],
+      "text": "Trash the first operation you access each turn at no cost."
+    }
+  ],
+  "built_from": 7028,
+  "is_playable": true
+}
