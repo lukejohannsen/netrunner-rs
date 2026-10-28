@@ -49998,3 +49998,133 @@ mod sansan_stage_8 {
         assert_eq!(done.corp.r_and_d.len(), 1, "one card installed and one drawn as the turn began");
     }
 }
+
+/// SanSan and Breaker Bay Stage 9: Breaker Bay Grid, Crick, Gutenberg,
+/// Meru Mati, Turing, Game Day and Study Guide.
+mod sansan_stage_9 {
+    use super::*;
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn ice(card: &str, server: ServerId) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Ice, rezzed: true, ..Default::default() }
+    }
+
+    fn strength(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        crate::rules::continuous::installed_ice_strength(state, registry, &id(card), fixture_install_id(card))
+    }
+
+    /// A run on `server`, driven until the Runner is encountering its
+    /// outermost ice; then both players pass and the subroutines fire.
+    fn fired(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (mut run, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        for _ in 0..12 {
+            if run.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            let action = match &run.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            run = apply_action(&run, registry, action).expect("onward").0;
+        }
+        for _ in 0..4 {
+            let Some(window) = &run.paid_ability_window else { break };
+            let side = window.active_priority;
+            run = apply_action(&run, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        run
+    }
+
+    #[test]
+    fn each_gets_three_strength_protecting_its_own_server() {
+        let registry = registry();
+        for (card, home, away) in [("crick", ServerId::Archives, ServerId::Hq), ("gutenberg", ServerId::RnD, ServerId::Hq), ("meru_mati", ServerId::Hq, ServerId::RnD), ("turing", ServerId::Remote(0), ServerId::Hq)] {
+            let mut state = base_state();
+            state.corp.installed = vec![ice(card, away)];
+            let printed = strength(&state, &registry, card);
+            state.corp.installed = vec![ice(card, home)];
+            assert_eq!(strength(&state, &registry, card), printed + 3, "{card}");
+        }
+    }
+
+    #[test]
+    fn breaker_bay_grid_lowers_the_rez_of_its_root_by_five() {
+        let registry = registry();
+        let mut state = base_state();
+        let root = |card: &str, server| crate::rules::InstalledCard { install_id: fixture_install_id(card), card: id(card), server, slot: InstallSlot::Root, ..Default::default() };
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: true, ..root("breaker_bay_grid", ServerId::Remote(0)) }, root("pad_campaign", ServerId::Remote(0)), root("adonis_campaign", ServerId::Remote(1))];
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, fixture_install_id("pad_campaign")), -5);
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, fixture_install_id("adonis_campaign")), 0);
+    }
+
+    #[test]
+    fn crick_installs_a_card_from_archives() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice("crick", ServerId::Hq)];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("pad_campaign"))];
+        let asked = fired(&state, &registry, ServerId::Hq);
+        let offered: Vec<PlayerAction> = crate::rules::legal_actions_for(&asked, &registry, Side::Corp).into_iter().filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. })).collect();
+        assert_eq!(offered.len(), 1, "{:?}", asked.pending_decision);
+        let (chosen, _) = apply_action(&asked, &registry, offered[0].clone()).expect("select");
+        let (installing, _) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let install = crate::rules::legal_actions_for(&installing, &registry, Side::Corp);
+        let (done, _) = apply_action(&installing, &registry, install[0].clone()).unwrap_or_else(|e| panic!("{e:?} {install:?}"));
+        assert!(done.corp.installed.iter().any(|card| card.card == id("pad_campaign")));
+        assert!(done.corp.archives.is_empty());
+    }
+
+    #[test]
+    fn gutenberg_traces_seven_for_a_tag() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice("gutenberg", ServerId::Hq)];
+        let tracing = fired(&state, &registry, ServerId::Hq);
+        assert_eq!(tracing.active_trace.as_ref().map(|trace| trace.base_strength), Some(7));
+    }
+
+    #[test]
+    fn turing_ends_the_run_unless_the_runner_spends_three_clicks() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![ice("turing", ServerId::Hq)];
+        let asked = fired(&state, &registry, ServerId::Hq);
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).unwrap_or_else(|e| panic!("{e:?} {:?}", crate::rules::legal_actions_for(&asked, &registry, Side::Runner)));
+        assert_eq!(paid.runner.resources.clicks, Clicks(0), "one for the run, three for Turing");
+        assert!(paid.active_run.is_some());
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert!(declined.active_run.is_none());
+    }
+
+    #[test]
+    fn game_day_fills_the_grip_for_two_clicks() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("game_day"), id("sure_gamble")];
+        state.runner.stack = vec![id("sure_gamble"); 10];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("game_day") }).expect("play");
+        assert_eq!(played.runner.resources.clicks, Clicks(2));
+        assert_eq!(played.runner.grip.len(), crate::rules::continuous::hand_size(&played, &registry, Side::Runner) as usize + 5);
+    }
+
+    #[test]
+    fn study_guide_grows_a_point_of_strength_per_power_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("study_guide"), install_id: fixture_install_id("study_guide"), ..Default::default() }];
+        let before = crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("study_guide"), ability_index: 1 }).expect("2[credit]: place 1 power counter");
+        assert_eq!(state.runner.rig[0].counters, 1);
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), before + 1);
+    }
+}

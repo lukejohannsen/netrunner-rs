@@ -1,0 +1,33 @@
+{
+  "id": "meru_mati",
+  "title": "Meru Mati",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "Hq"
+      },
+      "text": "Meru Mati has +3 strength while protecting HQ."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 8039,
+  "triggers": [],
+  "is_playable": true
+}

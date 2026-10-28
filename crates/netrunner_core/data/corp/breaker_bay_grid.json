@@ -1,0 +1,24 @@
+{
+  "id": "breaker_bay_grid",
+  "title": "Breaker Bay Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -5
+        }
+      },
+      "applies_to": {
+        "RootOfThisServer": "Any"
+      },
+      "text": "The rez cost of each card in the root of this server is lowered by 5."
+    }
+  ],
+  "built_from": 8040,
+  "triggers": [],
+  "is_playable": true
+}

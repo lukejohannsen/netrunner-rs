@@ -1,0 +1,42 @@
+{
+  "id": "gutenberg",
+  "title": "Gutenberg",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "RnD"
+      },
+      "text": "Gutenberg has +3 strength while protecting R&D."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trace[7]. If successful, give the Runner 1 tag.",
+      "effect": {
+        "Trace": {
+          "base": 7,
+          "on_success": {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 8037,
+  "triggers": [],
+  "is_playable": true
+}

@@ -261,19 +261,12 @@ pub(crate) const BB_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("off_campus_apartment", "Off-Campus Apartment"),
     ("dorm_computer", "Dorm Computer"),
     ("hayley_kaplan_universal_scholar", "Hayley Kaplan: Universal Scholar"),
-    ("game_day", "Game Day"),
     ("comet", "Comet"),
-    ("study_guide", "Study Guide"),
     ("london_library", "London Library"),
     ("research_grant", "Research Grant"),
-    ("turing", "Turing"),
-    ("crick", "Crick"),
     ("recruiting_trip", "Recruiting Trip"),
     ("blacklist", "Blacklist"),
-    ("gutenberg", "Gutenberg"),
     ("student_loans", "Student Loans"),
-    ("meru_mati", "Meru Mati"),
-    ("breaker_bay_grid", "Breaker Bay Grid"),
 ];
 
 /// *Chrome City* (`chrome_city`): tranche F7 of the FFG plan.
@@ -858,7 +851,6 @@ pub(crate) const SC19_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("john_masanori", "John Masanori"),
     ("kati_jones", "Kati Jones"),
     ("seidr_laboratories_destiny_defined", "Seidr Laboratories: Destiny Defined"),
-    ("turing", "Turing"),
     ("blue_level_clearance", "Blue Level Clearance"),
     ("jinteki_replicating_perfection", "Jinteki: Replicating Perfection"),
     ("fetal_ai", "Fetal AI"),
