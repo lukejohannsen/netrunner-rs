@@ -1,0 +1,36 @@
+{
+  "id": "game_day",
+  "title": "Game Day",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCardsAmount": [
+            "Runner",
+            {
+              "Reduced": {
+                "amount": {
+                  "MaxHandSize": "Runner"
+                },
+                "by": {
+                  "CardsInHand": "Runner"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "text": "If you have fewer cards in your grip than your maximum hand size, draw cards until you have cards in your grip equal to your maximum hand size."
+    }
+  ],
+  "built_from": 8026,
+  "is_playable": true
+}

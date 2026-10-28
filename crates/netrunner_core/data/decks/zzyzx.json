@@ -3,17 +3,13 @@
   "name": "Zzyzx",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. Eater, Gravedigger, MemStrips, Data Folding and Vigil in for Yog.0, Djinn and Knobkierie (SanSan Stage 7).",
+  "description": "Not a published list: built so the sweeps reach Valencia Estevez: The Angel of Cayambe, Order and Chaos's Anarch identity, who gives the Corp 1 bad publicity before either player draws. Zealotry's list, its identity swapped, with a Hippo for a Net-Ready Eyes, a strength a run for 2 meat damage installing it, which Zealotry keeps. Named to sort after every other Runner deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 4. Eater, Gravedigger, MemStrips, Data Folding and Vigil in for Yog.0, Djinn and Knobkierie (SanSan Stage 7). Game Day and Study Guide in for Valentina Ferreira Carvalho (SanSan Stage 9).",
   "style": [
     "rig",
     "dismantle"
   ],
   "identity": "valencia_estevez_the_angel_of_cayambe",
   "cards": [
-    {
-      "card": "valentina_ferreira_carvalho",
-      "count": 2
-    },
     {
       "card": "the_nihilist",
       "count": 2
@@ -136,6 +132,14 @@
     },
     {
       "card": "vigil",
+      "count": 1
+    },
+    {
+      "card": "game_day",
+      "count": 1
+    },
+    {
+      "card": "study_guide",
       "count": 1
     }
   ]

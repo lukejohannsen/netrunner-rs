@@ -1,0 +1,50 @@
+{
+  "id": "turing",
+  "title": "Turing",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": "ProtectingRemote",
+      "text": "Turing has +3 strength while protecting a remote server."
+    },
+    {
+      "kind": {
+        "CannotBeBrokenUsing": "AI"
+      },
+      "applies_to": "This",
+      "text": "The Runner cannot use AI programs to break subroutines on Turing."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner spends [click][click][click].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Clicks": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner spends [click][click][click]"
+        }
+      }
+    }
+  ],
+  "built_from": 8033,
+  "triggers": [],
+  "is_playable": true
+}

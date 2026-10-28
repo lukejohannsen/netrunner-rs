@@ -1,0 +1,62 @@
+{
+  "id": "crick",
+  "title": "Crick",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "Archives"
+      },
+      "text": "Crick has +3 strength while protecting Archives."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Install a card from Archives (paying its install cost).",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": {
+            "Not": {
+              "CardType": "Operation"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "EffectIf": {
+              "condition": {
+                "AmountAtLeast": [
+                  "CardsSelected",
+                  1
+                ]
+              },
+              "effect": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnArchives"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "built_from": 8034,
+  "triggers": [],
+  "is_playable": true
+}

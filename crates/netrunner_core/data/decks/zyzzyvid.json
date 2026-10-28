@@ -3,7 +3,7 @@
   "name": "Zyzzyvid",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Argus Security: Protection Guaranteed, Order and Chaos's Weyland identity, whose Runner takes a tag or 2 meat damage for every agenda stolen. Family Business' list, its identity swapped, with a Hostile Takeover for a Firmware Updates and a Graft for a High-Risk Investment, point for point; a Hunter Seeker and a Door to Door for two Traffic Accident; and a Sandburg for a Space Camp, which Family Business keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Predictive Algorithm and Bandwidth in for Shipment from Kaguya and Oduduwa (SanSan Stage 8).",
+  "description": "Not a published list: built so the sweeps reach Argus Security: Protection Guaranteed, Order and Chaos's Weyland identity, whose Runner takes a tag or 2 meat damage for every agenda stolen. Family Business' list, its identity swapped, with a Hostile Takeover for a Firmware Updates and a Graft for a High-Risk Investment, point for point; a Hunter Seeker and a Door to Door for two Traffic Accident; and a Sandburg for a Space Camp, which Family Business keeps. Named to sort after every other Corp deck, so the sweep schedule of those before it does not move. Eternal-legal only: Order and Chaos is in neither pool. FFG F7 Stage 6. Predictive Algorithm and Bandwidth in for Shipment from Kaguya and Oduduwa (SanSan Stage 8). Gutenberg, Meru Mati and Breaker Bay Grid in for Formicary, Blockchain and Superdeep Borehole (SanSan Stage 9).",
   "style": [
     "traps"
   ],
@@ -18,14 +18,6 @@
       "count": 1
     },
     {
-      "card": "blockchain",
-      "count": 1
-    },
-    {
-      "card": "superdeep_borehole",
-      "count": 1
-    },
-    {
       "card": "broad_daylight",
       "count": 1
     },
@@ -36,10 +28,6 @@
     {
       "card": "oberth_protocol",
       "count": 2
-    },
-    {
-      "card": "formicary",
-      "count": 1
     },
     {
       "card": "masvingo",
@@ -167,6 +155,18 @@
     },
     {
       "card": "bandwidth",
+      "count": 1
+    },
+    {
+      "card": "gutenberg",
+      "count": 1
+    },
+    {
+      "card": "meru_mati",
+      "count": 1
+    },
+    {
+      "card": "breaker_bay_grid",
       "count": 1
     }
   ]
